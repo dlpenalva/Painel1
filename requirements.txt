@@ -1,3 +1,4 @@
 streamlit
 python-bcb
 pandas
+python-dateutil
