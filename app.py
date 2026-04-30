@@ -1,104 +1,151 @@
 import streamlit as st
 import pandas as pd
-from bcb import sgs
-from datetime import datetime, date
+import requests
+from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-# Configuração da página
-st.set_page_config(page_title="FARC - Painel de Admissibilidade", layout="wide")
+# Configuração de Interface e Identificação
+st.set_page_config(page_title="Admissibilidade e Variação de Reajuste", layout="wide")
 
-# --- FUNÇÕES DE LÓGICA JURÍDICA ---
+# Estilo para formatar métricas e textos
+st.markdown("""
+    <style>
+    .main { background-color: #f5f7f9; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    </style>
+    """, unsafe_allow_stdio=True)
 
-def calcular_admissibilidade(d_proposta, d_pedido, d_ultimo_reajuste=None):
-    # Marco inicial: Se houve reajuste anterior, conta dele. Se não, da proposta.
-    marco_inicial = d_ultimo_reajuste if d_ultimo_reajuste else d_proposta
-    
-    # Aniversário do Ciclo (12 meses após o marco)
-    data_aniversario = marco_inicial + relativedelta(months=12)
-    
-    # Prazo de Preclusão (90 dias após o aniversário - Parágrafo Quinto)
-    data_limite_preclusao = data_aniversario + relativedelta(days=90)
-    
-    # Verificação de status
-    if d_pedido < data_aniversario:
-        return "Antecipado", data_aniversario, "Pedido realizado antes do interstício de 12 meses."
-    elif d_pedido <= data_limite_preclusao:
-        return "Tempestivo", data_aniversario, "Pedido dentro do prazo de 90 dias."
-    else:
-        return "Precluso", data_aniversario, f"Pedido após {data_limite_preclusao.strftime('%d/%m/%Y')} (Parágrafo Quinto)."
+def get_index_data(serie_codigo, data_inicio, data_fim):
+    """
+    Automação da Busca de Índices via API SGS/BCB.
+    Tratamento de erro para índices ainda não publicados.
+    """
+    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie_codigo}/dados?formato=json&dataInicial={data_inicio}&dataFinal={data_fim}"
+    try:
+        response = requests.get(url, timeout=15)
+        response.raise_for_status()
+        df = pd.DataFrame(response.json())
+        
+        if df.empty:
+            return None, "Nenhum dado encontrado para o período informado."
+            
+        df['valor'] = df['valor'].astype(float) / 100
+        df['data'] = pd.to_datetime(df['data'], dayfirst=True)
+        
+        # Verificação de atualização do índice
+        ultima_data_api = df['data'].max()
+        data_fim_dt = pd.to_datetime(data_fim, dayfirst=True)
+        
+        aviso = None
+        if ultima_data_api.month < data_fim_dt.month or ultima_data_api.year < data_fim_dt.year:
+            aviso = f"Nota: O índice de {data_fim_dt.strftime('%m/%Y')} ainda não foi publicado oficialmente."
+            
+        return df, aviso
+    except Exception as e:
+        return None, f"Erro de conexão com a API oficial: {str(e)}"
 
-# --- INTERFACE ---
+# Inicialização do estado da sessão
+if 'farc_data' not in st.session_state:
+    st.session_state.farc_data = {}
 
-st.title("⚖️ Painel de Admissibilidade e Cálculo")
-st.caption("Gestão de Contratos (GCC) - Telebras | Conformidade com Cláusula Oitava")
+st.title("⚖️ Admissibilidade e Variação de Reajuste")
+st.caption("Ferramenta de apoio à Gestão de Contratos - GCC")
 
-# Abas do Painel
-tab_adm, tab_calc, tab_relat = st.tabs(["📋 Admissibilidade", "🧮 Cálculo por Itens", "📄 Relatório Final"])
+tab_adm, tab_calc, tab_rel = st.tabs(["Análise de Admissibilidade", "Cálculo de Reajuste", "Minuta de Relatório"])
 
 with tab_adm:
-    st.subheader("Análise de Tempestividade e Interstício")
+    st.subheader("Critérios da Cláusula Oitava")
+    col1, col2 = st.columns(2)
     
-    c1, c2 = st.columns(2)
-    with c1:
-        data_base = st.date_input("Data da Proposta ou Última Data-Base:", value=date(2023, 1, 1))
-        data_solicitacao = st.date_input("Data do Pedido (Protocolo):", value=date.today())
+    with col1:
+        dt_base = st.date_input("Data do Último Reajuste (ou Aniversário):", format="DD/MM/YYYY")
+        dt_solic = st.date_input("Data do Protocolo da Solicitação:", format="DD/MM/YYYY")
     
-    with c2:
-        ultimo_reajuste = st.date_input("Efeito Financeiro do Último Reajuste (se houver):", value=None, help="Deixe em branco se for o primeiro reajuste.")
-        data_vigencia = st.date_input("Fim da Vigência Atual:", value=date(2025, 1, 1))
+    with col2:
+        valor_contrato = st.number_input("Valor a Reajustar (R$):", min_value=0.0, step=100.0, help="Pode ser o valor global ou o saldo remanescente.")
+        tipo_idx = st.selectbox("Índice de Reajuste:", ["IPCA (Série 433)", "IGP-M (Série 189)", "IST (Inserção Manual)"])
 
-    # Execução da Lógica
-    status, aniversario, motivo = calcular_admissibilidade(data_base, data_solicitacao, ultimo_reajuste)
-    
+    # Lógica de Negócio: Interstício e Preclusão
+    dias_atraso = (dt_solic - dt_base).days
+    intersticio_ok = relativedelta(dt_solic, dt_base).years >= 1
+    precluso = dias_atraso > 90 # Regra de 90 dias conforme diretriz interna
+
     st.divider()
     
-    # Exibição do Parecer
-    if status == "Tempestivo":
-        st.success(f"**PARECER: ADMISSÍVEL**")
-        st.write(f"✅ **Interstício:** Respeitado (Aniversário em {aniversario.strftime('%d/%m/%Y')})")
-        st.write(f"✅ **Tempestividade:** Pedido dentro do prazo de 90 dias.")
-        st.info(f"**Efeito Financeiro:** A partir de {data_solicitacao.strftime('%d/%m/%Y')} (Conforme Parágrafo Segundo).")
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Dias desde o Aniversário", f"{dias_atraso} dias")
     
-    elif status == "Precluso":
-        st.error(f"**PARECER: PRECLUSO**")
-        st.write(f"❌ **Motivo:** {motivo}")
-        st.warning("⚠️ Conforme Parágrafo Sétimo, a contratada só poderá solicitar novo reajuste após 12 meses deste ciclo.")
-    
+    if precluso:
+        c2.error("Status: Precluso")
+        st.error(f"O pedido foi realizado {dias_atraso} dias após o direito, superando o limite de 90 dias.")
     else:
-        st.warning(f"**PARECER: AGUARDANDO**")
-        st.write(f"🕒 **Situação:** {motivo}")
+        c2.success("Status: Tempestivo")
+
+    if not intersticio_ok:
+        c3.warning("Interstício: Não atingido")
+    else:
+        c3.success("Interstício: Ok")
+
+    # Sincronização de dados para as próximas abas
+    st.session_state.farc_data = {
+        'inicio': dt_base.strftime('%d/%m/%Y'),
+        'fim': dt_solic.strftime('%d/%m/%Y'),
+        'valor': valor_contrato,
+        'indice_nome': tipo_idx,
+        'cod_bcb': tipo_idx.split('(')[1].replace('Série ', '').replace(')', '') if '(' in tipo_idx else None,
+        'admissivel': not precluso and intersticio_ok
+    }
 
 with tab_calc:
-    st.subheader("Liquidação sobre Itens Remanescentes")
-    st.info("O cálculo deve incidir sobre o saldo de itens não consumidos.")
-    
-    # Exemplo de entrada de valor (será substituído por upload de planilha)
-    valor_itens = st.number_input("Valor total dos itens remanescentes (R$):", min_value=0.0)
-    escolha_indice = st.selectbox("Índice de Reajuste:", ["IST (Anatel)", "IPCA", "IGP-M"])
-    
-    if st.button("Calcular Impacto"):
-        # Aqui chamaremos as funções de índice que já criamos
-        st.write("Cálculo processado com base no acumulado de 12 meses...")
-
-with tab_relat:
-    st.subheader("Minuta de Apostilamento")
-    if status == "Tempestivo":
-        texto_relatorio = f"""
-        RELATÓRIO DE ADMISSIBILIDADE
-        
-        Trata-se de análise de pedido de reajuste referente ao contrato com data-base em {data_base.strftime('%d/%m/%Y')}.
-        
-        1. DA ADMISSIBILIDADE:
-        Verifica-se que o pedido foi protocolado em {data_solicitacao.strftime('%d/%m/%Y')}, respeitando o interstício 
-        mínimo de 12 meses previsto no Parágrafo Primeiro da Cláusula Oitava.
-        
-        2. DA PRECLUSÃO:
-        O aniversário do ciclo ocorreu em {aniversario.strftime('%d/%m/%Y')}. O pedido foi realizado dentro do prazo 
-        de 90 dias estabelecido no Parágrafo Quinto, não havendo que se falar em preclusão.
-        
-        3. CONCLUSÃO:
-        O reajuste é admissível, com efeitos financeiros a partir da data da solicitação.
-        """
-        st.text_area("Cópia para o Processo:", value=texto_relatorio, height=300)
+    data = st.session_state.farc_data
+    if not data or data.get('valor') == 0:
+        st.info("Aguardando preenchimento dos dados de Admissibilidade.")
     else:
-        st.write("Relatório indisponível: O pedido não atende aos critérios de admissibilidade.")
+        st.subheader("Memória de Cálculo")
+        st.info(f"**Período de Apuração:** {data['inicio']} a {data['fim']}")
+        
+        if data['cod_bcb']:
+            with st.spinner("Buscando índices oficiais..."):
+                df_idx, aviso = get_index_data(data['cod_bcb'], data['inicio'], data['fim'])
+            
+            if aviso:
+                st.warning(aviso)
+            
+            if df_idx is not None:
+                # Cálculo da Variação Acumulada (Produtório das taxas)
+                variacao = (1 + df_idx['valor']).prod() - 1
+                valor_final = data['valor'] * (1 + variacao)
+                impacto = valor_final - data['valor']
+                
+                m1, m2, m3 = st.columns(3)
+                m1.metric("Variação Acumulada", f"{variacao:.4%}")
+                m2.metric("Novo Valor Reajustado", f"R$ {valor_final:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                m3.metric("Impacto Financeiro", f"R$ {impacto:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                
+                with st.expander("Ver Detalhamento Mensal"):
+                    st.dataframe(df_idx.assign(data=df_idx['data'].dt.strftime('%m/%Y')), use_container_width=True)
+        else:
+            # Caso para IST ou índice manual
+            taxa_ist = st.number_input("Informe a variação acumulada do IST (%):", step=0.0001) / 100
+            if taxa_ist > 0:
+                v_final = data['valor'] * (1 + taxa_ist)
+                st.metric("Novo Valor (IST)", f"R$ {v_final:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+
+with tab_rel:
+    if not st.session_state.farc_data.get('admissivel'):
+        st.warning("O relatório não pode ser gerado devido ao descumprimento dos critérios de Admissibilidade.")
+    else:
+        st.subheader("Minuta para o SEI")
+        texto_sei = f"""
+        OBJETO: Reajuste Contratual.
+        PERÍODO DE APURAÇÃO: {data['inicio']} a {data['fim']}.
+        
+        1. DA ADMISSIBILIDADE
+        Verifica-se que a solicitação foi protocolada em {data['fim']}, respeitando o interstício de 12 meses 
+        em relação ao último evento contratual ({data['inicio']}) e dentro do prazo de 90 dias para evitar a preclusão.
+        
+        2. DO CÁLCULO
+        Utilizando o índice {data['indice_nome']}, apurou-se a variação acumulada no período. 
+        O valor base de R$ {data['valor']:,.2f} resulta no novo valor reajustado de R$ {valor_final:,.2f}.
+        """
+        st.text_area("Copie o texto abaixo:", texto_sei, height=300)
