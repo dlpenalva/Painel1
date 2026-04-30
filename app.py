@@ -7,13 +7,13 @@ from dateutil.relativedelta import relativedelta
 # Configuração de Interface e Identificação
 st.set_page_config(page_title="Admissibilidade e Variação de Reajuste", layout="wide")
 
-# Estilo para formatar métricas e textos
+# Estilo para formatar métricas e textos - Corrigido para unsafe_allow_html
 st.markdown("""
     <style>
     .main { background-color: #f5f7f9; }
     .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
     </style>
-    """, unsafe_allow_stdio=True)
+    """, unsafe_allow_html=True)
 
 def get_index_data(serie_codigo, data_inicio, data_fim):
     """
@@ -44,12 +44,12 @@ def get_index_data(serie_codigo, data_inicio, data_fim):
     except Exception as e:
         return None, f"Erro de conexão com a API oficial: {str(e)}"
 
-# Inicialização do estado da sessão
+# Inicialização do estado da sessão para persistência entre abas
 if 'farc_data' not in st.session_state:
     st.session_state.farc_data = {}
 
 st.title("⚖️ Admissibilidade e Variação de Reajuste")
-st.caption("Ferramenta de apoio à Gestão de Contratos - GCC")
+st.caption("Ferramenta de apoio à Gestão de Contratos - Telebras (GCC)")
 
 tab_adm, tab_calc, tab_rel = st.tabs(["Análise de Admissibilidade", "Cálculo de Reajuste", "Minuta de Relatório"])
 
@@ -65,7 +65,7 @@ with tab_adm:
         valor_contrato = st.number_input("Valor a Reajustar (R$):", min_value=0.0, step=100.0, help="Pode ser o valor global ou o saldo remanescente.")
         tipo_idx = st.selectbox("Índice de Reajuste:", ["IPCA (Série 433)", "IGP-M (Série 189)", "IST (Inserção Manual)"])
 
-    # Lógica de Negócio: Interstício e Preclusão
+    # Lógica de Negócio: Interstício de 12 meses e Preclusão de 90 dias
     dias_atraso = (dt_solic - dt_base).days
     intersticio_ok = relativedelta(dt_solic, dt_base).years >= 1
     precluso = dias_atraso > 90 
@@ -112,6 +112,7 @@ with tab_calc:
                 st.warning(aviso)
             
             if df_idx is not None:
+                # Cálculo da Variação Acumulada
                 variacao = (1 + df_idx['valor']).prod() - 1
                 valor_final = data['valor'] * (1 + variacao)
                 impacto = valor_final - data['valor']
@@ -124,6 +125,7 @@ with tab_calc:
                 with st.expander("Ver Detalhamento Mensal"):
                     st.dataframe(df_idx.assign(data=df_idx['data'].dt.strftime('%m/%Y')), use_container_width=True)
         else:
+            # Caso para IST ou índice manual
             taxa_ist = st.number_input("Informe a variação acumulada do IST (%):", step=0.0001) / 100
             if taxa_ist > 0:
                 v_final = data['valor'] * (1 + taxa_ist)
@@ -134,16 +136,21 @@ with tab_rel:
         st.warning("O relatório não pode ser gerado devido ao descumprimento dos critérios de Admissibilidade.")
     else:
         st.subheader("Minuta para o SEI")
-        texto_sei = f"""
-        OBJETO: Reajuste Contratual.
-        PERÍODO DE APURAÇÃO: {data['inicio']} a {data['fim']}.
         
-        1. DA ADMISSIBILIDADE
-        Verifica-se que a solicitação foi protocolada em {data['fim']}, respeitando o interstício de 12 meses 
-        em relação ao último evento contratual ({data['inicio']}) e dentro do prazo de 90 dias para evitar a preclusão.
-        
-        2. DO CÁLCULO
-        Utilizando o índice {data['indice_nome']}, apurou-se a variação acumulada no período. 
-        O valor base de R$ {data['valor']:,.2f} resulta no novo valor reajustado de R$ {valor_final:,.2f}.
-        """
-        st.text_area("Copie o texto abaixo:", texto_sei, height=300)
+        # Prevenção de erro caso o cálculo ainda não tenha sido processado
+        try:
+            texto_sei = f"""
+            OBJETO: Reajuste Contratual.
+            PERÍODO DE APURAÇÃO: {data['inicio']} a {data['fim']}.
+            
+            1. DA ADMISSIBILIDADE
+            Verifica-se que a solicitação foi protocolada em {data['fim']}, respeitando o interstício de 12 meses 
+            em relação ao último evento contratual ({data['inicio']}) e dentro do prazo de 90 dias para evitar a preclusão.
+            
+            2. DO CÁLCULO
+            Utilizando o índice {data['indice_nome']}, apurou-se a variação acumulada no período. 
+            O valor base de R$ {data['valor']:,.2f} resulta no novo valor reajustado.
+            """
+            st.text_area("Copie o texto abaixo:", texto_sei, height=300)
+        except NameError:
+            st.info("Execute o cálculo na aba anterior para gerar o relatório completo.")
