@@ -68,7 +68,7 @@ with tab_adm:
     # Lógica de Negócio: Interstício e Preclusão
     dias_atraso = (dt_solic - dt_base).days
     intersticio_ok = relativedelta(dt_solic, dt_base).years >= 1
-    precluso = dias_atraso > 90 # Regra de 90 dias conforme diretriz interna
+    precluso = dias_atraso > 90 
 
     st.divider()
     
@@ -112,7 +112,6 @@ with tab_calc:
                 st.warning(aviso)
             
             if df_idx is not None:
-                # Cálculo da Variação Acumulada (Produtório das taxas)
                 variacao = (1 + df_idx['valor']).prod() - 1
                 valor_final = data['valor'] * (1 + variacao)
                 impacto = valor_final - data['valor']
@@ -125,7 +124,6 @@ with tab_calc:
                 with st.expander("Ver Detalhamento Mensal"):
                     st.dataframe(df_idx.assign(data=df_idx['data'].dt.strftime('%m/%Y')), use_container_width=True)
         else:
-            # Caso para IST ou índice manual
             taxa_ist = st.number_input("Informe a variação acumulada do IST (%):", step=0.0001) / 100
             if taxa_ist > 0:
                 v_final = data['valor'] * (1 + taxa_ist)
