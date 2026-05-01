@@ -6,10 +6,11 @@ from dateutil.relativedelta import relativedelta
 
 st.set_page_config(page_title="GCC - Telebras", layout="wide")
 
-# Estilo Telebras simplificado para estabilidade
+# Estilo Telebras - Restaurado e Garantido
 st.markdown("""
     <style>
-    .stMetric { background-color: #f8f9fa; padding: 15px; border-radius: 10px; border-left: 5px solid #003366; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border-left: 5px solid #003366; }
+    .stTabs [aria-selected="true"] { background-color: #003366 !important; color: white !important; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -21,6 +22,7 @@ def get_index_data(serie_codigo, data_inicio, data_fim):
         if df.empty: return None, "Vazio"
         df['valor'] = df['valor'].astype(float) / 100
         df['data'] = pd.to_datetime(df['data'], dayfirst=True)
+        if len(df) > 12: df = df.head(12)
         return df, None
     except:
         return None, "Erro API"
@@ -33,21 +35,20 @@ def calc_ist_csv(dt_base, dt_aniv):
         ref_base = f"{meses_map[dt_base.month]}/{str(dt_base.year)[2:]}"
         ref_aniv = f"{meses_map[dt_aniv.month]}/{str(dt_aniv.year)[2:]}"
         
-        row_base = df[df['MES_ANO'] == ref_base].iloc[0]
-        row_aniv = df[df['MES_ANO'] == ref_aniv].iloc[0]
-        
-        v_base = float(row_base['INDICE_NIVEL'])
-        v_aniv = float(row_aniv['INDICE_NIVEL'])
+        v_base = float(df[df['MES_ANO'] == ref_base]['INDICE_NIVEL'].values[0])
+        v_aniv = float(df[df['MES_ANO'] == ref_aniv]['INDICE_NIVEL'].values[0])
         var = (v_aniv / v_base) - 1
         
-        memoria = pd.DataFrame([
-            {"Referência": f"Inicial ({ref_base})", "Nível": v_base},
-            {"Referência": f"Final ({ref_aniv})", "Nível": v_aniv}
+        # Melhoria na memória de cálculo pedida
+        memoria_df = pd.DataFrame([
+            {"Referência": f"Inicial ({ref_base})", "Índice Nível": f"{v_base:.4f}"},
+            {"Referência": f"Final ({ref_aniv})", "Índice Nível": f"{v_aniv:.4f}"}
         ])
-        return var, ref_base, ref_aniv, memoria, None
+        return var, ref_base, ref_aniv, memoria_df, None
     except:
-        return None, None, None, None, "Erro no CSV"
+        return None, None, None, None, "Erro nas referências do IST"
 
+st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
 st.title("Gestão de Cálculos Contratuais")
 
 if 'farc' not in st.session_state: st.session_state.farc = {}
@@ -60,55 +61,70 @@ with tab_adm:
         dt_base = st.date_input("Data-Base Anterior:", value=datetime(2023, 5, 1), format="DD/MM/YYYY")
         dt_solic = st.date_input("Data do Pedido:", format="DD/MM/YYYY")
     with col2:
-        valor_base = st.number_input("Valor Atual (R$):", min_value=0.0, value=100.0, step=100.0)
+        valor_base = st.number_input("Valor Atual (R$):", min_value=0.0, step=100.0)
         tipo_idx = st.selectbox("Índice:", ["IPCA (Série 433)", "IGP-M (Série 189)", "IST (Planilha CSV)"])
 
     dt_aniv = dt_base + relativedelta(years=1)
+    dt_fim_calculo = dt_aniv - relativedelta(months=1)
     dias_janela = (dt_solic - dt_aniv).days
     intersticio_ok = dt_solic >= dt_aniv
-    status = "Precluso" if dias_janela > 90 else "Admissível" if intersticio_ok else "Antecipado"
+    mesmo_mes = (dt_solic.month == dt_aniv.month and dt_solic.year == dt_aniv.year)
+
+    if dias_janela > 90: status = "Precluso"
+    elif not intersticio_ok and mesmo_mes: status = "Admissível (Ajuste Prévio)"
+    elif not intersticio_ok: status = "Antecipado"
+    else: status = "Admissível"
 
     st.divider()
     c1, c2, c3 = st.columns(3)
     c1.metric("Janela Temporal", f"{max(0, dias_janela)} dias")
-    c2.info(f"Status: {status}")
-    if intersticio_ok: st.success("Interstício Legal: Ok")
-    else: st.warning("Interstício: Pendente")
+    
+    # Correção das cores do status
+    if status == "Admissível" or status == "Admissível (Ajuste Prévio)":
+        c2.success(f"Status: {status}")
+    elif status == "Precluso":
+        c2.error(f"Status: {status}")
+    else:
+        c2.warning(f"Status: {status}")
+    
+    if intersticio_ok: c3.success("Interstício Legal: Ok")
+    else: c3.warning("Interstício: Pendente")
 
     st.session_state.farc = {
         'dt_base': dt_base, 'dt_aniv': dt_aniv, 'dt_pedido': dt_solic,
-        'valor': valor_base, 'idx': tipo_idx, 'status': status
+        'dt_fim_calc': dt_fim_calculo, 'valor': valor_base, 'idx': tipo_idx, 
+        'status': status, 'var': 0.0, 'v_novo': 0.0
     }
 
 with tab_calc:
     f = st.session_state.farc
     if f.get('valor', 0) > 0:
         if "IST" in f['idx']:
-            var, rb, ra, mem, erro = calc_ist_csv(f['dt_base'], f['dt_aniv'])
+            var, rb, ra, mem_df, erro = calc_ist_csv(f['dt_base'], f['dt_aniv'])
             if not erro:
                 v_novo = f['valor'] * (1 + var)
-                st.subheader(f"Memória de Cálculo - IST")
-                st.write(f"Fórmula: $Var = (Nivel Final / Nivel Inicial) - 1$")
+                st.subheader("Memória de Cálculo - IST")
+                st.write("Fórmula: $Var = (Nivel Final / Nivel Inicial) - 1$")
                 col_a, col_b = st.columns(2)
                 col_a.metric(f"Variação ({rb} a {ra})", f"{var:.6%}")
                 col_b.metric("Novo Valor", f"R$ {v_novo:,.2f}")
-                st.table(mem)
+                st.table(mem_df)
                 st.session_state.farc.update({'var': var, 'v_novo': v_novo})
         else:
             cod = "433" if "IPCA" in f['idx'] else "189"
-            df, erro = get_index_data(cod, f['dt_base'].strftime('%d/%m/%Y'), f['dt_aniv'].strftime('%d/%m/%Y'))
+            df, erro = get_index_data(cod, f['dt_base'].strftime('%d/%m/%Y'), f['dt_fim_calc'].replace(day=28).strftime('%d/%m/%Y'))
             if df is not None:
                 var = (1 + df['valor']).prod() - 1
                 v_novo = f['valor'] * (1 + var)
-                st.subheader(f"Memória - {f['idx']}")
-                st.metric("Variação Acumulada", f"{var:.6%}")
+                st.subheader(f"Memória de Cálculo - {f['idx']}")
+                st.metric(f"Período: {df.iloc[0]['data'].strftime('%m/%Y')} a {df.iloc[-1]['data'].strftime('%m/%Y')}", f"{var:.6%}")
                 st.metric("Novo Valor", f"R$ {v_novo:,.2f}")
                 st.dataframe(df.assign(data=df['data'].dt.strftime('%m/%Y')), use_container_width=True)
                 st.session_state.farc.update({'var': var, 'v_novo': v_novo})
 
 with tab_rel:
     f = st.session_state.farc
-    if f.get('v_novo'):
+    if f.get('v_novo') and f['v_novo'] > 0:
         texto_rel = f"""RELATÓRIO TÉCNICO DE REAJUSTE CONTRATUAL
 
 1. FUNDAMENTAÇÃO LEGAL E REFERÊNCIAS
@@ -123,12 +139,12 @@ with tab_rel:
 
 3. MEMÓRIA DE CÁLCULO
 - Índice Aplicado: {f['idx']}
-- Variação: {f['var']:.6%}
+- Variação Acumulada (12 meses): {f['var']:.6%}
 - Valor Atual: R$ {f['valor']:,.2f}
-- Novo Valor: R$ {f['v_novo']:,.2f}
+- Novo Valor Reajustado: R$ {f['v_novo']:,.2f}
 
 4. CONCLUSÃO
-O novo valor de R$ {f['v_novo']:,.2f} está apto para processamento, retroagindo a {f['dt_aniv'].strftime('%d/%m/%Y')}."""
+Considerando o cumprimento do interstício de 12 meses, o novo valor de R$ {f['v_novo']:,.2f} é considerado apto para processamento, retroagindo seus efeitos financeiros a {f['dt_aniv'].strftime('%d/%m/%Y')}."""
         
-        st.subheader("Relatório Pronto para Copiar")
-        st.text_area("Use o botão no canto superior direito deste campo para copiar:", texto_rel, height=350)
+        st.subheader("Conteúdo para o SEI")
+        st.text_area("Copie o texto abaixo:", texto_rel, height=380)
