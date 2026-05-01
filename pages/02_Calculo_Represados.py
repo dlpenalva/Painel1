@@ -4,13 +4,12 @@ import requests
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
-st.set_page_config(page_title="Facilitador - Cálculo de Represados", layout="wide")
+st.set_page_config(page_title="Cálculo de Represados", layout="wide")
 
-# Estilização para destaque da Data-Base e Janela Admissível
 st.markdown("""
     <style>
-    .highlight-base { color: #003366; font-weight: bold; font-size: 18px; background-color: #f0f2f6; padding: 5px; border-radius: 5px; }
-    .admissible-box { border-left: 5px solid #28a745; padding-left: 10px; margin-bottom: 10px; }
+    .highlight-base { color: #003366; font-weight: bold; background-color: #f0f2f6; padding: 3px 8px; border-radius: 4px; }
+    .admissible-box { border-left: 5px solid #28a745; background-color: #f8f9fa; padding: 10px; margin-bottom: 15px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -28,7 +27,7 @@ st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_A
 st.title("Cálculo de Represados")
 
 with st.sidebar:
-    st.header("Configuração Geral")
+    st.header("Configuração")
     dt_base_original = st.date_input("Data-Base Original (Proposta):", value=datetime(2022, 10, 10), format="DD/MM/YYYY")
     qtd_anos = st.number_input("Quantidade de Ciclos:", min_value=1, max_value=10, value=2)
     indice_ref = st.selectbox("Índice:", ["IPCA (433)", "IGP-M (189)"])
@@ -46,8 +45,8 @@ for i in range(1, qtd_anos + 1):
         
         col_inf, col_ped = st.columns(2)
         with col_inf:
-            st.markdown(f'Data-Base deste Ciclo: <span class="highlight-base">{data_base_atual.strftime("%d/%m/%Y")}</span>', unsafe_allow_html=True)
-            st.write(f"Aniversário: {aniv_teorico.strftime('%d/%m/%Y')}")
+            st.markdown(f'Data-Base: <span class="highlight-base">{data_base_atual.strftime("%d/%m/%Y")}</span>', unsafe_allow_html=True)
+            st.write(f"Variação de: {data_base_atual.strftime('%d/%m/%Y')} a {aniv_teorico.strftime('%d/%m/%Y')}")
         
         with col_ped:
             dt_pedido = st.date_input(f"Data do Pedido - Ciclo {i}:", value=aniv_teorico, key=f"ped_{i}", format="DD/MM/YYYY")
@@ -59,38 +58,33 @@ for i in range(1, qtd_anos + 1):
             fator_ciclo = 1 + var_ciclo
             fator_acumulado *= fator_ciclo
             
-            # Lógica de Status: PRECLUSO ou No Prazo
             if dt_pedido > limite_admissibilidade:
                 status = "❌ PRECLUSO (Arrasta Base)"
-                fundamento = "Cláusula 8ª, §4º: Solicitação após 90 dias consome a anuidade e desloca a data-base."
+                fundamento = "Cláusula 8ª, §4º: Solicitação após 90 dias consome a anuidade."
             else:
                 status = "✅ No Prazo"
-                fundamento = "Cláusula 8ª, §1º: Reajuste anual em conformidade com o aniversário contratual."
+                fundamento = "Cláusula 8ª, §1º: Reajuste anual conforme aniversário."
             
             resumo.append({
                 "Ciclo": i,
-                "Base Anterior": data_base_atual.strftime('%d/%m/%Y'),
+                "Intervalo Amostragem": f"{data_base_atual.strftime('%d/%m/%Y')} - {aniv_teorico.strftime('%d/%m/%Y')}",
                 "Variação": f"{var_ciclo*100:,.2f}%".replace('.', ','),
                 "Pedido (Efeito)": dt_pedido.strftime('%d/%m/%Y'),
                 "Status": status,
-                "Fundamento": fundamento
+                "Fundamentação": fundamento
             })
             data_base_atual = dt_pedido
         else:
-            st.warning(f"Dados não encontrados para o Ciclo {i}")
+            st.warning(f"Dados não obtidos para o Ciclo {i}")
 
 if resumo:
     st.divider()
     perc_total = (fator_acumulado - 1) * 100
     
     c1, c2 = st.columns(2)
-    c1.metric("Variação Total Acumulada", f"{perc_total:,.2f}%".replace('.', ','))
-    c2.metric("Multiplicador Final", f"{fator_acumulado:.6f}")
+    c1.metric("Variação Acumulada", f"{perc_total:,.2f}%".replace('.', ','))
+    c2.metric("Fator Multiplicador", f"{fator_acumulado:.6f}")
 
-    st.subheader("Relatório Consolidado de Análise Técnica")
+    st.subheader("Memória de Cálculo - Fator de Prova")
     df_resumo = pd.DataFrame(resumo)
-    st.table(df_resumo[["Ciclo", "Base Anterior", "Variação", "Pedido (Efeito)", "Status"]])
-    
-    st.info("**Fundamentação Legal (Cláusula Oitava):**")
-    for r in resumo:
-        st.write(f"**Ciclo {r['Ciclo']}:** {r['Fundamento']}")
+    st.table(df_resumo)

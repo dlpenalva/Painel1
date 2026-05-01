@@ -1,16 +1,13 @@
 import streamlit as st
 
-st.set_page_config(page_title="Facilitador - Telebras", layout="wide")
+st.set_page_config(page_title="Facilitador Telebras", layout="wide")
 
 st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
-st.title("Facilitador de Reajustes Contratuais")
+st.title("Sistema de Gestão de Contratos")
+st.markdown("---")
 
-st.info("Utilize o menu lateral à esquerda para navegar entre as ferramentas.")
+st.subheader("Selecione o Módulo no Menu Lateral")
+st.write("1. **Cálculo Simples:** Para reajustes de ciclo único.")
+st.write("2. **Cálculo de Represados:** Para processos com múltiplos anos acumulados.")
 
-st.markdown("""
-### Painel de Gestão
-Este ambiente centraliza ferramentas de apoio à gestão de contratos.
-
-*   **📊 Cálculo Único:** Análise de admissibilidade e cálculo de reajuste para um ciclo específico (IPCA, IGP-M ou IST).
-*   **🧮 Cálculo Múltiplo:** Ferramenta para processos acumulados (múltiplos anos) com geração de memória do retroativo (IPCA, IGP-M ou IST).
-""")
+# No Streamlit Cloud, o nome no menu é definido pelo nome do arquivo ou st.set_page_config
