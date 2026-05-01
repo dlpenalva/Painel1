@@ -6,11 +6,12 @@ from dateutil.relativedelta import relativedelta
 
 st.set_page_config(page_title="GCC - Telebras", layout="wide")
 
-# Estilo Telebras - Restaurado e Garantido
+# Estilo Telebras
 st.markdown("""
     <style>
     .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border-left: 5px solid #003366; }
     .stTabs [aria-selected="true"] { background-color: #003366 !important; color: white !important; }
+    .subtitle-gcc { font-size: 14px; color: #666; margin-top: -20px; margin-bottom: 20px; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -34,22 +35,20 @@ def calc_ist_csv(dt_base, dt_aniv):
         meses_map = {1:'jan', 2:'fev', 3:'mar', 4:'abr', 5:'mai', 6:'jun', 7:'jul', 8:'ago', 9:'set', 10:'out', 11:'nov', 12:'dez'}
         ref_base = f"{meses_map[dt_base.month]}/{str(dt_base.year)[2:]}"
         ref_aniv = f"{meses_map[dt_aniv.month]}/{str(dt_aniv.year)[2:]}"
-        
         v_base = float(df[df['MES_ANO'] == ref_base]['INDICE_NIVEL'].values[0])
         v_aniv = float(df[df['MES_ANO'] == ref_aniv]['INDICE_NIVEL'].values[0])
         var = (v_aniv / v_base) - 1
-        
-        # Melhoria na memória de cálculo pedida
         memoria_df = pd.DataFrame([
             {"Referência": f"Inicial ({ref_base})", "Índice Nível": f"{v_base:.4f}"},
             {"Referência": f"Final ({ref_aniv})", "Índice Nível": f"{v_aniv:.4f}"}
         ])
         return var, ref_base, ref_aniv, memoria_df, None
     except:
-        return None, None, None, None, "Erro nas referências do IST"
+        return None, None, None, None, "Erro IST"
 
 st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
-st.title("Gestão de Cálculos Contratuais")
+st.title("Gestão de Contratos - Reajustes")
+st.markdown('<p class="subtitle-gcc">GCC</p>', unsafe_allow_html=True)
 
 if 'farc' not in st.session_state: st.session_state.farc = {}
 
@@ -61,11 +60,12 @@ with tab_adm:
         dt_base = st.date_input("Data-Base Anterior:", value=datetime(2023, 5, 1), format="DD/MM/YYYY")
         dt_solic = st.date_input("Data do Pedido:", format="DD/MM/YYYY")
     with col2:
-        valor_base = st.number_input("Valor Atual (R$):", min_value=0.0, step=100.0)
+        # Valor 0.0 agora é permitido para quando não se quer exibir valores monetários
+        valor_base = st.number_input("Valor Atual (R$) - Opcional:", min_value=0.0, step=100.0, help="Deixe 0,00 se não quiser exibir valores no relatório.")
         tipo_idx = st.selectbox("Índice:", ["IPCA (Série 433)", "IGP-M (Série 189)", "IST (Planilha CSV)"])
 
     dt_aniv = dt_base + relativedelta(years=1)
-    dt_fim_calculo = dt_aniv - relativedelta(months=1)
+    dt_fim_calc = dt_aniv - relativedelta(months=1)
     dias_janela = (dt_solic - dt_aniv).days
     intersticio_ok = dt_solic >= dt_aniv
     mesmo_mes = (dt_solic.month == dt_aniv.month and dt_solic.year == dt_aniv.year)
@@ -78,58 +78,60 @@ with tab_adm:
     st.divider()
     c1, c2, c3 = st.columns(3)
     c1.metric("Janela Temporal", f"{max(0, dias_janela)} dias")
-    
-    # Correção das cores do status
-    if status == "Admissível" or status == "Admissível (Ajuste Prévio)":
-        c2.success(f"Status: {status}")
-    elif status == "Precluso":
-        c2.error(f"Status: {status}")
-    else:
-        c2.warning(f"Status: {status}")
+    if "Admissível" in status: c2.success(f"Status: {status}")
+    elif status == "Precluso": c2.error(f"Status: {status}")
+    else: c2.warning(f"Status: {status}")
     
     if intersticio_ok: c3.success("Interstício Legal: Ok")
     else: c3.warning("Interstício: Pendente")
 
     st.session_state.farc = {
         'dt_base': dt_base, 'dt_aniv': dt_aniv, 'dt_pedido': dt_solic,
-        'dt_fim_calc': dt_fim_calculo, 'valor': valor_base, 'idx': tipo_idx, 
+        'dt_fim_calc': dt_fim_calc, 'valor': valor_base, 'idx': tipo_idx, 
         'status': status, 'var': 0.0, 'v_novo': 0.0
     }
 
 with tab_calc:
     f = st.session_state.farc
-    if f.get('valor', 0) > 0:
-        if "IST" in f['idx']:
-            var, rb, ra, mem_df, erro = calc_ist_csv(f['dt_base'], f['dt_aniv'])
-            if not erro:
+    if "IST" in f['idx']:
+        var, rb, ra, mem_df, erro = calc_ist_csv(f['dt_base'], f['dt_aniv'])
+        if not erro:
+            st.subheader("Memória de Cálculo - IST")
+            st.write("Fórmula: $Var = (Nivel Final / Nivel Inicial) - 1$")
+            st.metric(f"Variação ({rb} a {ra})", f"{var:.6%}")
+            if f['valor'] > 0:
                 v_novo = f['valor'] * (1 + var)
-                st.subheader("Memória de Cálculo - IST")
-                st.write("Fórmula: $Var = (Nivel Final / Nivel Inicial) - 1$")
-                col_a, col_b = st.columns(2)
-                col_a.metric(f"Variação ({rb} a {ra})", f"{var:.6%}")
-                col_b.metric("Novo Valor", f"R$ {v_novo:,.2f}")
-                st.table(mem_df)
-                st.session_state.farc.update({'var': var, 'v_novo': v_novo})
-        else:
-            cod = "433" if "IPCA" in f['idx'] else "189"
-            df, erro = get_index_data(cod, f['dt_base'].strftime('%d/%m/%Y'), f['dt_fim_calc'].replace(day=28).strftime('%d/%m/%Y'))
-            if df is not None:
-                var = (1 + df['valor']).prod() - 1
-                v_novo = f['valor'] * (1 + var)
-                st.subheader(f"Memória de Cálculo - {f['idx']}")
-                st.metric(f"Período: {df.iloc[0]['data'].strftime('%m/%Y')} a {df.iloc[-1]['data'].strftime('%m/%Y')}", f"{var:.6%}")
                 st.metric("Novo Valor", f"R$ {v_novo:,.2f}")
-                st.dataframe(df.assign(data=df['data'].dt.strftime('%m/%Y')), use_container_width=True)
-                st.session_state.farc.update({'var': var, 'v_novo': v_novo})
+                st.session_state.farc.update({'v_novo': v_novo})
+            st.table(mem_df)
+            st.session_state.farc.update({'var': var})
+    else:
+        cod = "433" if "IPCA" in f['idx'] else "189"
+        df, erro = get_index_data(cod, f['dt_base'].strftime('%d/%m/%Y'), f['dt_fim_calc'].replace(day=28).strftime('%d/%m/%Y'))
+        if df is not None:
+            var = (1 + df['valor']).prod() - 1
+            st.subheader(f"Memória de Cálculo - {f['idx']}")
+            st.metric(f"Período: {df.iloc[0]['data'].strftime('%m/%Y')} a {df.iloc[-1]['data'].strftime('%m/%Y')}", f"{var:.6%}")
+            if f['valor'] > 0:
+                v_novo = f['valor'] * (1 + var)
+                st.metric("Novo Valor", f"R$ {v_novo:,.2f}")
+                st.session_state.farc.update({'v_novo': v_novo})
+            st.dataframe(df.assign(data=df['data'].dt.strftime('%m/%Y')), use_container_width=True)
+            st.session_state.farc.update({'var': var})
 
 with tab_rel:
     f = st.session_state.farc
-    if f.get('v_novo') and f['v_novo'] > 0:
+    if f.get('var') != 0.0:
+        # Lógica de Valores: só aparecem se forem maiores que zero
+        linha_valor_ant = f"- Valor Atual: R$ {f['valor']:,.2f}" if f['valor'] > 0 else ""
+        linha_valor_nov = f"- Novo Valor Reajustado: R$ {f['v_novo']:,.2f}" if f['valor'] > 0 else ""
+        
         texto_rel = f"""RELATÓRIO TÉCNICO DE REAJUSTE CONTRATUAL
 
 1. FUNDAMENTAÇÃO LEGAL E REFERÊNCIAS
-- Amparo: Lei 13.303/2016 e Decreto nº 12.500/2025.
+- Amparo: Lei nº 13.303/2016 e Decreto nº 12.500/2025.
 - Empresa: Telebras (Status: Não Dependente).
+- Cláusula de Reajuste: Cláusula Sétima, Parágrafo Primeiro.
 - Data-Base Anterior: {f['dt_base'].strftime('%d/%m/%Y')}
 - Aniversário do Direito: {f['dt_aniv'].strftime('%d/%m/%Y')}
 
@@ -140,11 +142,11 @@ with tab_rel:
 3. MEMÓRIA DE CÁLCULO
 - Índice Aplicado: {f['idx']}
 - Variação Acumulada (12 meses): {f['var']:.6%}
-- Valor Atual: R$ {f['valor']:,.2f}
-- Novo Valor Reajustado: R$ {f['v_novo']:,.2f}
+{linha_valor_ant}
+{linha_valor_nov}
 
 4. CONCLUSÃO
-Considerando o cumprimento do interstício de 12 meses, o novo valor de R$ {f['v_novo']:,.2f} é considerado apto para processamento, retroagindo seus efeitos financeiros a {f['dt_aniv'].strftime('%d/%m/%Y')}."""
+Considerando o cumprimento do interstício de 12 meses e a previsão contratual, a variação de {f['var']:.6%} está apta para aplicação, retroagindo seus efeitos financeiros a {f['dt_aniv'].strftime('%d/%m/%Y')}."""
         
-        st.subheader("Conteúdo para o SEI")
-        st.text_area("Copie o texto abaixo:", texto_rel, height=380)
+        st.subheader("Informações para relatório")
+        st.text_area("Copie o texto abaixo:", texto_rel.replace('\n\n\n', '\n').strip(), height=400)
