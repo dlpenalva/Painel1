@@ -17,28 +17,6 @@ def get_index_data_detailed(serie_codigo, data_inicio, data_fim):
         return df
     except: return None
 
-# NOVA FUNÇÃO: O mesmo adaptador silencioso para o módulo de represados
-def get_ist_mock_api(data_inicio, data_fim):
-    try:
-        df = pd.read_csv('ist.csv', sep=';', decimal=',')
-        df.columns = ['data', 'indice']
-        df['data'] = pd.to_datetime(df['data'], format='%d/%m/%Y')
-        df = df.sort_values('data').reset_index(drop=True)
-        
-        d_inicio = pd.to_datetime(data_inicio, format='%d/%m/%Y')
-        d_fim = pd.to_datetime(data_fim, format='%d/%m/%Y')
-        d_anterior = d_inicio - relativedelta(months=1)
-        
-        mask = (df['data'] >= d_anterior) & (df['data'] <= d_fim)
-        df_calc = df.loc[mask].copy()
-        
-        if len(df_calc) < 2: return None
-        
-        df_calc['valor'] = df_calc['indice'].pct_change()
-        df_final = df_calc.loc[df_calc['data'] >= d_inicio].copy()
-        return df_final[['data', 'valor']]
-    except: return None
-
 st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
 st.title("Cálculo de Represados")
 
@@ -46,7 +24,7 @@ with st.sidebar:
     st.header("Configuração")
     dt_base_original = st.date_input("Data-Base Original:", value=datetime(2022, 10, 10), format="DD/MM/YYYY")
     qtd_anos = st.number_input("Quantidade de Ciclos:", min_value=1, max_value=10, value=2)
-    indice_ref = st.selectbox("Índice:", ["IPCA (433)", "IGP-M (189)", "IST (Série Local)"])
+    indice_ref = st.selectbox("Índice:", ["IPCA (433)", "IGP-M (189)"])
 
 resumo_final = []
 fator_acumulado = 1.0
@@ -69,12 +47,8 @@ for i in range(1, int(qtd_anos) + 1):
         with col_ped:
             dt_pedido = st.date_input(f"Data do Pedido - Ciclo {i}:", value=aniv_teorico, key=f"ped_{i}", format="DD/MM/YYYY")
         
-        # Roteamento inteligente
-        if "IST" in indice_ref:
-            df_ciclo = get_ist_mock_api(data_base_atual.strftime('%d/%m/%Y'), fim_periodo_calculo.strftime('%d/%m/%Y'))
-        else:
-            cod_serie = "433" if "IPCA" in indice_ref else "189"
-            df_ciclo = get_index_data_detailed(cod_serie, data_base_atual.strftime('%d/%m/%Y'), fim_periodo_calculo.strftime('%d/%m/%Y'))
+        cod_serie = "433" if "IPCA" in indice_ref else "189"
+        df_ciclo = get_index_data_detailed(cod_serie, data_base_atual.strftime('%d/%m/%Y'), fim_periodo_calculo.strftime('%d/%m/%Y'))
         
         if df_ciclo is not None:
             var_ciclo = (1 + df_ciclo['valor']).prod() - 1
@@ -82,7 +56,7 @@ for i in range(1, int(qtd_anos) + 1):
             fator_acumulado *= fator_ciclo
             status = "✅ No Prazo" if dt_pedido <= limite_90 else "❌ PRECLUSO (Arrasta Base)"
             
-            # MEMÓRIA DE CÁLCULO DETALHADA POR CICLO (Intocável)
+            # MEMÓRIA DE CÁLCULO DETALHADA POR CICLO
             with st.expander(f"🔍 Auditoria Mensal - Ciclo {i} (Fator de Prova)"):
                 df_view = df_ciclo.copy()
                 df_view['Variação Mensal'] = df_view['valor'].map(lambda x: f"{x*100:.4f}%")
@@ -98,7 +72,7 @@ for i in range(1, int(qtd_anos) + 1):
             })
             data_base_atual = dt_pedido # Regra de arrasto de base para o próximo ciclo
         else:
-            st.error(f"Erro ao obter dados para o Ciclo {i}.")
+            st.error(f"Erro ao obter dados para o Ciclo {i}. Verifique a conexão com o Banco Central.")
     st.markdown("---")
 
 if resumo_final:

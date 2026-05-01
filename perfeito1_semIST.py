@@ -17,32 +17,6 @@ def get_index_data(serie_codigo, data_inicio, data_fim):
         return df
     except: return None
 
-# NOVA FUNÇÃO: Transforma o CSV do IST em um DataFrame idêntico ao do Banco Central
-def get_ist_mock_api(data_inicio, data_fim):
-    try:
-        df = pd.read_csv('ist.csv', sep=';', decimal=',')
-        df.columns = ['data', 'indice']
-        df['data'] = pd.to_datetime(df['data'], format='%d/%m/%Y')
-        df = df.sort_values('data').reset_index(drop=True)
-        
-        d_inicio = pd.to_datetime(data_inicio, format='%d/%m/%Y')
-        d_fim = pd.to_datetime(data_fim, format='%d/%m/%Y')
-        d_anterior = d_inicio - relativedelta(months=1)
-        
-        # Filtra a partir do mês anterior para calcular a variação do primeiro mês
-        mask = (df['data'] >= d_anterior) & (df['data'] <= d_fim)
-        df_calc = df.loc[mask].copy()
-        
-        if len(df_calc) < 2: return None
-        
-        # Converte número-índice em variação percentual mensal
-        df_calc['valor'] = df_calc['indice'].pct_change()
-        
-        # Filtra apenas o período 0+11 exato solicitado
-        df_final = df_calc.loc[df_calc['data'] >= d_inicio].copy()
-        return df_final[['data', 'valor']]
-    except: return None
-
 st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
 st.title("Cálculo Simples")
 
@@ -51,7 +25,7 @@ with col1:
     dt_base = st.date_input("Data-Base Anterior:", value=datetime(2023, 5, 1), format="DD/MM/YYYY")
     dt_solic = st.date_input("Data do Pedido:", format="DD/MM/YYYY")
 with col2:
-    tipo_idx = st.selectbox("Índice:", ["IPCA (Série 433)", "IGP-M (Série 189)", "IST (Série Local)"])
+    tipo_idx = st.selectbox("Índice:", ["IPCA (Série 433)", "IGP-M (Série 189)"])
 
 # Lógica Corrigida: Mês 0 + 11 meses (Total 12 meses)
 dt_fim_calculo = dt_base + relativedelta(months=11)
@@ -60,13 +34,9 @@ limite_90 = dt_aniv_contratual + relativedelta(days=90)
 status = "✅ ADMISSÍVEL" if dt_solic <= limite_90 else "❌ PRECLUSO"
 
 st.subheader("Resultado da Análise")
-
-# Roteamento inteligente sem mexer na lógica de negócio
-if "IST" in tipo_idx:
-    df_dados = get_ist_mock_api(dt_base.strftime('%d/%m/%Y'), dt_fim_calculo.strftime('%d/%m/%Y'))
-else:
-    cod = "433" if "IPCA" in tipo_idx else "189"
-    df_dados = get_index_data(cod, dt_base.strftime('%d/%m/%Y'), dt_fim_calculo.strftime('%d/%m/%Y'))
+cod = "433" if "IPCA" in tipo_idx else "189"
+# Busca os 12 meses exatos
+df_dados = get_index_data(cod, dt_base.strftime('%d/%m/%Y'), dt_fim_calculo.strftime('%d/%m/%Y'))
 
 if df_dados is not None:
     variacao = (1 + df_dados['valor']).prod() - 1
@@ -77,6 +47,7 @@ if df_dados is not None:
 
     st.subheader("Memória de Cálculo (Fator de Prova)")
     
+    # Tabela de Resumo Executivo
     resumo_prova = {
         "Descrição": ["Início do Ciclo", "Fim do Ciclo (12º mês)", "Aniversário Contratual", "Limite Admissibilidade", "Data do Pedido", "Status"],
         "Data / Valor": [
@@ -94,5 +65,3 @@ if df_dados is not None:
         df_display = df_dados.copy()
         df_display['Variação Mensal'] = df_display['valor'].map(lambda x: f"{x*100:.4f}%")
         st.dataframe(df_display[['data', 'Variação Mensal']], use_container_width=True)
-elif "IST" in tipo_idx:
-    st.error("Erro ao processar IST. Verifique se as datas existem no arquivo ist.csv.")
