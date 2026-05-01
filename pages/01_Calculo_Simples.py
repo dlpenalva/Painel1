@@ -43,7 +43,10 @@ with col2:
 dt_fim_ap = dt_base + relativedelta(months=11)
 dt_aniv = dt_base + relativedelta(years=1)
 dt_limite = dt_aniv + relativedelta(days=90)
+# Preservando lógica original de status com emoji para o cabeçalho
 status_ped = "✅ TEMPESTIVO" if dt_solic <= dt_limite else "❌ PRECLUSO"
+# Variável auxiliar para o relatório limpo
+status_limpo = "TEMPESTIVO" if dt_solic <= dt_limite else "PRECLUSO"
 
 res = get_ist_local(dt_base, dt_fim_ap) if "IST" in tipo_idx else get_index_data("433" if "IPCA" in tipo_idx else "189", dt_base, dt_fim_ap)
 
@@ -62,3 +65,16 @@ if res:
             st.code(f"({res['i_fim']} / {res['i_ini']}) - 1 = {res['variacao']*100:.4f}%")
         else:
             st.dataframe(res['dados'])
+
+    # INCLUSÃO DO RELATÓRIO DE APURAÇÃO CONFORME MODELO
+    st.subheader("Relatório de Apuração")
+    janela_str = f"{(res['d_ini'] if 'd_ini' in res else dt_base).strftime('%m/%Y')} a {(res['d_fim'] if 'd_fim' in res else dt_fim_ap).strftime('%m/%Y')}"
+    
+    relatorio_simples = f"""
+    **C1:** Pedido realizado em {dt_solic.strftime('%d/%m/%Y')}. Janela (Ciclo Final) {janela_str}.  
+    Resultado: {status_limpo}.  
+    Variação do Ciclo: {v_fmt}. Variação acumulada: {v_fmt}.  
+    Índice {tipo_idx}.  
+    Data de início dos efeitos financeiros: {dt_solic.strftime('%d/%m/%Y')}.
+    """
+    st.info(relatorio_simples)

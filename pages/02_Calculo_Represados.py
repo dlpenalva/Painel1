@@ -9,21 +9,52 @@ st.set_page_config(page_title="Cálculo de Represados", layout="wide")
 def get_data_rep(serie, d_ini, d_fim, is_ist):
     try:
         if is_ist:
+            # Leitura e normalização da base IST
             df = pd.read_csv('ist.csv', sep=';', decimal=',', encoding='utf-8-sig')
             df.columns = [str(col).strip().lower() for col in df.columns]
-            df['data'] = pd.to_datetime(df['data'], dayfirst=True)
-            r_ini = (d_ini - relativedelta(months=1)).replace(day=1)
-            r_fim = d_fim.replace(day=1)
-            v_ini = df[df['data'].dt.to_period('M') == r_ini.strftime('%Y-%m')]['indice'].values[0]
-            v_fim = df[df['data'].dt.to_period('M') == r_fim.strftime('%Y-%m')]['indice'].values[0]
-            return {'var': (v_fim/v_ini)-1, 'i_ini': v_ini, 'i_fim': v_fim, 'p_ini': r_ini, 'p_fim': r_fim, 'metodo': "Divisão de Número-Índice"}
+            
+            # 1. Padronização: Converter coluna para datetime e normalizar (zerar horas)
+            df['data'] = pd.to_datetime(df['data'], dayfirst=True).dt.normalize()
+            
+            # 2. Padronização: Converter datas de controle (date) para pd.Timestamp normalizado
+            r_ini = pd.to_datetime((d_ini - relativedelta(months=1)).replace(day=1)).normalize()
+            r_fim = pd.to_datetime(d_fim.replace(day=1)).normalize()
+            
+            # 3. Filtros agora funcionam com tipos idênticos (Timestamp vs Timestamp)
+            df_detalhado = df[(df['data'] >= r_ini) & (df['data'] <= r_fim)].copy()
+            
+            # Extração de valores para a fórmula do IST
+            v_ini_rows = df[df['data'] == r_ini]
+            v_fim_rows = df[df['data'] == r_fim]
+            
+            if v_ini_rows.empty or v_fim_rows.empty:
+                st.error(f"Dados faltantes no IST: {r_ini.strftime('%m/%Y')} ou {r_fim.strftime('%m/%Y')}")
+                return None
+                
+            v_ini = v_ini_rows['indice'].values[0]
+            v_fim = v_fim_rows['indice'].values[0]
+            
+            return {
+                'var': (v_fim/v_ini)-1, 'i_ini': v_ini, 'i_fim': v_fim, 
+                'p_ini': r_ini, 'p_fim': r_fim, 'metodo': "Divisão de Número-Índice (IST)",
+                'dados': df_detalhado[['data', 'indice']]
+            }
         else:
+            # IPCA e IGP-M via SGS/BCB permanecem inalterados
             url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie}/dados?formato=json&dataInicial={d_ini.strftime('%d/%m/%Y')}&dataFinal={d_fim.strftime('%d/%m/%Y')}"
-            r = requests.get(url, timeout=10).json()
-            df_t = pd.DataFrame(r)
+            response = requests.get(url, timeout=10)
+            df_t = pd.DataFrame(response.json())
             df_t['v'] = df_t['valor'].astype(float) / 100
-            return {'var': (1 + df_t['v']).prod() - 1, 'metodo': "Produtório de taxas mensais", 'p_ini': d_ini, 'p_fim': d_fim}
-    except: return None
+            df_t['data'] = pd.to_datetime(df_t['data'], dayfirst=True)
+            return {
+                'var': (1 + df_t['v']).prod() - 1, 
+                'metodo': "Produtório de taxas mensais (SGS/BCB)", 
+                'p_ini': d_ini, 'p_fim': d_fim,
+                'dados': df_t[['data', 'valor']]
+            }
+    except Exception as e:
+        st.error(f"Erro técnico na coleta de dados: {str(e)}")
+        return None
 
 st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
 st.title("Cálculo de Represados")
@@ -54,39 +85,60 @@ for i in range(1, int(qtd_ciclos) + 1):
     if res_c:
         fator_acum *= (1 + res_c['var'])
         v_fmt = f"{res_c['var']*100:,.2f}%".replace('.', ',')
-        sit = "✅ TEMPESTIVO" if dt_ped <= d_lim else "❌ PRECLUSO"
+        v_acum_parcial = f"{(fator_acum - 1)*100:,.2f}%".replace('.', ',')
+        sit_emoji = "✅ TEMPESTIVO" if dt_ped <= d_lim else "❌ PRECLUSO"
+        sit_limpo = "TEMPESTIVO" if dt_ped <= d_lim else "PRECLUSO"
         
-        # Bloco de Resumo de Rastreabilidade
         st.markdown(f"""
         **Dados do Ciclo {i}:**
         - Janela de apuração: {res_c['p_ini'].strftime('%m/%Y')} a {res_c['p_fim'].strftime('%m/%Y')}
-        - Situação: {sit}
+        - Situação: {sit_emoji}
         - Metodologia: {res_c['metodo']}
         - Variação do Ciclo: **{v_fmt}**
         """)
         
         with st.expander(f"🔍 Memória de Cálculo Detalhada - Ciclo {i}"):
+            st.write(f"**Metodologia:** {res_c['metodo']}")
+            st.write(f"**Janela de Apuração:** {res_c['p_ini'].strftime('%m/%Y')} a {res_c['p_fim'].strftime('%m/%Y')}")
+            
             if "IST" in idx_sel:
-                st.write(f"Cálculo: ({res_c['i_fim']} / {res_c['i_ini']}) - 1")
+                # Memória específica para o IST restaurada
+                st.dataframe(res_c['dados'], use_container_width=True)
+                st.write(f"**Data Inicial:** {res_c['p_ini'].strftime('%m/%Y')} | **Valor:** {res_c['i_ini']}")
+                st.write(f"**Data Final:** {res_c['p_fim'].strftime('%m/%Y')} | **Valor:** {res_c['i_fim']}")
+                st.code(f"Fórmula aplicada: ({res_c['i_fim']} / {res_c['i_ini']}) - 1")
             else:
-                st.write("Baseado em série histórica do Banco Central.")
-            st.write(f"Resultado bruto: {res_c['var']}")
+                st.dataframe(res_c['dados'], use_container_width=True)
+                st.write("Fórmula: Produtório de (1 + taxa_mensal)")
+            
+            st.write(f"**Resultado bruto:** {res_c['var']}")
+            st.write(f"**Percentual apurado:** {res_c['var']*100:.4f}%")
+            st.write(f"**Percentual utilizado:** {v_fmt}")
 
-        historico.append({"Ciclo": i, "Base": data_atual.strftime('%d/%m/%Y'), "Variação": v_fmt, "Situação": sit})
-        # Lógica de arrasto
+        historico.append({
+            "Ciclo": i, "Base": data_atual.strftime('%d/%m/%Y'), 
+            "Variação": v_fmt, "Acumulada": v_acum_parcial,
+            "Situação": sit_limpo, "Pedido": dt_ped.strftime('%d/%m/%Y'),
+            "Janela": f"{res_c['p_ini'].strftime('%m/%Y')} a {res_c['p_fim'].strftime('%m/%Y')}"
+        })
         data_atual = dt_ped if dt_ped > d_lim else d_aniv
     else:
-        st.error(f"Erro no Ciclo {i}")
+        st.warning(f"Não foi possível processar o Ciclo {i}. Verifique a base de dados.")
 
 if historico:
     st.divider()
     res_final = f"{(fator_acum - 1)*100:,.2f}%".replace('.', ',')
     st.metric("Variação Acumulada Final (Represado)", res_final)
-    st.table(pd.DataFrame(historico))
     
-    # Reintrodução dos Relatórios
-    relatorio_md = f"### Relatório de Reajuste\n\n**Índice:** {idx_sel}\n**Variação Total:** {res_final}\n\n"
+    df_hist = pd.DataFrame(historico)[["Ciclo", "Base", "Variação", "Situação"]]
+    st.dataframe(df_hist, hide_index=True, use_container_width=True)
+    
+    st.subheader("Relatório de Apuração")
+    corpo_relatorio = ""
     for h in historico:
-        relatorio_md += f"- Ciclo {h['Ciclo']}: Base {h['Base']} | Var: {h['Variação']} | {h['Situação']}\n"
-    
-    st.download_button("Baixar Relatório (TXT)", relatorio_md, file_name="relatorio_reajuste.txt")
+        corpo_relatorio += f"""
+        **C{h['Ciclo']}:** Pedido em {h['Pedido']}. Janela {h['Janela']}.  
+        Resultado: {h['Situação']}. Variação: {h['Variação']}.  
+        Índice {idx_sel}. Início dos efeitos financeiros: {h['Pedido']}.
+        \n\n"""
+    st.info(corpo_relatorio)
