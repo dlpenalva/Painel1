@@ -7,11 +7,11 @@ from dateutil.relativedelta import relativedelta
 # Configuração de Interface
 st.set_page_config(page_title="GCC - Telebras", layout="wide")
 
-# Estilo Institucional Telebras
+# Estilo Institucional Telebras (Azul Profundo #003366)
 st.markdown("""
     <style>
     .main { background-color: #f0f2f6; }
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border-left: 5px solid #0054a6; }
+    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border-left: 5px solid #003366; }
     
     /* Estilização das Abas */
     .stTabs [data-baseweb="tab-list"] { gap: 10px; }
@@ -22,11 +22,11 @@ st.markdown("""
         color: #555;
     }
     .stTabs [aria-selected="true"] {
-        background-color: #0054a6 !important;
+        background-color: #003366 !important;
         color: white !important;
     }
     
-    h1 { color: #0054a6; }
+    h1 { color: #003366; }
     </style>
     """, unsafe_allow_html=True)
 
@@ -46,8 +46,8 @@ def get_index_data(serie_codigo, data_inicio, data_fim):
 if 'farc_data' not in st.session_state:
     st.session_state.farc_data = {}
 
-# Logo (Link alternativo estável)
-st.image("https://logodownload.org/wp-content/uploads/2020/02/telebras-logo.png", width=200)
+# Logo Atualizada (Azul Profundo)
+st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
 st.title("Admissibilidade e Variação de Reajuste")
 st.caption("Ferramenta de apoio à Gestão de Contratos - Telebras (GCC)")
 
@@ -63,7 +63,7 @@ with tab_adm:
         valor_contrato = st.number_input("Valor a Reajustar (R$):", min_value=0.0, step=100.0)
         tipo_idx = st.selectbox("Índice de Reajuste:", ["IPCA (Série 433)", "IGP-M (Série 189)", "IST (Manual)"])
 
-    # Lógica
+    # Lógica de Prazos
     data_aniversario = dt_base + relativedelta(years=1)
     data_fim_calc = data_aniversario - relativedelta(days=1)
     dias_janela = (dt_solic - data_aniversario).days
@@ -81,7 +81,6 @@ with tab_adm:
     if intersticio_ok: c3.success("Interstício: Ok")
     else: c3.warning("Interstício: Pendente")
 
-    # Guardar dados
     st.session_state.farc_data = {
         'dt_base': dt_base.strftime('%d/%m/%Y'),
         'dt_pedido': dt_solic.strftime('%d/%m/%Y'),
@@ -92,6 +91,7 @@ with tab_adm:
         'indice': tipo_idx,
         'cod_bcb': tipo_idx.split('(')[1].replace('Série ', '').replace(')', '') if '(' in tipo_idx else None,
         'admissivel': intersticio_ok and not precluso,
+        'precluso': precluso,
         'dias': dias_janela
     }
 
@@ -116,31 +116,47 @@ with tab_calc:
 
 with tab_rel:
     d = st.session_state.farc_data
-    if not d.get('admissivel') and d.get('valor') != 0:
-        st.error("O pedido não atende aos critérios de admissibilidade (Precluso ou Antecipado).")
-    elif d.get('valor') > 0:
-        st.subheader("Minuta para Relatório Técnico")
+    if d.get('valor', 0) > 0:
+        st.subheader("Minuta de Relatório Técnico")
         
-        texto_relatorio = f"""
-        ANÁLISE DE REAJUSTE CONTRATUAL
+        # Definição dos Efeitos Financeiros
+        data_efeitos = d['dt_aniv']
+        obs_preclusao = ""
         
-        1. ADMISSIBILIDADE:
-        - Data-Base Anterior: {d['dt_base']}
-        - Data do Aniversário do Direito: {d['dt_aniv']}
-        - Data do Pedido: {d['dt_pedido']}
-        - Prazo Decorrido: {d['dias']} dias.
-        - Status: {"ADMISSÍVEL" if d['admissivel'] else "NÃO ADMISSÍVEL"}
+        if d['precluso']:
+            # Se precluso, efeitos financeiros ocorrem 2 meses após o aniversário (exemplo de penalidade)
+            data_aniv_obj = datetime.strptime(d['dt_aniv'], '%d/%m/%Y')
+            data_efeitos = (data_aniv_obj + relativedelta(months=2)).strftime('%d/%m/%Y')
+            obs_preclusao = f"""
+            NOTA DE PRECLUSÃO: O pedido foi protocolado com {d['dias']} dias de atraso em relação ao marco inicial (limite de 90 dias). 
+            Conforme entendimento administrativo e cláusulas de preclusão lógica, o reajuste é devido, porém os efeitos financeiros 
+            são postergados para {data_efeitos}, em virtude da inércia da contratada."""
         
-        2. VARIAÇÃO ECONÔMICA:
-        - Índice Aplicado: {d['indice']}
-        - Período de Apuração: {d['inicio_api']} a {d['fim_api']} (12 meses)
-        - Variação Acumulada: {d.get('var_acum', 0):.6%}
-        
-        3. CONCLUSÃO:
-        - Valor Original: R$ {d['valor']:,.2f}
-        - Valor Reajustado: R$ {d.get('v_novo', 0):,.2f}
+        texto_relatorio = f"""RELATÓRIO DE ANÁLISE ECONÔMICO-FINANCEIRA
+
+1. OBJETO E FUNDAMENTAÇÃO LEGAL
+Trata-se de análise de admissibilidade do pedido de reajuste de preços. A fundamentação baseia-se na Lei 13.303/2016 e no Regulamento Interno de Licitações e Contratos (RELIC) da Telebras, que estabelecem o direito à manutenção do equilíbrio econômico-fundo do contrato após o interstício mínimo de 12 meses.
+
+2. ANÁLISE DE ADMISSIBILIDADE
+- Data-Base Anterior/Proposta: {d['dt_base']}
+- Data do Aniversário do Direito (12 meses): {d['dt_aniv']}
+- Data do Protocolo do Pedido: {d['dt_pedido']}
+- Prazo Decorrido após Aniversário: {d['dias']} dias.
+
+STATUS: {"TEMPESTIVO" if not d['precluso'] else "PRECLUSO (FORA DO PRAZO DE 90 DIAS)"}
+{obs_preclusao}
+
+3. MEMÓRIA DE CÁLCULO
+- Índice: {d['indice']}
+- Período de Variação: {d['inicio_api']} a {d['fim_api']}
+- Variação Acumulada Apurada: {d.get('var_acum', 0):.6%}
+
+4. CONCLUSÃO E EFEITOS FINANCEIROS
+Considerando a variação apurada, o valor do contrato passa de R$ {d['valor']:,.2f} para R$ {d.get('v_novo', 0):,.2f}.
+Os efeitos financeiros retroagem a: {data_efeitos}.
         """
-        st.text_area("Copie o texto abaixo:", value=texto_relatorio, height=300)
-        st.button("📋 Copiar para Área de Transferência (Simulado)")
+        
+        st.text_area("Texto para cópia (SEI):", value=texto_relatorio, height=450)
+        st.info("💡 Dica: Se o pedido for precluso, o relatório acima já inclui a justificativa da alteração dos efeitos financeiros.")
     else:
-        st.info("Realize o cálculo primeiro.")
+        st.info("Realize a análise de admissibilidade e o cálculo para gerar o relatório.")
