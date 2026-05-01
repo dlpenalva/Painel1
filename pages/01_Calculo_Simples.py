@@ -17,30 +17,30 @@ def get_index_data(serie_codigo, data_inicio, data_fim):
         return df
     except: return None
 
-# NOVA FUNÇÃO: Transforma o CSV do IST em um DataFrame idêntico ao do Banco Central
 def get_ist_mock_api(data_inicio, data_fim):
     try:
-        df = pd.read_csv('ist.csv', sep=';', decimal=',')
-        df.columns = ['data', 'indice']
-        df['data'] = pd.to_datetime(df['data'], format='%d/%m/%Y')
-        df = df.sort_values('data').reset_index(drop=True)
+        # Lê o CSV tratando o formato jan/22
+        df = pd.read_csv('ist.csv', sep=';', decimal=',', encoding='utf-8-sig')
+        df.columns = ['mes_ano', 'indice']
         
-        d_inicio = pd.to_datetime(data_inicio, format='%d/%m/%Y')
-        d_fim = pd.to_datetime(data_fim, format='%d/%m/%Y')
-        d_anterior = d_inicio - relativedelta(months=1)
+        meses_map = {'jan':1,'fev':2,'mar':3,'abr':4,'mai':5,'jun':6,'jul':7,'ago':8,'set':9,'out':10,'nov':11,'dez':12}
+        df['mes_str'] = df['mes_ano'].str.split('/').str[0].str.lower().map(meses_map)
+        df['ano_str'] = "20" + df['mes_ano'].str.split('/').str[1]
+        df['data'] = pd.to_datetime(df[['ano_str', 'mes_str']].assign(day=1).rename(columns={'ano_str':'year','mes_str':'month'}))
+        df = df.sort_values('data')
+
+        # Ajuste IST: Mês anterior ao início e mês anterior ao aniversário
+        d_inicio_ref = (data_inicio - relativedelta(months=1)).replace(day=1)
+        d_fim_ref = (data_fim).replace(day=1) 
+
+        idx_ini = df[df['data'] == d_inicio_ref]['indice'].values[0]
+        idx_fim = df[df['data'] == d_fim_ref]['indice'].values[0]
         
-        # Filtra a partir do mês anterior para calcular a variação do primeiro mês
-        mask = (df['data'] >= d_anterior) & (df['data'] <= d_fim)
-        df_calc = df.loc[mask].copy()
+        df_periodo = df[(df['data'] > d_inicio_ref) & (df['data'] <= d_fim_ref)].copy()
+        df_periodo['valor'] = df_periodo['indice'].pct_change()
+        df_periodo.iloc[0, df_periodo.columns.get_loc('valor')] = (df_periodo.iloc[0]['indice'] / idx_ini) - 1
         
-        if len(df_calc) < 2: return None
-        
-        # Converte número-índice em variação percentual mensal
-        df_calc['valor'] = df_calc['indice'].pct_change()
-        
-        # Filtra apenas o período 0+11 exato solicitado
-        df_final = df_calc.loc[df_calc['data'] >= d_inicio].copy()
-        return df_final[['data', 'valor']]
+        return df_periodo[['data', 'valor']]
     except: return None
 
 st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
@@ -53,7 +53,6 @@ with col1:
 with col2:
     tipo_idx = st.selectbox("Índice:", ["IPCA (Série 433)", "IGP-M (Série 189)", "IST (Série Local)"])
 
-# Lógica Corrigida: Mês 0 + 11 meses (Total 12 meses)
 dt_fim_calculo = dt_base + relativedelta(months=11)
 dt_aniv_contratual = dt_base + relativedelta(years=1)
 limite_90 = dt_aniv_contratual + relativedelta(days=90)
@@ -61,38 +60,28 @@ status = "✅ ADMISSÍVEL" if dt_solic <= limite_90 else "❌ PRECLUSO"
 
 st.subheader("Resultado da Análise")
 
-# Roteamento inteligente sem mexer na lógica de negócio
 if "IST" in tipo_idx:
-    df_dados = get_ist_mock_api(dt_base.strftime('%d/%m/%Y'), dt_fim_calculo.strftime('%d/%m/%Y'))
+    df_dados = get_ist_mock_api(dt_base, dt_fim_calculo)
 else:
     cod = "433" if "IPCA" in tipo_idx else "189"
     df_dados = get_index_data(cod, dt_base.strftime('%d/%m/%Y'), dt_fim_calculo.strftime('%d/%m/%Y'))
 
 if df_dados is not None:
     variacao = (1 + df_dados['valor']).prod() - 1
-    
     c1, c2 = st.columns(2)
     c1.metric("Variação do Período (12 meses)", f"{variacao*100:,.2f}%".replace('.', ','))
     c2.metric("Status da Solicitação", status)
 
+    st.info(f"**Janela de Admissibilidade:** {dt_aniv_contratual.strftime('%d/%m/%Y')} até {limite_90.strftime('%d/%m/%Y')}")
+
     st.subheader("Memória de Cálculo (Fator de Prova)")
-    
     resumo_prova = {
-        "Descrição": ["Início do Ciclo", "Fim do Ciclo (12º mês)", "Aniversário Contratual", "Limite Admissibilidade", "Data do Pedido", "Status"],
-        "Data / Valor": [
-            dt_base.strftime('%m/%Y'), 
-            dt_fim_calculo.strftime('%m/%Y'), 
-            dt_aniv_contratual.strftime('%d/%m/%Y'), 
-            limite_90.strftime('%d/%m/%Y'), 
-            dt_solic.strftime('%d/%m/%Y'),
-            status
-        ]
+        "Descrição": ["Início do Ciclo", "Fim do Ciclo (Mês ref.)", "Aniversário Contratual", "Limite Admissibilidade", "Data do Pedido", "Status"],
+        "Data / Valor": [dt_base.strftime('%m/%Y'), dt_fim_calculo.strftime('%m/%Y'), dt_aniv_contratual.strftime('%d/%m/%Y'), limite_90.strftime('%d/%m/%Y'), dt_solic.strftime('%d/%m/%Y'), status]
     }
     st.table(pd.DataFrame(resumo_prova))
 
-    with st.expander("Visualizar Detalhamento Mensal (Índices Utilizados)"):
+    with st.expander("Visualizar Detalhamento Mensal"):
         df_display = df_dados.copy()
         df_display['Variação Mensal'] = df_display['valor'].map(lambda x: f"{x*100:.4f}%")
         st.dataframe(df_display[['data', 'Variação Mensal']], use_container_width=True)
-elif "IST" in tipo_idx:
-    st.error("Erro ao processar IST. Verifique se as datas existem no arquivo ist.csv.")
