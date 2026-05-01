@@ -29,46 +29,44 @@ resumo = []
 fator_acumulado = 1.0
 data_base_atual = dt_base_original
 
-for i in range(1, qtd_anos + 1):
-    with st.expander(f"Ciclo {i}", expanded=True):
+for i in range(1, int(qtd_anos) + 1):
+    with st.expander(f"Detalhamento Ciclo {i}", expanded=True):
+        # Intervalo de 12 meses (Mês 0 + 11)
+        fim_periodo_calculo = data_base_atual + relativedelta(months=11)
         aniv_teorico = data_base_atual + relativedelta(years=1)
-        limite_admissibilidade = aniv_teorico + relativedelta(days=90)
+        limite_90 = aniv_teorico + relativedelta(days=90)
         
         col_inf, col_ped = st.columns(2)
         with col_inf:
             st.markdown(f"**Data-Base:** `{data_base_atual.strftime('%d/%m/%Y')}`")
-            st.caption(f"Janela de Admissibilidade: {aniv_teorico.strftime('%d/%m/%Y')} a {limite_admissibilidade.strftime('%d/%m/%Y')}")
+            st.markdown(f"**Intervalo Índice:** `{data_base_atual.strftime('%m/%Y')}` a `{fim_periodo_calculo.strftime('%m/%Y')}`")
         
         with col_ped:
             dt_pedido = st.date_input(f"Data do Pedido - Ciclo {i}:", value=aniv_teorico, key=f"ped_{i}", format="DD/MM/YYYY")
         
         cod_serie = "433" if "IPCA" in indice_ref else "189"
-        var_ciclo = get_index_data(cod_serie, data_base_atual.strftime('%d/%m/%Y'), aniv_teorico.strftime('%d/%m/%Y'))
+        var_ciclo = get_index_data(cod_serie, data_base_atual.strftime('%d/%m/%Y'), fim_periodo_calculo.strftime('%d/%m/%Y'))
         
         if var_ciclo is not None:
             fator_ciclo = 1 + var_ciclo
             fator_acumulado *= fator_ciclo
-            status = "✅ No Prazo" if dt_pedido <= limite_admissibilidade else "❌ PRECLUSO (Arrasta Base)"
+            status = "✅ No Prazo" if dt_pedido <= limite_90 else "❌ PRECLUSO (Arrasta Base)"
             
             resumo.append({
                 "Ciclo": i,
-                "Período de Apuração": f"{data_base_atual.strftime('%d/%m/%Y')} - {aniv_teorico.strftime('%d/%m/%Y')}",
+                "Referência (12 meses)": f"{data_base_atual.strftime('%m/%y')} - {fim_periodo_calculo.strftime('%m/%y')}",
                 "Variação": f"{var_ciclo*100:,.2f}%".replace('.', ','),
                 "Data do Pedido": dt_pedido.strftime('%d/%m/%Y'),
-                "Status": status,
-                "Fundamento": "Cláusula 8ª, §1º" if "No Prazo" in status else "Cláusula 8ª, §4º"
+                "Status": status
             })
             data_base_atual = dt_pedido
         else:
-            st.error(f"Erro ao buscar dados do Ciclo {i}")
+            st.error(f"Erro ao obter dados para o Ciclo {i}")
 
 if resumo:
     st.divider()
     perc_total = (fator_acumulado - 1) * 100
-    c1, c2 = st.columns(2)
-    c1.metric("Variação Total Acumulada", f"{perc_total:,.2f}%".replace('.', ','))
-    c2.metric("Multiplicador Final", f"{fator_acumulado:.6f}")
+    st.metric("Variação Total Acumulada", f"{perc_total:,.2f}%".replace('.', ','))
 
-    # MEMÓRIA DE CÁLCULO - CONDIÇÃO SINE QUA NON
     st.subheader("Memória de Cálculo Consolidada (Fator de Prova)")
     st.table(pd.DataFrame(resumo))
