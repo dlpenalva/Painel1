@@ -4,13 +4,15 @@ import requests
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
 
+# Configuração de Interface
 st.set_page_config(page_title="GCC - Telebras", layout="wide")
 
-# Estilo Institucional
+# Estilo Institucional Telebras
 st.markdown("""
     <style>
     .main { background-color: #f0f2f6; }
     .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border-left: 5px solid #003366; }
+    .stTabs [data-baseweb="tab-list"] { gap: 10px; }
     .stTabs [aria-selected="true"] { background-color: #003366 !important; color: white !important; }
     h1 { color: #003366; }
     </style>
@@ -20,18 +22,22 @@ def get_index_data(serie_codigo, data_inicio, data_fim):
     url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie_codigo}/dados?formato=json&dataInicial={data_inicio}&dataFinal={data_fim}"
     try:
         response = requests.get(url, timeout=15)
-        response.raise_for_status()
-        df = pd.DataFrame(response.json())
-        if df.empty: return None, "Vazio"
-        df['valor'] = df['valor'].astype(float) / 100
+        if response.status_code != 200:
+            return None, "Erro na API do Banco Central."
+        dados = response.json()
+        if not dados:
+            return None, "Nenhum dado encontrado para este período."
+        df = pd.DataFrame(dados)
+        df['valor'] = pd.to_numeric(df['valor']) / 100
         df['data'] = pd.to_datetime(df['data'], dayfirst=True)
         return df, None
-    except:
-        return None, "Erro API"
+    except Exception as e:
+        return None, f"Erro de conexão: {str(e)}"
 
 if 'farc_data' not in st.session_state:
     st.session_state.farc_data = {}
 
+# Logo Telebras Azul Profundo
 st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
 st.title("Admissibilidade e Variação de Reajuste")
 
@@ -50,15 +56,13 @@ with tab_adm:
     # Lógica de Prazos
     data_aniversario = dt_base + relativedelta(years=1)
     
-    # --- DIFERENCIAÇÃO DE REGRA DE INTERVALO ---
+    # Regra de Intervalo: IST (13 meses) vs Outros (12 meses)
     if "IST" in tipo_idx:
-        # IST: 13 meses (Ex: 04/23 a 04/24)
-        data_fim_calc = data_aniversario
-        label_intervalo = "13 meses (Regra IST)"
+        data_fim_calc = data_aniversario # Inclui o mês do aniversário
+        label_int = "13 meses (Regra IST)"
     else:
-        # Demais: 12 meses (Ex: 05/24 a 04/25)
-        data_fim_calc = data_aniversario - relativedelta(days=1)
-        label_intervalo = "12 meses"
+        data_fim_calc = data_aniversario - relativedelta(days=1) # Até o mês anterior
+        label_int = "12 meses"
 
     dias_janela = (dt_solic - data_aniversario).days
     intersticio_ok = dt_solic >= data_aniversario
@@ -66,9 +70,27 @@ with tab_adm:
 
     st.divider()
     c1, c2, c3 = st.columns(3)
+    
+    # Métricas limpas para evitar erro DeltaGenerator
     c1.metric("Dias da Janela", f"{max(0, dias_janela)} dias")
-    c2.error("Status: Precluso") if precluso else (c2.warning("Status: Antecipado") if not intersticio_ok else c2.success("Status: Admissível"))
-    c3.success("Interstício: Ok") if intersticio_ok else c3.warning("Interstício: Pendente")
+    
+    if precluso:
+        c2.error("Status: Precluso")
+    elif not intersticio_ok:
+        c2.warning("Status: Antecipado")
+    else:
+        c2.success("Status: Admissível")
+
+    if intersticio_ok:
+        c3.success("Interstício: Ok")
+    else:
+        c3.warning("Interstício: Pendente")
+
+    # Extrair código da série de forma segura
+    try:
+        cod_serie = tipo_idx.split('Série ')[1].replace(')', '')
+    except:
+        cod_serie = "433" # Default IPCA
 
     st.session_state.farc_data = {
         'dt_base': dt_base.strftime('%d/%m/%Y'),
@@ -77,52 +99,69 @@ with tab_adm:
         'inicio_api': dt_base.strftime('%d/%m/%Y'),
         'fim_api': data_fim_calc.strftime('%d/%m/%Y'),
         'valor': valor_contrato,
-        'indice': tipo_idx,
-        'cod_bcb': tipo_idx.split('(')[1].replace('Série ', '').replace(')', ''),
-        'admissivel': intersticio_ok and not precluso,
+        'indice_nome': tipo_idx,
+        'cod_bcb': cod_serie,
         'precluso': precluso,
+        'admissivel': intersticio_ok and not precluso,
         'dias': dias_janela,
-        'label_intervalo': label_intervalo
+        'intervalo': label_int
     }
 
 with tab_calc:
     d = st.session_state.farc_data
     if d.get('valor', 0) > 0:
-        st.subheader(f"Cálculo da Variação ({d['label_intervalo']})")
-        df, erro = get_index_data(d['cod_bcb'], d['inicio_api'], d['fim_api'])
-        if df is not None:
-            var_acum = (1 + df['valor']).prod() - 1
-            v_novo = d['valor'] * (1 + var_acum)
-            st.session_state.farc_data['var_acum'] = var_acum
-            st.session_state.farc_data['v_novo'] = v_novo
+        st.subheader(f"Cálculo da Variação ({d['intervalo']})")
+        with st.spinner("Buscando índices oficiais..."):
+            df, erro = get_index_data(d['cod_bcb'], d['inicio_api'], d['fim_api'])
             
-            m1, m2 = st.columns(2)
-            m1.metric("Variação Acumulada", f"{var_acum:.6%}")
-            m2.metric("Valor Atualizado", f"R$ {v_novo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
-            st.dataframe(df.assign(data=df['data'].dt.strftime('%m/%Y')), use_container_width=True)
+            if df is not None:
+                var_acum = (1 + df['valor']).prod() - 1
+                v_novo = d['valor'] * (1 + var_acum)
+                
+                st.session_state.farc_data['var_acum'] = var_acum
+                st.session_state.farc_data['v_novo'] = v_novo
+                
+                m1, m2 = st.columns(2)
+                m1.metric("Variação Acumulada", f"{var_acum:.6%}")
+                m2.metric("Valor Reajustado", f"R$ {v_novo:,.2f}".replace(",", "X").replace(".", ",").replace("X", "."))
+                
+                st.dataframe(df.assign(data=df['data'].dt.strftime('%m/%Y')), use_container_width=True)
+            else:
+                st.error(f"Erro: {erro}")
+    else:
+        st.info("Insira o valor do contrato na primeira aba.")
 
 with tab_rel:
     d = st.session_state.farc_data
     if d.get('valor', 0) > 0:
-        st.subheader("Minuta de Relatório Técnico")
-        data_efeitos = d['dt_aniv']
-        if d['precluso']:
-            data_aniv_obj = datetime.strptime(d['dt_aniv'], '%d/%m/%Y')
-            data_efeitos = (data_aniv_obj + relativedelta(months=2)).strftime('%d/%m/%Y')
+        st.subheader("Minuta de Relatório")
         
-        texto = f"""RELATÓRIO GCC/TELEBRAS
+        efeitos = d['dt_aniv']
+        txt_preclusao = ""
+        if d['precluso']:
+            # Penalidade de 2 meses para efeitos financeiros em caso de preclusão
+            base_date = datetime.strptime(d['dt_aniv'], '%d/%m/%Y')
+            efeitos = (base_date + relativedelta(months=2)).strftime('%d/%m/%Y')
+            txt_preclusao = f"\n- NOTA: Pedido precluso. Efeitos financeiros postergados para {efeitos}."
+
+        minuta = f"""RELATÓRIO GCC/TELEBRAS
         
 1. ADMISSIBILIDADE
-- Data-Base: {d['dt_base']} | Pedido: {d['dt_pedido']}
-- Status: {"TEMPESTIVO" if not d['precluso'] else "PRECLUSO"}
+- Data-Base Anterior: {d['dt_base']}
+- Aniversário do Direito: {d['dt_aniv']}
+- Data do Protocolo: {d['dt_pedido']}
+- Status: {"TEMPESTIVO" if not d['precluso'] else "PRECLUSO"}{txt_preclusao}
 
 2. MEMÓRIA DE CÁLCULO
-- Índice: {d['indice']}
-- Período: {d['inicio_api']} a {d['fim_api']} ({d['label_intervalo']})
-- Variação: {d.get('var_acum', 0):.6%}
+- Índice Utilizado: {d['indice_nome']}
+- Período: {d['inicio_api']} a {d['fim_api']} ({d['intervalo']})
+- Variação Acumulada: {d.get('var_acum', 0):.6%}
 
 3. CONCLUSÃO
-- Valor Reajustado: R$ {d.get('v_novo', 0):,.2f}
-- Efeitos Financeiros: {data_efeitos}
+- Valor Original: R$ {d['valor']:,.2f}
+- Valor Atualizado: R$ {d.get('v_novo', 0):,.2f}
+- Data de Início dos Efeitos: {efeitos}
 """
-        st.text_area("Texto SEI:", value=texto, height=350)
+        st.text_area("Texto para o SEI:", value=minuta, height=400)
+    else:
+        st.info("Realize a análise para gerar o relatório.")
