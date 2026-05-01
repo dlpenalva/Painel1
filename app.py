@@ -9,8 +9,8 @@ st.info("Utilize o menu lateral à esquerda para navegar entre as ferramentas.")
 
 st.markdown("""
 ### Painel de Gestão
-Este ambiente centraliza as ferramentas de apoio à gestão de contratos, garantindo precisão técnica e agilidade nos cálculos.
+Este ambiente centraliza ferramentas de apoio à gestão de contratos.
 
 *   **📊 Cálculo Único:** Análise de admissibilidade e cálculo de reajuste para um ciclo específico (IPCA, IGP-M ou IST).
-*   **🧮 Cálculo Múltiplo:** Ferramenta para processos acumulados (múltiplos anos) com geração de memória de passivo retroativo.
+*   **🧮 Cálculo Múltiplo:** Ferramenta para processos acumulados (múltiplos anos) com geração de memória do retroativo (IPCA, IGP-M ou IST).
 """)
