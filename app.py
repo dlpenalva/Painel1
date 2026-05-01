@@ -97,7 +97,8 @@ with tab_calc:
         if not erro:
             st.subheader("Memória de Cálculo - IST")
             st.write("Fórmula: $Var = (Nivel Final / Nivel Inicial) - 1$")
-            st.metric(f"Variação ({rb} a {ra})", f"{var:.6%}")
+            # Padronização xx,xx%
+            st.metric(f"Variação ({rb} a {ra})", f"{var*100:,.2f}%".replace('.', ','))
             if f['valor'] > 0:
                 v_novo = f['valor'] * (1 + var)
                 st.metric("Novo Valor", f"R$ {v_novo:,.2f}")
@@ -110,18 +111,24 @@ with tab_calc:
         if df is not None:
             var = (1 + df['valor']).prod() - 1
             st.subheader(f"Memória de Cálculo - {f['idx']}")
-            st.metric(f"Período: {df.iloc[0]['data'].strftime('%m/%Y')} a {df.iloc[-1]['data'].strftime('%m/%Y')}", f"{var:.6%}")
+            # Padronização xx,xx%
+            st.metric(f"Período: {df.iloc[0]['data'].strftime('%m/%Y')} a {df.iloc[-1]['data'].strftime('%m/%Y')}", f"{var*100:,.2f}%".replace('.', ','))
             if f['valor'] > 0:
                 v_novo = f['valor'] * (1 + var)
                 st.metric("Novo Valor", f"R$ {v_novo:,.2f}")
                 st.session_state.farc.update({'v_novo': v_novo})
-            st.dataframe(df.assign(data=df['data'].dt.strftime('%m/%Y')), use_container_width=True)
+            # Tabela padronizada
+            df_display = df.copy()
+            df_display['data'] = df_display['data'].dt.strftime('%m/%Y')
+            df_display['valor (%)'] = (df_display['valor'] * 100).apply(lambda x: f"{x:,.2f}%".replace('.', ','))
+            st.dataframe(df_display[['data', 'valor (%)']], use_container_width=True)
             st.session_state.farc.update({'var': var})
 
 with tab_rel:
     f = st.session_state.farc
     if f.get('status'):
         is_precluso = f['status'] == "Precluso"
+        var_formatada = f"{f['var']*100:,.2f}%".replace('.', ',')
         
         if is_precluso:
             texto_rel = f"""RELATÓRIO TÉCNICO DE ADMISSIBILIDADE CONTRATUAL
@@ -158,12 +165,12 @@ Considerando que o pedido de reajuste foi protocolado em {f['dt_pedido'].strftim
 
 3. MEMÓRIA DE CÁLCULO
 - Índice Aplicado: {f['idx']}
-- Variação Acumulada (12 meses): {f['var']:.6%}
+- Variação Acumulada (12 meses): {var_formatada}
 {linha_valor_ant}
 {linha_valor_nov}
 
 4. CONCLUSÃO
-Considerando o cumprimento do interstício de 12 meses e a previsão contratual, a variação de {f['var']:.6%} está apta para aplicação, retroagindo seus efeitos financeiros a {f['dt_aniv'].strftime('%d/%m/%Y')}."""
+Considerando o cumprimento do interstício de 12 meses e a previsão contratual, a variação de {var_formatada} está apta para aplicação, retroagindo seus efeitos financeiros a {f['dt_aniv'].strftime('%d/%m/%Y')}."""
 
         st.subheader("Informações para relatório")
         if is_precluso:
