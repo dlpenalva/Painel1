@@ -23,10 +23,10 @@ def get_index_data(serie_codigo, data_inicio, data_fim):
         df['valor'] = df['valor'].astype(float) / 100
         df['data'] = pd.to_datetime(df['data'], dayfirst=True)
         
-        # --- SOLUÇÃO 13 MESES ---
-        # Se a API retornar 13 meses, removemos o primeiro (mês da base) para garantir 12 meses de variação
+        # Garantia de 12 meses partindo do INÍCIO (Data-Base)
+        # Se a API trouxer mais que 12, pegamos os 12 primeiros a partir da data base informada
         if len(df) > 12:
-            df = df.tail(12)
+            df = df.head(12)
         return df, None
     except:
         return None, "Erro API"
@@ -37,6 +37,7 @@ def calc_ist_csv(dt_base, dt_aniv):
         df.columns = df.columns.str.replace('^\ufeff', '', regex=True)
         meses_map = {1:'jan', 2:'fev', 3:'mar', 4:'abr', 5:'mai', 6:'jun', 7:'jul', 8:'ago', 9:'set', 10:'out', 11:'nov', 12:'dez'}
         ref_base = f"{meses_map[dt_base.month]}/{str(dt_base.year)[2:]}"
+        # No IST, o aniversário é o mês de referência final (12 meses depois)
         ref_aniv = f"{meses_map[dt_aniv.month]}/{str(dt_aniv.year)[2:]}"
         v_base = float(df[df['MES_ANO'] == ref_base]['INDICE_NIVEL'].values[0])
         v_aniv = float(df[df['MES_ANO'] == ref_aniv]['INDICE_NIVEL'].values[0])
@@ -62,6 +63,9 @@ with tab_adm:
         tipo_idx = st.selectbox("Índice:", ["IPCA (Série 433)", "IGP-M (Série 189)", "IST (Planilha CSV)"])
 
     dt_aniv = dt_base + relativedelta(years=1)
+    # Trava do cálculo: sempre um mês antes do aniversário para evitar o 13º mês da API
+    dt_fim_calculo = dt_aniv - relativedelta(months=1)
+    
     dias_janela = (dt_solic - dt_aniv).days
     intersticio_ok = dt_solic >= dt_aniv
     mesmo_mes = (dt_solic.month == dt_aniv.month and dt_solic.year == dt_aniv.year)
@@ -74,14 +78,19 @@ with tab_adm:
     st.divider()
     c1, c2, c3 = st.columns(3)
     c1.metric("Dias da Janela", f"{max(0, dias_janela)} dias")
+    
+    # Correção do erro visual (removendo o código DeltaGenerator que aparecia no print)
     if "Admissível" in status: c2.success(f"Status: {status}")
     elif "Precluso" in status: c2.error(f"Status: {status}")
     else: c2.warning(f"Status: {status}")
-    c3.success("Interstício: Ok") if intersticio_ok else c3.warning("Interstício: Pendente")
+    
+    if intersticio_ok: c3.success("Interstício: Ok")
+    else: c3.warning("Interstício: Pendente")
 
     st.session_state.farc = {
         'dt_base': dt_base, 'dt_aniv': dt_aniv, 'dt_pedido': dt_solic,
-        'valor': valor_base, 'idx': tipo_idx, 'status': status, 'dias': dias_janela
+        'dt_fim_calc': dt_fim_calculo, 'valor': valor_base, 'idx': tipo_idx, 
+        'status': status, 'dias': dias_janela
     }
 
 with tab_calc:
@@ -96,11 +105,12 @@ with tab_calc:
                 st.session_state.farc.update({'var': var, 'v_novo': v_novo})
         else:
             cod = "433" if "IPCA" in f['idx'] else "189"
-            df, erro = get_index_data(cod, f['dt_base'].strftime('%d/%m/%Y'), f['dt_aniv'].strftime('%d/%m/%Y'))
+            # Consulta forçada para terminar no mês anterior ao aniversário
+            df, erro = get_index_data(cod, f['dt_base'].strftime('%d/%m/%Y'), f['dt_fim_calc'].replace(day=28).strftime('%d/%m/%Y'))
             if df is not None:
                 var = (1 + df['valor']).prod() - 1
                 v_novo = f['valor'] * (1 + var)
-                st.metric(f"Variação {len(df)} meses", f"{var:.6%}")
+                st.metric(f"Período: {df.iloc[0]['data'].strftime('%m/%Y')} a {df.iloc[-1]['data'].strftime('%m/%Y')}", f"{var:.6%}")
                 st.metric("Valor Reajustado", f"R$ {v_novo:,.2f}")
                 st.dataframe(df.assign(data=df['data'].dt.strftime('%m/%Y')), use_container_width=True)
                 st.session_state.farc.update({'var': var, 'v_novo': v_novo})
@@ -109,10 +119,11 @@ with tab_rel:
     f = st.session_state.farc
     if f.get('v_novo'):
         st.subheader("Minuta para o SEI")
+        # Mantendo o relatório completo que você aprovou
         texto = f"""RELATÓRIO TÉCNICO DE REAJUSTE
 
 1. ANÁLISE DE ADMISSIBILIDADE
-- Data-Base: {f['dt_base'].strftime('%d/%m/%Y')}
+- Data-Base Anterior: {f['dt_base'].strftime('%d/%m/%Y')}
 - Aniversário do Direito: {f['dt_aniv'].strftime('%d/%m/%Y')}
 - Data do Pedido: {f['dt_pedido'].strftime('%d/%m/%Y')}
 - Status: {f['status']}
@@ -126,5 +137,3 @@ with tab_rel:
 3. CONCLUSÃO
 O pedido encontra-se {f['status']}. O novo valor contratual de R$ {f['v_novo']:,.2f} passa a vigorar a partir de {f['dt_aniv'].strftime('%d/%m/%Y')}."""
         st.text_area("Copie o texto abaixo:", texto, height=350)
-    else:
-        st.info("Execute o cálculo na aba anterior para gerar o relatório.")
