@@ -3,10 +3,11 @@ import pandas as pd
 import requests
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
-from fpdf import FPDF
+from fpdf import FPDF  # Importação permanece igual, mas usará a fpdf2 instalada
 
 st.set_page_config(page_title="GCC - Telebras", layout="wide")
 
+# Estilo Telebras
 st.markdown("""
     <style>
     .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border-left: 5px solid #003366; }
@@ -53,12 +54,11 @@ def calc_ist_csv(dt_base, dt_aniv):
 def gerar_pdf(texto):
     pdf = FPDF()
     pdf.add_page()
-    pdf.set_font("Arial", 'B', 16)
-    pdf.cell(200, 10, "Relatorio Tecnico de Reajuste - Telebras", ln=True, align='C')
-    pdf.ln(10)
-    pdf.set_font("Arial", size=11)
-    pdf.multi_cell(0, 10, texto.encode('latin-1', 'replace').decode('latin-1'))
-    return pdf.output(dest='S').encode('latin-1')
+    pdf.set_font("Arial", size=12)
+    # Substituindo caracteres que podem dar erro no PDF padrão
+    texto_limpo = texto.replace('º', '.').replace('R$', 'RS')
+    pdf.multi_cell(0, 10, texto_limpo)
+    return pdf.output()
 
 st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
 st.title("Gestão de Cálculos Contratuais")
@@ -105,7 +105,7 @@ with tab_calc:
             if not erro:
                 v_novo = f['valor'] * (1 + var)
                 st.subheader(f"Memória de Cálculo - IST")
-                st.write(f"Fórmula: $V_{{novo}} = V_{{base}} \\times (\\frac{{IST_{{final}}}}{{IST_{{inicial}}}})$")
+                st.write(f"Fórmula: Var = (Nível Final / Nível Inicial) - 1")
                 col_a, col_b = st.columns(2)
                 col_a.metric(f"Variação ({rb} a {ra})", f"{var:.6%}")
                 col_b.metric("Novo Valor Contratual", f"R$ {v_novo:,.2f}")
@@ -129,7 +129,7 @@ with tab_rel:
         texto_rel = f"""RELATÓRIO TÉCNICO DE REAJUSTE CONTRATUAL
 
 1. FUNDAMENTAÇÃO LEGAL E REFERÊNCIAS
-- Amparo: Lei 13.303/2016 e Decreto nº 12.500/2025.
+- Amparo: Lei 13.303/2016 e Decreto n. 12.500/2025.
 - Empresa: Telebras (Status: Não Dependente).
 - Data-Base Anterior: {f['dt_base'].strftime('%d/%m/%Y')}
 - Aniversário do Direito: {f['dt_aniv'].strftime('%d/%m/%Y')}
@@ -149,5 +149,10 @@ Considerando o cumprimento do interstício de 12 meses, o novo valor de R$ {f['v
         
         st.text_area("Conteúdo do Relatório:", texto_rel, height=380)
         
-        btn_pdf = gerar_pdf(texto_rel)
-        st.download_button(label="📥 Baixar Relatório em PDF", data=btn_pdf, file_name=f"Relatorio_Reajuste_{datetime.now().strftime('%Y%m%d')}.pdf", mime="application/pdf")
+        pdf_data = gerar_pdf(texto_rel)
+        st.download_button(
+            label="📥 Baixar Relatório em PDF",
+            data=pdf_data,
+            file_name=f"Relatorio_Reajuste_{datetime.now().strftime('%Y%m%d')}.pdf",
+            mime="application/pdf"
+        )
