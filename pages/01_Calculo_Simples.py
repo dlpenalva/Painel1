@@ -17,22 +17,29 @@ def get_index_data(serie_codigo, data_inicio, data_fim):
         return df
     except: return None
 
-def get_ist_mock_api(data_inicio, data_fim):
+def get_ist_local(data_inicio, data_fim):
     try:
-        # Lógica para o novo formato do CSV (DD/MM/YYYY)
+        # Leitura técnica: decimal com vírgula e separador ponto e vírgula
         df = pd.read_csv('ist.csv', sep=';', decimal=',', encoding='utf-8-sig')
-        df['data'] = pd.to_datetime(df['data'], format='%d/%m/%Y')
-        df = df.sort_values('data')
+        df.columns = [str(col).strip().lower() for col in df.columns]
         
-        # O IST usa o índice do mês fechado anterior à data-base
-        d_ini_ref = (data_inicio - relativedelta(months=1)).replace(day=1)
-        d_fim_ref = data_fim.replace(day=1) 
-
-        v_ini = df[df['data'] == d_ini_ref]['indice'].values[0]
-        v_fim = df[df['data'] == d_fim_ref]['indice'].values[0]
-
-        # Auditoria: gera variação para o período
-        return pd.DataFrame({'data': [data_fim], 'valor': [(v_fim / v_ini) - 1], 'indice_ini': [v_ini], 'indice_fim': [v_fim]})
+        # Converte data do CSV (DD/MM/YYYY)
+        df['data'] = pd.to_datetime(df['data'], dayfirst=True)
+        
+        # Regra de negócio: Mês anterior à base e Mês do aniversário (mês 12)
+        ref_ini = (data_inicio - relativedelta(months=1)).replace(day=1)
+        ref_fim = data_fim.replace(day=1)
+        
+        # Busca por período mensal para evitar erros de dia
+        v_ini = df[df['data'].dt.to_period('M') == ref_ini.strftime('%Y-%m')]['indice'].values[0]
+        v_fim = df[df['data'].dt.to_period('M') == ref_fim.strftime('%Y-%m')]['indice'].values[0]
+        
+        return pd.DataFrame({
+            'data': [data_fim], 
+            'valor': [(v_fim / v_ini) - 1],
+            'audit_ini': [v_ini],
+            'audit_fim': [v_fim]
+        })
     except: return None
 
 st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
@@ -43,25 +50,30 @@ with col1:
     dt_base = st.date_input("Data-Base Anterior:", value=datetime(2023, 10, 10), format="DD/MM/YYYY")
     dt_solic = st.date_input("Data do Pedido:", format="DD/MM/YYYY")
 with col2:
-    tipo_idx = st.selectbox("Índice:", ["IPCA (Série 433)", "IGP-M (Série 189)", "IST (Série Local)"])
+    tipo_idx = st.selectbox("Índice:", ["IPCA (433)", "IGP-M (189)", "IST (Série Local)"])
 
-dt_fim = dt_base + relativedelta(months=11)
+# Definições de prazos
+dt_fim_ciclo = dt_base + relativedelta(months=11)
 dt_aniv = dt_base + relativedelta(years=1)
-limite = dt_aniv + relativedelta(days=90)
-status = "✅ ADMISSÍVEL" if dt_solic <= limite else "❌ PRECLUSO"
+dt_limite = dt_aniv + relativedelta(days=90)
+status_ped = "✅ ADMISSÍVEL" if dt_solic <= dt_limite else "❌ PRECLUSO"
 
-df_dados = get_ist_mock_api(dt_base, dt_fim) if "IST" in tipo_idx else get_index_data("433" if "IPCA" in tipo_idx else "189", dt_base.strftime('%d/%m/%Y'), dt_fim.strftime('%d/%m/%Y'))
+# Execução do Cálculo
+if "IST" in tipo_idx:
+    df_res = get_ist_local(dt_base, dt_fim_ciclo)
+else:
+    df_res = get_index_data("433" if "IPCA" in tipo_idx else "189", dt_base.strftime('%d/%m/%Y'), dt_fim_ciclo.strftime('%d/%m/%Y'))
 
-if df_dados is not None:
-    var = (1 + df_dados['valor']).prod() - 1
-    st.metric("Variação do Período (12 meses)", f"{var*100:,.2f}%".replace('.', ','))
-    st.info(f"**Janela de Admissibilidade:** {dt_aniv.strftime('%d/%m/%Y')} até {limite.strftime('%d/%m/%Y')}")
-
-    st.subheader("Memória de Cálculo (Fator de Prova)")
-    if "IST" in tipo_idx:
-        st.write(f"**Cálculo IST:** ({df_dados['indice_fim'].iloc[0]} / {df_dados['indice_ini'].iloc[0]}) - 1")
+if df_res is not None:
+    var_perc = (1 + df_res['valor']).prod() - 1
+    st.metric("Variação do Ciclo", f"{var_perc*100:,.4f}%".replace('.', ','))
     
-    st.table(pd.DataFrame({
-        "Etapa": ["Data-Base Início", "Mês de Referência Final", "Aniversário", "Limite (90 dias)", "Data do Pedido", "Status"],
-        "Valor": [dt_base.strftime('%m/%Y'), dt_fim.strftime('%m/%Y'), dt_aniv.strftime('%d/%m/%Y'), limite.strftime('%d/%m/%Y'), dt_solic.strftime('%d/%m/%Y'), status]
-    }))
+    with st.expander("🔍 Memória de Cálculo e Auditoria"):
+        st.write(f"**Janela Legal:** {dt_aniv.strftime('%d/%m/%Y')} a {dt_limite.strftime('%d/%m/%Y')}")
+        st.write(f"**Status:** {status_ped}")
+        if "IST" in tipo_idx:
+            st.write(f"Índice Inicial ({dt_base.month-1 if dt_base.month>1 else 12}/{dt_base.year if dt_base.month>1 else dt_base.year-1}): **{df_res['audit_ini'].iloc[0]}**")
+            st.write(f"Índice Final ({dt_fim_ciclo.month}/{dt_fim_ciclo.year}): **{df_res['audit_fim'].iloc[0]}**")
+        st.dataframe(df_res)
+else:
+    st.error("Erro ao processar índice. Verifique a conexão ou o arquivo ist.csv.")
