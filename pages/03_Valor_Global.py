@@ -17,12 +17,11 @@ with col1:
     dt_base_orig = st.date_input("Data-Base Original:", format="DD/MM/YYYY", key="vg_dt_base")
 
 with col2:
-    qtd_ciclos = st.number_input("Quantidade de Ciclos:", min_value=1, max_value=10, value=1, key="vg_qtd_ciclos")
-    marco_reajuste = st.date_input("Marco do Último Reajuste:", format="DD/MM/YYYY", key="vg_marco")
+    qtd_ciclos = st.number_input("Quantidade de Ciclos:", min_value=1, max_value=10, value=1)
+    marco_reajuste = st.date_input("Marco do Último Reajuste:", format="DD/MM/YYYY")
 
 with col3:
     st.markdown("**Fatores de Reajuste (Referência)**")
-    # Tabela editável para o usuário conferir os fatores da admissibilidade
     df_fatores_base = pd.DataFrame({
         "Ciclo": [f"C{i}" for i in range(qtd_ciclos + 1)],
         "Fator Acumulado": [1.0000] + [1.0468] * qtd_ciclos 
@@ -31,113 +30,98 @@ with col3:
 
 fator_vigente = fatores_editados["Fator Acumulado"].iloc[-1]
 
-# --- FUNÇÃO PARA GERAR PLANILHA PADRONIZADA (CONFORME 1.XLSX) ---
+# --- FUNÇÃO PARA GERAR PLANILHA COM FÓRMULAS E LAYOUT ---
 def gerar_planilha_fiscal():
     output = io.BytesIO()
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook = writer.book
-        fmt_moeda = workbook.add_format({'num_format': 'R$ #,##0.00', 'border': 1})
-        fmt_header = workbook.add_format({'bold': True, 'bg_color': '#D7E4BC', 'border': 1})
-        
-        # Aba PARAMETROS
-        df_params = pd.DataFrame({
-            "Parametro": ["Indice", "Data-Base", "Fator Aplicado", "Data Marco"],
-            "Valor": [indice_nome, dt_base_orig.strftime('%m/%Y'), fator_vigente, marco_reajuste.strftime('%m/%Y')]
-        })
+        # Formatos Estéticos
+        fmt_moeda = workbook.add_format({'num_format': 'R$ #,##0.00', 'border': 1, 'align': 'center'})
+        fmt_header = workbook.add_format({'bold': True, 'bg_color': '#1F4E78', 'font_color': 'white', 'border': 1, 'align': 'center'})
+        fmt_label = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1})
+        fmt_input = workbook.add_format({'bg_color': '#FFF2CC', 'border': 1, 'align': 'center'}) # Amarelo para preenchimento
+
+        # 1. ABA PARAMETROS
+        df_params = pd.DataFrame({"Parâmetro": ["Índice", "Data-Base", "Fator Aplicado"], "Valor": [indice_nome, dt_base_orig.strftime('%m/%Y'), fator_vigente]})
         df_params.to_excel(writer, sheet_name="PARAMETROS", index=False)
 
-        # Aba ITENS_CICLOS (Estrutura Sincronizada)
-        # Removida coluna 'Descrição' conforme solicitado
-        cols_itens = ["Item/ Bloco", "Quantidade", "VU C0 (R$)", "TOTAL C0 (R$)", f"Qtd remanescente em {marco_reajuste.strftime('%m/%Y')} (PREENCHER)"]
-        df_modelo_itens = pd.DataFrame(columns=cols_itens)
-        df_modelo_itens.to_excel(writer, sheet_name="ITENS_CICLOS", index=False, startrow=2)
+        # 2. ABA ITENS_CICLOS (COM FÓRMULAS)
+        ws_itens = workbook.add_worksheet("ITENS_CICLOS")
+        headers = ["Item/ Bloco", "Quantidade", "VU C0 (R$)", "TOTAL C0 (R$)", f"Qtd remanescente em {marco_reajuste.strftime('%m/%Y')} (PREENCHER)"]
         
-        ws_itens = writer.sheets['ITENS_CICLOS']
-        ws_itens.set_column('C:D', 18, fmt_moeda) # Colunas VU e TOTAL
-        ws_itens.write(1, 0, "DADOS CONTRATUAIS (PREENCHER)", fmt_header)
+        for col_num, header in enumerate(headers):
+            ws_itens.write(2, col_num, header, fmt_header)
+        
+        ws_itens.set_column('A:A', 15)
+        ws_itens.set_column('B:E', 25)
+        
+        # Inserir 10 linhas de exemplo com fórmulas de multiplicação
+        for row in range(3, 13):
+            ws_itens.write(row, 0, row-2, fmt_moeda) # ID
+            ws_itens.write_formula(row, 3, f'=B{row+1}*C{row+1}', fmt_moeda) # Fórmulas automáticas B*C
+            ws_itens.write(row, 4, 0, fmt_input) # Campo para fiscal preencher
+        
+        ws_itens.write(1, 0, "DADOS CONTRATUAIS (PREENCHA QUANTIDADE E VU)", fmt_label)
 
-        # Aba RETROATIVO
-        df_modelo_retro = pd.DataFrame(columns=["Competência", "Valor bruto faturado após descontos (R$)"])
-        df_modelo_retro.to_excel(writer, sheet_name="RETROATIVO", index=False, startrow=2)
-        ws_retro = writer.sheets['RETROATIVO']
-        ws_retro.set_column('B:B', 30, fmt_moeda)
+        # 3. ABA RETROATIVO
+        ws_retro = workbook.add_worksheet("RETROATIVO")
+        ws_retro.write(2, 0, "Competência", fmt_header)
+        ws_retro.write(2, 1, "Valor bruto faturado após descontos (R$)", fmt_header)
+        ws_retro.set_column('A:B', 35)
+        for row in range(3, 15):
+            ws_retro.write(row, 1, 0, fmt_input)
 
     return output.getvalue()
 
 st.divider()
 
-# --- 2. PREPARAÇÃO E EXPORTAÇÃO ---
+# --- 2. PREPARAÇÃO ---
 st.subheader("2. Preparação de Dados")
-st.download_button(
-    label="📥 Baixar Planilha para o Fiscal",
-    data=gerar_planilha_fiscal(),
-    file_name=f"Coleta_Valor_Global_{indice_nome}.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-)
+st.download_button(label="📥 Baixar Planilha para o Fiscal", data=gerar_planilha_fiscal(), file_name="Coleta_Valor_Global.xlsx", mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
 
 st.divider()
 
-# --- 3. IMPORTAÇÃO E PROCESSAMENTO ---
-tab_financeira, tab_estoque, tab_comparativo = st.tabs(["📊 Apuração Financeira", "📦 Controle de Estoque", "⚖️ Comparativo"])
+# --- 3. PROCESSAMENTO ---
+tabs = st.tabs(["📊 Apuração Financeira", "📦 Controle de Estoque", "⚖️ Comparativo"])
 
-with tab_estoque:
-    st.subheader("📦 Processamento da Planilha Retornada")
-    uploaded_file = st.file_uploader("Suba a planilha PREENCHIDA pelo fiscal", type="xlsx")
-
+with tabs[1]: # Aba Estoque
+    uploaded_file = st.file_uploader("Suba a planilha PREENCHIDA", type="xlsx")
     if uploaded_file:
         try:
-            # Lendo a aba de ITENS (Pula 2 linhas para pegar o cabeçalho real)
-            df_itens = pd.read_excel(uploaded_file, sheet_name="ITENS_CICLOS", skiprows=2)
+            df_itens = pd.read_excel(uploaded_file, sheet_name="ITENS_CICLOS", skiprows=2).dropna(subset=["Item/ Bloco"])
+            df_retro = pd.read_excel(uploaded_file, sheet_name="RETROATIVO", skiprows=2).dropna(subset=["Competência"])
             
-            # Cálculo do Valor Total do Contrato Original
-            # Tenta ler 'TOTAL C0 (R$)' ou calcula se estiver vazio
-            if "TOTAL C0 (R$)" in df_itens.columns:
-                v_total_contrato = df_itens["TOTAL C0 (R$)"].sum()
-            else:
-                v_total_contrato = (df_itens["Quantidade"] * df_itens["VU C0 (R$)"]).sum()
+            # Cálculos Logísticos
+            v_total_original = (df_itens["Quantidade"] * df_itens["VU C0 (R$)"]).sum()
+            total_faturado = df_retro.iloc[:, 1].sum()
+            col_rem = df_itens.columns[-1]
+            v_remanescente_reaj = (df_itens[col_rem] * df_itens["VU C0 (R$)"] * fator_vigente).sum()
+            v_global_estimado = total_faturado + v_remanescente_reaj
 
-            # Localiza coluna de preenchimento do fiscal (dinâmico)
-            col_rem = [c for c in df_itens.columns if "PREENCHER" in str(c)][-1]
-            
-            # Cálculo do Saldo Remanescente Reajustado
-            # Fórmula: Qtd_Remanescente * Valor_Unitário_C0 * Fator_da_Tela
-            saldo_reajustado = (df_itens[col_rem] * df_itens["VU C0 (R$)"] * fator_vigente).sum()
-
-            # Leitura da Aba Retroativo
-            df_retro = pd.read_excel(uploaded_file, sheet_name="RETROATIVO", skiprows=2)
-            total_faturado_real = df_retro.iloc[:, 1].sum()
-
-            # CONSOLIDAÇÃO
-            valor_global_real = total_faturado_real + saldo_reajustado
-
-            st.success("Planilha processada com sucesso!")
-            
-            st.metric("Valor Total Original (C0)", f"R$ {v_total_contrato:,.2f}")
+            st.success("Planilha processada!")
+            st.metric("Valor Contratual Original (Teto C0)", f"R$ {v_total_original:,.2f}")
             
             c1, c2, c3 = st.columns(3)
-            c1.metric("Total Faturado (Real)", f"R$ {total_faturado_real:,.2f}")
-            c2.metric("Saldo Remanescente (Reaj.)", f"R$ {saldo_reajustado:,.2f}")
-            c3.metric("VALOR GLOBAL ESTIMADO", f"R$ {valor_global_real:,.2f}")
+            c1.metric("Total Faturado (Realizado)", f"R$ {total_faturado:,.2f}")
+            c2.metric("Saldo Remanescente (Reajustado)", f"R$ {v_remanescente_reaj:,.2f}")
+            c3.metric("VALOR GLOBAL ESTIMADO", f"R$ {v_global_estimado:,.2f}")
 
-            # Salva no estado da sessão para as outras abas
-            st.session_state['vg_data'] = {
-                'original': v_total_contrato,
-                'real': valor_global_real,
-                'faturado': total_faturado_real
-            }
+            st.session_state['res'] = {'orig': v_total_original, 'final': v_global_estimado, 'fat': total_faturado}
+        except Exception as e: st.error(f"Erro: {e}")
 
-        except Exception as e:
-            st.error(f"Erro ao processar: {e}. Certifique-se de preencher as colunas Quantidade e VU.")
-
-with tab_financeira:
-    if 'vg_data' in st.session_state:
-        st.write(f"### Detalhamento Financeiro")
-        st.info(f"O valor faturado reportado pelo fiscal foi de **R$ {st.session_state['vg_data']['faturado']:,.2f}**.")
-    else:
-        st.warning("Aguardando upload na aba de estoque.")
-
-with tab_comparativo:
-    if 'vg_data' in st.session_state:
-        st.subheader("Balanço do Contrato")
-        diff = st.session_state['vg_data']['real'] - st.session_state['vg_data']['original']
-        st.metric("Variação do Valor Global", f"R$ {diff:,.2f}", delta=f"{((diff/st.session_state['vg_data']['original'])*100):.2f}%")
+with tabs[2]: # Aba Comparativo
+    if 'res' in st.session_state:
+        st.header("Balanço do Contrato")
+        r = st.session_state['res']
+        # Definição: A variação é o quanto o Valor Global Reajustado supera o Valor Original
+        variacao = r['final'] - r['orig']
+        percentual = (variacao / r['orig'] * 100) if r['orig'] > 0 else 0
+        
+        st.metric("Variação Estimada do Valor Global", f"R$ {variacao:,.2f}", delta=f"{percentual:.2f}%")
+        
+        st.info(f"""
+        **Explicação Técnica:**
+        * **Valor Original:** R$ {r['orig']:,.2f} (Soma dos itens no preço de licitação).
+        * **Execução Atual:** O contrato já faturou R$ {r['fat']:,.2f}.
+        * **Projeção:** Considerando o reajuste de {((fator_vigente-1)*100):.2f}%, o saldo que resta custará R$ {r['final']-r['fat']:,.2f}.
+        """)
