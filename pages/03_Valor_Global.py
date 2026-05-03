@@ -1,17 +1,49 @@
-with tab1:
-    uploaded_file = st.file_uploader("Suba a planilha preenchida pelo fiscal", type="xlsx")
-    if uploaded_file:
-        # Aviso de sucesso restaurado
-        st.success("Planilha processada com sucesso!")
+# --- 4. GERAÇÃO DE RELATÓRIO (NOTA TÉCNICA) ---
+st.divider()
+st.subheader("4. Finalização e Relatório")
+
+if 'balanco' in st.session_state:
+    b = st.session_state['balanco']
+    diff = b['final'] - b['orig']
+    perc = (diff / b['orig'] * 100) if b['orig'] > 0 else 0
+    
+    # Texto Sugerido para a Nota Técnica
+    texto_nt = f"""
+    NOTA TÉCNICA - REAJUSTE CONTRATUAL {adm['ciclo_atual']}
+    
+    1. RELATÓRIO
+    Trata-se de análise de reajuste de preços para o contrato em epígrafe, 
+    utilizando o índice {adm['indice']} com data-base em {adm['data_base']}.
+    
+    2. ANÁLISE TÉCNICA
+    Após processamento da planilha de coleta enviada pela fiscalização, 
+    apurou-se um fator de reajuste de {adm['fator']:.4f}. 
+    O impacto financeiro foi calculado com base no faturamento retroativo 
+    e no saldo remanescente reajustado.
+    
+    - Valor Original do Contrato: R$ {b['orig']:,.2f}
+    - Valor Global Estimado Pós-Reajuste: R$ {b['final']:,.2f}
+    - Impacto Financeiro Total: R$ {diff:,.2f}
+    - Variação Percentual: {perc:.2f}%
+    
+    3. CONCLUSÃO
+    Considerando que a variação de {perc:.2f}% decorre exclusivamente da 
+    aplicação de índice de preços previsto contratualmente, a alteração 
+    caracteriza-se como reajustamento de preços em sentido estrito, 
+    não computando para fins de limite de aditamentos previsto no 
+    Art. 81 da Lei 13.303/2016. 
+    
+    Sugere-se o prosseguimento do feito para formalização via Apostilamento.
+    """
+    
+    with st.expander("Visualizar Minuta da Nota Técnica"):
+        st.text_area("Copie o texto abaixo para o seu SEI/Documento:", texto_nt, height=400)
         
-        df_itens = pd.read_excel(uploaded_file, sheet_name="ITENS_CICLOS", skiprows=2).dropna(subset=["Item"])
-        df_retro = pd.read_excel(uploaded_file, sheet_name="RETROATIVO", skiprows=2).dropna(subset=["Valor bruto faturado (R$)"])
-
-        v_orig = (df_itens["Quantidade"] * df_itens["VU C0 (R$)"]).sum()
-        faturado = df_retro.iloc[:, 1].sum()
-        col_rem = df_itens.columns[-1]
-        remanescente_reaj = (df_itens[col_rem] * df_itens["VU C0 (R$)"] * fator_vigente).sum()
-        global_estimado = faturado + remanescente_reaj
-
-        st.metric("VALOR GLOBAL ESTIMADO", f"R$ {global_estimado:,.2f}")
-        st.session_state['balanco'] = {'orig': v_orig, 'final': global_estimado, 'fat': faturado}
+    st.download_button(
+        label="📄 Baixar Relatório em TXT",
+        data=texto_nt,
+        file_name=f"NT_Reajuste_{adm['ciclo_atual']}.txt",
+        mime="text/plain"
+    )
+else:
+    st.info("Processe uma planilha no Passo 3 para gerar o relatório.")
