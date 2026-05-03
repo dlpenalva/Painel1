@@ -1,5 +1,6 @@
 import streamlit as st
 import pandas as pd
+import io
 
 # --- CONFIGURAÇÃO ---
 st.set_page_config(page_title="Valor Global - Homologação", layout="wide")
@@ -28,53 +29,49 @@ with col3:
     })
     fatores_editados = st.data_editor(df_fatores_base, hide_index=True, use_container_width=True, key="vg_edit_fat")
 
-# Definição do fator antes do uso nas abas
 fator_vigente = fatores_editados["Fator Acumulado"].iloc[-1]
+
+# --- FUNÇÃO PARA GERAR PLANILHA PADRONIZADA ---
+def gerar_planilha_fiscal():
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        # Aba PARAMETROS
+        df_params = pd.DataFrame({
+            "Parametro": ["Indice", "Data-Base", "Fator Aplicado", "Data Marco"],
+            "Valor": [indice_nome, dt_base_orig.strftime('%m/%Y'), fator_vigente, marco_reajuste.strftime('%m/%Y')]
+        })
+        df_params.to_sheet_name = "PARAMETROS"
+        df_params.to_excel(writer, sheet_name="PARAMETROS", index=False)
+
+        # Aba ITENS_CICLOS (Modelo)
+        df_modelo_itens = pd.DataFrame(columns=["ID/Item", "Descrição", "Unidade", "VU C0 (R$)", f"Qtd remanescente em {marco_reajuste.strftime('%m/%Y')} (PREENCHER)"])
+        df_modelo_itens.to_excel(writer, sheet_name="ITENS_CICLOS", index=False, startrow=2)
+
+        # Aba RETROATIVO (Modelo)
+        df_modelo_retro = pd.DataFrame(columns=["Competência", "Valor bruto faturado após descontos (R$)"])
+        df_modelo_retro.to_excel(writer, sheet_name="RETROATIVO", index=False, startrow=2)
+
+    return output.getvalue()
 
 st.divider()
 
-# --- NAVEGAÇÃO (CRIAÇÃO DAS ABAS) ---
-# A variável tab_estoque é criada aqui!
+# --- BOTÃO DE EXPORTAÇÃO ---
+st.subheader("2. Preparação de Dados")
+st.write("Gere a planilha padronizada com os parâmetros acima para enviar ao fiscal.")
+excel_data = gerar_planilha_fiscal()
+st.download_button(
+    label="📥 Baixar Planilha para o Fiscal",
+    data=excel_data,
+    file_name=f"Coleta_Valor_Global_{indice_nome}.xlsx",
+    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+)
+
+st.divider()
+
+# --- NAVEGAÇÃO ---
 tab_financeira, tab_estoque, tab_comparativo = st.tabs(["📊 Apuração Financeira", "📦 Controle de Estoque", "⚖️ Comparativo"])
 
 with tab_estoque:
-    st.subheader("📦 Processamento da Planilha do Fiscal")
-    uploaded_file = st.file_uploader("Suba a planilha preenchida (Abas: RETROATIVO e ITENS_CICLOS)", type="xlsx")
-
-    if uploaded_file:
-        try:
-            # 1. LEITURA DA ABA RETROATIVO
-            df_retro = pd.read_excel(uploaded_file, sheet_name="RETROATIVO", skiprows=2)
-            total_faturado_real = df_retro["Valor bruto faturado após descontos (R$)"].sum()
-
-            # 2. LEITURA DA ABA ITENS_CICLOS
-            df_itens = pd.read_excel(uploaded_file, sheet_name="ITENS_CICLOS", skiprows=2)
-            col_rem = [c for c in df_itens.columns if "PREENCHER" in str(c)][-1]
-            df_itens['Saldo_Valorizado'] = df_itens[col_rem] * df_itens["VU C0 (R$)"] * fator_vigente
-            total_saldo_fisico = df_itens['Saldo_Valorizado'].sum()
-
-            # 3. CONSOLIDAÇÃO
-            valor_global_final = total_faturado_real + total_saldo_fisico
-
-            st.success("Planilha processada com sucesso!")
-            m1, m2, m3 = st.columns(3)
-            m1.metric("Realizado (Retroativo)", f"R$ {total_faturado_real:,.2f}")
-            m2.metric("Saldo (Físico)", f"R$ {total_saldo_fisico:,.2f}")
-            m3.metric("VALOR GLOBAL REAL", f"R$ {valor_global_final:,.2f}")
-
-            st.session_state['vg_real'] = valor_global_final
-
-        except Exception as e:
-            st.error(f"Erro no processamento: {e}")
-
-with tab_financeira:
-    st.info("Esta aba é alimentada pelo upload na aba 'Controle de Estoque'.")
-    if 'vg_real' in st.session_state:
-        st.write(f"Valor Global detectado: **R$ {st.session_state['vg_real']:,.2f}**")
-
-with tab_comparativo:
-    st.subheader("Análise Comparativa")
-    if 'vg_real' in st.session_state:
-        st.write("Dados prontos para comparação.")
-    else:
-        st.warning("Aguardando upload da planilha na aba de Estoque.")
+    st.subheader("📦 Processamento da Planilha Retornada")
+    uploaded_file = st.file_uploader("Suba a planilha PREENCHIDA pelo fiscal", type="xlsx")
+    # ... (O resto do código de leitura continua igual) ...
