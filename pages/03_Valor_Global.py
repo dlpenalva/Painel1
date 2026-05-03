@@ -1,127 +1,132 @@
 import streamlit as st
 import pandas as pd
+import io
 
-# --- CONFIGURAÇÃO DA PÁGINA (ISOLAMENTO) ---
-st.set_page_config(page_title="Valor Global do Contrato", layout="wide")
+# --- CONFIGURAÇÃO (ISOLAMENTO) ---
+st.set_page_config(page_title="Valor Global - Homologação", layout="wide")
 
-# Interface Profissional Telebras
+# Interface Telebras
 st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
 st.title("Gestão de Valor Global e Execução")
 
-st.info("""
-**Objetivo:** Consolidar o valor global do contrato sob duas perspectivas: 
-1. **Financeira:** Focada em pagamentos realizados e projeção do saldo remanescente.
-2. **Estoque/Itens:** Focada no consumo físico e aplicação de valores unitários reajustados.
-""")
-
-# --- BLOCO 1: PARÂMETROS DO REAJUSTE (ENTRADA MANUAL) ---
+# --- BLOCO 1: PARÂMETROS ---
 st.header("1. Parâmetros do Reajuste")
 
 col1, col2, col3 = st.columns([1, 1, 1.5])
 
 with col1:
-    indice_nome = st.selectbox("Índice de Reajuste:", ["IST", "IPCA", "IGP-M"], key="vg_indice")
+    indice_nome = st.selectbox("Índice:", ["IST", "IPCA", "IGP-M"], key="vg_indice")
     dt_base_orig = st.date_input("Data-Base Original:", format="DD/MM/YYYY", key="vg_dt_base")
 
 with col2:
-    qtd_ciclos = st.number_input("Quantidade de Ciclos Reajustados:", min_value=1, max_value=10, value=1, key="vg_qtd_ciclos")
+    qtd_ciclos = st.number_input("Quantidade de Ciclos:", min_value=1, max_value=10, value=1, key="vg_qtd_ciclos")
     marco_reajuste = st.date_input("Marco do Último Reajuste:", format="DD/MM/YYYY", key="vg_marco")
 
 with col3:
-    st.markdown("**Fatores de Reajuste por Ciclo**")
-    # Tabela dinâmica para entrada dos fatores calculados nos outros módulos
-    dados_fatores = {
+    st.markdown("**Fatores de Reajuste (Extraídos da sua Aba PARAMETROS)**")
+    df_fatores_base = pd.DataFrame({
         "Ciclo": [f"C{i}" for i in range(qtd_ciclos + 1)],
-        "Fator Acumulado": [1.0000] * (qtd_ciclos + 1)
-    }
-    df_fatores = pd.DataFrame(dados_fatores)
+        "Fator Acumulado": [1.0000] + [1.0468] * qtd_ciclos  # Exemplo baseado no seu print de 4,68%
+    })
+    
     fatores_editados = st.data_editor(
-        df_fatores, 
+        df_fatores_base, 
         hide_index=True, 
         use_container_width=True, 
         key="vg_editor_fatores"
     )
 
-# Captura o fator do último ciclo para atualizar o saldo
+# Fator para atualizar o saldo remanescente
 fator_vigente = fatores_editados["Fator Acumulado"].iloc[-1]
 
 st.divider()
 
-# --- NAVEGAÇÃO POR ABAS ---
+# --- NAVEGAÇÃO ---
 tab_financeira, tab_estoque, tab_comparativo = st.tabs([
     "📊 Apuração Financeira", 
     "📦 Controle de Estoque / Itens", 
     "⚖️ Comparativo e Relatório"
 ])
 
-# --- ABA 1: VISÃO FINANCEIRA (FLUXO DE CAIXA) ---
+# --- ABA FINANCEIRA ---
 with tab_financeira:
     st.subheader("Fluxo de Execução Financeira")
-    st.write("Insira os valores totais efetivamente pagos em cada ciclo de execução (considerando glosas e descontos).")
     
-    # Grid para entrada dos valores financeiros executados
-    dados_fin = {
+    df_fin_base = pd.DataFrame({
         "Ciclo": [f"C{i}" for i in range(qtd_ciclos + 1)],
         "Executado Financeiro (R$)": [0.0] * (qtd_ciclos + 1)
-    }
-    df_fin = pd.DataFrame(dados_fin)
-    fin_editado = st.data_editor(
-        df_fin, 
-        hide_index=True, 
-        key="vg_editor_financeiro", 
-        use_container_width=True
-    )
+    })
     
-    st.markdown("### Atualização do Saldo Remanescente")
-    col_s1, col_s2 = st.columns(2)
+    fin_editado = st.data_editor(df_fin_base, hide_index=True, key="vg_editor_fin", use_container_width=True)
     
-    with col_s1:
-        saldo_rem_fin = st.number_input(
-            "Saldo Remanescente (Valor de Face / Preço Original):", 
-            min_value=0.0, 
-            format="%.2f", 
-            step=1000.0,
-            help="Valor que ainda não foi executado, posicionado no marco do último reajuste."
-        )
-    
-    with col_s2:
-        st.write(f"**Fator Vigente Aplicado:** `{fator_vigente:.4f}`")
-        saldo_atualizado = saldo_rem_fin * fator_vigente
-        st.info(f"**Saldo Atualizado Projetado:** R$ {saldo_atualizado:,.2f}")
-    
-    # Cálculos Consolidados
-    total_exec_fin = fin_editado["Executado Financeiro (R$)"].sum()
-    valor_global_fin = total_exec_fin + saldo_atualizado
-    
+    c_s1, c_s2 = st.columns(2)
+    with c_s1:
+        saldo_orig = st.number_input("Saldo Remanescente (Valor de Face):", min_value=0.0, format="%.2f", step=1000.0)
+        total_pago = fin_editado["Executado Financeiro (R$)"].sum()
+    with c_s2:
+        saldo_at = saldo_orig * fator_vigente
+        st.metric("Saldo Atualizado (Projeção)", f"R$ {saldo_at:,.2f}")
+
+    valor_global_fin = total_pago + saldo_at
     st.divider()
-    m1, m2 = st.columns(2)
-    m1.metric("Total Executado (Acumulado)", f"R$ {total_exec_fin:,.2f}")
-    m2.metric("VALOR GLOBAL FINANCEIRO", f"R$ {valor_global_fin:,.2f}", delta_color="normal")
+    st.metric("VALOR GLOBAL FINANCEIRO", f"R$ {valor_global_fin:,.2f}")
 
-# --- ABA 2: VISÃO DE ESTOQUE (PROXIMA ETAPA) ---
+# --- ABA ESTOQUE (INTEGRAÇÃO COM PLANILHA DO FISCAL) ---
 with tab_estoque:
-    st.subheader("Controle Físico de Itens e Quantidades")
-    st.write("Esta seção calculará o valor global com base na estrutura contratual de itens.")
+    st.subheader("📦 Processamento da Planilha ITENS_CICLOS")
+    st.write("Suba aqui a planilha que você recebe dos fiscais para processar o valor global físico.")
     
-    # Placeholder para o Passo 4
-    st.warning("Aguardando definição: você prefere digitar os itens ou fazer upload de um Excel?")
-    
-    if st.button("Simular Estrutura de Itens"):
-        st.info("A estrutura será composta por: Item | Qtd Contratada | Qtd Consumida por Ciclo | Valor Unitário.")
+    uploaded_file = st.file_uploader("Selecione o arquivo Excel (.xlsx)", type="xlsx")
 
-# --- ABA 3: COMPARATIVO ---
+    if uploaded_file:
+        try:
+            # Lendo a aba específica conforme seu print
+            df_itens = pd.read_excel(uploaded_file, sheet_name="ITENS_CICLOS", skiprows=2) # Ajustar skiprows se necessário
+            
+            # Identificação das colunas (Baseado no seu print da Imagem 2)
+            # Vamos assumir nomes genéricos para processamento
+            st.success("Planilha carregada com sucesso!")
+            
+            # Cálculo de VU Atualizado por Ciclo
+            # Aqui o código mapeia o VU C0 e aplica os fatores da Aba 1
+            if 'VU C0 (R$)' in df_itens.columns:
+                df_itens['VU Atualizado (Projetado)'] = df_itens['VU C0 (R$)'] * fator_vigente
+                
+                # Exibição de colunas não sensíveis para auditoria
+                colunas_seguras = ['Item/Bloco', 'Qtd original C0', 'VU C0 (R$)', 'VU Atualizado (Projetado)']
+                st.dataframe(df_itens[colunas_seguras].head(10), use_container_width=True)
+                
+                # Cálculo do Valor Global por Estoque
+                # Soma (Consumido nos Ciclos) + (Remanescente * VU Atualizado)
+                valor_global_estoque = (df_itens['VU C0 (R$)'] * df_itens['Qtd original C0']).sum() * fator_vigente # Simplificação para teste
+                
+                st.divider()
+                st.metric("VALOR GLOBAL POR ESTOQUE", f"R$ {valor_global_estoque:,.2f}")
+                st.session_state['vg_estoque'] = valor_global_estoque
+            else:
+                st.error("Coluna 'VU C0 (R$)' não encontrada. Verifique o cabeçalho da planilha.")
+        except Exception as e:
+            st.error(f"Erro ao ler a aba ITENS_CICLOS: {e}")
+    else:
+        st.info("Aguardando upload da planilha padronizada.")
+
+# --- ABA COMPARATIVO ---
 with tab_comparativo:
-    st.subheader("Comparativo: Financeiro vs. Estoque")
+    st.subheader("Relatório de Diferenças")
     
-    col_c1, col_c2 = st.columns(2)
-    with col_c1:
-        st.metric("Visão Financeira", f"R$ {valor_global_fin:,.2f}")
-    with col_c2:
-        st.metric("Visão por Estoque", "R$ 0,00 (Pendente)")
-        
-    st.write("---")
-    st.markdown("""
-    **Nota Explicativa:**  
-    A diferença entre as visões ocorre porque a **Financeira** reflete o desembolso real (caixa), enquanto a 
-    **Visão por Estoque** reflete a obrigação contratual física valorizada pelos índices vigentes.
+    vg_estoque = st.session_state.get('vg_estoque', 0.0)
+    diferenca = vg_estoque - valor_global_fin
+    
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Visão Financeira", f"R$ {valor_global_fin:,.2f}")
+    c2.metric("Visão Estoque", f"R$ {vg_estoque:,.2f}")
+    c3.metric("Diferença (Glosas/Ajustes)", f"R$ {diferenca:,.2f}", delta_color="inverse")
+    
+    st.markdown(f"""
+    ### Resumo Executivo
+    O valor global atualizado do contrato, considerando o índice **{indice_nome}** e o fator acumulado de **{fator_vigente:.4f}**, 
+    apresenta uma execução financeira de **R$ {total_pago:,.2f}**. 
+    
+    O saldo remanescente, quando valorizado ao preço atualizado no marco de **{marco_reajuste.strftime('%d/%m/%Y')}**, 
+    representa um montante de **R$ {saldo_at:,.2f}**.
     """)
