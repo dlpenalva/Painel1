@@ -3,6 +3,7 @@ import pandas as pd
 import requests
 from datetime import datetime
 from dateutil.relativedelta import relativedelta
+from io import BytesIO
 
 st.set_page_config(page_title="Cálculo de Represados", layout="wide")
 
@@ -63,6 +64,104 @@ def get_data_rep(serie, d_ini, d_fim, is_ist):
         return None
 
 
+def _formatar_data(valor):
+    try:
+        return pd.to_datetime(valor).strftime('%d/%m/%Y')
+    except Exception:
+        return ""
+
+
+def _competencias_mensais(data_inicio, data_fim):
+    inicio = pd.to_datetime(data_inicio).replace(day=1)
+    fim = pd.to_datetime(data_fim).replace(day=1)
+    if fim < inicio:
+        return []
+    return [d.strftime('%m/%Y') for d in pd.date_range(inicio, fim, freq='MS')]
+
+
+def _ajustar_larguras(writer, nomes_abas):
+    for nome_aba in nomes_abas:
+        ws = writer.book[nome_aba]
+        ws.freeze_panes = "A2"
+        for column_cells in ws.columns:
+            max_length = 0
+            column_letter = column_cells[0].column_letter
+            for cell in column_cells:
+                try:
+                    max_length = max(max_length, len(str(cell.value)) if cell.value is not None else 0)
+                except Exception:
+                    pass
+            ws.column_dimensions[column_letter].width = min(max(max_length + 2, 14), 45)
+
+
+def gerar_arquivo_coleta_excel(dados_admissibilidade):
+    ciclos = dados_admissibilidade.get('ciclos', [])
+
+    parametros = pd.DataFrame([
+        {'Campo': 'Origem da análise', 'Valor': dados_admissibilidade.get('origem', '')},
+        {'Campo': 'Índice utilizado', 'Valor': dados_admissibilidade.get('indice', '')},
+        {'Campo': 'Data-base original', 'Valor': dados_admissibilidade.get('data_base_original', '')},
+        {'Campo': 'Quantidade de ciclos', 'Valor': len(ciclos)},
+        {'Campo': 'Fator acumulado final', 'Valor': round(float(dados_admissibilidade.get('fator_acumulado', 1.0)), 4)},
+        {'Campo': 'Variação acumulada final', 'Valor': dados_admissibilidade.get('variacao_acumulada_formatada', '')},
+        {'Campo': 'Data de geração do arquivo', 'Valor': datetime.now().strftime('%d/%m/%Y %H:%M')},
+    ])
+
+    df_ciclos = pd.DataFrame([
+        {
+            'Ciclo': c.get('ciclo', ''),
+            'Data-base': c.get('data_base', ''),
+            'Intervalo do índice': c.get('intervalo_indice', ''),
+            'Janela de admissibilidade': c.get('janela_admissibilidade', ''),
+            'Data do pedido': c.get('data_pedido', ''),
+            'Situação': c.get('situacao', ''),
+            'Variação': c.get('variacao_formatada', ''),
+            'Fator': round(float(c.get('fator', 1.0)), 4),
+            'Fator acumulado': round(float(c.get('fator_acumulado', 1.0)), 4),
+        }
+        for c in ciclos
+    ])
+
+    linhas_financeiro = []
+    for c in ciclos:
+        for competencia in _competencias_mensais(c.get('periodo_inicio'), c.get('periodo_fim')):
+            linhas_financeiro.append({
+                'Ciclo': c.get('ciclo', ''),
+                'Competência': competencia,
+                'Valor pago/faturado': None,
+                'Glosa': None,
+                'Desconto': None,
+                'Multa': None,
+                'Valor líquido pago': None,
+                'Observação': '',
+            })
+    df_financeiro = pd.DataFrame(linhas_financeiro, columns=[
+        'Ciclo', 'Competência', 'Valor pago/faturado', 'Glosa', 'Desconto', 'Multa', 'Valor líquido pago', 'Observação'
+    ])
+
+    colunas_remanescentes = [f"Remanescente início {c.get('ciclo', '')}" for c in ciclos]
+    df_itens = pd.DataFrame(columns=[
+        'Item', 'Descrição', 'Unidade', 'Quantidade contratada', 'Valor unitário original',
+        *colunas_remanescentes, 'Remanescente atual'
+    ])
+
+    colunas_consumo = ['Item', 'Consumido C0'] + [f"Consumido {c.get('ciclo', '')}" for c in ciclos] + ['Remanescente final']
+    df_consumo = pd.DataFrame(columns=colunas_consumo)
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        parametros.to_excel(writer, sheet_name='PARAMETROS_REAJUSTE', index=False)
+        df_ciclos.to_excel(writer, sheet_name='CICLOS', index=False)
+        df_financeiro.to_excel(writer, sheet_name='FINANCEIRO_MENSAL', index=False)
+        df_itens.to_excel(writer, sheet_name='ITENS_REMANESCENTES', index=False)
+        df_consumo.to_excel(writer, sheet_name='CONSUMO_POR_CICLO', index=False)
+        _ajustar_larguras(writer, [
+            'PARAMETROS_REAJUSTE', 'CICLOS', 'FINANCEIRO_MENSAL', 'ITENS_REMANESCENTES', 'CONSUMO_POR_CICLO'
+        ])
+    output.seek(0)
+    return output
+
+
 st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
 st.title("Reajustes Múltiplos")
 
@@ -80,6 +179,7 @@ with st.sidebar:
 data_atual = dt_base_original
 fator_acum = 1.0
 historico = []
+historico_coleta = []
 
 for i in range(1, int(qtd_ciclos) + 1):
     st.markdown(f"### Ciclo {i}")
@@ -110,9 +210,6 @@ for i in range(1, int(qtd_ciclos) + 1):
         situacao_limpa = "PRECLUSO"
 
     # Regra de ancoragem do próximo ciclo.
-    # Ponto central do ajuste:
-    # Se o C1 foi tempestivo com pedido em 21/10/2023, o C2 passa a ter Data-Base em 21/10/2023.
-    # Logo, o pedido do C2 somente será plenamente tempestivo a partir de 21/10/2024.
     if situacao_limpa == "TEMPESTIVO":
         data_base_proximo_ciclo = dt_ped
     else:
@@ -122,15 +219,17 @@ for i in range(1, int(qtd_ciclos) + 1):
 
     # Intervalo exibido independentemente de haver dados disponíveis para o índice.
     if res_c:
+        periodo_inicio = res_c['p_ini']
+        periodo_fim = res_c['p_fim']
         janela_ciclo = f"{res_c['p_ini'].strftime('%m/%Y')} a {res_c['p_fim'].strftime('%m/%Y')}"
     else:
         if "IST" in idx_sel:
-            p_ini_preview = (data_atual - relativedelta(months=1)).replace(day=1)
-            p_fim_preview = d_fim.replace(day=1)
+            periodo_inicio = (data_atual - relativedelta(months=1)).replace(day=1)
+            periodo_fim = d_fim.replace(day=1)
         else:
-            p_ini_preview = data_atual
-            p_fim_preview = d_fim
-        janela_ciclo = f"{p_ini_preview.strftime('%m/%Y')} a {p_fim_preview.strftime('%m/%Y')}"
+            periodo_inicio = data_atual
+            periodo_fim = d_fim
+        janela_ciclo = f"{periodo_inicio.strftime('%m/%Y')} a {periodo_fim.strftime('%m/%Y')}"
 
     janela_adm = f"{d_aniv.strftime('%d/%m/%Y')} a {d_lim.strftime('%d/%m/%Y')}"
 
@@ -141,10 +240,17 @@ for i in range(1, int(qtd_ciclos) + 1):
     - Situação: {sit_emoji}
     """)
 
+    v_fmt = "Indisponível"
+    v_acum_parcial = f"{(fator_acum - 1) * 100:,.2f}%".replace('.', ',')
+    fator_ciclo = 1.0
+    ciclo_calculado = False
+
     if res_c:
-        fator_acum *= (1 + res_c['var'])
+        fator_ciclo = 1 + res_c['var']
+        fator_acum *= fator_ciclo
         v_fmt = f"{res_c['var'] * 100:,.2f}%".replace('.', ',')
         v_acum_parcial = f"{(fator_acum - 1) * 100:,.2f}%".replace('.', ',')
+        ciclo_calculado = True
 
         st.markdown(f"- Variação do Ciclo: **{v_fmt}**")
 
@@ -167,6 +273,22 @@ for i in range(1, int(qtd_ciclos) + 1):
             "O ciclo foi exibido para controle, mas não foi incluído no cálculo acumulado."
         )
 
+    historico_coleta.append({
+        'ciclo': f'C{i}',
+        'data_base': data_atual.strftime('%d/%m/%Y'),
+        'intervalo_indice': janela_ciclo,
+        'janela_admissibilidade': janela_adm,
+        'data_pedido': dt_ped.strftime('%d/%m/%Y'),
+        'situacao': sit_emoji,
+        'variacao': float(res_c['var']) if res_c else 0.0,
+        'variacao_formatada': v_fmt,
+        'fator': float(fator_ciclo),
+        'fator_acumulado': float(fator_acum),
+        'ciclo_calculado': ciclo_calculado,
+        'periodo_inicio': _formatar_data(periodo_inicio),
+        'periodo_fim': _formatar_data(periodo_fim),
+    })
+
     # A progressão do ciclo deve ocorrer sempre, mesmo quando não houver índice disponível.
     data_atual = data_base_proximo_ciclo
 
@@ -185,3 +307,25 @@ if historico:
         Índice {idx_sel}.
         \n\n"""
     st.info(corpo_relatorio)
+
+if historico_coleta:
+    variacao_acumulada = fator_acum - 1
+    st.session_state['dados_admissibilidade'] = {
+        'origem': 'Reajustes Múltiplos',
+        'tipo': 'Múltiplo',
+        'indice': idx_sel,
+        'data_base_original': dt_base_original.strftime('%d/%m/%Y'),
+        'fator': float(fator_acum),
+        'fator_acumulado': float(fator_acum),
+        'variacao_acumulada': float(variacao_acumulada),
+        'variacao_acumulada_formatada': f"{variacao_acumulada * 100:,.2f}%".replace('.', ','),
+        'ciclos': historico_coleta,
+    }
+
+    st.download_button(
+        label="📥 Gerar Arquivo de Coleta",
+        data=gerar_arquivo_coleta_excel(st.session_state['dados_admissibilidade']),
+        file_name="Coleta_Reajustes_Multiplos.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        use_container_width=False,
+    )
