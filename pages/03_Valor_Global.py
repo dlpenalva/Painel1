@@ -402,7 +402,20 @@ def ler_itens(bytes_arquivo, xls):
     if not aba:
         raise ValueError("Aba ITENS_REMANESCENTES não encontrada.")
 
-    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item"])
+    # A aba ITENS_REMANESCENTES possui uma linha superior de contexto/data.
+    # Por isso, o cabeçalho real deve ser a linha que contém simultaneamente
+    # Item, Quantidade contratada e Valor unitário original. Isso evita que
+    # a linha "Dados do item e valor original" seja interpretada como cabeçalho.
+    df = ler_aba_com_cabecalho(
+        bytes_arquivo,
+        aba,
+        termos_obrigatorios=["Item", "Quantidade contratada", "Valor unitário original"],
+    )
+
+    # Compatibilidade com modelos antigos, que podem usar Qtd C0/VU C0.
+    if localizar_coluna(df, ["Item"]) is None or localizar_coluna(df, ["Quantidade contratada", "Qtd C0", "Quantidade", "Qtd"]) is None or localizar_coluna(df, ["Valor unitário original", "VU C0", "VU Original", "Valor Unitario"]) is None:
+        df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item", "Qtd", "VU"])
+
     if df.empty:
         raise ValueError("Aba ITENS_REMANESCENTES está vazia.")
 
@@ -426,10 +439,24 @@ def ler_itens(bytes_arquivo, xls):
         itens["Valor total original"] = itens["Quantidade contratada"] * itens["Valor unitário original"]
 
     # Detecta colunas de remanescente físico.
+    # Regra atual: utilizar somente remanescente no início do ciclo único
+    # ou no início de cada ciclo. A coluna "Remanescente atual"/"Data de corte"
+    # não é necessária para o cálculo do Valor Global e deve ser ignorada.
     colunas_rem = []
     for col in df.columns:
         n = normalizar_texto(col)
-        if "remanescente" in n and "valor" not in n and "total" not in n:
+        nome_original = str(col)
+        possui_ciclo = re.search(r"C\s*\d+", nome_original, flags=re.IGNORECASE) is not None
+        eh_inicio_ciclo = "inicio" in n or "inicial" in n or possui_ciclo
+        eh_coluna_excluida = "atual" in n or "data_corte" in n or "corte" in n
+
+        if (
+            "remanescente" in n
+            and "valor" not in n
+            and "total" not in n
+            and eh_inicio_ciclo
+            and not eh_coluna_excluida
+        ):
             colunas_rem.append(col)
 
     # Compatibilidade com modelo antigo.
