@@ -2,77 +2,63 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime
 
-st.title("🔄 Reajustes Múltiplos (Cálculo Represado)")
+# Título robusto para o Bloco A
+st.title("🔄 Admissibilidade: Reajustes Múltiplos")
 
-# 1. Configuração Inicial dos Ciclos
-with st.expander("1. Configuração dos Ciclos", expanded=True):
-    col_q, col_i = st.columns(2)
-    with col_q:
-        qtd_ciclos = st.number_input("Quantidade de Ciclos em Atraso:", min_value=2, max_value=10, value=2)
-    with col_i:
-        indice_selecionado = st.selectbox("Selecione o Índice de Reajuste:", ["IST", "IPCA", "IGP-M"], key="idx_multi")
+# Recuperação da Inteligência do Bloco A (Regras Gerais)
+with st.expander("📖 Regras de Admissibilidade (Lei 13.303/2016)", expanded=False):
+    st.markdown("""
+    * **Periodicidade:** Mínimo de 12 meses.
+    * **Data-Base:** Conforme edital ou última repactuação.
+    * **Índice:** Verificação de disponibilidade do IST, IPCA ou IGP-M.
+    """)
 
-# 2. Entrada de Dados por Ciclo
-dados_ciclos = []
-fator_acumulado = 1.0
+# 1. Parâmetros de Entrada
+with st.container(border=True):
+    col1, col2 = st.columns(2)
+    with col1:
+        qtd_ciclos = st.number_input("Ciclos em atraso:", min_value=2, max_value=10, step=1)
+        indice_fixo = st.selectbox("Índice de Reajuste:", ["IST", "IPCA", "IGP-M"], key="sel_idx")
+    with col2:
+        st.info("A inteligência de busca automática de índices deve ser mantida aqui.")
 
-st.subheader("2. Parâmetros por Período")
+# 2. Processamento dos Ciclos (Memória de Cálculo)
+dados_dos_ciclos = []
+fator_total = 1.0
 
 for i in range(int(qtd_ciclos)):
-    st.markdown(f"#### Ciclo {i+1}")
-    c1, c2, c3 = st.columns([2, 2, 2])
-    
+    st.subheader(f"Cálculo Ciclo {i+1}")
+    c1, c2, c3 = st.columns(3)
     with c1:
-        # Tenta sugerir a data base com base no ciclo anterior (opcional)
-        dt_base = st.date_input(f"Data-Base Ciclo {i+1}:", key=f"base_{i}")
+        dt_base = st.date_input(f"Data-Base C{i+1}:", key=f"d_base_{i}")
     with c2:
-        dt_ped = st.date_input(f"Data do Pedido Ciclo {i+1}:", key=f"ped_{i}")
+        dt_pedido = st.date_input(f"Data Pedido C{i+1}:", key=f"d_ped_{i}")
     with c3:
-        fator_ciclo = st.number_input(f"Fator do Ciclo {i+1} (ex: 1.0450):", 
-                                      format="%.4f", 
-                                      step=0.0001, 
-                                      key=f"fator_{i}",
-                                      help="Insira o índice calculado para este período específico.")
+        var_manual = st.number_input(f"Variação C{i+1} (ex: 1.0450):", format="%.4f", step=0.0001, key=f"f_man_{i}")
     
-    # Cálculo em cascata: Fator1 * Fator2 * ...
-    fator_acumulado *= fator_ciclo
-    
-    dados_ciclos.append({
+    fator_total *= var_manual
+    dados_dos_ciclos.append({
         "Ciclo": f"C{i+1}",
-        "Data-Base": dt_base.strftime("%d/%m/%Y"),
-        "Data Pedido": dt_ped.strftime("%d/%m/%Y"),
-        "Fator": fator_ciclo,
-        "Percentual (%)": round((fator_ciclo - 1) * 100, 4)
+        "Data-Base": dt_base,
+        "Data Pedido": dt_pedido,
+        "Fator": var_manual,
+        "Percentual (%)": (var_manual - 1) * 100
     })
-    st.divider()
 
-# 3. Resultado e Homologação
-st.subheader("3. Resultado Consolidado")
-col_res1, col_res2 = st.columns(2)
-
-with col_res1:
-    st.metric("Fator Acumulado Total", f"{fator_acumulado:.4f}")
-with col_res2:
-    variacao_total = (fator_acumulado - 1) * 100
-    st.metric("Variação Percentual Total", f"{variacao_total:.2f}%")
-
-# Botão de Homologação com Persistência
-if st.button("Homologar Reajustes Múltiplos"):
-    # Gravação Crítica no Session State para os Blocos B e Relatório
+# 3. Homologação para Bloco B
+st.divider()
+if st.button("🚀 Homologar Admissibilidade e Enviar para Valor Global"):
+    # Salva toda a inteligência para o Bloco B e Relatório
     st.session_state['dados_admissibilidade'] = {
         'tipo': 'Múltiplo',
-        'indice': indice_selecionado,
-        'fator': fator_acumulado,
-        'detalhamento_ciclos': dados_ciclos,
-        'qtd_ciclos': qtd_ciclos,
-        'timestamp': datetime.now().strftime("%H:%M:%S")
+        'indice': indice_fixo,
+        'fator': fator_total,
+        'detalhamento_ciclos': dados_dos_ciclos,
+        'qtd_ciclos': qtd_ciclos
     }
-    
-    st.success("✅ Admissibilidade homologada! Os dados foram enviados para o 'Valor Global'.")
+    st.success("Dados enviados! Prossiga para o menu 'Valor Global'.")
     st.balloons()
 
-# 4. Tabela de Memória de Cálculo
-if dados_ciclos:
-    with st.expander("Visualizar Detalhamento dos Ciclos", expanded=False):
-        df_resumo = pd.DataFrame(dados_ciclos)
-        st.table(df_resumo)
+# Memória de Cálculo Visual
+if dados_dos_ciclos:
+    st.table(pd.DataFrame(dados_dos_ciclos))
