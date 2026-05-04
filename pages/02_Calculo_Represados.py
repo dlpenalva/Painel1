@@ -1,18 +1,19 @@
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
+from datetime import datetime
 
+# Função auxiliar para manter a lógica original de datas
 def add_years(d, years):
     try:
         return d.replace(year=d.year + years)
     except ValueError:
         return d + (datetime(d.year + years, 1, 1) - datetime(d.year, 1, 1))
 
-st.set_page_config(page_title="Cálculos Represados", layout="wide")
+st.set_page_config(page_title="Cálculo Represados", layout="wide")
 
 st.title("🔄 Reajustes Múltiplos (Cálculo Represado)")
 
-# Recupera data_base_original do módulo 01 ou define fallback
+# Recupera data_base_original do módulo 01 (Cálculo Simples)
 db_original = st.session_state.get('data_base_anterior', datetime(2023, 1, 1))
 
 with st.expander("1. Configuração dos Ciclos", expanded=True):
@@ -31,13 +32,8 @@ for i in range(qtd_ciclos):
     st.markdown(f"### Ciclo {i+1}")
     c1, c2, c3 = st.columns(3)
     
-    # Lógica de Data-Base Encadeada
-    if i == 0:
-        # Ciclo 1: 12 meses após a data-base original
-        dt_base_sugerida = add_years(db_original, 1)
-    else:
-        # Ciclos seguintes: 12 meses após a DATA DO PEDIDO do ciclo anterior
-        dt_base_sugerida = add_years(ciclos_data[i-1]['data_pedido'], 1)
+    # Restaurando a lógica original: Data-Base é sempre +12 meses em relação ao ciclo anterior
+    dt_base_sugerida = add_years(db_original, i + 1)
     
     with c1:
         dt_base = st.date_input(f"Data-Base Ciclo {i+1}:", value=dt_base_sugerida, key=f"db_{i}")
@@ -55,14 +51,15 @@ for i in range(qtd_ciclos):
     })
     st.divider()
 
-# Armazenamento para os módulos seguintes
+# Persistência de dados para os módulos de resultados
 st.session_state['fator_homologado'] = fator_acumulado
 st.session_state['detalhamento_ciclos'] = ciclos_data
 st.session_state['tipo_reajuste'] = "Múltiplo"
 
+# Exibição do resultado final
 st.success(f"Fator Acumulado Total: {fator_acumulado:.4f}")
 
-# Memória de Cálculo
+# Memória de Cálculo conforme versão anterior
 if st.checkbox("Exibir Memória de Cálculo"):
     df_memoria = pd.DataFrame(ciclos_data)
     st.table(df_memoria)
