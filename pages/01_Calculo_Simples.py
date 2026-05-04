@@ -60,8 +60,10 @@ def _formatar_mes_ano(valor):
 
 
 def _competencias_mensais(data_inicio, data_fim):
-    inicio = pd.to_datetime(data_inicio).replace(day=1)
-    fim = pd.to_datetime(data_fim).replace(day=1)
+    if not data_inicio or not data_fim:
+        return []
+    inicio = pd.to_datetime(data_inicio, dayfirst=True).replace(day=1)
+    fim = pd.to_datetime(data_fim, dayfirst=True).replace(day=1)
     if fim < inicio:
         return []
     return [d.strftime('%m/%Y') for d in pd.date_range(inicio, fim, freq='MS')]
@@ -162,6 +164,12 @@ def _aplicar_estilos_coleta(writer, ciclos):
             if ws.max_column >= 9:
                 ws.cell(row=row, column=9).number_format = number_fmt
 
+    if 'ADITIVOS_QUANTITATIVOS' in writer.book.sheetnames:
+        ws = writer.book['ADITIVOS_QUANTITATIVOS']
+        for row in range(2, ws.max_row + 1):
+            ws.cell(row=row, column=4).number_format = money_fmt
+            ws.cell(row=row, column=4).fill = input_fill
+
 
 def gerar_arquivo_coleta_excel(dados_admissibilidade):
     ciclos = dados_admissibilidade.get('ciclos', [])
@@ -183,6 +191,8 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             'Intervalo do índice': c.get('intervalo_indice', ''),
             'Janela de admissibilidade': c.get('janela_admissibilidade', ''),
             'Data do pedido': c.get('data_pedido', ''),
+            'Início financeiro': c.get('financeiro_inicio', ''),
+            'Fim financeiro': c.get('financeiro_fim', ''),
             'Situação': c.get('situacao', ''),
             'Variação': c.get('variacao_formatada', ''),
             'Fator': round(float(c.get('fator', 1.0)), 4),
@@ -191,16 +201,14 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         for c in ciclos
     ])
 
-    # Aba financeira simplificada: somente o que o fiscal precisa preencher.
-    linhas_financeiro = [
-        {
-            'Ciclo': 'C0',
-            'Competência': 'TOTAL C0',
-            'Valor pago/faturado': None,
-        }
-    ]
+    # Aba financeira simplificada: somente competências com potencial efeito financeiro.
+    # Não há linha TOTAL C0: o executado em C0 é inferido pela diferença entre
+    # o valor original do contrato e o remanescente informado no início de C1.
+    linhas_financeiro = []
     for c in ciclos:
-        for competencia in _competencias_mensais(c.get('periodo_inicio'), c.get('periodo_fim')):
+        inicio_financeiro = c.get('financeiro_inicio') or c.get('periodo_inicio')
+        fim_financeiro = c.get('financeiro_fim') or c.get('periodo_fim')
+        for competencia in _competencias_mensais(inicio_financeiro, fim_financeiro):
             linhas_financeiro.append({
                 'Ciclo': c.get('ciclo', ''),
                 'Competência': competencia,
@@ -219,15 +227,30 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
     linhas_itens = [{col: None for col in colunas_itens} for _ in range(30)]
     df_itens = pd.DataFrame(linhas_itens, columns=colunas_itens)
 
+    # Aba opcional para acréscimos quantitativos/aditivos posteriores ao reajuste.
+    # Usar apenas quando houver aditivo quantitativo a compor o valor para publicação.
+    df_aditivos = pd.DataFrame([
+        {
+            'Descrição do aditivo': None,
+            'Data do aditivo': None,
+            'Ciclo/Marco': None,
+            'Valor original do acréscimo': None,
+            'Aplicar reajuste acumulado? (Sim/Não)': 'Sim',
+            'Observação': None,
+        }
+        for _ in range(10)
+    ])
+
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         parametros.to_excel(writer, sheet_name='PARAMETROS_REAJUSTE', index=False)
         df_ciclos.to_excel(writer, sheet_name='CICLOS', index=False)
         df_financeiro.to_excel(writer, sheet_name='FINANCEIRO_MENSAL', index=False)
         df_itens.to_excel(writer, sheet_name='ITENS_REMANESCENTES', index=False, startrow=1)
+        df_aditivos.to_excel(writer, sheet_name='ADITIVOS_QUANTITATIVOS', index=False)
         _aplicar_estilos_coleta(writer, ciclos)
         _ajustar_larguras(writer, [
-            'PARAMETROS_REAJUSTE', 'CICLOS', 'FINANCEIRO_MENSAL', 'ITENS_REMANESCENTES'
+            'PARAMETROS_REAJUSTE', 'CICLOS', 'FINANCEIRO_MENSAL', 'ITENS_REMANESCENTES', 'ADITIVOS_QUANTITATIVOS'
         ])
     output.seek(0)
     return output
@@ -295,6 +318,9 @@ if res:
     """
     st.info(relatorio_simples)
 
+    inicio_efeito_financeiro = dt_solic if dt_solic >= dt_aniv else dt_aniv
+    fim_efeito_financeiro = inicio_efeito_financeiro + relativedelta(months=11)
+
     ciclo_unico = {
         'ciclo': 'C1',
         'data_base': dt_base.strftime('%d/%m/%Y'),
@@ -308,6 +334,8 @@ if res:
         'fator_acumulado': float(fator_ciclo),
         'periodo_inicio': _formatar_data(periodo_inicio),
         'periodo_fim': _formatar_data(periodo_fim),
+        'financeiro_inicio': _formatar_data(inicio_efeito_financeiro),
+        'financeiro_fim': _formatar_data(fim_efeito_financeiro),
     }
 
     st.session_state['dados_admissibilidade'] = {

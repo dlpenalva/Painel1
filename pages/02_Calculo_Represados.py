@@ -73,8 +73,10 @@ def _formatar_data(valor):
 
 
 def _competencias_mensais(data_inicio, data_fim):
-    inicio = pd.to_datetime(data_inicio).replace(day=1)
-    fim = pd.to_datetime(data_fim).replace(day=1)
+    if not data_inicio or not data_fim:
+        return []
+    inicio = pd.to_datetime(data_inicio, dayfirst=True).replace(day=1)
+    fim = pd.to_datetime(data_fim, dayfirst=True).replace(day=1)
     if fim < inicio:
         return []
     return [d.strftime('%m/%Y') for d in pd.date_range(inicio, fim, freq='MS')]
@@ -175,6 +177,12 @@ def _aplicar_estilos_coleta(writer, ciclos):
             if ws.max_column >= 9:
                 ws.cell(row=row, column=9).number_format = number_fmt
 
+    if 'ADITIVOS_QUANTITATIVOS' in writer.book.sheetnames:
+        ws = writer.book['ADITIVOS_QUANTITATIVOS']
+        for row in range(2, ws.max_row + 1):
+            ws.cell(row=row, column=4).number_format = money_fmt
+            ws.cell(row=row, column=4).fill = input_fill
+
 
 def gerar_arquivo_coleta_excel(dados_admissibilidade):
     ciclos = dados_admissibilidade.get('ciclos', [])
@@ -196,6 +204,8 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             'Intervalo do índice': c.get('intervalo_indice', ''),
             'Janela de admissibilidade': c.get('janela_admissibilidade', ''),
             'Data do pedido': c.get('data_pedido', ''),
+            'Início financeiro': c.get('financeiro_inicio', ''),
+            'Fim financeiro': c.get('financeiro_fim', ''),
             'Situação': c.get('situacao', ''),
             'Variação': c.get('variacao_formatada', ''),
             'Fator': round(float(c.get('fator', 1.0)), 4),
@@ -204,16 +214,14 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         for c in ciclos
     ])
 
-    # Aba financeira simplificada: somente o que o fiscal precisa preencher.
-    linhas_financeiro = [
-        {
-            'Ciclo': 'C0',
-            'Competência': 'TOTAL C0',
-            'Valor pago/faturado': None,
-        }
-    ]
+    # Aba financeira simplificada: somente competências com potencial efeito financeiro.
+    # Não há linha TOTAL C0: o executado em C0 é inferido pela diferença entre
+    # o valor original do contrato e o remanescente informado no início de C1.
+    linhas_financeiro = []
     for c in ciclos:
-        for competencia in _competencias_mensais(c.get('periodo_inicio'), c.get('periodo_fim')):
+        inicio_financeiro = c.get('financeiro_inicio') or c.get('periodo_inicio')
+        fim_financeiro = c.get('financeiro_fim') or c.get('periodo_fim')
+        for competencia in _competencias_mensais(inicio_financeiro, fim_financeiro):
             linhas_financeiro.append({
                 'Ciclo': c.get('ciclo', ''),
                 'Competência': competencia,
@@ -232,15 +240,30 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
     linhas_itens = [{col: None for col in colunas_itens} for _ in range(30)]
     df_itens = pd.DataFrame(linhas_itens, columns=colunas_itens)
 
+    # Aba opcional para acréscimos quantitativos/aditivos posteriores ao reajuste.
+    # Usar apenas quando houver aditivo quantitativo a compor o valor para publicação.
+    df_aditivos = pd.DataFrame([
+        {
+            'Descrição do aditivo': None,
+            'Data do aditivo': None,
+            'Ciclo/Marco': None,
+            'Valor original do acréscimo': None,
+            'Aplicar reajuste acumulado? (Sim/Não)': 'Sim',
+            'Observação': None,
+        }
+        for _ in range(10)
+    ])
+
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         parametros.to_excel(writer, sheet_name='PARAMETROS_REAJUSTE', index=False)
         df_ciclos.to_excel(writer, sheet_name='CICLOS', index=False)
         df_financeiro.to_excel(writer, sheet_name='FINANCEIRO_MENSAL', index=False)
         df_itens.to_excel(writer, sheet_name='ITENS_REMANESCENTES', index=False, startrow=1)
+        df_aditivos.to_excel(writer, sheet_name='ADITIVOS_QUANTITATIVOS', index=False)
         _aplicar_estilos_coleta(writer, ciclos)
         _ajustar_larguras(writer, [
-            'PARAMETROS_REAJUSTE', 'CICLOS', 'FINANCEIRO_MENSAL', 'ITENS_REMANESCENTES'
+            'PARAMETROS_REAJUSTE', 'CICLOS', 'FINANCEIRO_MENSAL', 'ITENS_REMANESCENTES', 'ADITIVOS_QUANTITATIVOS'
         ])
     output.seek(0)
     return output
@@ -298,6 +321,12 @@ for i in range(1, int(qtd_ciclos) + 1):
         data_base_proximo_ciclo = dt_ped
     else:
         data_base_proximo_ciclo = d_aniv
+
+    # Início do efeito financeiro para fins da aba FINANCEIRO_MENSAL.
+    # A competência financeira começa no mês do pedido, desde que cumprida a anualidade;
+    # se o pedido foi antecipado, o marco mínimo é o aniversário contratual.
+    # Ciclos preclusos não geram competências de retroativo.
+    inicio_efeito_financeiro = None if situacao_limpa == "PRECLUSO" else (dt_ped if dt_ped >= d_aniv else d_aniv)
 
     res_c = get_data_rep("433" if "IPCA" in idx_sel else "189", data_atual, d_fim, "IST" in idx_sel)
 
@@ -369,12 +398,34 @@ for i in range(1, int(qtd_ciclos) + 1):
         'fator': float(fator_ciclo),
         'fator_acumulado': float(fator_acum),
         'ciclo_calculado': ciclo_calculado,
+        'financeiro_inicio': _formatar_data(inicio_efeito_financeiro),
+        'financeiro_fim': '',
         'periodo_inicio': _formatar_data(periodo_inicio),
         'periodo_fim': _formatar_data(periodo_fim),
     })
 
     # A progressão do ciclo deve ocorrer sempre, mesmo quando não houver índice disponível.
     data_atual = data_base_proximo_ciclo
+
+# Finaliza os períodos financeiros com base no início financeiro do ciclo seguinte.
+# Isso evita gerar 13 competências e separa o período de índice do período financeiro.
+for idx, ciclo in enumerate(historico_coleta):
+    inicio_txt = ciclo.get('financeiro_inicio', '')
+    if not inicio_txt:
+        ciclo['financeiro_fim'] = ''
+        continue
+    inicio_dt = pd.to_datetime(inicio_txt, dayfirst=True).to_pydatetime()
+    proximo_inicio = None
+    for prox in historico_coleta[idx + 1:]:
+        prox_txt = prox.get('financeiro_inicio', '')
+        if prox_txt:
+            proximo_inicio = pd.to_datetime(prox_txt, dayfirst=True).to_pydatetime()
+            break
+    if proximo_inicio:
+        fim_dt = proximo_inicio - relativedelta(months=1)
+    else:
+        fim_dt = inicio_dt + relativedelta(months=11)
+    ciclo['financeiro_fim'] = fim_dt.strftime('%d/%m/%Y')
 
 if historico:
     st.divider()

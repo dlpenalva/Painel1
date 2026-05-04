@@ -130,11 +130,11 @@ A apuração financeira considerou que os efeitos financeiros do reajuste são r
 
 Valor original inicial do contrato: {moeda(res.get('valor_original_contrato', 0))}
 Total pago/faturado: {moeda(res.get('total_pago_faturado', 0))}
-Total executado atualizado: {moeda(res.get('total_devido_reajustado', 0))}
+Executado atualizado: {moeda(res.get('total_devido_reajustado', 0))}
 Total retroativo a pagar: {moeda(res.get('delta_acumulado', 0))}
 Remanescente original no último ciclo: {moeda(res.get('remanescente_original', 0))}
 Remanescente atualizado no último ciclo: {moeda(res.get('remanescente_reajustado', 0))}
-Valor global atualizado do contrato: {moeda(res.get('valor_global_atualizado', 0))}
+Valor Global Contrato: {moeda(res.get('valor_global_contrato', 0))}
 
 5. Encaminhamento
 
@@ -244,11 +244,13 @@ def criar_pdf_relatorio(adm, res):
         ["Indicador", "Valor"],
         ["Valor original inicial do contrato", moeda(res.get("valor_original_contrato", 0))],
         ["Total pago/faturado", moeda(res.get("total_pago_faturado", 0))],
-        ["Total executado atualizado", moeda(res.get("total_devido_reajustado", 0))],
+        ["Executado atualizado", moeda(res.get("total_devido_reajustado", 0))],
         ["Total retroativo a pagar", moeda(res.get("delta_acumulado", 0))],
         ["Remanescente original", moeda(res.get("remanescente_original", 0))],
         ["Remanescente atualizado", moeda(res.get("remanescente_reajustado", 0))],
-        ["Valor global atualizado do contrato", moeda(res.get("valor_global_atualizado", 0))],
+        ["Valor Global Contrato", moeda(res.get("valor_global_contrato", 0))],
+        ["Aditivos quantitativos atualizados", moeda(res.get("valor_aditivos_atualizados", 0))],
+        ["Valor Global Contrato com aditivos", moeda(res.get("valor_global_contrato_com_aditivos", 0))],
     ]
     story.append(tabela_pdf(indicadores, header=True, col_widths=[8 * cm, 8 * cm]))
 
@@ -269,11 +271,23 @@ def criar_pdf_relatorio(adm, res):
     story.append(Paragraph("6. Valor Total Atualizado do Contrato por Ciclo", styles["Subtitulo"]))
     story.append(tabela_dataframe_pdf(
         res.get("df_valor_total_por_ciclo"),
-        colunas=["Ciclo/Marco", "Mês de referência", "Composição", "Valor total atualizado do contrato"],
+        colunas=["Ciclo/Marco", "Mês de referência", "Composição", "Valor Global Contrato"],
         max_linhas=15,
     ))
 
-    story.append(Paragraph("7. Informações para instrução processual", styles["Subtitulo"]))
+    df_aditivos = res.get("df_aditivos")
+    if isinstance(df_aditivos, pd.DataFrame) and not df_aditivos.empty:
+        story.append(Paragraph("7. Aditivos quantitativos", styles["Subtitulo"]))
+        story.append(tabela_dataframe_pdf(
+            df_aditivos,
+            colunas=["Descrição do aditivo", "Data do aditivo", "Ciclo/Marco", "Valor original do acréscimo", "Valor atualizado do acréscimo"],
+            max_linhas=10,
+        ))
+        secao_info = "8. Informações para instrução processual"
+    else:
+        secao_info = "7. Informações para instrução processual"
+
+    story.append(Paragraph(secao_info, styles["Subtitulo"]))
     story.append(Paragraph(gerar_texto_instrucao(adm, res).replace("\n", "<br/>").replace("&", "&amp;"), styles["Texto"]))
 
     doc.build(story)
@@ -303,13 +317,17 @@ st.subheader("Resumo Executivo")
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Índice", res.get("indice", "Não informado"))
 col2.metric("Percentual acumulado", percentual(res.get("percentual_acumulado", 0)))
-col3.metric("Valor global atualizado", moeda(res.get("valor_global_atualizado", 0)))
+col3.metric("Valor Global Contrato", moeda(res.get("valor_global_contrato", 0)))
 col4.metric("Total retroativo a pagar", moeda(res.get("delta_acumulado", 0)))
 
 col5, col6, col7 = st.columns(3)
 col5.metric("Valor original", moeda(res.get("valor_original_contrato", 0)))
 col6.metric("Total pago/faturado", moeda(res.get("total_pago_faturado", 0)))
-col7.metric("Total executado atualizado", moeda(res.get("total_devido_reajustado", 0)))
+col7.metric("Executado atualizado", moeda(res.get("total_devido_reajustado", 0)))
+
+col8, col9 = st.columns(2)
+col8.metric("Aditivos atualizados", moeda(res.get("valor_aditivos_atualizados", 0)))
+col9.metric("Valor Global Contrato com aditivos", moeda(res.get("valor_global_contrato_com_aditivos", res.get("valor_global_contrato", 0))))
 
 st.divider()
 
@@ -353,11 +371,22 @@ with tab2:
         hide_index=True,
     )
 
-    st.markdown("### Valor total atualizado do contrato por ciclo")
+    st.markdown("### Aditivos quantitativos")
+    df_aditivos = res.get("df_aditivos")
+    if isinstance(df_aditivos, pd.DataFrame) and not df_aditivos.empty:
+        st.dataframe(
+            df_visual(df_aditivos, moeda_cols=["Valor original do acréscimo", "Valor atualizado do acréscimo"], pct_cols=["Percentual aplicado"]),
+            use_container_width=True,
+            hide_index=True,
+        )
+    else:
+        st.info("Nenhum aditivo quantitativo foi informado.")
+
+    st.markdown("### Valor Global Contrato por ciclo")
     st.dataframe(
         df_visual(
             res.get("df_valor_total_por_ciclo"),
-            moeda_cols=["Executado atualizado até ciclo anterior", "Remanescente atualizado", "Valor total atualizado do contrato"],
+            moeda_cols=["Executado atualizado até ciclo anterior", "Remanescente atualizado", "Valor Global Contrato"],
         ),
         use_container_width=True,
         hide_index=True,

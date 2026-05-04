@@ -264,6 +264,8 @@ def padronizar_ciclos(df):
     col_intervalo = localizar_coluna(df, ["Intervalo do índice", "Intervalo", "Janela", "intervalo_indice"])
     col_janela_adm = localizar_coluna(df, ["Janela de admissibilidade", "JanelaAdm", "janela_admissibilidade"])
     col_pedido = localizar_coluna(df, ["Data do pedido", "Pedido", "data_pedido"])
+    col_fin_inicio = localizar_coluna(df, ["Início financeiro", "Inicio financeiro", "Financeiro início", "financeiro_inicio"])
+    col_fin_fim = localizar_coluna(df, ["Fim financeiro", "Financeiro fim", "financeiro_fim"])
     col_situacao = localizar_coluna(df, ["Situação", "Resultado", "situacao"])
     col_variacao = localizar_coluna(df, ["Variação", "Variacao", "Percentual", "variacao"])
     col_fator = localizar_coluna(df, ["Fator", "fator"])
@@ -311,6 +313,10 @@ def padronizar_ciclos(df):
             "Data do pedido": pedido,
             "Mês início efeito financeiro": mes_ano_de_data(pedido),
             "Pedido período": periodo_de_data(pedido),
+            "Financeiro início": row.get(col_fin_inicio, "") if col_fin_inicio else "",
+            "Financeiro início período": periodo_de_data(row.get(col_fin_inicio, "")) if col_fin_inicio else None,
+            "Financeiro fim": row.get(col_fin_fim, "") if col_fin_fim else "",
+            "Financeiro fim período": periodo_de_data(row.get(col_fin_fim, "")) if col_fin_fim else None,
             "Situação": situacao,
             "Variação": variacao,
             "Percentual do ciclo": variacao,
@@ -344,6 +350,8 @@ def ler_financeiro(bytes_arquivo, xls, ciclos):
     resultado["Competência"] = df[col_comp] if col_comp else ""
     resultado["Competência período"] = resultado["Competência"].apply(periodo_competencia)
     resultado["Valor pago/faturado"] = df[col_valor].apply(numero_br)
+    # Linhas de TOTAL C0 de versões antigas do arquivo de coleta são ignoradas.
+    resultado = resultado[~resultado["Competência"].astype(str).str.upper().str.contains("TOTAL C0", na=False)].copy()
     if (resultado["Ciclo"] == "").all() and col_comp and not ciclos.empty:
         resultado["Ciclo"] = atribuir_ciclo_por_competencia(resultado["Competência"], ciclos)
     if (resultado["Ciclo"] == "").all():
@@ -355,8 +363,8 @@ def ler_financeiro(bytes_arquivo, xls, ciclos):
 def atribuir_ciclo_por_competencia(competencias, ciclos):
     intervalos = []
     for _, row in ciclos.iterrows():
-        ini = row.get("Início intervalo")
-        fim = row.get("Fim intervalo")
+        ini = row.get("Financeiro início período") or row.get("Início intervalo")
+        fim = row.get("Financeiro fim período") or row.get("Fim intervalo")
         if ini is not None:
             intervalos.append((row["Ciclo"], ini, fim))
     atribuidos = []
@@ -583,15 +591,156 @@ def calcular_valor_total_por_ciclo(df_fin_por_ciclo, df_remanescentes, valor_ori
     return pd.DataFrame(linhas)
 
 
+
+def fator_acumulado_para_ciclo(ciclos, ciclo):
+    if ciclos is None or ciclos.empty:
+        return 1.0
+    alvo = normalizar_ciclo(ciclo)
+    linha = ciclos[ciclos["Ciclo"].apply(normalizar_ciclo) == alvo]
+    if linha.empty:
+        return 1.0
+    return float(linha.iloc[0].get("Fator acumulado efetivo", 1.0) or 1.0)
+
+
+def calcular_execucao_contratual_por_ciclo(df_remanescentes, valor_original, ciclos):
+    """Calcula a composição contratual por estoque/remanescente.
+
+    Regra:
+    - C0 executado = valor original do contrato - remanescente original no início de C1.
+    - Executado em Cn = remanescente original no início de Cn - remanescente original no início de C(n+1).
+    - Executado atualizado em Cn = executado original em Cn × fator acumulado efetivo de Cn.
+    - Remanescente final = último remanescente original × fator acumulado do último ciclo informado.
+    """
+    linhas = []
+    if df_remanescentes is None or df_remanescentes.empty:
+        return pd.DataFrame()
+
+    df = df_remanescentes.copy().sort_values(by="Ciclo", key=lambda s: s.map(numero_ciclo)).reset_index(drop=True)
+    primeiro_rem_original = float(df.iloc[0].get("Remanescente original", 0.0) or 0.0)
+    executado_c0 = max(float(valor_original or 0.0) - primeiro_rem_original, 0.0)
+    linhas.append({
+        "Componente": "C0 executado",
+        "Ciclo": "C0",
+        "Valor original executado": executado_c0,
+        "Percentual acumulado aplicado": 0.0,
+        "Valor executado atualizado": executado_c0,
+        "Tipo": "Executado",
+    })
+
+    for idx in range(len(df) - 1):
+        ciclo = df.iloc[idx]["Ciclo"]
+        rem_atual = float(df.iloc[idx].get("Remanescente original", 0.0) or 0.0)
+        rem_proximo = float(df.iloc[idx + 1].get("Remanescente original", 0.0) or 0.0)
+        executado_original = max(rem_atual - rem_proximo, 0.0)
+        fator = fator_acumulado_para_ciclo(ciclos, ciclo)
+        linhas.append({
+            "Componente": f"{ciclo} executado atualizado",
+            "Ciclo": ciclo,
+            "Valor original executado": executado_original,
+            "Percentual acumulado aplicado": fator - 1,
+            "Valor executado atualizado": executado_original * fator,
+            "Tipo": "Executado",
+        })
+
+    ultimo = df.iloc[-1]
+    ultimo_ciclo = ultimo["Ciclo"]
+    linhas.append({
+        "Componente": f"Remanescente atualizado em {ultimo_ciclo}",
+        "Ciclo": ultimo_ciclo,
+        "Valor original executado": float(ultimo.get("Remanescente original", 0.0) or 0.0),
+        "Percentual acumulado aplicado": float(ultimo.get("Percentual acumulado aplicado", 0.0) or 0.0),
+        "Valor executado atualizado": float(ultimo.get("Remanescente atualizado", 0.0) or 0.0),
+        "Tipo": "Remanescente",
+    })
+    return pd.DataFrame(linhas)
+
+
+def calcular_valor_global_contrato_por_ciclo(df_remanescentes, valor_original, ciclos, df_execucao_contratual):
+    linhas = []
+    if df_remanescentes is None or df_remanescentes.empty:
+        return pd.DataFrame()
+    df_rem = df_remanescentes.copy().sort_values(by="Ciclo", key=lambda s: s.map(numero_ciclo)).reset_index(drop=True)
+
+    linhas.append({
+        "Ciclo/Marco": "C0",
+        "Mês de referência": "Original",
+        "Composição": "Valor original inicial do contrato",
+        "Executado atualizado até ciclo anterior": 0.0,
+        "Remanescente atualizado": float(valor_original or 0.0),
+        "Valor Global Contrato": float(valor_original or 0.0),
+    })
+
+    for idx, rem in df_rem.iterrows():
+        ciclo = rem["Ciclo"]
+        n = numero_ciclo(ciclo)
+        exec_ate = 0.0
+        partes = []
+        for _, comp in df_execucao_contratual.iterrows():
+            tipo = comp.get("Tipo", "")
+            comp_ciclo = comp.get("Ciclo", "")
+            if tipo == "Executado" and numero_ciclo(comp_ciclo) < n:
+                exec_ate += float(comp.get("Valor executado atualizado", 0.0) or 0.0)
+                partes.append(comp.get("Componente", comp_ciclo))
+        rem_atualizado = float(rem.get("Remanescente atualizado", 0.0) or 0.0)
+        total = exec_ate + rem_atualizado
+        linhas.append({
+            "Ciclo/Marco": ciclo,
+            "Mês de referência": rem.get("Mês início do ciclo", ""),
+            "Composição": " + ".join(partes + [f"remanescente atualizado em {ciclo}"]),
+            "Executado atualizado até ciclo anterior": exec_ate,
+            "Remanescente atualizado": rem_atualizado,
+            "Valor Global Contrato": total,
+        })
+    return pd.DataFrame(linhas)
+
+
+def ler_aditivos(bytes_arquivo, xls, ciclos):
+    aba = localizar_aba(xls, ["ADITIVOS_QUANTITATIVOS", "ADITIVOS", "ACRESCIMOS", "ACRÉSCIMOS"])
+    if not aba:
+        return pd.DataFrame()
+    df = ler_aba_com_cabecalho(bytes_arquivo, aba)
+    if df.empty:
+        return pd.DataFrame()
+    col_desc = localizar_coluna(df, ["Descrição do aditivo", "Descricao", "Objeto", "Descrição"])
+    col_data = localizar_coluna(df, ["Data do aditivo", "Data", "Assinatura"])
+    col_ciclo = localizar_coluna(df, ["Ciclo/Marco", "Ciclo", "Marco"])
+    col_valor = localizar_coluna(df, ["Valor original do acréscimo", "Valor original do acrescimo", "Valor", "Valor do aditivo"])
+    col_aplicar = localizar_coluna(df, ["Aplicar reajuste acumulado? (Sim/Não)", "Aplicar reajuste", "Reajustar"])
+    col_obs = localizar_coluna(df, ["Observação", "Observacao", "Obs"])
+    if col_valor is None:
+        return pd.DataFrame()
+    linhas = []
+    fator_final = float(ciclos["Fator acumulado efetivo"].iloc[-1]) if not ciclos.empty and "Fator acumulado efetivo" in ciclos.columns else 1.0
+    for _, row in df.iterrows():
+        valor_original = numero_br(row.get(col_valor, 0))
+        if valor_original == 0:
+            continue
+        ciclo = normalizar_ciclo(row.get(col_ciclo, "")) if col_ciclo else ""
+        aplicar_txt = str(row.get(col_aplicar, "Sim") if col_aplicar else "Sim").strip().lower()
+        aplicar = not aplicar_txt.startswith("n")
+        fator = fator_acumulado_para_ciclo(ciclos, ciclo) if ciclo else fator_final
+        if not aplicar:
+            fator = 1.0
+        linhas.append({
+            "Descrição do aditivo": row.get(col_desc, "") if col_desc else "",
+            "Data do aditivo": row.get(col_data, "") if col_data else "",
+            "Ciclo/Marco": ciclo or "Último fator",
+            "Valor original do acréscimo": valor_original,
+            "Percentual aplicado": fator - 1,
+            "Valor atualizado do acréscimo": valor_original * fator,
+            "Observação": row.get(col_obs, "") if col_obs else "",
+        })
+    return pd.DataFrame(linhas)
+
 def montar_comparativo(valor_original, total_pago, total_devido, delta_acumulado, rem_original, rem_atualizado, valor_global):
     return pd.DataFrame([
         {"Indicador": "Valor original inicial do contrato", "Valor": valor_original},
         {"Indicador": "Total pago/faturado", "Valor": total_pago},
-        {"Indicador": "Total executado atualizado", "Valor": total_devido},
+        {"Indicador": "Executado atualizado", "Valor": total_devido},
         {"Indicador": "Total retroativo a pagar", "Valor": delta_acumulado},
         {"Indicador": "Remanescente original no último ciclo", "Valor": rem_original},
         {"Indicador": "Remanescente atualizado no último ciclo", "Valor": rem_atualizado},
-        {"Indicador": "Valor global atualizado do contrato", "Valor": valor_global},
+        {"Indicador": "Valor Global Contrato", "Valor": valor_global},
     ])
 
 
@@ -655,8 +804,12 @@ def processar_arquivo_coleta(bytes_arquivo):
         rem_original = 0.0
         rem_atualizado = 0.0
 
-    valor_total_por_ciclo = calcular_valor_total_por_ciclo(df_fin_por_ciclo, df_rem, valor_original_contrato)
-    valor_global_atualizado = float(valor_total_por_ciclo.iloc[-1]["Valor total atualizado do contrato"]) if not valor_total_por_ciclo.empty else total_devido + rem_atualizado
+    df_execucao_contratual = calcular_execucao_contratual_por_ciclo(df_rem, valor_original_contrato, ciclos)
+    valor_total_por_ciclo = calcular_valor_global_contrato_por_ciclo(df_rem, valor_original_contrato, ciclos, df_execucao_contratual)
+    valor_global_contrato = float(valor_total_por_ciclo.iloc[-1]["Valor Global Contrato"]) if not valor_total_por_ciclo.empty else total_devido + rem_atualizado
+    df_aditivos = ler_aditivos(bytes_arquivo, xls, ciclos)
+    valor_aditivos_atualizados = float(df_aditivos["Valor atualizado do acréscimo"].sum()) if not df_aditivos.empty else 0.0
+    valor_global_contrato_com_aditivos = valor_global_contrato + valor_aditivos_atualizados
 
     indice = (
         st.session_state.get("dados_admissibilidade", {}).get("indice")
@@ -667,7 +820,7 @@ def processar_arquivo_coleta(bytes_arquivo):
     fator_acumulado = float(ciclos["Fator acumulado efetivo"].iloc[-1]) if "Fator acumulado efetivo" in ciclos.columns and not ciclos.empty else 1.0
 
     df_comparativo = montar_comparativo(
-        valor_original_contrato, total_pago, total_devido, delta_acumulado, rem_original, rem_atualizado, valor_global_atualizado
+        valor_original_contrato, total_pago, total_devido, delta_acumulado, rem_original, rem_atualizado, valor_global_contrato
     )
 
     return {
@@ -682,7 +835,10 @@ def processar_arquivo_coleta(bytes_arquivo):
         "delta_acumulado": delta_acumulado,
         "remanescente_original": rem_original,
         "remanescente_reajustado": rem_atualizado,
-        "valor_global_atualizado": valor_global_atualizado,
+        "valor_global_contrato": valor_global_contrato,
+        "valor_global_atualizado": valor_global_contrato,
+        "valor_aditivos_atualizados": valor_aditivos_atualizados,
+        "valor_global_contrato_com_aditivos": valor_global_contrato_com_aditivos,
         "ciclo_ultimo_remanescente": ciclo_ultimo_rem,
         "df_ciclos": ciclos,
         "df_financeiro_mensal": financeiro_mensal,
@@ -690,6 +846,8 @@ def processar_arquivo_coleta(bytes_arquivo):
         "df_itens_processado": itens,
         "df_remanescentes": df_rem,
         "df_valor_total_por_ciclo": valor_total_por_ciclo,
+        "df_execucao_contratual": df_execucao_contratual,
+        "df_aditivos": df_aditivos,
         "df_comparativo": df_comparativo,
     }
 
@@ -717,7 +875,7 @@ st.title("Valor Global do Contrato")
 st.markdown(
     """
     Este módulo processa o **Arquivo de Coleta** preenchido, aplica a regra de efeito financeiro
-    e consolida execução, remanescentes, retroativos e Valor Global atualizado do contrato.
+    e consolida execução, remanescentes, retroativos e Valor Global Contrato.
     """
 )
 
@@ -761,11 +919,11 @@ col1, col2, col3, col4 = st.columns(4)
 col1.metric("Índice", resultado.get("indice", "Não informado"))
 col2.metric("Percentual acumulado", percentual(resultado.get("percentual_acumulado", 0)))
 col3.metric("Valor original do contrato", moeda(resultado["valor_original_contrato"]))
-col4.metric("Valor global atualizado", moeda(resultado["valor_global_atualizado"]))
+col4.metric("Valor Global Contrato", moeda(resultado["valor_global_contrato"]))
 
 col5, col6, col7, col8 = st.columns(4)
 col5.metric("Total pago/faturado", moeda(resultado["total_pago_faturado"]))
-col6.metric("Total executado atualizado", moeda(resultado["total_devido_reajustado"]))
+col6.metric("Executado atualizado", moeda(resultado["total_devido_reajustado"]))
 col7.metric("Total retroativo a pagar", moeda(resultado["delta_acumulado"]))
 col8.metric("Remanescente atualizado", moeda(resultado["remanescente_reajustado"]))
 
@@ -783,8 +941,8 @@ st.dataframe(df_ciclos_vis[cols_ciclos], use_container_width=True, hide_index=Tr
 tab1, tab2, tab3, tab4 = st.tabs([
     "Execução e Retroativos",
     "Remanescentes",
-    "Valor Total do Contrato",
-    "Dados Processados",
+    "Valor Global Contrato",
+    "Aditivos e Publicação",
 ])
 
 with tab1:
@@ -820,21 +978,43 @@ with tab2:
         st.dataframe(df_itens, use_container_width=True, hide_index=True)
 
 with tab3:
-    st.markdown("### Valor total atualizado do contrato por ciclo")
+    st.markdown("### Valor Global Contrato por ciclo")
     df_total = formatar_dataframe(
         resultado["df_valor_total_por_ciclo"],
         colunas_moeda=[
             "Executado atualizado até ciclo anterior",
             "Remanescente atualizado",
-            "Valor total atualizado do contrato",
+            "Valor Global Contrato",
         ],
     )
     st.dataframe(df_total, use_container_width=True, hide_index=True)
+
+    st.markdown("### Composição contratual por execução e remanescente")
+    df_exec_contrato = formatar_dataframe(
+        resultado.get("df_execucao_contratual"),
+        colunas_moeda=["Valor original executado", "Valor executado atualizado"],
+        colunas_pct=["Percentual acumulado aplicado"],
+    )
+    st.dataframe(df_exec_contrato, use_container_width=True, hide_index=True)
 
     st.markdown("### Resumo para instrução")
     df_comp = formatar_dataframe(resultado["df_comparativo"], colunas_moeda=["Valor"])
     st.dataframe(df_comp, use_container_width=True, hide_index=True)
 
 with tab4:
-    st.markdown("### Estrutura consolidada disponível para o Relatório Global")
-    st.code("st.session_state['resultado_valor_global'] foi atualizado com os resultados processados.", language="python")
+    st.markdown("### Aditivos quantitativos posteriores ao reajuste")
+    df_aditivos = formatar_dataframe(
+        resultado.get("df_aditivos"),
+        colunas_moeda=["Valor original do acréscimo", "Valor atualizado do acréscimo"],
+        colunas_pct=["Percentual aplicado"],
+    )
+    if df_aditivos.empty:
+        st.info("Nenhum aditivo quantitativo foi informado no Arquivo de Coleta.")
+    else:
+        st.dataframe(df_aditivos, use_container_width=True, hide_index=True)
+
+    st.markdown("### Valor para publicação, quando houver aditivo")
+    col_pub1, col_pub2, col_pub3 = st.columns(3)
+    col_pub1.metric("Valor Global Contrato", moeda(resultado.get("valor_global_contrato", 0)))
+    col_pub2.metric("Aditivos atualizados", moeda(resultado.get("valor_aditivos_atualizados", 0)))
+    col_pub3.metric("Valor Global Contrato com aditivos", moeda(resultado.get("valor_global_contrato_com_aditivos", 0)))
