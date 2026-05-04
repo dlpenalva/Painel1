@@ -25,7 +25,8 @@ def get_data_rep(serie, d_ini, d_fim, is_ist):
             df_t['v'] = df_t['valor'].astype(float) / 100
             df_t['data'] = pd.to_datetime(df_t['data'], dayfirst=True)
             return {'var': (1 + df_t['v']).prod() - 1, 'metodo': "Produtório de taxas mensais (SGS/BCB)", 'p_ini': d_ini, 'p_fim': d_fim, 'dados': df_t[['data', 'valor']]}
-    except: return None
+    except:
+        return None
 
 st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
 st.title("Reajustes Múltiplos")
@@ -81,11 +82,21 @@ for i in range(1, int(qtd_ciclos) + 1):
             st.dataframe(res_c['dados'], use_container_width=True)
 
         historico.append({
-            "Ciclo": i, "Variação": v_fmt, "Situação": sit_emoji, 
-            "Pedido": dt_ped.strftime('%d/%m/%Y'), "Janela": janela_ciclo,
+            "Ciclo": i,
+            "Variação": v_fmt,
+            "Situação": sit_emoji,
+            "Pedido": dt_ped.strftime('%d/%m/%Y'),
+            "Janela": janela_ciclo,
             "JanelaAdm": janela_adm
         })
-        data_atual = dt_ped if dt_ped > d_lim else d_aniv
+
+        # Nova lógica de ancoragem da Data-Base do próximo ciclo:
+        # - regra geral: 12 meses após a Data do Pedido do ciclo anterior;
+        # - se o ciclo anterior foi precluso: 12 meses após o aniversário contratual em que o pleito poderia ter sido iniciado.
+        if "PRECLUSO" in sit_emoji:
+            data_atual = d_aniv + relativedelta(years=1)
+        else:
+            data_atual = dt_ped + relativedelta(years=1)
 
 if historico:
     st.divider()
