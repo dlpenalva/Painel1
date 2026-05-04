@@ -1,19 +1,10 @@
 import streamlit as st
 
-# Configuração da página deve ser a primeira instrução Streamlit
-st.set_page_config(page_title="FARC - Telebras", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Gestão de Contratos - Telebras", layout="wide")
 
-# Mapeamento Seguro: Arquivo Físico -> Nome na Interface
-p1 = st.Page("pages/01_Calculo_Simples.py", title="Reajuste Simples", icon="⚖️", default=True)
-p2 = st.Page("pages/02_Calculo_Represados.py", title="Reajustes Múltiplos", icon="🔄")
-p3 = st.Page("pages/03_Valor_Global.py", title="Valor Global", icon="💰")
-p4 = st.Page("pages/04_Relatorio_Global.py", title="Relatório Global", icon="📊")
+st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
+st.title("Sistema de Gestão de Contratos")
+st.markdown("---")
 
-# Configuração da Navegação
-pg = st.navigation({
-    "Admissibilidade e Cálculo": [p1, p2],
-    "Execução Financeira": [p3],
-    "Resultados": [p4]
-})
-
-pg.run()
+st.subheader("Bem-vindo ao Facilitador de Cálculos")
+st.write("Selecione um módulo no menu lateral para iniciar a análise técnica.")
