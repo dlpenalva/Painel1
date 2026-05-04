@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import requests
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from dateutil.relativedelta import relativedelta
 from io import BytesIO
 
@@ -152,15 +153,6 @@ def _aplicar_estilos_coleta(writer, ciclos):
                     ws.cell(row=row, column=col).alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
             ws.column_dimensions[letra].width = 24
 
-        rem_atual_col = first_rem_col + len(ciclos)
-        if rem_atual_col <= ws.max_column:
-            ws.cell(row=1, column=rem_atual_col).value = 'Data de corte'
-            ws.cell(row=1, column=rem_atual_col).fill = date_fill
-            ws.cell(row=1, column=rem_atual_col).font = Font(bold=True)
-            ws.cell(row=1, column=rem_atual_col).alignment = Alignment(horizontal='center', vertical='center')
-            for row in range(3, ws.max_row + 1):
-                ws.cell(row=row, column=rem_atual_col).fill = input_fill
-
     if 'CICLOS' in writer.book.sheetnames:
         ws = writer.book['CICLOS']
         for row in range(2, ws.max_row + 1):
@@ -181,7 +173,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         {'Campo': 'Quantidade de ciclos', 'Valor': len(ciclos)},
         {'Campo': 'Fator acumulado final', 'Valor': round(float(dados_admissibilidade.get('fator_acumulado', 1.0)), 4)},
         {'Campo': 'Variação acumulada final', 'Valor': dados_admissibilidade.get('variacao_acumulada_formatada', '')},
-        {'Campo': 'Data de geração do arquivo', 'Valor': datetime.now().strftime('%d/%m/%Y %H:%M')},
+        {'Campo': 'Data de geração do arquivo', 'Valor': datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')},
     ])
 
     df_ciclos = pd.DataFrame([
@@ -200,7 +192,13 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
     ])
 
     # Aba financeira simplificada: somente o que o fiscal precisa preencher.
-    linhas_financeiro = []
+    linhas_financeiro = [
+        {
+            'Ciclo': 'C0',
+            'Competência': 'TOTAL C0',
+            'Valor pago/faturado': None,
+        }
+    ]
     for c in ciclos:
         for competencia in _competencias_mensais(c.get('periodo_inicio'), c.get('periodo_fim')):
             linhas_financeiro.append({
@@ -216,7 +214,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
     colunas_remanescentes = [f"Remanescente início {c.get('ciclo', '')}" for c in ciclos]
     colunas_itens = [
         'Item', 'Quantidade contratada', 'Valor unitário original', 'Valor total',
-        *colunas_remanescentes, 'Remanescente atual'
+        *colunas_remanescentes
     ]
     linhas_itens = [{col: None for col in colunas_itens} for _ in range(30)]
     df_itens = pd.DataFrame(linhas_itens, columns=colunas_itens)
