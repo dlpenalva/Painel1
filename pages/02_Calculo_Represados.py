@@ -80,18 +80,108 @@ def _competencias_mensais(data_inicio, data_fim):
 
 
 def _ajustar_larguras(writer, nomes_abas):
+    from openpyxl.utils import get_column_letter
+
     for nome_aba in nomes_abas:
         ws = writer.book[nome_aba]
-        ws.freeze_panes = "A2"
+        # ITENS_REMANESCENTES usa duas linhas de cabeçalho: linha 1 para datas de referência e linha 2 para títulos.
+        ws.freeze_panes = "A3" if nome_aba == 'ITENS_REMANESCENTES' else "A2"
         for column_cells in ws.columns:
             max_length = 0
-            column_letter = column_cells[0].column_letter
+            column_letter = get_column_letter(column_cells[0].column)
             for cell in column_cells:
                 try:
                     max_length = max(max_length, len(str(cell.value)) if cell.value is not None else 0)
                 except Exception:
                     pass
             ws.column_dimensions[column_letter].width = min(max(max_length + 2, 14), 45)
+
+
+def _aplicar_estilos_coleta(writer, ciclos):
+    from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+    from openpyxl.utils import get_column_letter
+
+    header_fill = PatternFill('solid', fgColor='1F4E78')
+    header_font = Font(color='FFFFFF', bold=True)
+    input_fill = PatternFill('solid', fgColor='FFF2CC')
+    date_fill = PatternFill('solid', fgColor='D9EAD3')
+    light_fill = PatternFill('solid', fgColor='EAF2F8')
+    thin = Side(style='thin', color='D9E2F3')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    money_fmt = 'R$ #,##0.00'
+    number_fmt = '#,##0.0000'
+
+    for ws in writer.book.worksheets:
+        for row in ws.iter_rows():
+            for cell in row:
+                cell.border = border
+                cell.alignment = Alignment(vertical='center')
+
+        header_row = 2 if ws.title == 'ITENS_REMANESCENTES' else 1
+        for cell in ws[header_row]:
+            cell.fill = header_fill
+            cell.font = header_font
+            cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+
+    if 'FINANCEIRO_MENSAL' in writer.book.sheetnames:
+        ws = writer.book['FINANCEIRO_MENSAL']
+        # Coluna C é a coluna de preenchimento pelo fiscal.
+        for row in range(1, ws.max_row + 1):
+            ws.cell(row=row, column=3).fill = input_fill
+            ws.cell(row=row, column=3).alignment = Alignment(horizontal='right' if row > 1 else 'center', vertical='center')
+            if row > 1:
+                ws.cell(row=row, column=3).number_format = money_fmt
+        ws['C1'].value = 'Valor pago/faturado (preencher)'
+        ws['C1'].font = header_font
+        ws['C1'].fill = header_fill
+
+    if 'ITENS_REMANESCENTES' in writer.book.sheetnames:
+        ws = writer.book['ITENS_REMANESCENTES']
+        ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
+        ws.cell(row=1, column=1).value = 'Dados do item e valor original'
+        ws.cell(row=1, column=1).fill = light_fill
+        ws.cell(row=1, column=1).font = Font(bold=True)
+        ws.cell(row=1, column=1).alignment = Alignment(horizontal='center', vertical='center')
+
+        # Colunas: A Item | B Quantidade contratada | C Valor unitário original | D Valor total | E... remanescentes
+        for row in range(3, ws.max_row + 1):
+            ws.cell(row=row, column=3).number_format = money_fmt
+            ws.cell(row=row, column=4).number_format = money_fmt
+            ws.cell(row=row, column=4).value = f'=IF(OR(B{row}="",C{row}=""),"",B{row}*C{row})'
+
+        # Destacar colunas de remanescente para preenchimento pelo fiscal e colocar a data de referência na linha 1.
+        first_rem_col = 5
+        for idx, ciclo in enumerate(ciclos):
+            col = first_rem_col + idx
+            letra = get_column_letter(col)
+            ws.cell(row=1, column=col).value = ciclo.get('data_base', '')
+            ws.cell(row=1, column=col).fill = date_fill
+            ws.cell(row=1, column=col).font = Font(bold=True)
+            ws.cell(row=1, column=col).alignment = Alignment(horizontal='center', vertical='center')
+            for row in range(2, ws.max_row + 1):
+                ws.cell(row=row, column=col).fill = input_fill if row > 2 else header_fill
+                if row == 2:
+                    ws.cell(row=row, column=col).font = header_font
+                    ws.cell(row=row, column=col).alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            ws.column_dimensions[letra].width = 24
+
+        rem_atual_col = first_rem_col + len(ciclos)
+        if rem_atual_col <= ws.max_column:
+            ws.cell(row=1, column=rem_atual_col).value = 'Data de corte'
+            ws.cell(row=1, column=rem_atual_col).fill = date_fill
+            ws.cell(row=1, column=rem_atual_col).font = Font(bold=True)
+            ws.cell(row=1, column=rem_atual_col).alignment = Alignment(horizontal='center', vertical='center')
+            for row in range(3, ws.max_row + 1):
+                ws.cell(row=row, column=rem_atual_col).fill = input_fill
+
+    if 'CICLOS' in writer.book.sheetnames:
+        ws = writer.book['CICLOS']
+        for row in range(2, ws.max_row + 1):
+            # Fator e Fator acumulado.
+            if ws.max_column >= 8:
+                ws.cell(row=row, column=8).number_format = number_fmt
+            if ws.max_column >= 9:
+                ws.cell(row=row, column=9).number_format = number_fmt
 
 
 def gerar_arquivo_coleta_excel(dados_admissibilidade):
@@ -122,6 +212,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         for c in ciclos
     ])
 
+    # Aba financeira simplificada: somente o que o fiscal precisa preencher.
     linhas_financeiro = []
     for c in ciclos:
         for competencia in _competencias_mensais(c.get('periodo_inicio'), c.get('periodo_fim')):
@@ -129,34 +220,29 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
                 'Ciclo': c.get('ciclo', ''),
                 'Competência': competencia,
                 'Valor pago/faturado': None,
-                'Glosa': None,
-                'Desconto': None,
-                'Multa': None,
-                'Valor líquido pago': None,
-                'Observação': '',
             })
     df_financeiro = pd.DataFrame(linhas_financeiro, columns=[
-        'Ciclo', 'Competência', 'Valor pago/faturado', 'Glosa', 'Desconto', 'Multa', 'Valor líquido pago', 'Observação'
+        'Ciclo', 'Competência', 'Valor pago/faturado'
     ])
 
+    # Aba de remanescentes simplificada. A linha 1 recebe a data-base de referência de cada ciclo.
     colunas_remanescentes = [f"Remanescente início {c.get('ciclo', '')}" for c in ciclos]
-    df_itens = pd.DataFrame(columns=[
-        'Item', 'Descrição', 'Unidade', 'Quantidade contratada', 'Valor unitário original',
+    colunas_itens = [
+        'Item', 'Quantidade contratada', 'Valor unitário original', 'Valor total',
         *colunas_remanescentes, 'Remanescente atual'
-    ])
-
-    colunas_consumo = ['Item', 'Consumido C0'] + [f"Consumido {c.get('ciclo', '')}" for c in ciclos] + ['Remanescente final']
-    df_consumo = pd.DataFrame(columns=colunas_consumo)
+    ]
+    linhas_itens = [{col: None for col in colunas_itens} for _ in range(30)]
+    df_itens = pd.DataFrame(linhas_itens, columns=colunas_itens)
 
     output = BytesIO()
     with pd.ExcelWriter(output, engine='openpyxl') as writer:
         parametros.to_excel(writer, sheet_name='PARAMETROS_REAJUSTE', index=False)
         df_ciclos.to_excel(writer, sheet_name='CICLOS', index=False)
         df_financeiro.to_excel(writer, sheet_name='FINANCEIRO_MENSAL', index=False)
-        df_itens.to_excel(writer, sheet_name='ITENS_REMANESCENTES', index=False)
-        df_consumo.to_excel(writer, sheet_name='CONSUMO_POR_CICLO', index=False)
+        df_itens.to_excel(writer, sheet_name='ITENS_REMANESCENTES', index=False, startrow=1)
+        _aplicar_estilos_coleta(writer, ciclos)
         _ajustar_larguras(writer, [
-            'PARAMETROS_REAJUSTE', 'CICLOS', 'FINANCEIRO_MENSAL', 'ITENS_REMANESCENTES', 'CONSUMO_POR_CICLO'
+            'PARAMETROS_REAJUSTE', 'CICLOS', 'FINANCEIRO_MENSAL', 'ITENS_REMANESCENTES'
         ])
     output.seek(0)
     return output
