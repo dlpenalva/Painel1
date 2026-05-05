@@ -7,7 +7,7 @@ import pandas as pd
 import streamlit as st
 
 
-st.set_page_config(page_title="Valor Global do Contrato", layout="wide")
+st.set_page_config(page_title="Análises de Reajustes - Valor Global", layout="wide")
 
 
 # ============================================================
@@ -402,7 +402,7 @@ def ler_itens(bytes_arquivo, xls):
     if not aba:
         raise ValueError("Aba ITENS_REMANESCENTES não encontrada.")
 
-    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item"])
+    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item", "Quantidade contratada", "Valor unitário original"])
     if df.empty:
         raise ValueError("Aba ITENS_REMANESCENTES está vazia.")
 
@@ -450,103 +450,98 @@ def ler_itens(bytes_arquivo, xls):
 
 
 
-def _parse_data_qualquer(valor):
-    try:
-        if pd.isna(valor) or str(valor).strip() == "":
-            return None
-        return pd.to_datetime(valor, dayfirst=True, errors="coerce")
-    except Exception:
-        return None
-
-
 def inferir_ciclo_por_data_aditivo(data_aditivo, ciclos):
-    """Retorna o último ciclo cuja Data-base seja menor ou igual à data do aditivo."""
-    data = _parse_data_qualquer(data_aditivo)
-    if data is None or pd.isna(data) or ciclos is None or ciclos.empty:
+    """Infere o ciclo do aditivo pela data: último ciclo com Data-base <= data do aditivo."""
+    try:
+        data = pd.to_datetime(data_aditivo, dayfirst=True)
+    except Exception:
+        return ""
+    if ciclos is None or ciclos.empty or "Data-base" not in ciclos.columns:
         return ""
     candidatos = []
     for _, row in ciclos.iterrows():
-        base = _parse_data_qualquer(row.get("Data-base", ""))
-        if base is not None and not pd.isna(base) and base <= data:
-            candidatos.append((base, row.get("Ciclo", "")))
+        try:
+            data_base = pd.to_datetime(row.get("Data-base"), dayfirst=True)
+            ciclo = normalizar_ciclo(row.get("Ciclo"))
+            if ciclo and data_base <= data:
+                candidatos.append((data_base, ciclo))
+        except Exception:
+            pass
     if not candidatos:
         return ""
     candidatos.sort(key=lambda x: x[0])
-    return normalizar_ciclo(candidatos[-1][1])
+    return candidatos[-1][1]
 
 
-def ler_aditivos_quantitativos(bytes_arquivo, xls, ciclos):
+def ler_aditivos(bytes_arquivo, xls, ciclos):
     aba = localizar_aba(xls, ["ADITIVOS_QUANTITATIVOS", "ADITIVOS", "Aditivos Quantitativos"])
     if not aba:
-        return pd.DataFrame(), 0.0
+        return pd.DataFrame()
 
     try:
         df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item"])
     except Exception:
-        return pd.DataFrame(), 0.0
-
+        return pd.DataFrame()
     if df.empty:
-        return pd.DataFrame(), 0.0
+        return pd.DataFrame()
 
-    col_item = localizar_coluna(df, ["Item", "Número do item", "Numero do item"])
+    col_item = localizar_coluna(df, ["Item"])
     col_data = localizar_coluna(df, ["Data do aditivo", "Data"])
     col_ciclo = localizar_coluna(df, ["Ciclo/Marco", "Ciclo", "Marco"])
-    col_tipo = localizar_coluna(df, ["Tipo de alteração", "Tipo", "Acréscimo/Supressão", "Acrescimo Supressao"])
-    col_desc = localizar_coluna(df, ["Descrição do item/alteração", "Descrição", "Descricao"])
+    col_tipo = localizar_coluna(df, ["Tipo de alteração", "Tipo", "Acréscimo/Supressão"])
     col_qtd = localizar_coluna(df, ["Quantidade acrescida/suprimida", "Quantidade", "Qtd"])
-    col_vu = localizar_coluna(df, ["Valor unitário original", "Valor unitario original", "VU", "Valor unitário"])
-    col_valor_original = localizar_coluna(df, ["Valor original da alteração", "Valor original do acréscimo", "Valor original do acrescimo", "Valor original"])
-    col_aplicar = localizar_coluna(df, ["Aplicar reajuste acumulado? (Sim/Não)", "Aplicar reajuste", "Aplicar"])
+    col_vu = localizar_coluna(df, ["Valor unitário original", "VU", "Valor Unitario"])
+    col_valor_original = localizar_coluna(df, ["Valor original da alteração", "Valor original", "Valor original do acréscimo"])
+    col_aplicar = localizar_coluna(df, ["Aplicar reajuste acumulado? (Sim/Não)", "Aplicar reajuste acumulado", "Aplicar reajuste"])
     col_fator = localizar_coluna(df, ["Fator acumulado aplicável", "Fator acumulado", "Fator"])
-    col_valor_atualizado = localizar_coluna(df, ["Valor atualizado da alteração", "Valor atualizado do acréscimo", "Valor atualizado"])
 
     fatores = mapa_fatores(ciclos)
     linhas = []
     for _, row in df.iterrows():
-        item = row.get(col_item, "") if col_item else ""
+        item = row.get(col_item) if col_item else None
+        data = row.get(col_data) if col_data else None
+        # Ignora linhas totalmente vazias e linha TOTAL.
         if str(item).strip().upper() == "TOTAL":
             continue
-        data_aditivo = row.get(col_data, "") if col_data else ""
-        ciclo = normalizar_ciclo(row.get(col_ciclo, "")) if col_ciclo else ""
-        if not ciclo:
-            ciclo = inferir_ciclo_por_data_aditivo(data_aditivo, ciclos)
-        tipo = str(row.get(col_tipo, "Acréscimo") if col_tipo else "Acréscimo").strip() or "Acréscimo"
-        desc = row.get(col_desc, "") if col_desc else ""
-        qtd = numero_br(row.get(col_qtd, 0)) if col_qtd else 0.0
-        vu = numero_br(row.get(col_vu, 0)) if col_vu else 0.0
-        valor_original = numero_br(row.get(col_valor_original, 0)) if col_valor_original else 0.0
-        if valor_original == 0 and (qtd != 0 or vu != 0):
-            valor_original = qtd * vu
-        # Se o usuário indicou supressão, considera o valor como negativo, ainda que digitado positivo.
-        if "supress" in normalizar_texto(tipo) and valor_original > 0:
-            valor_original = -abs(valor_original)
-        aplicar_txt = str(row.get(col_aplicar, "Sim") if col_aplicar else "Sim").strip().lower()
-        aplicar = aplicar_txt not in ["não", "nao", "n", "no", "false", "0"]
-        fator_informado = fator_de_valor(row.get(col_fator, None) if col_fator else None)
-        if fator_informado == 1.0 and ciclo:
-            fator_informado = fatores.get(ciclo, {}).get("fator_acumulado_efetivo", fatores.get(ciclo, {}).get("fator_acumulado", 1.0))
-        valor_atualizado = numero_br(row.get(col_valor_atualizado, 0)) if col_valor_atualizado else 0.0
-        if valor_atualizado == 0:
-            valor_atualizado = valor_original * fator_informado if aplicar else valor_original
-        if not any([str(item).strip(), str(data_aditivo).strip(), str(desc).strip()]) and valor_original == 0 and valor_atualizado == 0:
+        if (item is None or pd.isna(item) or str(item).strip() == "") and (data is None or pd.isna(data) or str(data).strip() == ""):
             continue
+
+        ciclo = normalizar_ciclo(row.get(col_ciclo)) if col_ciclo else ""
+        if not ciclo:
+            ciclo = inferir_ciclo_por_data_aditivo(data, ciclos)
+        tipo = str(row.get(col_tipo, "Acréscimo") if col_tipo else "Acréscimo")
+        sinal = -1.0 if "supress" in normalizar_texto(tipo) else 1.0
+
+        qtd = numero_br(row.get(col_qtd)) if col_qtd else 0.0
+        vu = numero_br(row.get(col_vu)) if col_vu else 0.0
+        valor_original = numero_br(row.get(col_valor_original)) if col_valor_original else 0.0
+        if valor_original == 0 and qtd and vu:
+            valor_original = qtd * vu
+
+        aplicar = str(row.get(col_aplicar, "Sim") if col_aplicar else "Sim").strip().lower()
+        aplicar_reajuste = aplicar not in ("não", "nao", "n", "false", "0")
+        fator = numero_br(row.get(col_fator)) if col_fator else 0.0
+        if fator <= 0:
+            fator = fatores.get(ciclo, {}).get("fator_acumulado_efetivo", fatores.get(ciclo, {}).get("fator_acumulado", 1.0))
+        if fator <= 0:
+            fator = 1.0
+
+        valor_atualizado = sinal * (valor_original * fator if aplicar_reajuste else valor_original)
         linhas.append({
             "Item": item,
-            "Data do aditivo": data_aditivo,
+            "Data do aditivo": data,
             "Ciclo/Marco": ciclo,
             "Tipo de alteração": tipo,
-            "Descrição do item/alteração": desc,
-            "Quantidade acrescida/suprimida": qtd,
+            "Quantidade": qtd,
             "Valor unitário original": vu,
-            "Valor original da alteração": valor_original,
-            "Aplicar reajuste acumulado?": "Sim" if aplicar else "Não",
-            "Fator acumulado aplicável": fator_informado,
+            "Valor original da alteração": sinal * valor_original,
+            "Aplicar reajuste": "Sim" if aplicar_reajuste else "Não",
+            "Fator acumulado aplicável": fator,
             "Valor atualizado da alteração": valor_atualizado,
         })
 
-    df_aditivos = pd.DataFrame(linhas)
-    total = float(df_aditivos["Valor atualizado da alteração"].sum()) if not df_aditivos.empty else 0.0
-    return df_aditivos, total
+    return pd.DataFrame(linhas)
+
 
 # ============================================================
 # Cálculos
@@ -788,7 +783,7 @@ def processar_arquivo_coleta(bytes_arquivo):
             "Fator ciclo efetivo": fator,
         }])
 
-    df_aditivos_quantitativos, aditivos_quantitativos_atualizados = ler_aditivos_quantitativos(bytes_arquivo, xls, ciclos)
+    aditivos = ler_aditivos(bytes_arquivo, xls, ciclos)
 
     df_fin_por_ciclo = calcular_financeiro_por_ciclo(financeiro, ciclos)
     df_rem, ciclo_ultimo_rem = calcular_remanescentes(itens, colunas_remanescentes, ciclos)
@@ -816,8 +811,8 @@ def processar_arquivo_coleta(bytes_arquivo):
         valor_consumido_estoque = max(valor_original_contrato - remanescente_original, 0.0)
 
     valor_global_estoque = valor_consumido_estoque + remanescente_reajustado
-    valor_global_contrato = valor_global_estoque
-    valor_global_contrato_com_aditivos = valor_global_contrato + aditivos_quantitativos_atualizados
+    total_aditivos_atualizados = float(aditivos["Valor atualizado da alteração"].sum()) if not aditivos.empty and "Valor atualizado da alteração" in aditivos.columns else 0.0
+    valor_global_contrato_com_aditivos = valor_global_estoque + total_aditivos_atualizados
     diferenca_metodos = valor_global_estoque - valor_global_financeiro
     percentual_divergencia = (diferenca_metodos / valor_global_financeiro) if valor_global_financeiro else 0.0
 
@@ -855,10 +850,10 @@ def processar_arquivo_coleta(bytes_arquivo):
         "valor_global_financeiro": valor_global_financeiro,
         "valor_consumido_estoque": valor_consumido_estoque,
         "valor_global_estoque": valor_global_estoque,
-        "valor_global_contrato": valor_global_contrato,
-        "aditivos_quantitativos_atualizados": aditivos_quantitativos_atualizados,
+        "valor_global_contrato": valor_global_estoque,
+        "total_aditivos_atualizados": total_aditivos_atualizados,
         "valor_global_contrato_com_aditivos": valor_global_contrato_com_aditivos,
-        "df_aditivos_quantitativos": df_aditivos_quantitativos,
+        "df_aditivos_processados": aditivos,
         "diferenca_metodos": diferenca_metodos,
         "percentual_divergencia": percentual_divergencia,
         "ciclo_ultimo_remanescente": ciclo_ultimo_rem,
@@ -921,7 +916,7 @@ st.subheader("Carregar Arquivo de Coleta")
 arquivo = st.file_uploader("Carregue aqui o Arquivo de Coleta preenchido (.xlsx)", type=["xlsx"])
 
 if arquivo is not None:
-    if st.button("Processar Coleta Preenchida", type="primary"):
+    if st.button("Processar Coleta Preenchida", type="primary", use_container_width=False):
         try:
             resultado = processar_arquivo_coleta(arquivo.getvalue())
             st.session_state["resultado_valor_global"] = resultado
@@ -952,11 +947,15 @@ if resultado:
     col10.metric("Divergência", percentual(resultado["percentual_divergencia"]))
     col11.metric("Fator acumulado", fator_fmt(resultado["fator_acumulado"]))
 
+    col12, col13 = st.columns(2)
+    col12.metric("Aditivos quantitativos atualizados", moeda(resultado.get("total_aditivos_atualizados", 0.0)))
+    col13.metric("Valor Global Contrato com aditivos", moeda(resultado.get("valor_global_contrato_com_aditivos", resultado.get("valor_global_estoque", 0.0))))
+
     tab1, tab2, tab3, tab4 = st.tabs([
         "Visão Financeira",
         "Itens e Remanescentes",
         "Comparativo Executivo",
-        "Dados Processados",
+        "Conferência Técnica",
     ])
 
     with tab1:
@@ -1027,10 +1026,15 @@ if resultado:
             )
             st.dataframe(df_ciclos_vis, use_container_width=True, hide_index=True)
 
-        st.markdown("### Estrutura consolidada disponível para o Relatório Global")
-        st.code(
-            "st.session_state['resultado_valor_global'] foi atualizado com os resultados processados.",
-            language="python",
-        )
+        st.markdown("### Conferência técnica dos dados processados")
+        st.info("Arquivo processado com sucesso. Os dados consolidados já estão disponíveis para o Relatório Global.")
+        if not resultado.get("df_aditivos_processados", pd.DataFrame()).empty:
+            st.markdown("### Aditivos quantitativos processados")
+            df_ad = formatar_dataframe_moeda(
+                resultado["df_aditivos_processados"],
+                colunas_moeda=["Valor unitário original", "Valor original da alteração", "Valor atualizado da alteração"],
+                colunas_fator=["Fator acumulado aplicável"],
+            )
+            st.dataframe(df_ad, use_container_width=True, hide_index=True)
 else:
     st.info("Carregue e processe o Arquivo de Coleta para visualizar o Valor Global do contrato.")
