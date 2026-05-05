@@ -28,11 +28,24 @@ def get_ist_local(data_inicio, data_fim):
     try:
         df = pd.read_csv('ist.csv', sep=';', decimal=',', encoding='utf-8-sig')
         df.columns = [str(col).strip().lower() for col in df.columns]
-        df['data'] = pd.to_datetime(df['data'], dayfirst=True)
-        r_ini = (data_inicio - relativedelta(months=1)).replace(day=1)
-        r_fim = data_fim.replace(day=1)
-        v_ini = df[df['data'].dt.to_period('M') == r_ini.strftime('%Y-%m')]['indice'].values[0]
-        v_fim = df[df['data'].dt.to_period('M') == r_fim.strftime('%Y-%m')]['indice'].values[0]
+        df['data'] = pd.to_datetime(df['data'], dayfirst=True, errors='coerce').dt.normalize()
+        df = df.dropna(subset=['data'])
+
+        # IST por número-índice: mês-base do ciclo versus o mesmo mês 12 meses depois.
+        # Exemplo: data-base 10/2023 => out/2023 a out/2024.
+        r_ini = pd.Timestamp(data_inicio.year, data_inicio.month, 1).normalize()
+        marco_final = data_inicio + relativedelta(years=1)
+        r_fim = pd.Timestamp(marco_final.year, marco_final.month, 1).normalize()
+
+        v_ini_rows = df[df['data'] == r_ini]
+        v_fim_rows = df[df['data'] == r_fim]
+
+        if v_ini_rows.empty or v_fim_rows.empty:
+            return None
+
+        v_ini = float(v_ini_rows['indice'].iloc[0])
+        v_fim = float(v_fim_rows['indice'].iloc[0])
+
         return {
             'variacao': (v_fim / v_ini) - 1,
             'i_ini': v_ini,
@@ -43,6 +56,21 @@ def get_ist_local(data_inicio, data_fim):
         }
     except Exception:
         return None
+
+
+def _render_equacao_ist(i_ini, i_fim, variacao):
+    equacao_html = f"""
+    <div style=\"background:#F4F6F8;border:1px solid #E1E6EB;border-radius:10px;padding:14px 18px;margin-top:10px;\">
+        <div style=\"font-family:Consolas, Monaco, monospace;font-size:1.15rem;line-height:1.8;color:#334155;\">
+            <span style=\"color:#0F766E;\">({i_fim:.3f}</span>
+            <span style=\"color:#94A3B8;\"> / </span>
+            <span style=\"color:#0F766E;\">{i_ini:.3f}</span>
+            <span style=\"color:#94A3B8;\">) - 1 = </span>
+            <span style=\"color:#B45309;font-weight:600;\">{variacao*100:.4f}%</span>
+        </div>
+    </div>
+    """
+    st.markdown(equacao_html, unsafe_allow_html=True)
 
 
 def _formatar_data(valor):
@@ -308,7 +336,7 @@ if res:
     with st.expander("🔍 Memória de Cálculo Detalhada"):
         st.write(f"**Metodologia:** {res['metodo']}")
         if "IST" in tipo_idx:
-            st.code(f"({res['i_fim']} / {res['i_ini']}) - 1 = {res['variacao']*100:.4f}%")
+            _render_equacao_ist(float(res['i_ini']), float(res['i_fim']), float(res['variacao']))
         else:
             st.dataframe(res['dados'])
 

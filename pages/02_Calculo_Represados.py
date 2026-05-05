@@ -11,37 +11,35 @@ st.set_page_config(page_title="Cálculo de Represados", layout="wide")
 def get_data_rep(serie, d_ini, d_fim, is_ist):
     try:
         if is_ist:
-            # Correção emergencial: leitura e tratamento robusto do IST
             df = pd.read_csv('ist.csv', sep=';', decimal=',', encoding='utf-8-sig')
             df.columns = [str(col).strip().lower() for col in df.columns]
             df['data'] = pd.to_datetime(df['data'], dayfirst=True, errors='coerce').dt.normalize()
             df = df.dropna(subset=['data']).copy()
-            
-            # Lógica de janela do IST (Mês 0 + 11 meses).
-            # Importante: o st.date_input retorna datetime.date, enquanto a coluna do pandas
-            # fica como datetime64[ns]. A conversão abaixo evita o erro:
-            # "Invalid comparison between dtype=datetime64[ns] and date".
-            r_ini = pd.Timestamp((d_ini - relativedelta(months=1)).replace(day=1)).normalize()
-            r_fim = pd.Timestamp(d_fim.replace(day=1)).normalize()
-            
-            # Filtro da série para a memória de cálculo
-            df_detalhado = df[(df['data'] >= r_ini) & (df['data'] <= r_fim)].copy()
-            
-            # Extração dos valores específicos para a fórmula (índice final / índice inicial) - 1
-            v_ini_rows = df[df['data'].dt.to_period('M') == r_ini.strftime('%Y-%m')]
-            v_fim_rows = df[df['data'].dt.to_period('M') == r_fim.strftime('%Y-%m')]
-            
+
+            # IST por número-índice: mês-base do ciclo versus o mesmo mês 12 meses depois.
+            # Exemplo: data-base 10/2023 => out/2023 a out/2024.
+            r_ini = pd.Timestamp(d_ini.year, d_ini.month, 1).normalize()
+            marco_final = d_ini + relativedelta(years=1)
+            r_fim = pd.Timestamp(marco_final.year, marco_final.month, 1).normalize()
+
+            v_ini_rows = df[df['data'] == r_ini]
+            v_fim_rows = df[df['data'] == r_fim]
+
             if v_ini_rows.empty or v_fim_rows.empty:
                 st.error(f"Dados do IST não encontrados para o período {r_ini.strftime('%m/%Y')} ou {r_fim.strftime('%m/%Y')}")
                 return None
-                
-            v_ini = v_ini_rows['indice'].values[0]
-            v_fim = v_fim_rows['indice'].values[0]
-            
+
+            v_ini = float(v_ini_rows['indice'].iloc[0])
+            v_fim = float(v_fim_rows['indice'].iloc[0])
+
             return {
-                'var': (v_fim/v_ini)-1, 'i_ini': v_ini, 'i_fim': v_fim, 
-                'p_ini': r_ini, 'p_fim': r_fim, 'metodo': "Divisão de Número-Índice (IST)",
-                'dados': df_detalhado[['data', 'indice']]
+                'var': (v_fim / v_ini) - 1,
+                'i_ini': v_ini,
+                'i_fim': v_fim,
+                'p_ini': r_ini,
+                'p_fim': r_fim,
+                'metodo': "Divisão de Número-Índice (IST)",
+                'dados': pd.DataFrame({'data': [r_ini, r_fim], 'indice': [v_ini, v_fim]})
             }
         else:
             # Manutenção da lógica do IPCA/IGP-M via SGS/BCB
@@ -51,15 +49,30 @@ def get_data_rep(serie, d_ini, d_fim, is_ist):
             df_t['v'] = df_t['valor'].astype(float) / 100
             df_t['data'] = pd.to_datetime(df_t['data'], dayfirst=True)
             return {
-                'var': (1 + df_t['v']).prod() - 1, 
-                'metodo': "Produtório de taxas mensais (SGS/BCB)", 
-                'p_ini': d_ini, 'p_fim': d_fim,
+                'var': (1 + df_t['v']).prod() - 1,
+                'metodo': "Produtório de taxas mensais (SGS/BCB)",
+                'p_ini': d_ini,
+                'p_fim': d_fim,
                 'dados': df_t[['data', 'valor']]
             }
     except Exception as e:
-        # Exibe o erro técnico para facilitar o diagnóstico em caso de falha no CSV ou API
         st.error(f"Erro técnico na coleta de dados: {str(e)}")
         return None
+
+
+def _render_equacao_ist(res_c):
+    equacao_html = f"""
+    <div style=\"background:#F4F6F8;border:1px solid #E1E6EB;border-radius:10px;padding:14px 18px;margin-top:10px;\">
+        <div style=\"font-family:Consolas, Monaco, monospace;font-size:1.15rem;line-height:1.8;color:#334155;\">
+            <span style=\"color:#0F766E;\">({res_c['i_fim']:.3f}</span>
+            <span style=\"color:#94A3B8;\"> / </span>
+            <span style=\"color:#0F766E;\">{res_c['i_ini']:.3f}</span>
+            <span style=\"color:#94A3B8;\">) - 1 = </span>
+            <span style=\"color:#B45309;font-weight:600;\">{res_c['var']*100:.4f}%</span>
+        </div>
+    </div>
+    """
+    st.markdown(equacao_html, unsafe_allow_html=True)
 
 
 def _formatar_data(valor):
@@ -265,6 +278,32 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             # Total quantitativo simples para conferência.
             wb_sheet.write_formula(total_row, col, f"=SUM({col_letter}3:{col_letter}{end_row+1})", fmt_number_input)
 
+        # Aba ADITIVOS_QUANTITATIVOS
+        ws_ad = workbook.add_worksheet("ADITIVOS_QUANTITATIVOS")
+        writer.sheets["ADITIVOS_QUANTITATIVOS"] = ws_ad
+        ad_headers = [
+            "Descrição do aditivo",
+            "Data do aditivo",
+            "Ciclo/Marco",
+            "Valor original do acréscimo",
+            "Aplicar reajuste acumulado? (Sim/Não)",
+            "Observação",
+        ]
+        for col, title in enumerate(ad_headers):
+            ws_ad.write(0, col, title, fmt_header)
+        ws_ad.set_column("A:A", 26)
+        ws_ad.set_column("B:C", 16)
+        ws_ad.set_column("D:D", 24)
+        ws_ad.set_column("E:E", 32)
+        ws_ad.set_column("F:F", 28)
+        for row in range(1, 11):
+            ws_ad.write(row, 0, "", fmt_text)
+            ws_ad.write(row, 1, "", fmt_text)
+            ws_ad.write(row, 2, "", fmt_text)
+            ws_ad.write(row, 3, "", fmt_money_input)
+            ws_ad.write(row, 4, "Sim", fmt_input)
+            ws_ad.write(row, 5, "", fmt_text)
+
     output.seek(0)
     return output.getvalue()
 
@@ -403,12 +442,16 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
 
         if res_c:
             fator_ciclo = 1 + res_c['var']
-            fator_acum *= fator_ciclo
+            # Ciclos preclusos podem ter a variação apurada para registro, mas não compõem o acumulado final.
+            if situacao_limpa != "PRECLUSO":
+                fator_acum *= fator_ciclo
             v_fmt = f"{res_c['var'] * 100:,.2f}%".replace('.', ',')
             v_acum_parcial = f"{(fator_acum - 1) * 100:,.2f}%".replace('.', ',')
             ciclo_calculado = True
 
             st.markdown(f"- Variação do Ciclo: **{v_fmt}**")
+            if situacao_limpa == "PRECLUSO":
+                st.caption("Variação apurada apenas para registro, sem composição no acumulado final.")
 
             with st.expander(f"🔍 Memória de Cálculo Detalhada - Ciclo {i}"):
                 st.write(f"**Metodologia:** {res_c['metodo']}")
@@ -423,9 +466,7 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
                         f"**Competência final:** {res_c['p_fim'].strftime('%m/%Y')} | "
                         f"**Índice final:** {res_c['i_fim']}"
                     )
-                    st.code(
-                        f"({res_c['i_fim']} / {res_c['i_ini']}) - 1 = {res_c['var'] * 100:.4f}%"
-                    )
+                    _render_equacao_ist(res_c)
                 else:
                     st.dataframe(res_c['dados'], use_container_width=True)
                     st.write("Fórmula: Produtório de (1 + taxa_mensal/100) - 1")
