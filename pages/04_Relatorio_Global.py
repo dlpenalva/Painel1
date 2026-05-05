@@ -41,6 +41,16 @@ def normalizar_status(status):
     return texto or "NÃO INFORMADO"
 
 
+def contem_ciclo_ja_concedido(res):
+    df = res.get("df_financeiro_por_ciclo") if isinstance(res, dict) else None
+    if isinstance(df, pd.DataFrame) and "Tratamento financeiro do ciclo" in df.columns:
+        return df["Tratamento financeiro do ciclo"].astype(str).str.contains("conced", case=False, na=False).any()
+    df_ciclos = res.get("df_ciclos") if isinstance(res, dict) else None
+    if isinstance(df_ciclos, pd.DataFrame) and "Tratamento financeiro do ciclo" in df_ciclos.columns:
+        return df_ciclos["Tratamento financeiro do ciclo"].astype(str).str.contains("conced", case=False, na=False).any()
+    return False
+
+
 def df_visual(df, moeda_cols=None, pct_cols=None):
     if df is None or not isinstance(df, pd.DataFrame):
         return pd.DataFrame()
@@ -125,6 +135,8 @@ Percentual acumulado aplicado: {percentual(res.get('percentual_acumulado', 0))}
 3. Regra de efeito financeiro
 
 A apuração financeira considerou que os efeitos financeiros do reajuste são reconhecidos a partir da data da solicitação da contratada, quando atendidos os requisitos contratuais. Assim, competências anteriores ao mês do pedido não foram consideradas para fins de retroativo, ainda que integrem o ciclo teórico de reajuste.
+
+Ciclos eventualmente marcados como “Já concedido” foram considerados na composição histórica do Valor Global Contrato, mas não integraram a apuração de retroativo a pagar.
 
 4. Resultado financeiro consolidado
 
@@ -261,14 +273,14 @@ def criar_pdf_relatorio(adm, res):
     story.append(Paragraph("4. Ciclos, Percentuais e Efeitos Financeiros", styles["Subtitulo"]))
     story.append(tabela_dataframe_pdf(
         res.get("df_ciclos"),
-        colunas=["Ciclo", "Mês início do ciclo", "Data do pedido", "Mês início efeito financeiro", "Situação", "Percentual do ciclo", "Percentual acumulado"],
+        colunas=["Ciclo", "Mês início do ciclo", "Data do pedido", "Mês início efeito financeiro", "Situação", "Tratamento financeiro do ciclo", "Percentual do ciclo", "Percentual acumulado"],
         max_linhas=12,
     ))
 
     story.append(Paragraph("5. Apuração de Retroativos", styles["Subtitulo"]))
     story.append(tabela_dataframe_pdf(
         res.get("df_financeiro_por_ciclo"),
-        colunas=["Ciclo", "Meses com efeito financeiro", "Meses sem efeito financeiro", "Valor pago/faturado", "Valor executado atualizado", "Retroativo do ciclo"],
+        colunas=["Ciclo", "Tratamento financeiro do ciclo", "Meses com efeito financeiro", "Meses sem efeito financeiro", "Valor pago/faturado", "Valor executado atualizado", "Retroativo do ciclo"],
         max_linhas=15,
     ))
 
@@ -340,6 +352,11 @@ tab1, tab2, tab3 = st.tabs(["Relatório Executivo", "Tabelas", "PDF"])
 with tab1:
     st.markdown("### Fundamentação contratual")
     st.info(texto_clausula_oito(adm, res))
+    if contem_ciclo_ja_concedido(res):
+        st.success(
+            "Há ciclo marcado como já concedido. Ele foi mantido na composição histórica do Valor Global Contrato, "
+            "mas não gerou retroativo a pagar."
+        )
 
     st.markdown("### Informações para instrução processual")
     texto_instrucao = gerar_texto_instrucao(adm, res)

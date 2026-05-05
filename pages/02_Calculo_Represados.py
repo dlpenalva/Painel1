@@ -138,6 +138,16 @@ def _aplicar_estilos_coleta(writer, ciclos):
         ws['C1'].font = header_font
         ws['C1'].fill = header_fill
 
+        # Linha de total para conferência do fiscal. O módulo Valor Global ignora linhas TOTAL na leitura.
+        total_row = ws.max_row + 1
+        ws.cell(row=total_row, column=2).value = 'TOTAL'
+        ws.cell(row=total_row, column=2).font = Font(bold=True)
+        ws.cell(row=total_row, column=2).fill = light_fill
+        ws.cell(row=total_row, column=3).value = f'=SUM(C2:C{total_row - 1})'
+        ws.cell(row=total_row, column=3).number_format = money_fmt
+        ws.cell(row=total_row, column=3).font = Font(bold=True)
+        ws.cell(row=total_row, column=3).fill = light_fill
+
     if 'ITENS_REMANESCENTES' in writer.book.sheetnames:
         ws = writer.book['ITENS_REMANESCENTES']
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
@@ -168,14 +178,39 @@ def _aplicar_estilos_coleta(writer, ciclos):
                     ws.cell(row=row, column=col).alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
             ws.column_dimensions[letra].width = 24
 
+        # Linha de total de referência para o valor original dos itens.
+        total_row = ws.max_row + 1
+        ws.cell(row=total_row, column=1).value = 'TOTAL'
+        ws.cell(row=total_row, column=1).font = Font(bold=True)
+        ws.cell(row=total_row, column=1).fill = light_fill
+        ws.cell(row=total_row, column=4).value = f'=SUM(D3:D{total_row - 1})'
+        ws.cell(row=total_row, column=4).number_format = money_fmt
+        ws.cell(row=total_row, column=4).font = Font(bold=True)
+        ws.cell(row=total_row, column=4).fill = light_fill
+
     if 'CICLOS' in writer.book.sheetnames:
+        from openpyxl.worksheet.datavalidation import DataValidation
         ws = writer.book['CICLOS']
+        headers = [str(cell.value).strip() if cell.value is not None else '' for cell in ws[1]]
         for row in range(2, ws.max_row + 1):
-            # Fator e Fator acumulado.
-            if ws.max_column >= 8:
-                ws.cell(row=row, column=8).number_format = number_fmt
-            if ws.max_column >= 9:
-                ws.cell(row=row, column=9).number_format = number_fmt
+            for idx_header, nome_header in enumerate(headers, start=1):
+                if nome_header in ('Fator', 'Fator acumulado'):
+                    ws.cell(row=row, column=idx_header).number_format = number_fmt
+            if 'Tratamento financeiro do ciclo' in headers:
+                col_trat = headers.index('Tratamento financeiro do ciclo') + 1
+                ws.cell(row=row, column=col_trat).fill = input_fill
+                ws.cell(row=row, column=col_trat).alignment = Alignment(horizontal='center', vertical='center')
+        if 'Tratamento financeiro do ciclo' in headers:
+            col_trat = headers.index('Tratamento financeiro do ciclo') + 1
+            letra_trat = get_column_letter(col_trat)
+            dv = DataValidation(
+                type='list',
+                formula1='"A apurar,Já concedido,Precluso,Sem efeito financeiro"',
+                allow_blank=False,
+            )
+            ws.add_data_validation(dv)
+            dv.add(f'{letra_trat}2:{letra_trat}{ws.max_row}')
+            ws.column_dimensions[letra_trat].width = 28
 
     if 'ADITIVOS_QUANTITATIVOS' in writer.book.sheetnames:
         ws = writer.book['ADITIVOS_QUANTITATIVOS']
@@ -210,6 +245,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             'Variação': c.get('variacao_formatada', ''),
             'Fator': round(float(c.get('fator', 1.0)), 4),
             'Fator acumulado': round(float(c.get('fator_acumulado', 1.0)), 4),
+            'Tratamento financeiro do ciclo': c.get('tratamento_financeiro', 'A apurar'),
         }
         for c in ciclos
     ])
@@ -398,6 +434,7 @@ for i in range(1, int(qtd_ciclos) + 1):
         'janela_admissibilidade': janela_adm,
         'data_pedido': dt_ped.strftime('%d/%m/%Y'),
         'situacao': sit_emoji,
+        'tratamento_financeiro': 'A apurar',
         'variacao': float(res_c['var']) if res_c else 0.0,
         'variacao_formatada': v_fmt,
         'fator': float(fator_ciclo),

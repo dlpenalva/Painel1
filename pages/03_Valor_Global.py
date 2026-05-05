@@ -135,6 +135,36 @@ def situacao_bloqueia_reajuste(situacao):
     return False
 
 
+def normalizar_tratamento_financeiro(valor, situacao=""):
+    # Classifica o tratamento financeiro do ciclo para fins de retroativo.
+    texto = normalizar_texto(valor)
+    sit = normalizar_texto(situacao)
+    if not texto:
+        if "preclus" in sit:
+            return "Precluso"
+        if "adiantado" in sit and "ressalva" not in sit:
+            return "Sem efeito financeiro"
+        return "A apurar"
+    if "conced" in texto or "ja_conced" in texto:
+        return "Já concedido"
+    if "preclus" in texto:
+        return "Precluso"
+    if "sem" in texto and "efeito" in texto:
+        return "Sem efeito financeiro"
+    if "apurar" in texto:
+        return "A apurar"
+    return str(valor).strip() or "A apurar"
+
+
+def tratamento_bloqueia_retroativo(tratamento, situacao=""):
+    t = normalizar_texto(tratamento)
+    if "conced" in t or "preclus" in t:
+        return True
+    if "sem" in t and "efeito" in t:
+        return True
+    return situacao_bloqueia_reajuste(situacao)
+
+
 def periodo_competencia(valor):
     if pd.isna(valor):
         return None
@@ -290,6 +320,7 @@ def padronizar_ciclos(df):
     col_fin_inicio = localizar_coluna(df, ["Início financeiro", "Inicio financeiro", "Financeiro início", "financeiro_inicio"])
     col_fin_fim = localizar_coluna(df, ["Fim financeiro", "Financeiro fim", "financeiro_fim"])
     col_situacao = localizar_coluna(df, ["Situação", "Resultado", "situacao"])
+    col_tratamento = localizar_coluna(df, ["Tratamento financeiro do ciclo", "Tratamento financeiro", "Tratamento", "Status financeiro"])
     col_variacao = localizar_coluna(df, ["Variação", "Variacao", "Percentual", "variacao"])
     col_fator = localizar_coluna(df, ["Fator", "fator"])
     col_fator_acum = localizar_coluna(df, ["Fator acumulado", "Fator acumulado final", "fator_acumulado"])
@@ -303,6 +334,7 @@ def padronizar_ciclos(df):
         if not ciclo:
             continue
         situacao = row.get(col_situacao, "") if col_situacao else ""
+        tratamento = normalizar_tratamento_financeiro(row.get(col_tratamento, "") if col_tratamento else "", situacao)
         variacao = percentual_para_decimal(row.get(col_variacao, 0)) if col_variacao else 0.0
         fator = fator_de_valor(row.get(col_fator, None) if col_fator else None, variacao=variacao)
 
@@ -314,9 +346,12 @@ def padronizar_ciclos(df):
         else:
             fator_acum_nominal = fator_acum_nominal_calculado
 
-        if situacao_bloqueia_reajuste(situacao):
+        tratamento_norm = normalizar_texto(tratamento)
+        if situacao_bloqueia_reajuste(situacao) or "preclus" in tratamento_norm or ("sem" in tratamento_norm and "efeito" in tratamento_norm):
             fator_efetivo = 1.0
         else:
+            # Ciclos já concedidos compõem o histórico do Valor Global Contrato,
+            # mas não geram retroativo na etapa financeira.
             fator_efetivo = fator
             fator_acum_efetivo_calculado *= fator
 
@@ -341,6 +376,7 @@ def padronizar_ciclos(df):
             "Financeiro fim": row.get(col_fin_fim, "") if col_fin_fim else "",
             "Financeiro fim período": periodo_de_data(row.get(col_fin_fim, "")) if col_fin_fim else None,
             "Situação": situacao,
+            "Tratamento financeiro do ciclo": tratamento,
             "Variação": variacao,
             "Percentual do ciclo": variacao,
             "Fator": fator,
@@ -373,8 +409,12 @@ def ler_financeiro(bytes_arquivo, xls, ciclos):
     resultado["Competência"] = df[col_comp] if col_comp else ""
     resultado["Competência período"] = resultado["Competência"].apply(periodo_competencia)
     resultado["Valor pago/faturado"] = df[col_valor].apply(numero_br)
-    # Linhas de TOTAL C0 de versões antigas do arquivo de coleta são ignoradas.
-    resultado = resultado[~resultado["Competência"].astype(str).str.upper().str.contains("TOTAL C0", na=False)].copy()
+    # Linhas de total do arquivo de coleta são apenas conferência e não integram os cálculos.
+    mascara_total = (
+        resultado["Competência"].astype(str).str.upper().str.contains("TOTAL", na=False)
+        | resultado["Ciclo"].astype(str).str.upper().str.contains("TOTAL", na=False)
+    )
+    resultado = resultado[~mascara_total].copy()
     if (resultado["Ciclo"] == "").all() and col_comp and not ciclos.empty:
         resultado["Ciclo"] = atribuir_ciclo_por_competencia(resultado["Competência"], ciclos)
     if (resultado["Ciclo"] == "").all():
@@ -465,6 +505,8 @@ def ler_itens(bytes_arquivo, xls):
     col_total = localizar_coluna(df, ["Valor total", "TOTAL C0", "Total"])
     if col_item is None or col_qtd is None or col_vu is None:
         raise ValueError("Aba ITENS_REMANESCENTES precisa conter Item, Quantidade contratada e Valor unitário original.")
+    # Linhas de total do modelo são apenas conferência e não devem ser processadas como item.
+    df = df[~df[col_item].astype(str).str.upper().str.contains("TOTAL", na=False)].copy()
     itens = pd.DataFrame()
     itens["Item"] = df[col_item]
     itens["Quantidade contratada"] = df[col_qtd].apply(numero_br)
@@ -507,6 +549,7 @@ def mapa_fatores(ciclos):
             "variacao": float(row.get("Variação", 0.0) or 0.0),
             "percentual_acumulado": float(row.get("Percentual acumulado", 0.0) or 0.0),
             "situacao": row.get("Situação", ""),
+            "tratamento_financeiro": row.get("Tratamento financeiro do ciclo", "A apurar"),
             "pedido_periodo": row.get("Pedido período"),
             "mes_inicio": row.get("Mês início do ciclo", ""),
             "mes_efeito": row.get("Mês início efeito financeiro", ""),
@@ -525,11 +568,17 @@ def aplicar_efeito_financeiro_mensal(financeiro, ciclos):
         pedido_periodo = info.get("pedido_periodo")
         fator = info.get("fator_acumulado_efetivo", 1.0)
         situacao = info.get("situacao", "")
+        tratamento = normalizar_tratamento_financeiro(info.get("tratamento_financeiro", "A apurar"), situacao)
 
-        if ciclo == "C0" or situacao_bloqueia_reajuste(situacao):
+        if ciclo == "C0" or tratamento_bloqueia_retroativo(tratamento, situacao):
             com_efeito = False if ciclo != "C0" else True
             fator_aplicado = 1.0
-            motivo = "Base C0" if ciclo == "C0" else "Ciclo sem reajuste aplicável"
+            if ciclo == "C0":
+                motivo = "Base C0"
+            elif "conced" in normalizar_texto(tratamento):
+                motivo = "Ciclo já concedido - sem retroativo a apurar"
+            else:
+                motivo = "Ciclo sem efeito financeiro para retroativo"
         elif comp_periodo is not None and pedido_periodo is not None and comp_periodo < pedido_periodo:
             com_efeito = False
             fator_aplicado = 1.0
@@ -546,6 +595,7 @@ def aplicar_efeito_financeiro_mensal(financeiro, ciclos):
             "Valor pago/faturado": valor_pago,
             "Com efeito financeiro": com_efeito,
             "Motivo": motivo,
+            "Tratamento financeiro do ciclo": tratamento,
             "Percentual acumulado aplicado": fator_aplicado - 1,
             "Valor devido reajustado": devido,
             "Retroativo": devido - valor_pago,
@@ -576,6 +626,7 @@ def calcular_financeiro_por_ciclo(df_mensal, ciclos):
             "Mês início do ciclo": info.get("mes_inicio", ""),
             "Mês início efeito financeiro": info.get("mes_efeito", ""),
             "Situação": info.get("situacao", ""),
+            "Tratamento financeiro do ciclo": normalizar_tratamento_financeiro(info.get("tratamento_financeiro", "A apurar"), info.get("situacao", "")),
             "Percentual do ciclo": info.get("variacao", 0.0),
             "Percentual acumulado aplicado": info.get("percentual_acumulado", 0.0),
             "Meses lançados": meses_total,
@@ -1000,7 +1051,7 @@ df_ciclos_vis = formatar_dataframe(
 )
 cols_ciclos = [c for c in [
     "Ciclo", "Mês início do ciclo", "Data do pedido", "Mês início efeito financeiro",
-    "Situação", "Percentual do ciclo", "Percentual acumulado"
+    "Situação", "Tratamento financeiro do ciclo", "Percentual do ciclo", "Percentual acumulado"
 ] if c in df_ciclos_vis.columns]
 st.dataframe(df_ciclos_vis[cols_ciclos], use_container_width=True, hide_index=True)
 
