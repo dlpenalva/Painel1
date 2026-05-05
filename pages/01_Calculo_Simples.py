@@ -125,16 +125,6 @@ def _aplicar_estilos_coleta(writer, ciclos):
         ws['C1'].font = header_font
         ws['C1'].fill = header_fill
 
-        # Linha de total para conferência do fiscal. O módulo Valor Global ignora linhas TOTAL na leitura.
-        total_row = ws.max_row + 1
-        ws.cell(row=total_row, column=2).value = 'TOTAL'
-        ws.cell(row=total_row, column=2).font = Font(bold=True)
-        ws.cell(row=total_row, column=2).fill = light_fill
-        ws.cell(row=total_row, column=3).value = f'=SUM(C2:C{total_row - 1})'
-        ws.cell(row=total_row, column=3).number_format = money_fmt
-        ws.cell(row=total_row, column=3).font = Font(bold=True)
-        ws.cell(row=total_row, column=3).fill = light_fill
-
     if 'ITENS_REMANESCENTES' in writer.book.sheetnames:
         ws = writer.book['ITENS_REMANESCENTES']
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
@@ -165,39 +155,14 @@ def _aplicar_estilos_coleta(writer, ciclos):
                     ws.cell(row=row, column=col).alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
             ws.column_dimensions[letra].width = 24
 
-        # Linha de total de referência para o valor original dos itens.
-        total_row = ws.max_row + 1
-        ws.cell(row=total_row, column=1).value = 'TOTAL'
-        ws.cell(row=total_row, column=1).font = Font(bold=True)
-        ws.cell(row=total_row, column=1).fill = light_fill
-        ws.cell(row=total_row, column=4).value = f'=SUM(D3:D{total_row - 1})'
-        ws.cell(row=total_row, column=4).number_format = money_fmt
-        ws.cell(row=total_row, column=4).font = Font(bold=True)
-        ws.cell(row=total_row, column=4).fill = light_fill
-
     if 'CICLOS' in writer.book.sheetnames:
-        from openpyxl.worksheet.datavalidation import DataValidation
         ws = writer.book['CICLOS']
-        headers = [str(cell.value).strip() if cell.value is not None else '' for cell in ws[1]]
         for row in range(2, ws.max_row + 1):
-            for idx_header, nome_header in enumerate(headers, start=1):
-                if nome_header in ('Fator', 'Fator acumulado'):
-                    ws.cell(row=row, column=idx_header).number_format = number_fmt
-            if 'Tratamento financeiro do ciclo' in headers:
-                col_trat = headers.index('Tratamento financeiro do ciclo') + 1
-                ws.cell(row=row, column=col_trat).fill = input_fill
-                ws.cell(row=row, column=col_trat).alignment = Alignment(horizontal='center', vertical='center')
-        if 'Tratamento financeiro do ciclo' in headers:
-            col_trat = headers.index('Tratamento financeiro do ciclo') + 1
-            letra_trat = get_column_letter(col_trat)
-            dv = DataValidation(
-                type='list',
-                formula1='"A apurar,Já concedido,Precluso,Sem efeito financeiro"',
-                allow_blank=False,
-            )
-            ws.add_data_validation(dv)
-            dv.add(f'{letra_trat}2:{letra_trat}{ws.max_row}')
-            ws.column_dimensions[letra_trat].width = 28
+            # Fator e Fator acumulado.
+            if ws.max_column >= 8:
+                ws.cell(row=row, column=8).number_format = number_fmt
+            if ws.max_column >= 9:
+                ws.cell(row=row, column=9).number_format = number_fmt
 
     if 'ADITIVOS_QUANTITATIVOS' in writer.book.sheetnames:
         ws = writer.book['ADITIVOS_QUANTITATIVOS']
@@ -232,23 +197,17 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             'Variação': c.get('variacao_formatada', ''),
             'Fator': round(float(c.get('fator', 1.0)), 4),
             'Fator acumulado': round(float(c.get('fator_acumulado', 1.0)), 4),
-            'Tratamento financeiro do ciclo': c.get('tratamento_financeiro', 'A apurar'),
         }
         for c in ciclos
     ])
 
-    # Aba financeira simplificada: competências efetivamente vinculadas ao intervalo do ciclo.
-    # A aba FINANCEIRO_MENSAL serve para o fiscal informar o valor pago/faturado
-    # nas competências do ciclo de referência. A regra de efeito financeiro
-    # continua sendo aplicada posteriormente no módulo Valor Global, com base
-    # na Data do pedido/Início financeiro.
-    #
-    # Exemplo: se o C1 possui intervalo 08/2024 a 07/2025, a aba financeira
-    # deve listar 08/2024 a 07/2025, e não o período posterior ao pedido.
+    # Aba financeira simplificada: somente competências com potencial efeito financeiro.
+    # Não há linha TOTAL C0: o executado em C0 é inferido pela diferença entre
+    # o valor original do contrato e o remanescente informado no início de C1.
     linhas_financeiro = []
     for c in ciclos:
-        inicio_financeiro = c.get('periodo_inicio') or c.get('financeiro_inicio')
-        fim_financeiro = c.get('periodo_fim') or c.get('financeiro_fim')
+        inicio_financeiro = c.get('financeiro_inicio') or c.get('periodo_inicio')
+        fim_financeiro = c.get('financeiro_fim') or c.get('periodo_fim')
         for competencia in _competencias_mensais(inicio_financeiro, fim_financeiro):
             linhas_financeiro.append({
                 'Ciclo': c.get('ciclo', ''),
@@ -306,6 +265,25 @@ with col1:
     dt_solic = st.date_input("Data do Pedido:", value=datetime(2024, 4, 9), format="DD/MM/YYYY")
 with col2:
     tipo_idx = st.selectbox("Índice:", ["IST (Série Local)", "IPCA (433)", "IGP-M (189)"])
+
+chave_analise_simples = (
+    dt_base.isoformat(),
+    dt_solic.isoformat(),
+    tipo_idx,
+)
+
+processar_simples = st.button(
+    "Processar Análise",
+    type="primary",
+    use_container_width=True,
+)
+
+if processar_simples:
+    st.session_state["processar_reajuste_simples_key"] = chave_analise_simples
+
+if st.session_state.get("processar_reajuste_simples_key") != chave_analise_simples:
+    st.info("Informe os dados e clique em **Processar Análise** para iniciar a apuração.")
+    st.stop()
 
 # Definição de datas do ciclo
 dt_fim_ap = dt_base + relativedelta(months=11)
@@ -369,7 +347,6 @@ if res:
         'janela_admissibilidade': janela_adm_str,
         'data_pedido': dt_solic.strftime('%d/%m/%Y'),
         'situacao': status_ped,
-        'tratamento_financeiro': 'A apurar',
         'variacao': float(res['variacao']),
         'variacao_formatada': v_fmt,
         'fator': float(fator_ciclo),
