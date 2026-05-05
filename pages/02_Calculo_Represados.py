@@ -436,13 +436,24 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
         ciclo_calculado = False
 
         if res_c:
-            fator_ciclo = 1 + res_c['var']
-            fator_acum *= fator_ciclo
+            fator_ciclo_calculado = 1 + res_c['var']
             v_fmt = f"{res_c['var'] * 100:,.2f}%".replace('.', ',')
-            v_acum_parcial = f"{(fator_acum - 1) * 100:,.2f}%".replace('.', ',')
-            ciclo_calculado = True
+
+            # Ciclos preclusos podem ter a variação apurada para fins de memória,
+            # mas não compõem o fator acumulado final nem geram efeito financeiro.
+            if dados_ciclo['situacao_limpa'] == "PRECLUSO":
+                fator_ciclo = 1.0
+                v_acum_parcial = f"{(fator_acum - 1) * 100:,.2f}%".replace('.', ',')
+                ciclo_calculado = False
+            else:
+                fator_ciclo = fator_ciclo_calculado
+                fator_acum *= fator_ciclo
+                v_acum_parcial = f"{(fator_acum - 1) * 100:,.2f}%".replace('.', ',')
+                ciclo_calculado = True
 
             st.markdown(f"- Variação do Ciclo: **{v_fmt}**")
+            if dados_ciclo['situacao_limpa'] == "PRECLUSO":
+                st.caption("Ciclo precluso: variação apurada apenas para registro, sem composição no acumulado final.")
 
             with st.expander(f"🔍 Memória de Cálculo Detalhada - Ciclo {i}"):
                 st.write(f"**Metodologia:** {res_c['metodo']}")
