@@ -201,13 +201,18 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         for c in ciclos
     ])
 
-    # Aba financeira simplificada: somente competências com potencial efeito financeiro.
-    # Não há linha TOTAL C0: o executado em C0 é inferido pela diferença entre
-    # o valor original do contrato e o remanescente informado no início de C1.
+    # Aba financeira simplificada: competências efetivamente vinculadas ao intervalo do ciclo.
+    # A aba FINANCEIRO_MENSAL serve para o fiscal informar o valor pago/faturado
+    # nas competências do ciclo de referência. A regra de efeito financeiro
+    # continua sendo aplicada posteriormente no módulo Valor Global, com base
+    # na Data do pedido/Início financeiro.
+    #
+    # Exemplo: se o C1 possui intervalo 08/2024 a 07/2025, a aba financeira
+    # deve listar 08/2024 a 07/2025, e não o período posterior ao pedido.
     linhas_financeiro = []
     for c in ciclos:
-        inicio_financeiro = c.get('financeiro_inicio') or c.get('periodo_inicio')
-        fim_financeiro = c.get('financeiro_fim') or c.get('periodo_fim')
+        inicio_financeiro = c.get('periodo_inicio') or c.get('financeiro_inicio')
+        fim_financeiro = c.get('periodo_fim') or c.get('financeiro_fim')
         for competencia in _competencias_mensais(inicio_financeiro, fim_financeiro):
             linhas_financeiro.append({
                 'Ciclo': c.get('ciclo', ''),

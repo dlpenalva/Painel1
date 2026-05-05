@@ -178,6 +178,29 @@ def parse_intervalo_mensal(intervalo):
     return None, None
 
 
+def intervalo_periodos_mensais(inicio, fim):
+    if inicio is None or fim is None:
+        return []
+    try:
+        inicio = pd.Period(inicio, freq="M")
+        fim = pd.Period(fim, freq="M")
+    except Exception:
+        return []
+    if fim < inicio:
+        return []
+    return list(pd.period_range(inicio, fim, freq="M"))
+
+
+def periodo_para_mes_ano(periodo):
+    if periodo is None:
+        return ""
+    try:
+        p = pd.Period(periodo, freq="M")
+        return f"{p.month:02d}/{p.year}"
+    except Exception:
+        return ""
+
+
 # ============================================================
 # Leitura do Excel
 # ============================================================
@@ -356,6 +379,14 @@ def ler_financeiro(bytes_arquivo, xls, ciclos):
         resultado["Ciclo"] = atribuir_ciclo_por_competencia(resultado["Competência"], ciclos)
     if (resultado["Ciclo"] == "").all():
         resultado["Ciclo"] = "C1"
+
+    # Compatibilização: versões anteriores do Arquivo de Coleta chegaram a
+    # listar as competências financeiras um ano à frente, usando o início
+    # financeiro do pedido. A regra consolidada é que FINANCEIRO_MENSAL liste
+    # as competências do intervalo do ciclo, e a regra de efeito financeiro
+    # seja aplicada depois, comparando a competência com a data do pedido.
+    resultado = alinhar_competencias_financeiras_ao_intervalo(resultado, ciclos)
+
     resultado = resultado[resultado["Valor pago/faturado"].fillna(0) != 0].copy()
     return resultado.reset_index(drop=True)
 
@@ -363,8 +394,10 @@ def ler_financeiro(bytes_arquivo, xls, ciclos):
 def atribuir_ciclo_por_competencia(competencias, ciclos):
     intervalos = []
     for _, row in ciclos.iterrows():
-        ini = row.get("Financeiro início período") or row.get("Início intervalo")
-        fim = row.get("Financeiro fim período") or row.get("Fim intervalo")
+        # A atribuição por competência deve seguir o intervalo do ciclo,
+        # não a data posterior do pedido/efeito financeiro.
+        ini = row.get("Início intervalo") or row.get("Financeiro início período")
+        fim = row.get("Fim intervalo") or row.get("Financeiro fim período")
         if ini is not None:
             intervalos.append((row["Ciclo"], ini, fim))
     atribuidos = []
@@ -378,6 +411,39 @@ def atribuir_ciclo_por_competencia(competencias, ciclos):
                     break
         atribuidos.append(ciclo_encontrado)
     return atribuidos
+
+
+def alinhar_competencias_financeiras_ao_intervalo(financeiro, ciclos):
+    if financeiro is None or financeiro.empty or ciclos is None or ciclos.empty:
+        return financeiro
+
+    partes = []
+    for ciclo, grupo in financeiro.groupby("Ciclo", sort=False, dropna=False):
+        ciclo_norm = normalizar_ciclo(ciclo) or "C1"
+        grupo = grupo.copy().reset_index(drop=True)
+        linha_ciclo = ciclos[ciclos["Ciclo"].apply(normalizar_ciclo) == ciclo_norm]
+        if linha_ciclo.empty:
+            partes.append(grupo)
+            continue
+
+        inicio = linha_ciclo.iloc[0].get("Início intervalo")
+        fim = linha_ciclo.iloc[0].get("Fim intervalo")
+        esperadas = intervalo_periodos_mensais(inicio, fim)
+
+        # Realinha somente quando há correspondência de quantidade. Assim,
+        # preserva arquivos excepcionais e corrige os modelos gerados com
+        # competências deslocadas para o período do pedido.
+        if esperadas and len(esperadas) == len(grupo):
+            atuais = list(grupo.get("Competência período", []))
+            precisa_realinhamento = atuais != esperadas
+            if precisa_realinhamento:
+                grupo["Competência período"] = esperadas
+                grupo["Competência"] = [periodo_para_mes_ano(p) for p in esperadas]
+        partes.append(grupo)
+
+    if not partes:
+        return financeiro
+    return pd.concat(partes, ignore_index=True)
 
 
 def ler_itens(bytes_arquivo, xls):

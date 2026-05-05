@@ -151,8 +151,10 @@ def tabela_pdf(dados, header=False, col_widths=None):
     from reportlab.platypus import Table, TableStyle
 
     table = Table(dados, colWidths=col_widths, repeatRows=1 if header else 0)
+    table.hAlign = "LEFT"
     estilo = [
         ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
+        ("ALIGN", (0, 0), (-1, -1), "LEFT"),
         ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
         ("FONTSIZE", (0, 0), (-1, -1), 8),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
@@ -206,8 +208,8 @@ def criar_pdf_relatorio(adm, res):
         bottomMargin=1.2 * cm,
     )
     styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(name="TituloTelebras", parent=styles["Title"], fontSize=14, leading=17, spaceAfter=8))
-    styles.add(ParagraphStyle(name="Subtitulo", parent=styles["Heading2"], fontSize=10.5, leading=13, spaceBefore=8, spaceAfter=5))
+    styles.add(ParagraphStyle(name="TituloTelebras", parent=styles["Title"], fontSize=14, leading=17, spaceAfter=8, alignment=1))
+    styles.add(ParagraphStyle(name="Subtitulo", parent=styles["Heading2"], fontSize=10.5, leading=13, spaceBefore=8, spaceAfter=5, alignment=1))
     styles.add(ParagraphStyle(name="Texto", parent=styles["BodyText"], fontSize=8.7, leading=11, alignment=4))
 
     story = []
@@ -216,15 +218,17 @@ def criar_pdf_relatorio(adm, res):
     for caminho in logo_paths:
         if caminho.exists():
             try:
-                story.append(Image(str(caminho), width=4.0 * cm, height=1.2 * cm))
+                logo = Image(str(caminho), width=4.0 * cm, height=1.2 * cm)
+                logo.hAlign = "CENTER"
+                story.append(logo)
                 logo_adicionado = True
                 break
             except Exception:
                 pass
     if not logo_adicionado:
-        story.append(Paragraph("TELEBRAS — Ferramenta de Análise de Reajuste Contratual", styles["TituloTelebras"]))
+        story.append(Paragraph("TELEBRAS — Análise de Reajuste Contratual", styles["TituloTelebras"]))
     else:
-        story.append(Paragraph("TELEBRAS — Ferramenta de Análise de Reajuste Contratual", styles["TituloTelebras"]))
+        story.append(Paragraph("TELEBRAS — Análise de Reajuste Contratual", styles["TituloTelebras"]))
     story.append(Paragraph("Relatório Executivo - GCC", styles["TituloTelebras"]))
 
     story.append(Paragraph("1. Identificação da Análise", styles["Subtitulo"]))
