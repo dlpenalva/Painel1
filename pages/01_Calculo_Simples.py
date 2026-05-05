@@ -312,6 +312,21 @@ with col1:
 with col2:
     tipo_idx = st.selectbox("Índice:", ["IST (Série Local)", "IPCA (433)", "IGP-M (189)"])
 
+# Gatilho de processamento: evita que a página abra com resultado fictício já calculado.
+# A chave garante que, se o usuário alterar qualquer entrada, a análise precise ser processada novamente.
+chave_analise_simples = (
+    dt_base.strftime("%Y-%m-%d"),
+    dt_solic.strftime("%Y-%m-%d"),
+    tipo_idx,
+)
+
+if st.button("Processar Análise", type="primary", use_container_width=True):
+    st.session_state["ultima_chave_analise_simples"] = chave_analise_simples
+
+if st.session_state.get("ultima_chave_analise_simples") != chave_analise_simples:
+    st.info("Informe os dados e clique em Processar Análise para iniciar a análise.")
+    st.stop()
+
 # Definição de datas do ciclo
 dt_fim_ap = dt_base + relativedelta(months=11)
 dt_aniv = dt_base + relativedelta(years=1)
