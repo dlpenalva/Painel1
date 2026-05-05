@@ -14,11 +14,15 @@ def get_data_rep(serie, d_ini, d_fim, is_ist):
             # Correção emergencial: leitura e tratamento robusto do IST
             df = pd.read_csv('ist.csv', sep=';', decimal=',', encoding='utf-8-sig')
             df.columns = [str(col).strip().lower() for col in df.columns]
-            df['data'] = pd.to_datetime(df['data'], dayfirst=True)
+            df['data'] = pd.to_datetime(df['data'], dayfirst=True, errors='coerce').dt.normalize()
+            df = df.dropna(subset=['data']).copy()
             
-            # Lógica de janela do IST (Mês 0 + 11 meses)
-            r_ini = (d_ini - relativedelta(months=1)).replace(day=1)
-            r_fim = d_fim.replace(day=1)
+            # Lógica de janela do IST (Mês 0 + 11 meses).
+            # Importante: o st.date_input retorna datetime.date, enquanto a coluna do pandas
+            # fica como datetime64[ns]. A conversão abaixo evita o erro:
+            # "Invalid comparison between dtype=datetime64[ns] and date".
+            r_ini = pd.Timestamp((d_ini - relativedelta(months=1)).replace(day=1)).normalize()
+            r_fim = pd.Timestamp(d_fim.replace(day=1)).normalize()
             
             # Filtro da série para a memória de cálculo
             df_detalhado = df[(df['data'] >= r_ini) & (df['data'] <= r_fim)].copy()
@@ -408,7 +412,23 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
 
             with st.expander(f"🔍 Memória de Cálculo Detalhada - Ciclo {i}"):
                 st.write(f"**Metodologia:** {res_c['metodo']}")
-                st.dataframe(res_c['dados'], use_container_width=True)
+                st.write(f"**Janela de Apuração:** {res_c['p_ini'].strftime('%m/%Y')} a {res_c['p_fim'].strftime('%m/%Y')}")
+
+                if "IST" in idx_sel:
+                    st.write(
+                        f"**Competência inicial:** {res_c['p_ini'].strftime('%m/%Y')} | "
+                        f"**Índice inicial:** {res_c['i_ini']}"
+                    )
+                    st.write(
+                        f"**Competência final:** {res_c['p_fim'].strftime('%m/%Y')} | "
+                        f"**Índice final:** {res_c['i_fim']}"
+                    )
+                    st.code(
+                        f"({res_c['i_fim']} / {res_c['i_ini']}) - 1 = {res_c['var'] * 100:.4f}%"
+                    )
+                else:
+                    st.dataframe(res_c['dados'], use_container_width=True)
+                    st.write("Fórmula: Produtório de (1 + taxa_mensal/100) - 1")
 
             historico.append({
                 "Ciclo": i,
