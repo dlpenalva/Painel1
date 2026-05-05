@@ -28,55 +28,11 @@ def get_ist_local(data_inicio, data_fim):
     try:
         df = pd.read_csv('ist.csv', sep=';', decimal=',', encoding='utf-8-sig')
         df.columns = [str(col).strip().lower() for col in df.columns]
-
-        def _to_numero(serie):
-            if pd.api.types.is_numeric_dtype(serie):
-                return pd.to_numeric(serie, errors='coerce')
-            return pd.to_numeric(
-                serie.astype(str).str.strip().str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
-                errors='coerce'
-            )
-
-        if {'data', 'indice'}.issubset(df.columns):
-            df['data'] = pd.to_datetime(df['data'], dayfirst=True, errors='coerce')
-            df['indice'] = _to_numero(df['indice'])
-        elif {'mes_ano', 'indice_nivel'}.issubset(df.columns):
-            meses = {
-                'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
-                'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12,
-            }
-
-            def _parse_mes_ano(valor):
-                try:
-                    mes_txt, ano_txt = str(valor).strip().lower().split('/')
-                    mes = meses[mes_txt[:3]]
-                    ano = int(ano_txt)
-                    ano = 2000 + ano if ano < 100 else ano
-                    return pd.Timestamp(year=ano, month=mes, day=1)
-                except Exception:
-                    return pd.NaT
-
-            df['data'] = df['mes_ano'].apply(_parse_mes_ano)
-            df['indice'] = _to_numero(df['indice_nivel'])
-        else:
-            return None
-
-        df = df.dropna(subset=['data', 'indice']).copy()
-
-        # IST é número-índice: usa a competência da data-base do ciclo e a
-        # mesma competência 12 meses depois. Ex.: 10/2022 => out/2022 a out/2023.
-        r_ini = data_inicio.replace(day=1)
-        r_fim = (data_inicio + relativedelta(years=1)).replace(day=1)
-
-        v_ini_rows = df[df['data'].dt.to_period('M') == r_ini.strftime('%Y-%m')]
-        v_fim_rows = df[df['data'].dt.to_period('M') == r_fim.strftime('%Y-%m')]
-
-        if v_ini_rows.empty or v_fim_rows.empty:
-            return None
-
-        v_ini = float(v_ini_rows['indice'].iloc[0])
-        v_fim = float(v_fim_rows['indice'].iloc[0])
-
+        df['data'] = pd.to_datetime(df['data'], dayfirst=True)
+        r_ini = (data_inicio - relativedelta(months=1)).replace(day=1)
+        r_fim = data_fim.replace(day=1)
+        v_ini = df[df['data'].dt.to_period('M') == r_ini.strftime('%Y-%m')]['indice'].values[0]
+        v_fim = df[df['data'].dt.to_period('M') == r_fim.strftime('%Y-%m')]['indice'].values[0]
         return {
             'variacao': (v_fim / v_ini) - 1,
             'i_ini': v_ini,
@@ -87,6 +43,7 @@ def get_ist_local(data_inicio, data_fim):
         }
     except Exception:
         return None
+
 
 def _formatar_data(valor):
     try:
@@ -244,13 +201,18 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         for c in ciclos
     ])
 
-    # Aba financeira simplificada: somente competências com potencial efeito financeiro.
-    # Não há linha TOTAL C0: o executado em C0 é inferido pela diferença entre
-    # o valor original do contrato e o remanescente informado no início de C1.
+    # Aba financeira simplificada: competências efetivamente vinculadas ao intervalo do ciclo.
+    # A aba FINANCEIRO_MENSAL serve para o fiscal informar o valor pago/faturado
+    # nas competências do ciclo de referência. A regra de efeito financeiro
+    # continua sendo aplicada posteriormente no módulo Valor Global, com base
+    # na Data do pedido/Início financeiro.
+    #
+    # Exemplo: se o C1 possui intervalo 08/2024 a 07/2025, a aba financeira
+    # deve listar 08/2024 a 07/2025, e não o período posterior ao pedido.
     linhas_financeiro = []
     for c in ciclos:
-        inicio_financeiro = c.get('financeiro_inicio') or c.get('periodo_inicio')
-        fim_financeiro = c.get('financeiro_fim') or c.get('periodo_fim')
+        inicio_financeiro = c.get('periodo_inicio') or c.get('financeiro_inicio')
+        fim_financeiro = c.get('periodo_fim') or c.get('financeiro_fim')
         for competencia in _competencias_mensais(inicio_financeiro, fim_financeiro):
             linhas_financeiro.append({
                 'Ciclo': c.get('ciclo', ''),
@@ -308,25 +270,6 @@ with col1:
     dt_solic = st.date_input("Data do Pedido:", value=datetime(2024, 4, 9), format="DD/MM/YYYY")
 with col2:
     tipo_idx = st.selectbox("Índice:", ["IST (Série Local)", "IPCA (433)", "IGP-M (189)"])
-
-chave_analise_simples = (
-    dt_base.isoformat(),
-    dt_solic.isoformat(),
-    tipo_idx,
-)
-
-processar_simples = st.button(
-    "Processar Análise",
-    type="primary",
-    use_container_width=True,
-)
-
-if processar_simples:
-    st.session_state["processar_reajuste_simples_key"] = chave_analise_simples
-
-if st.session_state.get("processar_reajuste_simples_key") != chave_analise_simples:
-    st.info("Informe os dados e clique em **Processar Análise** para iniciar a apuração.")
-    st.stop()
 
 # Definição de datas do ciclo
 dt_fim_ap = dt_base + relativedelta(months=11)

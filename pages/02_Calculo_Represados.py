@@ -11,90 +11,56 @@ st.set_page_config(page_title="Cálculo de Represados", layout="wide")
 def get_data_rep(serie, d_ini, d_fim, is_ist):
     try:
         if is_ist:
-            # IST é número-índice: usa a competência da data-base do ciclo e a
-            # mesma competência 12 meses depois. Ex.: 10/2022 => out/2022 a out/2023.
-            # A leitura aceita tanto o CSV data;indice quanto o CSV MES_ANO;INDICE_NIVEL.
+            # Correção emergencial: leitura e tratamento robusto do IST
             df = pd.read_csv('ist.csv', sep=';', decimal=',', encoding='utf-8-sig')
             df.columns = [str(col).strip().lower() for col in df.columns]
-
-            def _to_numero(serie):
-                if pd.api.types.is_numeric_dtype(serie):
-                    return pd.to_numeric(serie, errors='coerce')
-                return pd.to_numeric(
-                    serie.astype(str).str.strip().str.replace('.', '', regex=False).str.replace(',', '.', regex=False),
-                    errors='coerce'
-                )
-
-            if {'data', 'indice'}.issubset(df.columns):
-                df['data'] = pd.to_datetime(df['data'], dayfirst=True, errors='coerce')
-                df['indice'] = _to_numero(df['indice'])
-            elif {'mes_ano', 'indice_nivel'}.issubset(df.columns):
-                meses = {
-                    'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
-                    'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12,
-                }
-
-                def _parse_mes_ano(valor):
-                    try:
-                        mes_txt, ano_txt = str(valor).strip().lower().split('/')
-                        mes = meses[mes_txt[:3]]
-                        ano = int(ano_txt)
-                        ano = 2000 + ano if ano < 100 else ano
-                        return pd.Timestamp(year=ano, month=mes, day=1)
-                    except Exception:
-                        return pd.NaT
-
-                df['data'] = df['mes_ano'].apply(_parse_mes_ano)
-                df['indice'] = _to_numero(df['indice_nivel'])
-            else:
-                st.error("A base IST precisa conter as colunas 'data'/'indice' ou 'MES_ANO'/'INDICE_NIVEL'.")
-                return None
-
-            df = df.dropna(subset=['data', 'indice']).copy()
-
-            r_ini = d_ini.replace(day=1)
-            r_fim = (d_ini + relativedelta(years=1)).replace(day=1)
-
-            periodo_ini = r_ini.strftime('%Y-%m')
-            periodo_fim = r_fim.strftime('%Y-%m')
-
-            v_ini_rows = df[df['data'].dt.to_period('M') == periodo_ini]
-            v_fim_rows = df[df['data'].dt.to_period('M') == periodo_fim]
-
+            df['data'] = pd.to_datetime(df['data'], dayfirst=True, errors='coerce').dt.normalize()
+            df = df.dropna(subset=['data']).copy()
+            
+            # Lógica de janela do IST (Mês 0 + 11 meses).
+            # Importante: o st.date_input retorna datetime.date, enquanto a coluna do pandas
+            # fica como datetime64[ns]. A conversão abaixo evita o erro:
+            # "Invalid comparison between dtype=datetime64[ns] and date".
+            r_ini = pd.Timestamp((d_ini - relativedelta(months=1)).replace(day=1)).normalize()
+            r_fim = pd.Timestamp(d_fim.replace(day=1)).normalize()
+            
+            # Filtro da série para a memória de cálculo
+            df_detalhado = df[(df['data'] >= r_ini) & (df['data'] <= r_fim)].copy()
+            
+            # Extração dos valores específicos para a fórmula (índice final / índice inicial) - 1
+            v_ini_rows = df[df['data'].dt.to_period('M') == r_ini.strftime('%Y-%m')]
+            v_fim_rows = df[df['data'].dt.to_period('M') == r_fim.strftime('%Y-%m')]
+            
             if v_ini_rows.empty or v_fim_rows.empty:
-                st.error(f"Dados do IST não encontrados para o período {r_ini.strftime('%m/%Y')} ou {r_fim.strftime('%m/%Y')}.")
+                st.error(f"Dados do IST não encontrados para o período {r_ini.strftime('%m/%Y')} ou {r_fim.strftime('%m/%Y')}")
                 return None
-
-            v_ini = float(v_ini_rows['indice'].iloc[0])
-            v_fim = float(v_fim_rows['indice'].iloc[0])
-
+                
+            v_ini = v_ini_rows['indice'].values[0]
+            v_fim = v_fim_rows['indice'].values[0]
+            
             return {
-                'var': (v_fim / v_ini) - 1,
-                'i_ini': v_ini,
-                'i_fim': v_fim,
-                'p_ini': r_ini,
-                'p_fim': r_fim,
-                'metodo': "Divisão de Número-Índice (IST)",
+                'var': (v_fim/v_ini)-1, 'i_ini': v_ini, 'i_fim': v_fim, 
+                'p_ini': r_ini, 'p_fim': r_fim, 'metodo': "Divisão de Número-Índice (IST)",
+                'dados': df_detalhado[['data', 'indice']]
             }
         else:
-            # Manutenção da lógica do IPCA/IGP-M via SGS/BCB.
+            # Manutenção da lógica do IPCA/IGP-M via SGS/BCB
             url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie}/dados?formato=json&dataInicial={d_ini.strftime('%d/%m/%Y')}&dataFinal={d_fim.strftime('%d/%m/%Y')}"
             response = requests.get(url, timeout=10)
             df_t = pd.DataFrame(response.json())
-            if df_t.empty:
-                return None
             df_t['v'] = df_t['valor'].astype(float) / 100
             df_t['data'] = pd.to_datetime(df_t['data'], dayfirst=True)
             return {
-                'var': (1 + df_t['v']).prod() - 1,
-                'metodo': "Produtório de taxas mensais (SGS/BCB)",
-                'p_ini': d_ini,
-                'p_fim': d_fim,
+                'var': (1 + df_t['v']).prod() - 1, 
+                'metodo': "Produtório de taxas mensais (SGS/BCB)", 
+                'p_ini': d_ini, 'p_fim': d_fim,
                 'dados': df_t[['data', 'valor']]
             }
     except Exception as e:
+        # Exibe o erro técnico para facilitar o diagnóstico em caso de falha no CSV ou API
         st.error(f"Erro técnico na coleta de dados: {str(e)}")
         return None
+
 
 def _formatar_data(valor):
     """Formata datas para DD/MM/AAAA sem quebrar quando o valor estiver vazio."""
@@ -414,8 +380,8 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             janela_ciclo = f"{res_c['p_ini'].strftime('%m/%Y')} a {res_c['p_fim'].strftime('%m/%Y')}"
         else:
             if "IST" in idx_sel:
-                periodo_inicio = data_atual.replace(day=1)
-                periodo_fim = (data_atual + relativedelta(years=1)).replace(day=1)
+                periodo_inicio = (data_atual - relativedelta(months=1)).replace(day=1)
+                periodo_fim = d_fim.replace(day=1)
             else:
                 periodo_inicio = data_atual
                 periodo_fim = d_fim
@@ -436,24 +402,13 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
         ciclo_calculado = False
 
         if res_c:
-            fator_ciclo_calculado = 1 + res_c['var']
+            fator_ciclo = 1 + res_c['var']
+            fator_acum *= fator_ciclo
             v_fmt = f"{res_c['var'] * 100:,.2f}%".replace('.', ',')
-
-            # Ciclos preclusos podem ter a variação apurada para fins de memória,
-            # mas não compõem o fator acumulado final nem geram efeito financeiro.
-            if dados_ciclo['situacao_limpa'] == "PRECLUSO":
-                fator_ciclo = 1.0
-                v_acum_parcial = f"{(fator_acum - 1) * 100:,.2f}%".replace('.', ',')
-                ciclo_calculado = False
-            else:
-                fator_ciclo = fator_ciclo_calculado
-                fator_acum *= fator_ciclo
-                v_acum_parcial = f"{(fator_acum - 1) * 100:,.2f}%".replace('.', ',')
-                ciclo_calculado = True
+            v_acum_parcial = f"{(fator_acum - 1) * 100:,.2f}%".replace('.', ',')
+            ciclo_calculado = True
 
             st.markdown(f"- Variação do Ciclo: **{v_fmt}**")
-            if dados_ciclo['situacao_limpa'] == "PRECLUSO":
-                st.caption("Ciclo precluso: variação apurada apenas para registro, sem composição no acumulado final.")
 
             with st.expander(f"🔍 Memória de Cálculo Detalhada - Ciclo {i}"):
                 st.write(f"**Metodologia:** {res_c['metodo']}")
