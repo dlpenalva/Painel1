@@ -441,17 +441,18 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
         ciclo_calculado = False
 
         if res_c:
-            fator_ciclo = 1 + res_c['var']
-            # Ciclos preclusos podem ter a variação apurada para registro, mas não compõem o acumulado final.
-            if situacao_limpa != "PRECLUSO":
-                fator_acum *= fator_ciclo
+            fator_indice = 1 + res_c['var']
+            # Regra crítica: ciclo PRECLUSO pode ter variação apurada para memória,
+            # mas seu fator para fins de produtório/acumulado deve ser 1.0000.
+            fator_ciclo = 1.0 if situacao_limpa == "PRECLUSO" else fator_indice
+            fator_acum *= fator_ciclo
             v_fmt = f"{res_c['var'] * 100:,.2f}%".replace('.', ',')
             v_acum_parcial = f"{(fator_acum - 1) * 100:,.2f}%".replace('.', ',')
             ciclo_calculado = True
 
             st.markdown(f"- Variação do Ciclo: **{v_fmt}**")
             if situacao_limpa == "PRECLUSO":
-                st.caption("Variação apurada apenas para registro, sem composição no acumulado final.")
+                st.caption("Variação apurada apenas para registro; fator do ciclo considerado como 1,0000 no acumulado final.")
 
             with st.expander(f"🔍 Memória de Cálculo Detalhada - Ciclo {i}"):
                 st.write(f"**Metodologia:** {res_c['metodo']}")
