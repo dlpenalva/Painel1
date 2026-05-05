@@ -11,56 +11,62 @@ st.set_page_config(page_title="Cálculo de Represados", layout="wide")
 def get_data_rep(serie, d_ini, d_fim, is_ist):
     try:
         if is_ist:
-            # Correção emergencial: leitura e tratamento robusto do IST
+            # Mesma lógica adotada no Reajuste Simples para o IST.
+            # Não há comparação direta entre coluna datetime64 do pandas e objetos date.
+            # A localização dos índices é feita por competência (dt.to_period), evitando o erro:
+            # "Invalid comparison between dtype=datetime64[...] and date".
             df = pd.read_csv('ist.csv', sep=';', decimal=',', encoding='utf-8-sig')
             df.columns = [str(col).strip().lower() for col in df.columns]
-            df['data'] = pd.to_datetime(df['data'], dayfirst=True, errors='coerce').dt.normalize()
+            df['data'] = pd.to_datetime(df['data'], dayfirst=True, errors='coerce')
             df = df.dropna(subset=['data']).copy()
-            
-            # Lógica de janela do IST (Mês 0 + 11 meses).
-            # Importante: o st.date_input retorna datetime.date, enquanto a coluna do pandas
-            # fica como datetime64[ns]. A conversão abaixo evita o erro:
-            # "Invalid comparison between dtype=datetime64[ns] and date".
-            r_ini = pd.Timestamp((d_ini - relativedelta(months=1)).replace(day=1)).normalize()
-            r_fim = pd.Timestamp(d_fim.replace(day=1)).normalize()
-            
-            # Filtro da série para a memória de cálculo
-            df_detalhado = df[(df['data'] >= r_ini) & (df['data'] <= r_fim)].copy()
-            
-            # Extração dos valores específicos para a fórmula (índice final / índice inicial) - 1
-            v_ini_rows = df[df['data'].dt.to_period('M') == r_ini.strftime('%Y-%m')]
-            v_fim_rows = df[df['data'].dt.to_period('M') == r_fim.strftime('%Y-%m')]
-            
-            if v_ini_rows.empty or v_fim_rows.empty:
-                st.error(f"Dados do IST não encontrados para o período {r_ini.strftime('%m/%Y')} ou {r_fim.strftime('%m/%Y')}")
+
+            if 'indice' not in df.columns:
+                st.error("A base IST precisa conter a coluna 'indice'.")
                 return None
-                
-            v_ini = v_ini_rows['indice'].values[0]
-            v_fim = v_fim_rows['indice'].values[0]
-            
+
+            r_ini = (d_ini - relativedelta(months=1)).replace(day=1)
+            r_fim = d_fim.replace(day=1)
+
+            periodo_ini = r_ini.strftime('%Y-%m')
+            periodo_fim = r_fim.strftime('%Y-%m')
+
+            v_ini_rows = df[df['data'].dt.to_period('M') == periodo_ini]
+            v_fim_rows = df[df['data'].dt.to_period('M') == periodo_fim]
+
+            if v_ini_rows.empty or v_fim_rows.empty:
+                st.error(f"Dados do IST não encontrados para o período {r_ini.strftime('%m/%Y')} ou {r_fim.strftime('%m/%Y')}.")
+                return None
+
+            v_ini = float(v_ini_rows['indice'].iloc[0])
+            v_fim = float(v_fim_rows['indice'].iloc[0])
+
             return {
-                'var': (v_fim/v_ini)-1, 'i_ini': v_ini, 'i_fim': v_fim, 
-                'p_ini': r_ini, 'p_fim': r_fim, 'metodo': "Divisão de Número-Índice (IST)",
-                'dados': df_detalhado[['data', 'indice']]
+                'var': (v_fim / v_ini) - 1,
+                'i_ini': v_ini,
+                'i_fim': v_fim,
+                'p_ini': r_ini,
+                'p_fim': r_fim,
+                'metodo': "Divisão de Número-Índice (IST)",
             }
         else:
-            # Manutenção da lógica do IPCA/IGP-M via SGS/BCB
+            # Manutenção da lógica do IPCA/IGP-M via SGS/BCB.
             url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie}/dados?formato=json&dataInicial={d_ini.strftime('%d/%m/%Y')}&dataFinal={d_fim.strftime('%d/%m/%Y')}"
             response = requests.get(url, timeout=10)
             df_t = pd.DataFrame(response.json())
+            if df_t.empty:
+                return None
             df_t['v'] = df_t['valor'].astype(float) / 100
             df_t['data'] = pd.to_datetime(df_t['data'], dayfirst=True)
             return {
-                'var': (1 + df_t['v']).prod() - 1, 
-                'metodo': "Produtório de taxas mensais (SGS/BCB)", 
-                'p_ini': d_ini, 'p_fim': d_fim,
+                'var': (1 + df_t['v']).prod() - 1,
+                'metodo': "Produtório de taxas mensais (SGS/BCB)",
+                'p_ini': d_ini,
+                'p_fim': d_fim,
                 'dados': df_t[['data', 'valor']]
             }
     except Exception as e:
-        # Exibe o erro técnico para facilitar o diagnóstico em caso de falha no CSV ou API
         st.error(f"Erro técnico na coleta de dados: {str(e)}")
         return None
-
 
 def _formatar_data(valor):
     """Formata datas para DD/MM/AAAA sem quebrar quando o valor estiver vazio."""
