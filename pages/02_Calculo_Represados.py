@@ -1,7 +1,9 @@
 import streamlit as st
 import pandas as pd
 import requests
+import io
 from datetime import datetime
+from zoneinfo import ZoneInfo
 from dateutil.relativedelta import relativedelta
 
 st.set_page_config(page_title="Cálculo de Represados", layout="wide")
@@ -54,6 +56,213 @@ def get_data_rep(serie, d_ini, d_fim, is_ist):
         # Exibe o erro técnico para facilitar o diagnóstico em caso de falha no CSV ou API
         st.error(f"Erro técnico na coleta de dados: {str(e)}")
         return None
+
+
+def _formatar_data(valor):
+    """Formata datas para DD/MM/AAAA sem quebrar quando o valor estiver vazio."""
+    if valor is None or valor == "":
+        return ""
+    try:
+        return pd.to_datetime(valor, dayfirst=True).strftime("%d/%m/%Y")
+    except Exception:
+        return str(valor)
+
+
+def _data_para_datetime(valor):
+    if valor is None or valor == "":
+        return None
+    try:
+        return pd.to_datetime(valor, dayfirst=True).to_pydatetime()
+    except Exception:
+        return None
+
+
+def _competencias_mensais(data_inicio, data_fim):
+    """Gera competências mensais inclusivas no formato MM/AAAA."""
+    inicio = _data_para_datetime(data_inicio)
+    fim = _data_para_datetime(data_fim)
+    if inicio is None or fim is None:
+        return []
+    atual = inicio.replace(day=1)
+    limite = fim.replace(day=1)
+    competencias = []
+    while atual <= limite:
+        competencias.append(atual.strftime("%m/%Y"))
+        atual = atual + relativedelta(months=1)
+    return competencias
+
+
+def _percentual_formatado(valor):
+    try:
+        return f"{float(valor) * 100:,.2f}%".replace('.', ',')
+    except Exception:
+        return ""
+
+
+def gerar_arquivo_coleta_excel(dados_admissibilidade):
+    """Gera o Arquivo de Coleta para a fase de Valor Global.
+
+    Mantém a lógica de coleta separada da apuração: FINANCEIRO_MENSAL para valores pagos
+    e ITENS_REMANESCENTES para o saldo físico/contratual no início de cada ciclo.
+    """
+    output = io.BytesIO()
+    ciclos = dados_admissibilidade.get('ciclos', [])
+    data_geracao = datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
+
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        workbook = writer.book
+
+        fmt_header = workbook.add_format({
+            "bold": True,
+            "font_color": "white",
+            "bg_color": "#1F4E79",
+            "border": 1,
+            "align": "center",
+            "valign": "vcenter",
+        })
+        fmt_subheader = workbook.add_format({
+            "bold": True,
+            "bg_color": "#D9EAD3",
+            "border": 1,
+            "align": "center",
+            "valign": "vcenter",
+        })
+        fmt_input = workbook.add_format({"bg_color": "#FFF2CC", "border": 1})
+        fmt_money = workbook.add_format({"num_format": 'R$ #,##0.00', "border": 1})
+        fmt_money_input = workbook.add_format({"num_format": 'R$ #,##0.00', "bg_color": "#FFF2CC", "border": 1})
+        fmt_number_input = workbook.add_format({"num_format": '#,##0.00', "bg_color": "#FFF2CC", "border": 1})
+        fmt_text = workbook.add_format({"border": 1})
+        fmt_total = workbook.add_format({"bold": True, "bg_color": "#E2F0D9", "border": 1})
+        fmt_percent = workbook.add_format({"num_format": "0.00%", "border": 1})
+        fmt_factor = workbook.add_format({"num_format": "0.0000", "border": 1})
+
+        # Aba PARAMETROS_REAJUSTE
+        parametros = pd.DataFrame([
+            ["Origem da análise", dados_admissibilidade.get('origem', dados_admissibilidade.get('tipo', ''))],
+            ["Índice utilizado", dados_admissibilidade.get('indice', '')],
+            ["Data-base original", dados_admissibilidade.get('data_base_original', '')],
+            ["Quantidade de ciclos", len(ciclos)],
+            ["Fator acumulado final", dados_admissibilidade.get('fator_acumulado', dados_admissibilidade.get('fator', 1.0))],
+            ["Variação acumulada final", dados_admissibilidade.get('variacao_acumulada', 0.0)],
+            ["Data de geração do arquivo", data_geracao],
+        ], columns=["Campo", "Valor"])
+        parametros.to_excel(writer, sheet_name="PARAMETROS_REAJUSTE", index=False)
+        ws = writer.sheets["PARAMETROS_REAJUSTE"]
+        ws.set_column("A:A", 32)
+        ws.set_column("B:B", 35)
+        for col, title in enumerate(parametros.columns):
+            ws.write(0, col, title, fmt_header)
+        ws.write_number(5, 1, float(dados_admissibilidade.get('variacao_acumulada', 0.0)), fmt_percent)
+        try:
+            ws.write_number(4, 1, float(dados_admissibilidade.get('fator_acumulado', dados_admissibilidade.get('fator', 1.0))), fmt_factor)
+        except Exception:
+            pass
+
+        # Aba CICLOS
+        ciclos_rows = []
+        for ciclo in ciclos:
+            situacao = str(ciclo.get('situacao', ''))
+            tratamento = "Precluso" if "PRECLUSO" in situacao.upper() else "A apurar"
+            ciclos_rows.append({
+                "Ciclo": ciclo.get('ciclo', ''),
+                "Data-base": ciclo.get('data_base', ''),
+                "Intervalo do índice": ciclo.get('intervalo_indice', ciclo.get('Janela', '')),
+                "Janela de admissibilidade": ciclo.get('janela_admissibilidade', ciclo.get('JanelaAdm', '')),
+                "Data do pedido": ciclo.get('data_pedido', ciclo.get('Pedido', '')),
+                "Início financeiro": ciclo.get('financeiro_inicio', ''),
+                "Fim financeiro": ciclo.get('financeiro_fim', ''),
+                "Situação": situacao,
+                "Variação": ciclo.get('variacao', 0.0),
+                "Fator": ciclo.get('fator', 1.0),
+                "Fator acumulado": ciclo.get('fator_acumulado', 1.0),
+                "Tratamento financeiro do ciclo": tratamento,
+            })
+        df_ciclos = pd.DataFrame(ciclos_rows)
+        df_ciclos.to_excel(writer, sheet_name="CICLOS", index=False)
+        ws = writer.sheets["CICLOS"]
+        ws.set_column("A:A", 12)
+        ws.set_column("B:H", 24)
+        ws.set_column("I:I", 12)
+        ws.set_column("J:K", 14)
+        ws.set_column("L:L", 30)
+        for col, title in enumerate(df_ciclos.columns):
+            ws.write(0, col, title, fmt_header)
+        for row in range(1, len(df_ciclos) + 1):
+            ws.write(row, 11, df_ciclos.iloc[row-1]["Tratamento financeiro do ciclo"], fmt_input)
+            ws.write(row, 8, df_ciclos.iloc[row-1]["Variação"], fmt_percent)
+            ws.write(row, 9, df_ciclos.iloc[row-1]["Fator"], fmt_factor)
+            ws.write(row, 10, df_ciclos.iloc[row-1]["Fator acumulado"], fmt_factor)
+
+        # Aba FINANCEIRO_MENSAL
+        financeiro_rows = []
+        for ciclo in ciclos:
+            ciclo_nome = ciclo.get('ciclo', '')
+            for competencia in _competencias_mensais(ciclo.get('financeiro_inicio', ''), ciclo.get('financeiro_fim', '')):
+                financeiro_rows.append({
+                    "Ciclo": ciclo_nome,
+                    "Competência": competencia,
+                    "Valor pago/faturado": "",
+                })
+        if not financeiro_rows:
+            financeiro_rows.append({"Ciclo": "", "Competência": "", "Valor pago/faturado": ""})
+        df_fin = pd.DataFrame(financeiro_rows)
+        df_fin.to_excel(writer, sheet_name="FINANCEIRO_MENSAL", index=False)
+        ws = writer.sheets["FINANCEIRO_MENSAL"]
+        ws.set_column("A:A", 12)
+        ws.set_column("B:B", 18)
+        ws.set_column("C:C", 22)
+        for col, title in enumerate(df_fin.columns):
+            ws.write(0, col, title, fmt_header)
+        for row in range(1, len(df_fin) + 1):
+            ws.write(row, 2, "", fmt_money_input)
+        total_row = len(df_fin) + 1
+        ws.write(total_row, 0, "TOTAL", fmt_total)
+        ws.write(total_row, 1, "", fmt_total)
+        ws.write_formula(total_row, 2, f"=SUM(C2:C{len(df_fin)+1})", fmt_money)
+
+        # Aba ITENS_REMANESCENTES
+        wb_sheet = workbook.add_worksheet("ITENS_REMANESCENTES")
+        writer.sheets["ITENS_REMANESCENTES"] = wb_sheet
+        rem_cols = []
+        for ciclo in ciclos:
+            nome = ciclo.get('ciclo', '')
+            data_ref = ciclo.get('data_base', '')
+            rem_cols.append((f"Remanescente início {nome}", data_ref))
+        base_headers = ["Item", "Quantidade contratada", "Valor unitário original", "Valor total"]
+        headers = base_headers + [c[0] for c in rem_cols]
+        # Linha 1: datas de referência dos remanescentes
+        wb_sheet.merge_range(0, 0, 0, 3, "Dados do item e valor original", fmt_subheader)
+        for idx, (_, data_ref) in enumerate(rem_cols, start=4):
+            wb_sheet.write(0, idx, data_ref, fmt_subheader)
+        # Linha 2: cabeçalhos
+        for col, title in enumerate(headers):
+            wb_sheet.write(1, col, title, fmt_header)
+        wb_sheet.set_column(0, 0, 12)
+        wb_sheet.set_column(1, 1, 24)
+        wb_sheet.set_column(2, 3, 22)
+        if rem_cols:
+            wb_sheet.set_column(4, 4 + len(rem_cols) - 1, 24)
+        start_row = 2
+        end_row = 101
+        for row in range(start_row, end_row + 1):
+            wb_sheet.write(row, 0, "", fmt_text)
+            wb_sheet.write(row, 1, "", fmt_number_input)
+            wb_sheet.write(row, 2, "", fmt_money_input)
+            wb_sheet.write_formula(row, 3, f"=IF(OR(B{row+1}=\"\",C{row+1}=\"\"),\"\",B{row+1}*C{row+1})", fmt_money)
+            for col in range(4, 4 + len(rem_cols)):
+                wb_sheet.write(row, col, "", fmt_number_input)
+        total_row = end_row + 1
+        wb_sheet.write(total_row, 0, "TOTAL", fmt_total)
+        wb_sheet.write(total_row, 1, "", fmt_total)
+        wb_sheet.write(total_row, 2, "", fmt_total)
+        wb_sheet.write_formula(total_row, 3, f"=SUM(D3:D{end_row+1})", fmt_money)
+        for col in range(4, 4 + len(rem_cols)):
+            col_letter = chr(ord('A') + col)
+            # Total quantitativo simples para conferência.
+            wb_sheet.write_formula(total_row, col, f"=SUM({col_letter}3:{col_letter}{end_row+1})", fmt_number_input)
+
+    output.seek(0)
+    return output.getvalue()
 
 
 st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
