@@ -262,7 +262,7 @@ def tabela_pdf(dados, header=False, col_widths=None, available_width=None, font_
         dados_norm.append(list(linha) + [""] * (ncols - len(linha)))
 
     if available_width is None:
-        available_width = 760
+        available_width = 700
 
     if not col_widths:
         pesos = []
@@ -353,6 +353,7 @@ def criar_pdf_relatorio(adm, res):
         bottomMargin=1.0 * cm,
     )
     largura_util = float(doc.width)
+    largura_tabela = largura_util * 0.90
 
     styles = getSampleStyleSheet()
     styles.add(ParagraphStyle(
@@ -414,7 +415,7 @@ def criar_pdf_relatorio(adm, res):
         ["Fator acumulado", fator_fmt(fator)],
         ["Data de processamento", res.get("data_processamento", "Não informado")],
     ]
-    story.append(tabela_pdf(tabela_ident, col_widths=[0.32 * largura_util, 0.56 * largura_util], available_width=largura_util, font_size=7.0))
+    story.append(tabela_pdf(tabela_ident, col_widths=[0.32 * largura_util, 0.56 * largura_util], available_width=largura_tabela, font_size=7.0))
 
     story.append(Paragraph("2. Análise Contratual — Cláusula Oitava", styles["SubtituloCentral"]))
     story.append(Paragraph(texto_clausula_oito(adm), styles["TextoJustificado"]))
@@ -432,7 +433,7 @@ def criar_pdf_relatorio(adm, res):
         ["Aditivos quantitativos atualizados", moeda(valor_aditivos(res))],
         ["Valor Global Contrato com aditivos", moeda(valor_global_com_aditivos(res))],
     ]
-    story.append(tabela_pdf(indicadores, header=True, col_widths=[0.48 * largura_util, 0.40 * largura_util], available_width=largura_util, font_size=7.0))
+    story.append(tabela_pdf(indicadores, header=True, col_widths=[0.48 * largura_util, 0.40 * largura_util], available_width=largura_tabela, font_size=7.0))
 
     story.append(Paragraph("4. Ciclos, Percentuais e Efeitos Financeiros", styles["SubtituloCentral"]))
     ciclos_spec = [
@@ -450,7 +451,7 @@ def criar_pdf_relatorio(adm, res):
         especificacao=ciclos_spec,
         max_linhas=25,
         col_widths=[1.1*cm, 2.1*cm, 2.1*cm, 2.1*cm, 2.4*cm, 3.1*cm, 1.7*cm, 2.0*cm],
-        available_width=largura_util,
+        available_width=largura_tabela,
         font_size=5.9,
     ))
 
@@ -469,34 +470,46 @@ def criar_pdf_relatorio(adm, res):
         especificacao=fin_spec,
         max_linhas=25,
         col_widths=[1.1*cm, 2.7*cm, 1.7*cm, 3.0*cm, 3.2*cm, 3.0*cm, 3.0*cm],
-        available_width=largura_util,
+        available_width=largura_tabela,
         font_size=6.2,
     ))
 
     story.append(Paragraph("6. Valor Total Atualizado do Contrato por Ciclo", styles["SubtituloCentral"]))
-    consumo_spec = [
-        ("Ciclo", "Ciclo/Marco"),
-        ("Critério", "Composição"),
-        ("Valor consumido original", "Valor original"),
-        ("Fator aplicado", "Fator"),
-        ("Valor consumido reajustado", "Valor atualizado"),
-    ]
     df_consumo = res.get("df_consumo_estoque")
-    if df_consumo is None or not isinstance(df_consumo, pd.DataFrame) or df_consumo.empty:
-        df_consumo = res.get("df_comparativo")
+    if isinstance(df_consumo, pd.DataFrame) and not df_consumo.empty:
         consumo_spec = [
-            ("Indicador", "Indicador"),
-            ("Antes do Reajuste", "Antes"),
-            ("Após Reajuste", "Depois"),
-            ("Diferença", "Diferença"),
+            ("Ciclo", "Ciclo/Marco"),
+            ("Critério", "Composição"),
+            ("Valor consumido original", "Valor original"),
+            ("Fator aplicado", "Fator"),
+            ("Valor consumido reajustado", "Valor atualizado"),
         ]
-    story.append(tabela_dataframe_pdf(
-        df_consumo,
-        especificacao=consumo_spec,
-        max_linhas=20,
-        available_width=largura_util,
-        font_size=6.2,
-    ))
+        story.append(tabela_dataframe_pdf(
+            df_consumo,
+            especificacao=consumo_spec,
+            max_linhas=20,
+            col_widths=[1.6*cm, 7.5*cm, 3.3*cm, 2.2*cm, 3.5*cm],
+            available_width=largura_tabela,
+            font_size=6.1,
+        ))
+    else:
+        dados_valor_total = [
+            ["Indicador", "Valor"],
+            ["Valor original inicial do contrato", moeda(res.get("valor_original_contrato", 0))],
+            ["Executado atualizado", moeda(res.get("valor_consumido_estoque", 0))],
+            ["Remanescente atualizado no último ciclo", moeda(res.get("remanescente_reajustado", 0))],
+            ["Valor Global Contrato", moeda(valor_global_contrato(res))],
+            ["Aditivos quantitativos atualizados", moeda(valor_aditivos(res))],
+            ["Valor Global Contrato com aditivos", moeda(valor_global_com_aditivos(res))],
+        ]
+        story.append(tabela_pdf(
+            dados_valor_total,
+            header=True,
+            col_widths=[0.48 * largura_tabela, 0.32 * largura_tabela],
+            available_width=largura_tabela,
+            font_size=6.8,
+            h_align="CENTER",
+        ))
 
     story.append(Paragraph("7. Informações para instrução processual", styles["SubtituloCentral"]))
     story.append(Paragraph(gerar_informacoes_processuais(adm, res).replace("\n", "<br/>").replace("&", "&amp;"), styles["TextoJustificado"]))

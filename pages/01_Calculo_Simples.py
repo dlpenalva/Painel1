@@ -28,24 +28,11 @@ def get_ist_local(data_inicio, data_fim):
     try:
         df = pd.read_csv('ist.csv', sep=';', decimal=',', encoding='utf-8-sig')
         df.columns = [str(col).strip().lower() for col in df.columns]
-        df['data'] = pd.to_datetime(df['data'], dayfirst=True, errors='coerce').dt.normalize()
-        df = df.dropna(subset=['data'])
-
-        # IST por número-índice: mês-base do ciclo versus o mesmo mês 12 meses depois.
-        # Exemplo: data-base 10/2023 => out/2023 a out/2024.
-        r_ini = pd.Timestamp(data_inicio.year, data_inicio.month, 1).normalize()
-        marco_final = data_inicio + relativedelta(years=1)
-        r_fim = pd.Timestamp(marco_final.year, marco_final.month, 1).normalize()
-
-        v_ini_rows = df[df['data'] == r_ini]
-        v_fim_rows = df[df['data'] == r_fim]
-
-        if v_ini_rows.empty or v_fim_rows.empty:
-            return None
-
-        v_ini = float(v_ini_rows['indice'].iloc[0])
-        v_fim = float(v_fim_rows['indice'].iloc[0])
-
+        df['data'] = pd.to_datetime(df['data'], dayfirst=True)
+        r_ini = (data_inicio - relativedelta(months=1)).replace(day=1)
+        r_fim = data_fim.replace(day=1)
+        v_ini = df[df['data'].dt.to_period('M') == r_ini.strftime('%Y-%m')]['indice'].values[0]
+        v_fim = df[df['data'].dt.to_period('M') == r_fim.strftime('%Y-%m')]['indice'].values[0]
         return {
             'variacao': (v_fim / v_ini) - 1,
             'i_ini': v_ini,
@@ -56,21 +43,6 @@ def get_ist_local(data_inicio, data_fim):
         }
     except Exception:
         return None
-
-
-def _render_equacao_ist(i_ini, i_fim, variacao):
-    equacao_html = f"""
-    <div style=\"background:#F4F6F8;border:1px solid #E1E6EB;border-radius:10px;padding:14px 18px;margin-top:10px;\">
-        <div style=\"font-family:Consolas, Monaco, monospace;font-size:1.15rem;line-height:1.8;color:#334155;\">
-            <span style=\"color:#0F766E;\">({i_fim:.3f}</span>
-            <span style=\"color:#94A3B8;\"> / </span>
-            <span style=\"color:#0F766E;\">{i_ini:.3f}</span>
-            <span style=\"color:#94A3B8;\">) - 1 = </span>
-            <span style=\"color:#B45309;font-weight:600;\">{variacao*100:.4f}%</span>
-        </div>
-    </div>
-    """
-    st.markdown(equacao_html, unsafe_allow_html=True)
 
 
 def _formatar_data(valor):
@@ -143,15 +115,22 @@ def _aplicar_estilos_coleta(writer, ciclos):
 
     if 'FINANCEIRO_MENSAL' in writer.book.sheetnames:
         ws = writer.book['FINANCEIRO_MENSAL']
-        # Coluna C é a coluna de preenchimento pelo fiscal.
-        for row in range(1, ws.max_row + 1):
-            ws.cell(row=row, column=3).fill = input_fill
+        # Coluna C é a coluna de preenchimento pelo fiscal. Linhas 2 a 200 são pré-formatadas.
+        for row in range(1, 201):
+            ws.cell(row=row, column=3).fill = input_fill if row > 1 else header_fill
             ws.cell(row=row, column=3).alignment = Alignment(horizontal='right' if row > 1 else 'center', vertical='center')
             if row > 1:
                 ws.cell(row=row, column=3).number_format = money_fmt
         ws['C1'].value = 'Valor pago/faturado (preencher)'
         ws['C1'].font = header_font
         ws['C1'].fill = header_fill
+        ws.cell(row=201, column=1).value = 'TOTAL'
+        ws.cell(row=201, column=1).fill = PatternFill('solid', fgColor='E2F0D9')
+        ws.cell(row=201, column=1).font = Font(bold=True)
+        ws.cell(row=201, column=3).value = '=SUM(C2:C200)'
+        ws.cell(row=201, column=3).number_format = money_fmt
+        ws.cell(row=201, column=3).fill = PatternFill('solid', fgColor='E2F0D9')
+        ws.cell(row=201, column=3).font = Font(bold=True)
 
     if 'ITENS_REMANESCENTES' in writer.book.sheetnames:
         ws = writer.book['ITENS_REMANESCENTES']
@@ -162,10 +141,17 @@ def _aplicar_estilos_coleta(writer, ciclos):
         ws.cell(row=1, column=1).alignment = Alignment(horizontal='center', vertical='center')
 
         # Colunas: A Item | B Quantidade contratada | C Valor unitário original | D Valor total | E... remanescentes
-        for row in range(3, ws.max_row + 1):
+        for row in range(3, 201):
             ws.cell(row=row, column=3).number_format = money_fmt
             ws.cell(row=row, column=4).number_format = money_fmt
             ws.cell(row=row, column=4).value = f'=IF(OR(B{row}="",C{row}=""),"",B{row}*C{row})'
+        ws.cell(row=201, column=1).value = 'TOTAL'
+        ws.cell(row=201, column=1).fill = PatternFill('solid', fgColor='E2F0D9')
+        ws.cell(row=201, column=1).font = Font(bold=True)
+        ws.cell(row=201, column=4).value = '=SUM(D3:D200)'
+        ws.cell(row=201, column=4).number_format = money_fmt
+        ws.cell(row=201, column=4).fill = PatternFill('solid', fgColor='E2F0D9')
+        ws.cell(row=201, column=4).font = Font(bold=True)
 
         # Destacar colunas de remanescente para preenchimento pelo fiscal e colocar a data de referência na linha 1.
         first_rem_col = 5
@@ -176,11 +162,14 @@ def _aplicar_estilos_coleta(writer, ciclos):
             ws.cell(row=1, column=col).fill = date_fill
             ws.cell(row=1, column=col).font = Font(bold=True)
             ws.cell(row=1, column=col).alignment = Alignment(horizontal='center', vertical='center')
-            for row in range(2, ws.max_row + 1):
+            for row in range(2, 201):
                 ws.cell(row=row, column=col).fill = input_fill if row > 2 else header_fill
                 if row == 2:
                     ws.cell(row=row, column=col).font = header_font
                     ws.cell(row=row, column=col).alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            ws.cell(row=201, column=col).value = f'=SUM({letra}3:{letra}200)'
+            ws.cell(row=201, column=col).fill = PatternFill('solid', fgColor='E2F0D9')
+            ws.cell(row=201, column=col).font = Font(bold=True)
             ws.column_dimensions[letra].width = 24
 
     if 'CICLOS' in writer.book.sheetnames:
@@ -194,9 +183,28 @@ def _aplicar_estilos_coleta(writer, ciclos):
 
     if 'ADITIVOS_QUANTITATIVOS' in writer.book.sheetnames:
         ws = writer.book['ADITIVOS_QUANTITATIVOS']
-        for row in range(2, ws.max_row + 1):
-            ws.cell(row=row, column=4).number_format = money_fmt
-            ws.cell(row=row, column=4).fill = input_fill
+        # Colunas monetárias/numéricas: F quantidade, G unitário, H original, J fator, K atualizado.
+        for row in range(2, 201):
+            for col in [2, 4, 6, 7, 9, 10]:
+                ws.cell(row=row, column=col).fill = input_fill
+            ws.cell(row=row, column=6).number_format = '#,##0.00'
+            ws.cell(row=row, column=7).number_format = money_fmt
+            ws.cell(row=row, column=8).number_format = money_fmt
+            ws.cell(row=row, column=10).number_format = number_fmt
+            ws.cell(row=row, column=11).number_format = money_fmt
+            ws.cell(row=row, column=8).value = f'=IF(OR(F{row}="",G{row}=""),"",F{row}*G{row})'
+            ws.cell(row=row, column=11).value = f'=IF(H{row}="","",IF(I{row}="Sim",H{row}*IF(J{row}="",1,J{row}),H{row}))'
+        ws.cell(row=201, column=1).value = 'TOTAL'
+        ws.cell(row=201, column=1).fill = PatternFill('solid', fgColor='E2F0D9')
+        ws.cell(row=201, column=1).font = Font(bold=True)
+        ws.cell(row=201, column=8).value = '=SUM(H2:H200)'
+        ws.cell(row=201, column=8).number_format = money_fmt
+        ws.cell(row=201, column=8).fill = PatternFill('solid', fgColor='E2F0D9')
+        ws.cell(row=201, column=8).font = Font(bold=True)
+        ws.cell(row=201, column=11).value = '=SUM(K2:K200)'
+        ws.cell(row=201, column=11).number_format = money_fmt
+        ws.cell(row=201, column=11).fill = PatternFill('solid', fgColor='E2F0D9')
+        ws.cell(row=201, column=11).font = Font(bold=True)
 
 
 def gerar_arquivo_coleta_excel(dados_admissibilidade):
@@ -229,24 +237,22 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         for c in ciclos
     ])
 
-    # Aba financeira simplificada: competências efetivamente vinculadas ao intervalo do ciclo.
-    # A aba FINANCEIRO_MENSAL serve para o fiscal informar o valor pago/faturado
-    # nas competências do ciclo de referência. A regra de efeito financeiro
-    # continua sendo aplicada posteriormente no módulo Valor Global, com base
-    # na Data do pedido/Início financeiro.
-    #
-    # Exemplo: se o C1 possui intervalo 08/2024 a 07/2025, a aba financeira
-    # deve listar 08/2024 a 07/2025, e não o período posterior ao pedido.
+    # Aba financeira simplificada: somente competências com potencial efeito financeiro.
+    # Não há linha TOTAL C0: o executado em C0 é inferido pela diferença entre
+    # o valor original do contrato e o remanescente informado no início de C1.
     linhas_financeiro = []
     for c in ciclos:
-        inicio_financeiro = c.get('periodo_inicio') or c.get('financeiro_inicio')
-        fim_financeiro = c.get('periodo_fim') or c.get('financeiro_fim')
+        inicio_financeiro = c.get('financeiro_inicio') or c.get('periodo_inicio')
+        fim_financeiro = c.get('financeiro_fim') or c.get('periodo_fim')
         for competencia in _competencias_mensais(inicio_financeiro, fim_financeiro):
             linhas_financeiro.append({
                 'Ciclo': c.get('ciclo', ''),
                 'Competência': competencia,
                 'Valor pago/faturado': None,
             })
+    while len(linhas_financeiro) < 199:
+        linhas_financeiro.append({'Ciclo': None, 'Competência': None, 'Valor pago/faturado': None})
+    linhas_financeiro = linhas_financeiro[:199]
     df_financeiro = pd.DataFrame(linhas_financeiro, columns=[
         'Ciclo', 'Competência', 'Valor pago/faturado'
     ])
@@ -257,21 +263,28 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         'Item', 'Quantidade contratada', 'Valor unitário original', 'Valor total',
         *colunas_remanescentes
     ]
-    linhas_itens = [{col: None for col in colunas_itens} for _ in range(30)]
+    # startrow=1 gera cabeçalho na linha 2; linhas 3 a 200 ficam para preenchimento;
+    # a linha 201 é reservada para somatórios.
+    linhas_itens = [{col: None for col in colunas_itens} for _ in range(198)]
     df_itens = pd.DataFrame(linhas_itens, columns=colunas_itens)
 
     # Aba opcional para acréscimos quantitativos/aditivos posteriores ao reajuste.
     # Usar apenas quando houver aditivo quantitativo a compor o valor para publicação.
     df_aditivos = pd.DataFrame([
         {
-            'Descrição do aditivo': None,
+            'Item': None,
             'Data do aditivo': None,
             'Ciclo/Marco': None,
-            'Valor original do acréscimo': None,
+            'Tipo de alteração': 'Acréscimo',
+            'Descrição do item/alteração': None,
+            'Quantidade acrescida/suprimida': None,
+            'Valor unitário original': None,
+            'Valor original da alteração': None,
             'Aplicar reajuste acumulado? (Sim/Não)': 'Sim',
-            'Observação': None,
+            'Fator acumulado aplicável': None,
+            'Valor atualizado da alteração': None,
         }
-        for _ in range(10)
+        for _ in range(199)
     ])
 
     output = BytesIO()
@@ -336,7 +349,7 @@ if res:
     with st.expander("🔍 Memória de Cálculo Detalhada"):
         st.write(f"**Metodologia:** {res['metodo']}")
         if "IST" in tipo_idx:
-            _render_equacao_ist(float(res['i_ini']), float(res['i_fim']), float(res['variacao']))
+            st.code(f"({res['i_fim']} / {res['i_ini']}) - 1 = {res['variacao']*100:.4f}%")
         else:
             st.dataframe(res['dados'])
 
