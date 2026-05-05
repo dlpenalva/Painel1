@@ -407,6 +407,7 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
     d_lim = dados_ciclo['d_lim']
     dt_ped = dados_ciclo['dt_ped']
     sit_emoji = dados_ciclo['sit_emoji']
+    situacao_limpa = dados_ciclo['situacao_limpa']
     inicio_efeito_financeiro = dados_ciclo['inicio_efeito_financeiro']
 
     with containers_ciclos[idx_ciclo]:
@@ -419,8 +420,8 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             janela_ciclo = f"{res_c['p_ini'].strftime('%m/%Y')} a {res_c['p_fim'].strftime('%m/%Y')}"
         else:
             if "IST" in idx_sel:
-                periodo_inicio = (data_atual - relativedelta(months=1)).replace(day=1)
-                periodo_fim = d_fim.replace(day=1)
+                periodo_inicio = data_atual.replace(day=1)
+                periodo_fim = (data_atual + relativedelta(years=1)).replace(day=1)
             else:
                 periodo_inicio = data_atual
                 periodo_fim = d_fim
@@ -442,8 +443,8 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
 
         if res_c:
             fator_indice = 1 + res_c['var']
-            # Regra crítica: ciclo PRECLUSO pode ter variação apurada para memória,
-            # mas seu fator para fins de produtório/acumulado deve ser 1.0000.
+            # Regra crítica: ciclo PRECLUSO pode ter a variação apurada para memória,
+            # mas seu fator efetivo no produtório e no XLS deve ser 1.0000.
             fator_ciclo = 1.0 if situacao_limpa == "PRECLUSO" else fator_indice
             fator_acum *= fator_ciclo
             v_fmt = f"{res_c['var'] * 100:,.2f}%".replace('.', ',')
@@ -452,7 +453,7 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
 
             st.markdown(f"- Variação do Ciclo: **{v_fmt}**")
             if situacao_limpa == "PRECLUSO":
-                st.caption("Variação apurada apenas para registro; fator do ciclo considerado como 1,0000 no acumulado final.")
+                st.caption("Variação apurada apenas para registro, sem composição no acumulado final.")
 
             with st.expander(f"🔍 Memória de Cálculo Detalhada - Ciclo {i}"):
                 st.write(f"**Metodologia:** {res_c['metodo']}")
