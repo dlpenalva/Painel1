@@ -145,6 +145,18 @@ def contem_preclusao_ou_adiantamento(situacao):
     return "preclus" in s or ("adiantado" in s and "ressalva" not in s)
 
 
+def situacao_bloqueia_reajuste(situacao):
+    """Indica situações que não devem aplicar reajuste financeiro.
+
+    Usada apenas para apresentação dos valores unitários por ciclo.
+    Não altera a admissibilidade nem a memória de cálculo dos módulos 01/02.
+    """
+    s = normalizar_texto(situacao)
+    if not s:
+        return False
+    return "preclus" in s or ("adiantado" in s and "ressalva" not in s)
+
+
 # ============================================================
 # Leitura de planilha
 # ============================================================
@@ -395,6 +407,162 @@ def atribuir_ciclo_por_competencia(competencias, ciclos):
                 break
         atribuidos.append(ciclo_encontrado)
     return atribuidos
+
+
+def parse_data_segura(valor):
+    """Converte datas de Excel/texto para Timestamp, sem lançar exceção."""
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return pd.NaT
+    return pd.to_datetime(valor, dayfirst=True, errors="coerce")
+
+
+def intervalo_ciclo_por_linha(row, proximo_inicio=None):
+    """Obtém início/fim do ciclo para mapeamento de aditivos."""
+    inicio = parse_data_segura(row.get("Data-base", ""))
+    fim = pd.NaT
+
+    # Tenta extrair fim do intervalo mensal, se a data-base não for suficiente.
+    ini_m, fim_m = parse_intervalo_mensal(row.get("Intervalo do índice", ""))
+    if pd.isna(inicio) and ini_m is not None:
+        inicio = ini_m.to_timestamp()
+    if fim_m is not None:
+        fim = fim_m.to_timestamp(how="end").normalize()
+
+    if pd.isna(fim) and proximo_inicio is not None and not pd.isna(proximo_inicio):
+        fim = proximo_inicio - pd.Timedelta(days=1)
+    if pd.isna(fim) and not pd.isna(inicio):
+        fim = inicio + pd.DateOffset(years=1) - pd.Timedelta(days=1)
+    return inicio, fim
+
+
+def preparar_lista_ciclos_para_aditivos(ciclos):
+    """Monta lista de ciclos com datas normalizadas para mapeamento de aditivos."""
+    if ciclos is None or ciclos.empty:
+        return []
+
+    df = ciclos.copy().sort_values(by="Ciclo", key=lambda s: s.map(numero_ciclo)).reset_index(drop=True)
+    inicios = [parse_data_segura(v) for v in df.get("Data-base", pd.Series(dtype=object)).tolist()]
+
+    lista = []
+    for idx, row in df.iterrows():
+        proximo_inicio = inicios[idx + 1] if idx + 1 < len(inicios) else None
+        inicio, fim = intervalo_ciclo_por_linha(row, proximo_inicio=proximo_inicio)
+        ciclo = normalizar_ciclo(row.get("Ciclo", ""))
+        if ciclo and not pd.isna(inicio):
+            lista.append({
+                "ciclo": ciclo,
+                "inicio": pd.Timestamp(inicio).normalize(),
+                "fim": pd.Timestamp(fim).normalize() if not pd.isna(fim) else pd.Timestamp.max.normalize(),
+                "situacao": row.get("Situação", ""),
+                "fator_acumulado": float(row.get("Fator acumulado efetivo", row.get("Fator acumulado", 1.0)) or 1.0),
+            })
+    return lista
+
+
+def definir_ciclo(data_aditivo, lista_ciclos):
+    """Define o ciclo do aditivo usando comparação de datas em Python.
+
+    Regra:
+    - data inválida/vazia -> Fora de Ciclo;
+    - data anterior ao primeiro ciclo -> C0;
+    - Inicio_N <= data <= Fim_N -> Cn;
+    - se passar do último fim, retorna o último ciclo com início <= data.
+    """
+    data = parse_data_segura(data_aditivo)
+    if pd.isna(data) or not lista_ciclos:
+        return "Fora de Ciclo"
+    data = pd.Timestamp(data).normalize()
+
+    lista = sorted(lista_ciclos, key=lambda c: numero_ciclo(c.get("ciclo", "")))
+    primeiro_inicio = lista[0].get("inicio")
+    if primeiro_inicio is not None and not pd.isna(primeiro_inicio) and data < primeiro_inicio:
+        return "C0"
+
+    ultimo_ciclo_aplicavel = "Fora de Ciclo"
+    for info in lista:
+        inicio = info.get("inicio")
+        fim = info.get("fim")
+        ciclo = info.get("ciclo")
+        if inicio is None or pd.isna(inicio):
+            continue
+        if data >= inicio:
+            ultimo_ciclo_aplicavel = ciclo
+        if fim is not None and not pd.isna(fim) and inicio <= data <= fim:
+            return ciclo
+    return ultimo_ciclo_aplicavel
+
+
+def ler_aditivos(bytes_arquivo, xls, ciclos):
+    """Lê e normaliza a aba ADITIVOS_QUANTITATIVOS, calculando Ciclo/Marco em Python."""
+    aba = localizar_aba(xls, ["ADITIVOS_QUANTITATIVOS", "ADITIVOS", "Aditivos"])
+    if not aba:
+        return pd.DataFrame()
+
+    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Data do aditivo"])
+    if df.empty:
+        return pd.DataFrame()
+
+    col_item = localizar_coluna(df, ["Item"])
+    col_data = localizar_coluna(df, ["Data do aditivo", "Data"])
+    col_tipo = localizar_coluna(df, ["Tipo de alteração", "Tipo de alteracao", "Acréscimo", "Acrescimo"])
+    col_qtd = localizar_coluna(df, ["Quantidade acrescida/suprimida", "Quantidade", "Qtd"])
+    col_vu = localizar_coluna(df, ["Valor unitário original", "Valor unitario original", "Valor unitário", "Valor unitario"])
+    col_valor = localizar_coluna(df, ["Valor original da alteração", "Valor original da alteracao", "Valor original", "Valor"])
+    col_aplicar = localizar_coluna(df, ["Aplicar reajuste acumulado", "Aplicar reajuste acumulado?", "Aplicar"])
+
+    if col_data is None:
+        return pd.DataFrame()
+
+    lista_ciclos = preparar_lista_ciclos_para_aditivos(ciclos)
+    fatores = mapa_fatores(ciclos)
+
+    linhas = []
+    for _, row in df.iterrows():
+        data_aditivo = parse_data_segura(row.get(col_data))
+        if pd.isna(data_aditivo):
+            continue
+
+        item = row.get(col_item, "") if col_item else ""
+        tipo = str(row.get(col_tipo, "Acréscimo") if col_tipo else "Acréscimo").strip()
+        qtd = numero_br(row.get(col_qtd, 0)) if col_qtd else 0.0
+        vu = numero_br(row.get(col_vu, 0)) if col_vu else 0.0
+        valor_original = numero_br(row.get(col_valor, 0)) if col_valor else qtd * vu
+        aplicar = str(row.get(col_aplicar, "Sim") if col_aplicar else "Sim").strip()
+
+        if valor_original == 0 and qtd != 0 and vu != 0:
+            valor_original = qtd * vu
+        if normalizar_texto(tipo).startswith("decresc") or "supress" in normalizar_texto(tipo):
+            valor_original = -abs(valor_original)
+        else:
+            valor_original = abs(valor_original)
+
+        ciclo = definir_ciclo(data_aditivo, lista_ciclos)
+        fator = fatores.get(ciclo, {}).get("fator_acumulado_efetivo", 1.0)
+        if normalizar_texto(aplicar) in ["nao", "n", "no"]:
+            fator = 1.0
+        valor_atualizado = valor_original * fator
+
+        linhas.append({
+            "Item": item,
+            "Data do aditivo": data_aditivo.strftime("%d/%m/%Y"),
+            "Ciclo": ciclo,
+            "Tipo de alteração": tipo or "Acréscimo",
+            "Quantidade": qtd,
+            "Valor unitário original": vu,
+            "Valor original da alteração": valor_original,
+            "Aplicar reajuste acumulado?": aplicar or "Sim",
+            "Fator acumulado aplicável": fator,
+            "Valor atualizado da alteração": valor_atualizado,
+        })
+
+    return limpar_dataframe(pd.DataFrame(linhas))
+
+
+def limpar_dataframe(df):
+    """Remove NaN/Inf sem mudar a estrutura de colunas."""
+    if df is None or df.empty:
+        return pd.DataFrame() if df is None else df
+    return df.replace([float("inf"), float("-inf")], 0).fillna("")
 
 
 def ler_itens(bytes_arquivo, xls):
@@ -878,6 +1046,8 @@ def processar_arquivo_coleta(bytes_arquivo):
             "Fator ciclo efetivo": fator,
         }])
 
+    df_aditivos = ler_aditivos(bytes_arquivo, xls, ciclos)
+
     df_fin_por_ciclo = calcular_financeiro_por_ciclo(financeiro, ciclos)
     df_rem, ciclo_ultimo_rem = calcular_remanescentes(itens, colunas_remanescentes, ciclos)
     df_consumo_estoque = calcular_consumo_estoque_por_diferenca(itens, colunas_remanescentes, ciclos)
@@ -957,6 +1127,7 @@ def processar_arquivo_coleta(bytes_arquivo):
         "df_valores_unitarios": df_valores_unitarios,
         "df_matriz_valores_unitarios": df_matriz_valores_unitarios,
         "df_ciclos_valores_unitarios": df_ciclos_valores_unitarios,
+        "df_aditivos_processados": df_aditivos,
     }
     return resultado
 
@@ -1121,6 +1292,16 @@ if resultado:
             "st.session_state['resultado_valor_global'] foi atualizado com os resultados processados.",
             language="python",
         )
+
+        df_aditivos_proc = resultado.get("df_aditivos_processados", pd.DataFrame())
+        if not df_aditivos_proc.empty:
+            st.markdown("### Conferência técnica de aditivos")
+            df_aditivos_vis = formatar_dataframe_moeda(
+                df_aditivos_proc,
+                colunas_moeda=["Valor unitário original", "Valor original da alteração", "Valor atualizado da alteração"],
+                colunas_fator=["Fator acumulado aplicável"],
+            )
+            st.dataframe(df_aditivos_vis, use_container_width=True, hide_index=True)
 
     with tab5:
         st.markdown("### Valores Unitários e Totais por Ciclo")

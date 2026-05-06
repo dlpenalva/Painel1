@@ -128,24 +128,6 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
     ciclos = dados_admissibilidade.get('ciclos', [])
     data_geracao = datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')
 
-    def _formula_ciclo_por_data_aditivo(excel_row):
-        """Fórmula robusta para detectar Ciclo/Marco pela Data do aditivo.
-        Usa o último ciclo cuja Data-base seja menor ou igual à data informada.
-        """
-        data_expr = f'IF(ISNUMBER(B{excel_row}),B{excel_row},DATEVALUE(B{excel_row}))'
-        formula = '""'
-        for ciclo in ciclos:
-            nome = str(ciclo.get('ciclo', '')).strip()
-            data_base_txt = ciclo.get('data_base', '')
-            if not nome or not data_base_txt:
-                continue
-            try:
-                data_base_dt = pd.to_datetime(data_base_txt, dayfirst=True).to_pydatetime()
-            except Exception:
-                continue
-            formula = f'IF({data_expr}>=DATE({data_base_dt.year},{data_base_dt.month},{data_base_dt.day}),"{nome}",{formula})'
-        return f'=IF(B{excel_row}="","",IFERROR({formula},""))'
-
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
         workbook = writer.book
 
@@ -316,7 +298,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             ws_ad.write(row, 0, '', fmt_text)
             ws_ad.write(row, 1, '', fmt_input_date)
             # Coluna C: tenta detectar o ciclo pela data do aditivo. Será recalculado no upload se ficar vazio.
-            ws_ad.write_formula(row, 2, _formula_ciclo_por_data_aditivo(excel_row), fmt_auto)
+            ws_ad.write(row, 2, '', fmt_auto)  # Ciclo/Marco será calculado por Python no upload do Valor Global
             ws_ad.write(row, 3, 'Acréscimo', fmt_input)
             ws_ad.write(row, 4, '', fmt_input_num)
             ws_ad.write(row, 5, '', fmt_input_money)
