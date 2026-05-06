@@ -27,5 +27,14 @@ if (pages_dir / "04_Relatorio_Global.py").exists():
 if grupo_valor_global:
     nav["Valor Global e Relatórios"] = grupo_valor_global
 
+grupo_gestao = []
+if (pages_dir / "05_Garantia.py").exists():
+    grupo_gestao.append(
+        st.Page("pages/05_Garantia.py", title="Garantia", icon="🛡️")
+    )
+
+if grupo_gestao:
+    nav["Gestão Contratual"] = grupo_gestao
+
 pg = st.navigation(nav)
 pg.run()
