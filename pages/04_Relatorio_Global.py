@@ -1,5 +1,7 @@
 from io import BytesIO
 from pathlib import Path
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
@@ -36,16 +38,20 @@ def fator_fmt(valor):
     return f"{valor:.4f}".replace(".", ",")
 
 
+def agora_brasilia():
+    return datetime.now(ZoneInfo("America/Sao_Paulo"))
+
+
 def normalizar_status(status):
     texto = str(status or "").upper()
     if "PRECLUS" in texto:
-        return "PRECLUSO"
+        return "[!] PRECLUSO"
     if "RESSALVA" in texto:
-        return "ADMISSÍVEL COM RESSALVA"
+        return "[R] ADMISSÍVEL COM RESSALVA"
     if "TEMPEST" in texto:
-        return "TEMPESTIVO"
+        return "[OK] TEMPESTIVO"
     if "ADIANT" in texto:
-        return "ADIANTADO"
+        return "[A] ADIANTADO"
     return texto or "NÃO INFORMADO"
 
 
@@ -53,63 +59,50 @@ def texto_clausula_oito(adm):
     ciclos = []
     if adm:
         ciclos = adm.get("ciclos") or adm.get("detalhamento_ciclos") or []
-
     status_gerais = []
     for c in ciclos:
         status_gerais.append(normalizar_status(c.get("situacao") or c.get("Situação") or c.get("status")))
-
     texto_status = " ".join(status_gerais)
-
     if "PRECLUSO" in texto_status:
         return (
-            "A análise registra ciclo classificado como precluso, em razão da ausência de solicitação "
-            "dentro do prazo de 90 dias previsto no Parágrafo Quinto da Cláusula Oitava, observando-se "
-            "também a regra do Parágrafo Sétimo quanto à possibilidade de novo pleito após ultrapassados "
-            "12 meses da data em que poderia ter sido requerido."
+            "A análise registra ciclo classificado como precluso, razão pela qual a variação do índice pode "
+            "ser exibida para memória, mas não compõe o efeito financeiro do acumulado nem o retroativo a pagar, "
+            "observados os Parágrafos Quinto e Sétimo da Cláusula Oitava."
         )
-
-    if "ADMISSÍVEL COM RESSALVA" in texto_status:
+    if "RESSALVA" in texto_status:
         return (
             "A análise registra pleito admissível com ressalva, por ter sido apresentado no mesmo mês de "
-            "implemento da anualidade, porém antes do dia exato de completude dos 12 meses. Os efeitos "
-            "financeiros devem observar os Parágrafos Primeiro e Segundo da Cláusula Oitava."
+            "implemento da anualidade, porém antes do dia exato de completude dos 12 meses. Os efeitos financeiros "
+            "devem observar os Parágrafos Primeiro e Segundo da Cláusula Oitava."
         )
-
     if "ADIANTADO" in texto_status:
         return (
-            "A análise registra pleito apresentado antes do implemento da anualidade contratual. Nos termos "
-            "dos Parágrafos Primeiro e Segundo da Cláusula Oitava, eventual reconhecimento de efeitos "
-            "financeiros deve observar a completude dos 12 meses e a data juridicamente apta para o pedido."
+            "A análise registra pleito apresentado antes do implemento da anualidade contratual. Eventual "
+            "reconhecimento de efeitos financeiros deve observar a completude dos 12 meses e a data juridicamente "
+            "apta para o pedido, nos termos da Cláusula Oitava."
         )
-
     return (
         "O pleito foi classificado como tempestivo, considerando a anualidade prevista no Parágrafo Primeiro "
         "da Cláusula Oitava e a apresentação da solicitação dentro da janela contratual de 90 dias prevista "
-        "no Parágrafo Quinto. Os efeitos financeiros devem observar o Parágrafo Segundo da mesma cláusula."
+        "no Parágrafo Quinto. Os efeitos financeiros observam o Parágrafo Segundo da mesma cláusula."
     )
 
 
-def dataframe_para_texto(df, max_linhas=20):
-    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
-        return "Sem dados disponíveis."
-    return df.head(max_linhas).to_string(index=False)
-
-
-def gerar_minuta_sei(adm, res):
+def gerar_informacoes_processuais(adm, res):
     origem = (adm or {}).get("origem") or (adm or {}).get("tipo") or "Não informado"
     indice = res.get("indice", (adm or {}).get("indice", "Não informado"))
     fator = res.get("fator_acumulado", (adm or {}).get("fator_acumulado", (adm or {}).get("fator", 1.0)))
-
     texto = f"""
-RELATÓRIO EXECUTIVO DE VALOR GLOBAL DO CONTRATO
+RELATÓRIO EXECUTIVO DE ANÁLISE DE REAJUSTE CONTRATUAL
 
 1. Contexto da análise
 
-A presente análise consolida os resultados da etapa de admissibilidade do reajuste contratual e da etapa de quantificação do impacto financeiro, com base nos dados constantes do Arquivo de Coleta preenchido.
+A presente análise consolida os resultados da etapa de admissibilidade do reajuste contratual e da etapa de quantificação financeira, com base nos dados constantes do Arquivo de Coleta preenchido.
 
 Origem da análise: {origem}
 Índice utilizado: {indice}
-Fator acumulado aplicado: {fator_fmt(fator)}
+Fator acumulado considerado: {fator_fmt(fator)}
+Quantidade de ciclos identificados: {res.get('quantidade_ciclos', 0)}
 
 2. Fundamentação contratual
 
@@ -117,198 +110,18 @@ Fator acumulado aplicado: {fator_fmt(fator)}
 
 3. Resultado financeiro consolidado
 
-Valor original do contrato: {moeda(res.get("valor_original_contrato", 0))}
-Total pago/faturado: {moeda(res.get("total_pago_faturado", 0))}
-Total devido reajustado: {moeda(res.get("total_devido_reajustado", 0))}
-Delta acumulado financeiro: {moeda(res.get("delta_acumulado", 0))}
-Remanescente original: {moeda(res.get("remanescente_original", 0))}
-Remanescente atualizado: {moeda(res.get("remanescente_reajustado", 0))}
+Valor original do contrato: {moeda(res.get('valor_original_contrato', 0))}
+Valor pago efetivo: {moeda(res.get('valor_pago_efetivo', res.get('total_pago_faturado', 0)))}
+Valor teórico calculado: {moeda(res.get('valor_teorico_calculado', res.get('total_devido_reajustado', 0)))}
+Delta total apurado: {moeda(res.get('delta_total', res.get('delta_acumulado', 0)))}
+Saldo remanescente atualizado: {moeda(res.get('remanescente_reajustado', 0))}
+Valor atualizado do contrato: {moeda(res.get('valor_atualizado_contrato', res.get('valor_global_financeiro', 0)))}
 
-4. Valor Global
+4. Observação executiva
 
-Valor Global Financeiro: {moeda(res.get("valor_global_financeiro", 0))}
-Valor Global por Estoque/Itens: {moeda(res.get("valor_global_estoque", 0))}
-Diferença entre métodos: {moeda(res.get("diferenca_metodos", 0))}
-Percentual de divergência: {percentual(res.get("percentual_divergencia", 0))}
-
-5. Observação executiva
-
-A visão financeira considera os valores pagos ou faturados por ciclo e pode refletir glosas, descontos, retenções, pagamentos parciais ou diferenças de competência. A visão por estoque/itens considera as quantidades e remanescentes físicos/contratuais, aplicando os fatores de reajuste aos saldos remanescentes informados. Eventual diferença entre as duas visões deve ser analisada pela fiscalização e pela gestão contratual.
+O painel considera o que foi efetivamente pago, o que deveria ter sido pago conforme os ciclos financeiros válidos e o saldo remanescente atualizado. Ciclos preclusos ou sem efeito financeiro não geram retroativo, sem prejuízo de constarem na memória histórica da análise.
 """
     return texto.strip()
-
-
-# ============================================================
-# PDF com ReportLab
-# ============================================================
-
-def criar_pdf_relatorio(adm, res):
-    try:
-        from reportlab.lib import colors
-        from reportlab.lib.pagesizes import A4
-        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-        from reportlab.lib.units import cm
-        from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
-    except Exception as exc:
-        raise RuntimeError(
-            "A biblioteca reportlab não está instalada. Inclua 'reportlab' no requirements.txt."
-        ) from exc
-
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=1.5 * cm,
-        leftMargin=1.5 * cm,
-        topMargin=1.3 * cm,
-        bottomMargin=1.3 * cm,
-    )
-
-    styles = getSampleStyleSheet()
-    styles.add(ParagraphStyle(
-        name="TituloTelebras",
-        parent=styles["Title"],
-        fontSize=15,
-        leading=18,
-        spaceAfter=10,
-    ))
-    styles.add(ParagraphStyle(
-        name="Subtitulo",
-        parent=styles["Heading2"],
-        fontSize=11,
-        leading=14,
-        spaceBefore=8,
-        spaceAfter=6,
-    ))
-    styles.add(ParagraphStyle(
-        name="Texto",
-        parent=styles["BodyText"],
-        fontSize=8.8,
-        leading=11,
-        alignment=4,
-    ))
-
-    story = []
-
-    logo_paths = [
-        Path("assets/telebras_logo.png"),
-        Path("assets/logo.png"),
-        Path("telebras_logo.png"),
-        Path("logo.png"),
-    ]
-    logo_adicionado = False
-    for caminho in logo_paths:
-        if caminho.exists():
-            try:
-                story.append(Image(str(caminho), width=4.0 * cm, height=1.2 * cm))
-                logo_adicionado = True
-                break
-            except Exception:
-                pass
-
-    if not logo_adicionado:
-        story.append(Paragraph("TELEBRAS — Análise de Reajuste Contratual", styles["TituloTelebras"]))
-
-    story.append(Paragraph("Relatório Executivo - GCC", styles["TituloTelebras"]))
-
-    story.append(Paragraph("1. Identificação da Análise", styles["Subtitulo"]))
-    origem = (adm or {}).get("origem") or (adm or {}).get("tipo") or "Não informado"
-    indice = res.get("indice", (adm or {}).get("indice", "Não informado"))
-    fator = res.get("fator_acumulado", (adm or {}).get("fator_acumulado", (adm or {}).get("fator", 1.0)))
-
-    tabela_ident = [
-        ["Origem da análise", origem],
-        ["Índice aplicado", indice],
-        ["Fator acumulado", fator_fmt(fator)],
-        ["Data de processamento", res.get("data_processamento", "Não informado")],
-    ]
-    story.append(tabela_pdf(tabela_ident, col_widths=[6 * cm, 10 * cm]))
-    story.append(Spacer(1, 8))
-
-    story.append(Paragraph("2. Análise Contratual — Cláusula Oitava", styles["Subtitulo"]))
-    story.append(Paragraph(texto_clausula_oito(adm), styles["Texto"]))
-
-    story.append(Paragraph("3. Indicadores Executivos", styles["Subtitulo"]))
-    indicadores = [
-        ["Indicador", "Valor"],
-        ["Valor original do contrato", moeda(res.get("valor_original_contrato", 0))],
-        ["Total pago/faturado", moeda(res.get("total_pago_faturado", 0))],
-        ["Total devido reajustado", moeda(res.get("total_devido_reajustado", 0))],
-        ["Delta acumulado", moeda(res.get("delta_acumulado", 0))],
-        ["Remanescente original", moeda(res.get("remanescente_original", 0))],
-        ["Remanescente atualizado", moeda(res.get("remanescente_reajustado", 0))],
-        ["Valor Global Financeiro", moeda(res.get("valor_global_financeiro", 0))],
-        ["Valor Global por Estoque/Itens", moeda(res.get("valor_global_estoque", 0))],
-        ["Diferença entre métodos", moeda(res.get("diferenca_metodos", 0))],
-        ["Percentual de divergência", percentual(res.get("percentual_divergencia", 0))],
-    ]
-    story.append(tabela_pdf(indicadores, header=True, col_widths=[8 * cm, 8 * cm]))
-
-    story.append(Paragraph("4. Quadro Comparativo — Antes x Depois", styles["Subtitulo"]))
-    df_comp = res.get("df_comparativo")
-    story.append(tabela_dataframe_pdf(df_comp, max_linhas=12))
-
-    story.append(Paragraph("5. Financeiro por Ciclo", styles["Subtitulo"]))
-    story.append(tabela_dataframe_pdf(res.get("df_financeiro_por_ciclo"), max_linhas=15))
-
-    story.append(Paragraph("6. Remanescentes por Ciclo", styles["Subtitulo"]))
-    story.append(tabela_dataframe_pdf(res.get("df_remanescentes"), max_linhas=15))
-
-    story.append(Paragraph("7. Validação do Gestor/Fiscal do Contrato", styles["Subtitulo"]))
-    assinatura = [
-        ["Nome:", ""],
-        ["Matrícula:", ""],
-        ["Unidade:", ""],
-        ["Data:", ""],
-        ["Assinatura:", ""],
-    ]
-    story.append(tabela_pdf(assinatura, col_widths=[4 * cm, 12 * cm]))
-
-    doc.build(story)
-    pdf = buffer.getvalue()
-    buffer.close()
-    return pdf
-
-
-def tabela_pdf(dados, header=False, col_widths=None):
-    from reportlab.lib import colors
-    from reportlab.platypus import Table, TableStyle
-
-    table = Table(dados, colWidths=col_widths)
-    estilo = [
-        ("GRID", (0, 0), (-1, -1), 0.4, colors.grey),
-        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-    ]
-    if header:
-        estilo.extend([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E9EEF6")),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ])
-    table.setStyle(TableStyle(estilo))
-    return table
-
-
-def tabela_dataframe_pdf(df, max_linhas=12):
-    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
-        return tabela_pdf([["Informação", "Sem dados disponíveis"]], col_widths=[5 * 2.83, 11 * 2.83])
-
-    dados = [list(df.columns)]
-    for _, row in df.head(max_linhas).iterrows():
-        linha = []
-        for valor in row.tolist():
-            if isinstance(valor, float):
-                # Fatores ficam menores; valores monetários já podem ter sido formatados na tela.
-                linha.append(f"{valor:,.4f}".replace(",", "X").replace(".", ",").replace("X", "."))
-            else:
-                linha.append(str(valor))
-        dados.append(linha)
-
-    # Largura simples distribuída.
-    return tabela_pdf(dados, header=True)
 
 
 def df_visual(df, moeda_cols=None, fator_cols=None, pct_cols=None):
@@ -325,6 +138,158 @@ def df_visual(df, moeda_cols=None, fator_cols=None, pct_cols=None):
         if col in visual.columns:
             visual[col] = visual[col].apply(percentual)
     return visual
+
+
+# ============================================================
+# PDF com ReportLab
+# ============================================================
+
+def preparar_df_pdf(df, colunas=None, moeda_cols=None, fator_cols=None, pct_cols=None, max_linhas=18):
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return pd.DataFrame()
+    base = df.copy()
+    if colunas:
+        existentes = [c for c in colunas if c in base.columns]
+        base = base[existentes]
+    base = df_visual(base, moeda_cols=moeda_cols, fator_cols=fator_cols, pct_cols=pct_cols)
+    return base.head(max_linhas)
+
+
+def criar_pdf_relatorio(adm, res):
+    try:
+        from reportlab.lib import colors
+        from reportlab.lib.pagesizes import A4, landscape
+        from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+        from reportlab.lib.units import cm
+        from reportlab.platypus import Image, Paragraph, SimpleDocTemplate, Spacer, Table, TableStyle
+    except Exception as exc:
+        raise RuntimeError("A biblioteca reportlab não está instalada. Inclua 'reportlab' no requirements.txt.") from exc
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=landscape(A4),
+        rightMargin=1.0 * cm,
+        leftMargin=1.0 * cm,
+        topMargin=1.0 * cm,
+        bottomMargin=1.0 * cm,
+    )
+    styles = getSampleStyleSheet()
+    styles.add(ParagraphStyle(name="Titulo", parent=styles["Title"], fontSize=14, leading=16, alignment=1, spaceAfter=6))
+    styles.add(ParagraphStyle(name="Subtitulo", parent=styles["Heading2"], fontSize=10, leading=12, spaceBefore=6, spaceAfter=4))
+    styles.add(ParagraphStyle(name="Texto", parent=styles["BodyText"], fontSize=8, leading=10, alignment=4))
+
+    story = []
+    logo_paths = [Path("assets/telebras_logo.png"), Path("assets/logo.png"), Path("telebras_logo.png"), Path("logo.png")]
+    for caminho in logo_paths:
+        if caminho.exists():
+            try:
+                story.append(Image(str(caminho), width=3.8 * cm, height=1.1 * cm))
+                break
+            except Exception:
+                pass
+
+    story.append(Paragraph("TELEBRAS — Análise de Reajuste Contratual", styles["Titulo"]))
+    story.append(Paragraph("Relatório Executivo - GCC", styles["Titulo"]))
+    story.append(Spacer(1, 6))
+
+    origem = (adm or {}).get("origem") or (adm or {}).get("tipo") or "Não informado"
+    indice = res.get("indice", (adm or {}).get("indice", "Não informado"))
+    fator = res.get("fator_acumulado", (adm or {}).get("fator_acumulado", (adm or {}).get("fator", 1.0)))
+    data_proc = res.get("data_processamento") or agora_brasilia().strftime("%d/%m/%Y %H:%M")
+
+    story.append(Paragraph("1. Identificação da Análise", styles["Subtitulo"]))
+    story.append(tabela_pdf([
+        ["Origem", origem, "Índice", indice],
+        ["Fator acumulado", fator_fmt(fator), "Data de processamento", data_proc],
+        ["Ciclos identificados", str(res.get("quantidade_ciclos", 0)), "Valor atualizado do contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_financeiro", 0)))],
+    ], col_widths=[4.0*cm, 6.0*cm, 5.0*cm, 7.0*cm]))
+
+    story.append(Paragraph("2. Análise Contratual — Cláusula Oitava", styles["Subtitulo"]))
+    story.append(Paragraph(texto_clausula_oito(adm), styles["Texto"]))
+
+    story.append(Paragraph("3. Painel Executivo", styles["Subtitulo"]))
+    indicadores = [
+        ["Indicador", "Valor"],
+        ["Valor original", moeda(res.get("valor_original_contrato", 0))],
+        ["Valor pago efetivo", moeda(res.get("valor_pago_efetivo", res.get("total_pago_faturado", 0)))],
+        ["Valor teórico calculado", moeda(res.get("valor_teorico_calculado", res.get("total_devido_reajustado", 0)))],
+        ["Delta total", moeda(res.get("delta_total", res.get("delta_acumulado", 0)))],
+        ["Saldo remanescente atualizado", moeda(res.get("remanescente_reajustado", 0))],
+        ["Aditivos/Supressões atualizados", moeda(res.get("total_aditivos_atualizados", 0))],
+        ["Valor atualizado do contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_financeiro", 0)))],
+    ]
+    story.append(tabela_pdf(indicadores, header=True, col_widths=[8.0*cm, 7.0*cm]))
+
+    story.append(Paragraph("4. Ciclos, Percentuais e Efeitos Financeiros", styles["Subtitulo"]))
+    df_ciclos = preparar_df_pdf(
+        res.get("df_ciclos"),
+        colunas=["Ciclo", "Data-base", "Data do pedido", "Situação", "Tratamento financeiro do ciclo", "Variação", "Fator acumulado efetivo"],
+        pct_cols=["Variação"], fator_cols=["Fator acumulado efetivo"], max_linhas=12,
+    )
+    if not df_ciclos.empty and "Situação" in df_ciclos.columns:
+        df_ciclos["Situação"] = df_ciclos["Situação"].apply(normalizar_status)
+    story.append(tabela_dataframe_pdf(df_ciclos))
+
+    story.append(Paragraph("5. Financeiro por Ciclo", styles["Subtitulo"]))
+    df_fin = preparar_df_pdf(
+        res.get("df_financeiro_por_ciclo"),
+        colunas=["Ciclo", "Situação", "Tratamento financeiro", "Valor pago efetivo", "Valor teórico calculado", "Delta do ciclo"],
+        moeda_cols=["Valor pago efetivo", "Valor teórico calculado", "Delta do ciclo"], max_linhas=14,
+    )
+    if not df_fin.empty and "Situação" in df_fin.columns:
+        df_fin["Situação"] = df_fin["Situação"].apply(normalizar_status)
+    story.append(tabela_dataframe_pdf(df_fin))
+
+    story.append(Paragraph("6. Valor Atualizado do Contrato", styles["Subtitulo"]))
+    df_exec = preparar_df_pdf(
+        res.get("df_execucao_atualizada"),
+        colunas=["Ciclo", "Status financeiro", "Valor executado original", "Percentual acumulado aplicado", "Valor executado atualizado"],
+        moeda_cols=["Valor executado original", "Valor executado atualizado"], pct_cols=["Percentual acumulado aplicado"], max_linhas=12,
+    )
+    story.append(tabela_dataframe_pdf(df_exec))
+
+    story.append(Paragraph("7. Informações para instrução processual", styles["Subtitulo"]))
+    story.append(Paragraph(gerar_informacoes_processuais(adm, res).replace("\n", "<br/>"), styles["Texto"]))
+
+    doc.build(story)
+    pdf = buffer.getvalue()
+    buffer.close()
+    return pdf
+
+
+def tabela_pdf(dados, header=False, col_widths=None):
+    from reportlab.lib import colors
+    from reportlab.platypus import Table, TableStyle
+    table = Table(dados, colWidths=col_widths, hAlign="CENTER")
+    estilo = [
+        ("GRID", (0, 0), (-1, -1), 0.35, colors.HexColor("#B7B7B7")),
+        ("FONTNAME", (0, 0), (-1, -1), "Helvetica"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("LEFTPADDING", (0, 0), (-1, -1), 3),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+    ]
+    if header:
+        estilo.extend([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#E9EEF6")),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ])
+    table.setStyle(TableStyle(estilo))
+    return table
+
+
+def tabela_dataframe_pdf(df):
+    from reportlab.lib.units import cm
+    if df is None or not isinstance(df, pd.DataFrame) or df.empty:
+        return tabela_pdf([["Informação", "Sem dados disponíveis"]], col_widths=[6*cm, 10*cm])
+    dados = [list(df.columns)]
+    for _, row in df.iterrows():
+        dados.append([str(v) for v in row.tolist()])
+    largura_total = 25.0 * cm
+    ncols = max(len(dados[0]), 1)
+    col_width = largura_total / ncols
+    return tabela_pdf(dados, header=True, col_widths=[col_width] * ncols)
 
 
 # ============================================================
@@ -348,55 +313,44 @@ st.subheader("Resumo Executivo")
 
 col1, col2, col3, col4 = st.columns(4)
 col1.metric("Índice", res.get("indice", "Não informado"))
-col2.metric("Fator acumulado", fator_fmt(res.get("fator_acumulado", 1.0)))
-col3.metric("Valor Global Financeiro", moeda(res.get("valor_global_financeiro", 0)))
-col4.metric("Delta acumulado", moeda(res.get("delta_acumulado", 0)))
-
-col5, col6, col7 = st.columns(3)
-col5.metric("Valor Global por Estoque", moeda(res.get("valor_global_estoque", 0)))
-col6.metric("Diferença entre métodos", moeda(res.get("diferenca_metodos", 0)))
-col7.metric("Divergência", percentual(res.get("percentual_divergencia", 0)))
+col2.metric("Ciclos", res.get("quantidade_ciclos", 0))
+col3.metric("Valor Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_financeiro", 0))))
+col4.metric("Delta Total", moeda(res.get("delta_total", res.get("delta_acumulado", 0))))
 
 st.divider()
 
-tab1, tab2, tab3 = st.tabs(["Relatório Executivo", "Tabelas Comparativas", "PDF"])
+tab1, tab2, tab3 = st.tabs(["Relatório Executivo", "Tabelas Financeiras", "PDF"])
 
 with tab1:
     st.markdown("### Fundamentação Contratual")
     st.info(texto_clausula_oito(adm))
-
     st.markdown("### Informações para instrução processual")
-    texto_sei = gerar_minuta_sei(adm, res)
-    st.text_area("Copie para o SEI:", texto_sei, height=420)
+    texto_sei = gerar_informacoes_processuais(adm, res)
+    st.text_area("Copie as informações para a instrução processual:", texto_sei, height=420)
 
 with tab2:
-    st.markdown("### Quadro Comparativo — Antes x Depois")
+    st.markdown("### Painel Executivo")
     st.dataframe(
-        df_visual(
-            res.get("df_comparativo"),
-            moeda_cols=["Antes do Reajuste", "Após Reajuste", "Diferença"],
-        ),
+        df_visual(res.get("df_comparativo"), moeda_cols=["Valor"]),
         use_container_width=True,
         hide_index=True,
     )
-
     st.markdown("### Financeiro por Ciclo")
     st.dataframe(
         df_visual(
             res.get("df_financeiro_por_ciclo"),
-            moeda_cols=["Valor pago/faturado", "Valor devido reajustado", "Delta do ciclo", "Delta acumulado"],
-            fator_cols=["Fator aplicado"],
+            moeda_cols=["Valor pago efetivo", "Valor teórico calculado", "Delta do ciclo"],
+            fator_cols=["Fator aplicado ao retroativo"],
         ),
         use_container_width=True,
         hide_index=True,
     )
-
-    st.markdown("### Remanescentes")
+    st.markdown("### Valor Atualizado do Contrato")
     st.dataframe(
         df_visual(
-            res.get("df_remanescentes"),
-            moeda_cols=["Remanescente original", "Remanescente reajustado"],
-            fator_cols=["Fator aplicado"],
+            res.get("df_execucao_atualizada"),
+            moeda_cols=["Valor executado original", "Valor executado atualizado"],
+            pct_cols=["Percentual acumulado aplicado"],
         ),
         use_container_width=True,
         hide_index=True,
@@ -409,7 +363,7 @@ with tab3:
         st.download_button(
             label="Baixar Relatório Executivo em PDF",
             data=pdf_bytes,
-            file_name="relatorio_global_valor_contrato.pdf",
+            file_name="relatorio_executivo_reajuste.pdf",
             mime="application/pdf",
             type="primary",
         )
