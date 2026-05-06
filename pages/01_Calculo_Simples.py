@@ -59,16 +59,6 @@ def _formatar_mes_ano(valor):
         return ""
 
 
-def _competencias_mensais(data_inicio, data_fim):
-    if not data_inicio or not data_fim:
-        return []
-    inicio = pd.to_datetime(data_inicio, dayfirst=True).replace(day=1)
-    fim = pd.to_datetime(data_fim, dayfirst=True).replace(day=1)
-    if fim < inicio:
-        return []
-    return [d.strftime('%m/%Y') for d in pd.date_range(inicio, fim, freq='MS')]
-
-
 def _render_equacao_ist(i_ini, i_fim, variacao):
     equacao_html = f"""
     <div style="background:#F4F6F8;border:1px solid #E1E6EB;border-radius:10px;padding:14px 18px;margin-top:10px;">
@@ -82,6 +72,16 @@ def _render_equacao_ist(i_ini, i_fim, variacao):
     </div>
     """
     st.markdown(equacao_html, unsafe_allow_html=True)
+
+
+def _competencias_mensais(data_inicio, data_fim):
+    if not data_inicio or not data_fim:
+        return []
+    inicio = pd.to_datetime(data_inicio, dayfirst=True).replace(day=1)
+    fim = pd.to_datetime(data_fim, dayfirst=True).replace(day=1)
+    if fim < inicio:
+        return []
+    return [d.strftime('%m/%Y') for d in pd.date_range(inicio, fim, freq='MS')]
 
 
 def _ajustar_larguras(writer, nomes_abas):
@@ -105,16 +105,20 @@ def _ajustar_larguras(writer, nomes_abas):
 def _aplicar_estilos_coleta(writer, ciclos):
     from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
     from openpyxl.utils import get_column_letter
+    from openpyxl.worksheet.datavalidation import DataValidation
 
     header_fill = PatternFill('solid', fgColor='1F4E78')
     header_font = Font(color='FFFFFF', bold=True)
     input_fill = PatternFill('solid', fgColor='FFF2CC')
+    auto_fill = PatternFill('solid', fgColor='E7E6E6')
     date_fill = PatternFill('solid', fgColor='D9EAD3')
-    light_fill = PatternFill('solid', fgColor='EAF2F8')
+    clean_fill = PatternFill(fill_type=None)
     thin = Side(style='thin', color='D9E2F3')
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    no_border = Border()
     money_fmt = 'R$ #,##0.00'
     number_fmt = '#,##0.0000'
+    date_fmt = 'dd/mm/yyyy'
 
     for ws in writer.book.worksheets:
         for row in ws.iter_rows():
@@ -128,33 +132,59 @@ def _aplicar_estilos_coleta(writer, ciclos):
             cell.font = header_font
             cell.alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
 
+    # PARAMETROS_REAJUSTE: visual limpo nos valores.
+    if 'PARAMETROS_REAJUSTE' in writer.book.sheetnames:
+        ws = writer.book['PARAMETROS_REAJUSTE']
+        for row in range(2, ws.max_row + 1):
+            ws.cell(row=row, column=2).border = no_border
+        ws['B6'].number_format = '0.00%'
+        ws['B7'].number_format = number_fmt
+
+    # CICLOS: remover bordas do bloco numérico I:L nas linhas de ciclos.
+    if 'CICLOS' in writer.book.sheetnames:
+        ws = writer.book['CICLOS']
+        for row in range(2, ws.max_row + 1):
+            for col in range(9, min(12, ws.max_column) + 1):
+                ws.cell(row=row, column=col).border = no_border
+            if ws.max_column >= 9:
+                ws.cell(row=row, column=9).number_format = '0.00%'
+            if ws.max_column >= 10:
+                ws.cell(row=row, column=10).number_format = number_fmt
+            if ws.max_column >= 11:
+                ws.cell(row=row, column=11).number_format = number_fmt
+
     if 'FINANCEIRO_MENSAL' in writer.book.sheetnames:
         ws = writer.book['FINANCEIRO_MENSAL']
-        # Coluna C é a coluna de preenchimento pelo fiscal.
-        for row in range(1, ws.max_row + 1):
+        for row in range(2, 201):
             ws.cell(row=row, column=3).fill = input_fill
-            ws.cell(row=row, column=3).alignment = Alignment(horizontal='right' if row > 1 else 'center', vertical='center')
-            if row > 1:
-                ws.cell(row=row, column=3).number_format = money_fmt
-        ws['C1'].value = 'Valor pago/faturado (preencher)'
-        ws['C1'].font = header_font
-        ws['C1'].fill = header_fill
+            ws.cell(row=row, column=3).number_format = money_fmt
+            ws.cell(row=row, column=3).alignment = Alignment(horizontal='right', vertical='center')
+        ws.cell(row=201, column=1).font = Font(bold=True)
+        ws.cell(row=201, column=3).number_format = money_fmt
+        ws.cell(row=201, column=3).font = Font(bold=True)
 
     if 'ITENS_REMANESCENTES' in writer.book.sheetnames:
         ws = writer.book['ITENS_REMANESCENTES']
         ws.merge_cells(start_row=1, start_column=1, end_row=1, end_column=4)
         ws.cell(row=1, column=1).value = 'Dados do item e valor original'
-        ws.cell(row=1, column=1).fill = light_fill
+        ws.cell(row=1, column=1).fill = PatternFill('solid', fgColor='F2F2F2')
         ws.cell(row=1, column=1).font = Font(bold=True)
         ws.cell(row=1, column=1).alignment = Alignment(horizontal='center', vertical='center')
 
-        # Colunas: A Item | B Quantidade contratada | C Valor unitário original | D Valor total | E... remanescentes
-        for row in range(3, ws.max_row + 1):
+        # A, B, C sem cor; D cálculo automático cinza; remanescentes amarelos.
+        for row in range(3, 201):
+            for col in [1, 2, 3]:
+                ws.cell(row=row, column=col).fill = clean_fill
             ws.cell(row=row, column=3).number_format = money_fmt
+            ws.cell(row=row, column=4).fill = auto_fill
             ws.cell(row=row, column=4).number_format = money_fmt
             ws.cell(row=row, column=4).value = f'=IF(OR(B{row}="",C{row}=""),"",B{row}*C{row})'
+        ws.cell(row=201, column=1).value = 'TOTAL'
+        ws.cell(row=201, column=1).font = Font(bold=True)
+        ws.cell(row=201, column=4).value = '=SUM(D3:D200)'
+        ws.cell(row=201, column=4).number_format = money_fmt
+        ws.cell(row=201, column=4).font = Font(bold=True)
 
-        # Destacar colunas de remanescente para preenchimento pelo fiscal e colocar a data de referência na linha 1.
         first_rem_col = 5
         for idx, ciclo in enumerate(ciclos):
             col = first_rem_col + idx
@@ -163,230 +193,135 @@ def _aplicar_estilos_coleta(writer, ciclos):
             ws.cell(row=1, column=col).fill = date_fill
             ws.cell(row=1, column=col).font = Font(bold=True)
             ws.cell(row=1, column=col).alignment = Alignment(horizontal='center', vertical='center')
-            for row in range(2, ws.max_row + 1):
-                ws.cell(row=row, column=col).fill = input_fill if row > 2 else header_fill
-                if row == 2:
-                    ws.cell(row=row, column=col).font = header_font
-                    ws.cell(row=row, column=col).alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            ws.cell(row=2, column=col).fill = header_fill
+            ws.cell(row=2, column=col).font = header_font
+            ws.cell(row=2, column=col).alignment = Alignment(horizontal='center', vertical='center', wrap_text=True)
+            for row in range(3, 201):
+                ws.cell(row=row, column=col).fill = input_fill
+            ws.cell(row=201, column=col).value = f'=SUM({letra}3:{letra}200)'
+            ws.cell(row=201, column=col).font = Font(bold=True)
             ws.column_dimensions[letra].width = 24
-
-    if 'CICLOS' in writer.book.sheetnames:
-        ws = writer.book['CICLOS']
-        for row in range(2, ws.max_row + 1):
-            # Fator e Fator acumulado.
-            if ws.max_column >= 8:
-                ws.cell(row=row, column=8).number_format = number_fmt
-            if ws.max_column >= 9:
-                ws.cell(row=row, column=9).number_format = number_fmt
 
     if 'ADITIVOS_QUANTITATIVOS' in writer.book.sheetnames:
         ws = writer.book['ADITIVOS_QUANTITATIVOS']
-        for row in range(2, ws.max_row + 1):
-            ws.cell(row=row, column=4).number_format = money_fmt
+        dv_tipo = DataValidation(type='list', formula1='"Acréscimo,Decréscimo"', allow_blank=True)
+        dv_sim_nao = DataValidation(type='list', formula1='"Sim,Não"', allow_blank=True)
+        ws.add_data_validation(dv_tipo)
+        ws.add_data_validation(dv_sim_nao)
+
+        ultima_linha_ciclos = max(2, len(ciclos) + 1)
+        for row in range(2, 201):
+            # B: data; C/I/J/G: calculadas; D/H: dropdown.
+            ws.cell(row=row, column=2).number_format = date_fmt
+            ws.cell(row=row, column=3).fill = auto_fill
+            ws.cell(row=row, column=3).value = (
+                f'=IF(B{row}="","",IFERROR(LOOKUP(2,1/(DATEVALUE(CICLOS!$B$2:$B${ultima_linha_ciclos})<=B{row}),CICLOS!$A$2:$A${ultima_linha_ciclos}),""))'
+            )
             ws.cell(row=row, column=4).fill = input_fill
+            dv_tipo.add(ws.cell(row=row, column=4))
+            ws.cell(row=row, column=5).fill = input_fill
+            ws.cell(row=row, column=6).fill = input_fill
+            ws.cell(row=row, column=6).number_format = money_fmt
+            ws.cell(row=row, column=7).fill = auto_fill
+            ws.cell(row=row, column=7).number_format = money_fmt
+            ws.cell(row=row, column=7).value = f'=IF(OR(E{row}="",F{row}=""),"",E{row}*F{row})'
+            ws.cell(row=row, column=8).fill = input_fill
+            ws.cell(row=row, column=8).value = 'Sim'
+            dv_sim_nao.add(ws.cell(row=row, column=8))
+            ws.cell(row=row, column=9).fill = auto_fill
+            ws.cell(row=row, column=9).number_format = number_fmt
+            ws.cell(row=row, column=9).value = f'=IF(C{row}="","",IFERROR(INDEX(CICLOS!$K$2:$K${ultima_linha_ciclos},MATCH(C{row},CICLOS!$A$2:$A${ultima_linha_ciclos},0)),1))'
+            ws.cell(row=row, column=10).fill = auto_fill
+            ws.cell(row=row, column=10).number_format = money_fmt
+            ws.cell(row=row, column=10).value = f'=IF(G{row}="","",G{row}*IF(H{row}="Sim",I{row},1)*IF(D{row}="Decréscimo",-1,1))'
+        ws.cell(row=201, column=1).value = 'TOTAL'
+        ws.cell(row=201, column=1).font = Font(bold=True)
+        ws.cell(row=201, column=7).value = '=SUM(G2:G200)'
+        ws.cell(row=201, column=7).number_format = money_fmt
+        ws.cell(row=201, column=10).value = '=SUM(J2:J200)'
+        ws.cell(row=201, column=10).number_format = money_fmt
+        ws.cell(row=201, column=10).font = Font(bold=True)
 
 
 def gerar_arquivo_coleta_excel(dados_admissibilidade):
-    """Gera o Arquivo de Coleta para as fases de Valor Global e Relatório.
-
-    Regras da planilha:
-    - 200 linhas pré-formatadas nas abas de preenchimento.
-    - Linha 201 reservada para somatórios.
-    - Aditivos por item/lançamento, com acréscimo ou supressão.
-    """
-    output = BytesIO()
     ciclos = dados_admissibilidade.get('ciclos', [])
-    data_geracao = datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')
 
-    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
-        workbook = writer.book
+    parametros = pd.DataFrame([
+        {'Campo': 'Origem da análise', 'Valor': dados_admissibilidade.get('origem', '')},
+        {'Campo': 'Índice utilizado', 'Valor': dados_admissibilidade.get('indice', '')},
+        {'Campo': 'Data-base original', 'Valor': dados_admissibilidade.get('data_base_original', '')},
+        {'Campo': 'Quantidade de ciclos', 'Valor': len(ciclos)},
+        {'Campo': 'Variação acumulada final', 'Valor': dados_admissibilidade.get('variacao_acumulada', 0.0)},
+        {'Campo': 'Fator acumulado total', 'Valor': round(float(dados_admissibilidade.get('fator_acumulado', 1.0)), 4)},
+        {'Campo': 'Data de geração do arquivo', 'Valor': datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')},
+    ])
 
-        fmt_header = workbook.add_format({
-            'bold': True, 'font_color': 'white', 'bg_color': '#1F4E79',
-            'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True,
-        })
-        fmt_subheader = workbook.add_format({
-            'bold': True, 'bg_color': '#D9EAD3', 'border': 1,
-            'align': 'center', 'valign': 'vcenter', 'text_wrap': True,
-        })
-        fmt_input = workbook.add_format({'bg_color': '#FFF2CC', 'border': 1})
-        fmt_input_num = workbook.add_format({'num_format': '#,##0.00', 'bg_color': '#FFF2CC', 'border': 1})
-        fmt_input_money = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#FFF2CC', 'border': 1})
-        fmt_money = workbook.add_format({'num_format': 'R$ #,##0.00', 'border': 1})
-        fmt_money_auto = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#EDEDED', 'border': 1})
-        fmt_number = workbook.add_format({'num_format': '#,##0.00', 'border': 1})
-        fmt_text = workbook.add_format({'border': 1})
-        fmt_auto = workbook.add_format({'bg_color': '#EDEDED', 'border': 1})
-        fmt_total = workbook.add_format({'bold': True, 'bg_color': '#E2F0D9', 'border': 1})
-        fmt_total_money = workbook.add_format({'bold': True, 'bg_color': '#E2F0D9', 'border': 1, 'num_format': 'R$ #,##0.00'})
-        fmt_total_num = workbook.add_format({'bold': True, 'bg_color': '#E2F0D9', 'border': 1, 'num_format': '#,##0.00'})
-        fmt_percent = workbook.add_format({'num_format': '0.00%', 'border': 1})
-        fmt_factor = workbook.add_format({'num_format': '0.0000', 'border': 1})
-        fmt_factor_auto = workbook.add_format({'num_format': '0.0000', 'bg_color': '#EDEDED', 'border': 1})
-        fmt_no_border = workbook.add_format({})
-        fmt_int_no_border = workbook.add_format({'num_format': '0'})
-        fmt_percent_no_border = workbook.add_format({'num_format': '0.00%'})
-        fmt_factor_no_border = workbook.add_format({'num_format': '0.0000'})
+    df_ciclos = pd.DataFrame([
+        {
+            'Ciclo': c.get('ciclo', ''),
+            'Data-base': c.get('data_base', ''),
+            'Intervalo do índice': c.get('intervalo_indice', ''),
+            'Janela de admissibilidade': c.get('janela_admissibilidade', ''),
+            'Data do pedido': c.get('data_pedido', ''),
+            'Início financeiro': c.get('financeiro_inicio', ''),
+            'Fim financeiro': c.get('financeiro_fim', ''),
+            'Situação': c.get('situacao', ''),
+            'Variação': c.get('variacao', 0.0),
+            'Fator': round(float(c.get('fator', 1.0)), 4),
+            'Fator acumulado': round(float(c.get('fator_acumulado', 1.0)), 4),
+            'Tratamento financeiro do ciclo': 'Precluso' if 'PRECLUSO' in str(c.get('situacao', '')).upper() else 'A apurar',
+        }
+        for c in ciclos
+    ])
 
-        # PARAMETROS_REAJUSTE
-        parametros = pd.DataFrame([
-            ['Origem da análise', dados_admissibilidade.get('origem', dados_admissibilidade.get('tipo', ''))],
-            ['Índice utilizado', dados_admissibilidade.get('indice', '')],
-            ['Data-base original', dados_admissibilidade.get('data_base_original', '')],
-            ['Quantidade de ciclos', len(ciclos)],
-            ['Variação acumulada final', dados_admissibilidade.get('variacao_acumulada', 0.0)],
-            ['Fator acumulado total', dados_admissibilidade.get('fator_acumulado', dados_admissibilidade.get('fator', 1.0))],
-            ['Data de geração do arquivo', data_geracao],
-        ], columns=['Campo', 'Valor'])
-        parametros.to_excel(writer, sheet_name='PARAMETROS_REAJUSTE', index=False)
-        ws = writer.sheets['PARAMETROS_REAJUSTE']
-        ws.set_column('A:A', 34)
-        ws.set_column('B:B', 36)
-        ws.write(0, 0, 'Campo', fmt_header)
-        ws.write(0, 1, 'Valor', fmt_header)
-        ws.write_number(4, 1, len(ciclos), fmt_int_no_border)     # B5 Quantidade de ciclos
-        ws.write_number(5, 1, float(dados_admissibilidade.get('variacao_acumulada', 0.0)), fmt_percent_no_border)  # B6
-        ws.write_number(6, 1, float(dados_admissibilidade.get('fator_acumulado', dados_admissibilidade.get('fator', 1.0))), fmt_factor_no_border)  # B7
-
-        # CICLOS
-        ciclos_rows = []
-        for ciclo in ciclos:
-            situacao = str(ciclo.get('situacao', ''))
-            tratamento = 'Precluso' if 'PRECLUSO' in situacao.upper() else 'A apurar'
-            ciclos_rows.append({
-                'Ciclo': ciclo.get('ciclo', ''),
-                'Data-base': ciclo.get('data_base', ''),
-                'Intervalo do índice': ciclo.get('intervalo_indice', ciclo.get('Janela', '')),
-                'Janela de admissibilidade': ciclo.get('janela_admissibilidade', ciclo.get('JanelaAdm', '')),
-                'Data do pedido': ciclo.get('data_pedido', ciclo.get('Pedido', '')),
-                'Início financeiro': ciclo.get('financeiro_inicio', ''),
-                'Fim financeiro': ciclo.get('financeiro_fim', ''),
-                'Situação': situacao,
-                'Variação': ciclo.get('variacao', 0.0),
-                'Fator': ciclo.get('fator', 1.0),
-                'Fator acumulado': ciclo.get('fator_acumulado', 1.0),
-                'Tratamento financeiro do ciclo': tratamento,
+    linhas_financeiro = []
+    for c in ciclos:
+        inicio_financeiro = c.get('financeiro_inicio') or c.get('periodo_inicio')
+        fim_financeiro = c.get('financeiro_fim') or c.get('periodo_fim')
+        for competencia in _competencias_mensais(inicio_financeiro, fim_financeiro):
+            linhas_financeiro.append({
+                'Ciclo': c.get('ciclo', ''),
+                'Competência': competencia,
+                'Valor pago/faturado': None,
             })
-        df_ciclos = pd.DataFrame(ciclos_rows)
+    while len(linhas_financeiro) < 199:
+        linhas_financeiro.append({'Ciclo': None, 'Competência': None, 'Valor pago/faturado': None})
+    df_financeiro = pd.DataFrame(linhas_financeiro[:199], columns=['Ciclo', 'Competência', 'Valor pago/faturado'])
+
+    colunas_remanescentes = [f"Remanescente início {c.get('ciclo', '')}" for c in ciclos]
+    colunas_itens = ['Item', 'Quantidade contratada', 'Valor unitário original', 'Valor total', *colunas_remanescentes]
+    linhas_itens = [{col: None for col in colunas_itens} for _ in range(198)]
+    df_itens = pd.DataFrame(linhas_itens, columns=colunas_itens)
+
+    df_aditivos = pd.DataFrame([
+        {
+            'Item': None,
+            'Data do aditivo': None,
+            'Ciclo/Marco': None,
+            'Tipo de alteração': None,
+            'Quantidade acrescida/suprimida': None,
+            'Valor unitário original': None,
+            'Valor original da alteração': None,
+            'Aplicar reajuste acumulado? (Sim/Não)': 'Sim',
+            'Fator acumulado aplicável': None,
+            'Valor atualizado da alteração': None,
+        }
+        for _ in range(199)
+    ])
+
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine='openpyxl') as writer:
+        parametros.to_excel(writer, sheet_name='PARAMETROS_REAJUSTE', index=False)
         df_ciclos.to_excel(writer, sheet_name='CICLOS', index=False)
-        ws = writer.sheets['CICLOS']
-        ws.set_column('A:A', 12)
-        ws.set_column('B:H', 24)
-        ws.set_column('I:I', 12)
-        ws.set_column('J:K', 14)
-        ws.set_column('L:L', 30)
-        for col, title in enumerate(df_ciclos.columns):
-            ws.write(0, col, title, fmt_header)
-        for row in range(1, len(df_ciclos) + 1):
-            ws.write(row, 8, df_ciclos.iloc[row-1]['Variação'], workbook.add_format({'num_format': '0.00%'}))
-            ws.write(row, 9, df_ciclos.iloc[row-1]['Fator'], workbook.add_format({'num_format': '0.0000'}))
-            ws.write(row, 10, df_ciclos.iloc[row-1]['Fator acumulado'], workbook.add_format({'num_format': '0.0000'}))
-            ws.write(row, 11, df_ciclos.iloc[row-1]['Tratamento financeiro do ciclo'], workbook.add_format({'bg_color': '#FFF2CC'}))
-
-        # FINANCEIRO_MENSAL
-        financeiro_rows = []
-        for ciclo in ciclos:
-            ciclo_nome = ciclo.get('ciclo', '')
-            for competencia in _competencias_mensais(ciclo.get('financeiro_inicio', ''), ciclo.get('financeiro_fim', '')):
-                financeiro_rows.append({'Ciclo': ciclo_nome, 'Competência': competencia, 'Valor pago/faturado': ''})
-        while len(financeiro_rows) < 199:
-            financeiro_rows.append({'Ciclo': '', 'Competência': '', 'Valor pago/faturado': ''})
-        financeiro_rows = financeiro_rows[:199]
-        df_fin = pd.DataFrame(financeiro_rows)
-        df_fin.to_excel(writer, sheet_name='FINANCEIRO_MENSAL', index=False)
-        ws = writer.sheets['FINANCEIRO_MENSAL']
-        ws.set_column('A:A', 12)
-        ws.set_column('B:B', 18)
-        ws.set_column('C:C', 24)
-        for col, title in enumerate(df_fin.columns):
-            ws.write(0, col, title, fmt_header)
-        for row in range(1, 200):
-            ws.write(row, 2, '', fmt_input_money)
-        ws.write(200, 0, 'TOTAL', fmt_total)
-        ws.write(200, 1, '', fmt_total)
-        ws.write_formula(200, 2, '=SUM(C2:C200)', fmt_total_money)
-
-        # ITENS_REMANESCENTES
-        ws_it = workbook.add_worksheet('ITENS_REMANESCENTES')
-        writer.sheets['ITENS_REMANESCENTES'] = ws_it
-        rem_cols = []
-        for ciclo in ciclos:
-            rem_cols.append((f"Remanescente início {ciclo.get('ciclo', '')}", ciclo.get('data_base', '')))
-        base_headers = ['Item', 'Quantidade contratada', 'Valor unitário original', 'Valor total']
-        headers = base_headers + [c[0] for c in rem_cols]
-        ws_it.merge_range(0, 0, 0, 3, 'Dados do item e valor original', fmt_subheader)
-        for idx, (_, data_ref) in enumerate(rem_cols, start=4):
-            ws_it.write(0, idx, data_ref, fmt_subheader)
-        for col, title in enumerate(headers):
-            ws_it.write(1, col, title, fmt_header)
-        ws_it.set_column(0, 0, 12)
-        ws_it.set_column(1, 1, 24)
-        ws_it.set_column(2, 3, 22)
-        if rem_cols:
-            ws_it.set_column(4, 4 + len(rem_cols) - 1, 25)
-        for row in range(2, 200):
-            ws_it.write(row, 0, '', fmt_text)       # A sem preenchimento
-            ws_it.write(row, 1, '', fmt_number)     # B sem preenchimento
-            ws_it.write(row, 2, '', fmt_money)      # C sem preenchimento
-            ws_it.write_formula(row, 3, f'=IF(OR(B{row+1}="",C{row+1}=""),"",B{row+1}*C{row+1})', fmt_money_auto)
-            for col in range(4, 4 + len(rem_cols)):
-                ws_it.write(row, col, '', fmt_input_num)
-        ws_it.write(200, 0, 'TOTAL', fmt_total)
-        ws_it.write(200, 1, '', fmt_total)
-        ws_it.write(200, 2, '', fmt_total)
-        ws_it.write_formula(200, 3, '=SUM(D3:D200)', fmt_total_money)
-        for col in range(4, 4 + len(rem_cols)):
-            col_letter = chr(ord('A') + col)
-            ws_it.write_formula(200, col, f'=SUM({col_letter}3:{col_letter}200)', fmt_total_num)
-
-        # ADITIVOS_QUANTITATIVOS
-        ws_ad = workbook.add_worksheet('ADITIVOS_QUANTITATIVOS')
-        writer.sheets['ADITIVOS_QUANTITATIVOS'] = ws_ad
-        ad_headers = [
-            'Item', 'Data do aditivo', 'Ciclo/Marco', 'Tipo de alteração',
-            'Quantidade acrescida/suprimida', 'Valor unitário original',
-            'Valor original da alteração', 'Aplicar reajuste acumulado? (Sim/Não)',
-            'Fator acumulado aplicável', 'Valor atualizado da alteração'
-        ]
-        for col, title in enumerate(ad_headers):
-            ws_ad.write(0, col, title, fmt_header)
-        ws_ad.set_column('A:A', 12)
-        ws_ad.set_column('B:B', 18)
-        ws_ad.set_column('C:C', 16)
-        ws_ad.set_column('D:D', 20)
-        ws_ad.set_column('E:E', 28)
-        ws_ad.set_column('F:G', 24)
-        ws_ad.set_column('H:H', 32)
-        ws_ad.set_column('I:I', 22)
-        ws_ad.set_column('J:J', 26)
-        ciclo_range = f'CICLOS!$A$2:$K${len(ciclos)+1}' if ciclos else 'CICLOS!$A$2:$K$2'
-        data_range = f'CICLOS!$B$2:$B${len(ciclos)+1}' if ciclos else 'CICLOS!$B$2:$B$2'
-        ciclo_nome_range = f'CICLOS!$A$2:$A${len(ciclos)+1}' if ciclos else 'CICLOS!$A$2:$A$2'
-        for row in range(1, 200):
-            excel_row = row + 1
-            ws_ad.write(row, 0, '', fmt_text)
-            ws_ad.write(row, 1, '', fmt_input)
-            # Coluna C: tenta detectar o ciclo pela data do aditivo. Será recalculado no upload se ficar vazio.
-            ws_ad.write_formula(row, 2, f'=IF(B{excel_row}="","",IFERROR(LOOKUP(DATEVALUE(B{excel_row}),DATEVALUE({data_range}),{ciclo_nome_range}),""))', fmt_auto)
-            ws_ad.write(row, 3, 'Acréscimo', fmt_input)
-            ws_ad.write(row, 4, '', fmt_input_num)
-            ws_ad.write(row, 5, '', fmt_input_money)
-            ws_ad.write_formula(row, 6, f'=IF(OR(E{excel_row}="",F{excel_row}=""),"",E{excel_row}*F{excel_row})', fmt_money_auto)
-            ws_ad.write(row, 7, 'Sim', fmt_input)
-            ws_ad.write_formula(row, 8, f'=IF(C{excel_row}="","",IFERROR(VLOOKUP(C{excel_row},{ciclo_range},11,FALSE),1))', fmt_factor_auto)
-            ws_ad.write_formula(row, 9, f'=IF(G{excel_row}="","",IF(OR(UPPER(D{excel_row})="DECRÉSCIMO",UPPER(D{excel_row})="DECRESCIMO",UPPER(D{excel_row})="SUPRESSÃO",UPPER(D{excel_row})="SUPRESSAO"),-ABS(G{excel_row}),ABS(G{excel_row}))*IF(OR(UPPER(H{excel_row})="NÃO",UPPER(H{excel_row})="NAO"),1,I{excel_row}))', fmt_money_auto)
-        ws_ad.data_validation(1, 3, 199, 3, {'validate': 'list', 'source': ['Acréscimo', 'Decréscimo']})
-        ws_ad.data_validation(1, 7, 199, 7, {'validate': 'list', 'source': ['Sim', 'Não']})
-        ws_ad.write(200, 0, 'TOTAL', fmt_total)
-        for col in range(1, 6):
-            ws_ad.write(200, col, '', fmt_total)
-        ws_ad.write_formula(200, 6, '=SUM(G2:G200)', fmt_total_money)
-        ws_ad.write(200, 7, '', fmt_total)
-        ws_ad.write(200, 8, '', fmt_total)
-        ws_ad.write_formula(200, 9, '=SUM(J2:J200)', fmt_total_money)
-
+        df_financeiro.to_excel(writer, sheet_name='FINANCEIRO_MENSAL', index=False)
+        df_itens.to_excel(writer, sheet_name='ITENS_REMANESCENTES', index=False, startrow=1)
+        df_aditivos.to_excel(writer, sheet_name='ADITIVOS_QUANTITATIVOS', index=False)
+        _aplicar_estilos_coleta(writer, ciclos)
+        _ajustar_larguras(writer, [
+            'PARAMETROS_REAJUSTE', 'CICLOS', 'FINANCEIRO_MENSAL', 'ITENS_REMANESCENTES', 'ADITIVOS_QUANTITATIVOS'
+        ])
     output.seek(0)
-    return output.getvalue()
+    return output
 
 
 st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
@@ -399,14 +334,23 @@ with col1:
 with col2:
     tipo_idx = st.selectbox("Índice:", ["IST (Série Local)", "IPCA (433)", "IGP-M (189)"])
 
-chave_analise_simples = (dt_base.isoformat(), dt_solic.isoformat(), tipo_idx)
+chave_analise_simples = (
+    dt_base.isoformat(),
+    dt_solic.isoformat(),
+    tipo_idx,
+)
 
-st.info("Informe os dados e clique em Processar Análise para iniciar a apuração.")
+processar_simples = st.button(
+    "Processar Análise",
+    type="primary",
+    use_container_width=False,
+)
 
-if st.button("Processar Análise", type="primary", use_container_width=False):
-    st.session_state["chave_analise_simples_processada"] = chave_analise_simples
+if processar_simples:
+    st.session_state["processar_reajuste_simples_key"] = chave_analise_simples
 
-if st.session_state.get("chave_analise_simples_processada") != chave_analise_simples:
+if st.session_state.get("processar_reajuste_simples_key") != chave_analise_simples:
+    st.info("Informe os dados e clique em **Processar Análise** para iniciar a apuração.")
     st.stop()
 
 # Definição de datas do ciclo
