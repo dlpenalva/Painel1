@@ -402,7 +402,7 @@ def ler_itens(bytes_arquivo, xls):
     if not aba:
         raise ValueError("Aba ITENS_REMANESCENTES não encontrada.")
 
-    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item"])
+    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item", "Quantidade contratada", "Valor unitário original"])
     if df.empty:
         raise ValueError("Aba ITENS_REMANESCENTES está vazia.")
 
