@@ -1,7 +1,20 @@
-from datetime import datetime
+from datetime import datetime, date
+from io import BytesIO
 from zoneinfo import ZoneInfo
 
 import streamlit as st
+from dateutil.relativedelta import relativedelta
+
+try:
+    from reportlab.lib import colors
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.units import cm
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+    REPORTLAB_OK = True
+except Exception:
+    REPORTLAB_OK = False
 
 st.set_page_config(page_title="Análises de Reajustes - Garantia", layout="wide")
 
@@ -10,12 +23,30 @@ st.set_page_config(page_title="Análises de Reajustes - Garantia", layout="wide"
 # Utilitários
 # ============================================================
 
-def moeda(valor):
+def moeda(valor, com_prefixo=True):
     try:
         valor = float(valor)
     except Exception:
         valor = 0.0
-    return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    texto = f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+    return f"R$ {texto}" if com_prefixo else texto
+
+
+def parse_moeda_br(valor):
+    """Aceita entradas como 85771019,12, 85.771.019,12 ou R$ 85.771.019,12."""
+    if valor is None:
+        return 0.0
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    texto = str(valor).strip()
+    if not texto:
+        return 0.0
+    texto = texto.replace("R$", "").replace(" ", "")
+    texto = texto.replace(".", "").replace(",", ".")
+    try:
+        return float(texto)
+    except Exception:
+        return 0.0
 
 
 def numero_para_input(valor):
@@ -69,6 +100,12 @@ def css():
             font-size: 0.9rem;
             margin-top: 6px;
         }
+        .valor-formatado-apoio {
+            color: #64748B;
+            font-size: 0.88rem;
+            margin-top: -8px;
+            margin-bottom: 8px;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -99,6 +136,9 @@ def montar_texto_instrucao(
     garantia_constituida,
     garantia_exigida,
     endosso,
+    prazo_dias,
+    data_fim_vigencia,
+    data_validade_minima,
 ):
     percentual = percentual_garantia * 100
     if endosso > 0:
@@ -118,9 +158,115 @@ Após a atualização do valor contratual para {moeda(valor_atualizado)}, a gara
 
 {conclusao}
 
-A apuração observa a Cláusula Décima do contrato, segundo a qual a garantia contratual corresponde a 5% do valor total do contrato, devendo ser apresentada no prazo de até 5 dias úteis contados do recebimento da convocação pela TELEBRAS, prorrogável por igual período mediante solicitação justificada e aceita pela Gerência de Compras e Contratos.
+Para fins de conferência, o campo “Garantia atualmente constituída” deve refletir o valor total da garantia já apresentada e aceita, incluindo a garantia original e eventuais endossos anteriores decorrentes de reajustes, repactuações, acréscimos ou outros aditivos contratuais.
+
+Nos termos da Cláusula Décima, a garantia contratual deve ser apresentada no prazo de até {prazo_dias} dias úteis contados do recebimento da convocação pela TELEBRAS, prorrogável por igual período mediante solicitação justificada e aceita pela Gerência de Compras e Contratos.
+
+Ainda nos termos da Cláusula Décima, a validade da garantia, qualquer que seja a modalidade escolhida, deverá abranger período adicional de 3 meses após o término da vigência contratual. Assim, considerando o encerramento da vigência em {data_fim_vigencia.strftime('%d/%m/%Y')}, a garantia deverá permanecer válida, no mínimo, até {data_validade_minima.strftime('%d/%m/%Y')}.
 """
 
+
+def gerar_pdf_garantia(dados, texto_instrucao):
+    if not REPORTLAB_OK:
+        return None
+
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=1.6 * cm,
+        leftMargin=1.6 * cm,
+        topMargin=1.5 * cm,
+        bottomMargin=1.5 * cm,
+    )
+
+    styles = getSampleStyleSheet()
+    titulo = ParagraphStyle(
+        "TituloGarantia",
+        parent=styles["Title"],
+        alignment=TA_CENTER,
+        fontSize=13,
+        leading=16,
+        spaceAfter=8,
+    )
+    subtitulo = ParagraphStyle(
+        "SubtituloGarantia",
+        parent=styles["Normal"],
+        alignment=TA_CENTER,
+        fontSize=9,
+        leading=12,
+        textColor=colors.HexColor("#334155"),
+        spaceAfter=14,
+    )
+    h2 = ParagraphStyle(
+        "H2Garantia",
+        parent=styles["Heading2"],
+        fontSize=10,
+        leading=13,
+        spaceBefore=8,
+        spaceAfter=6,
+        textColor=colors.HexColor("#123B63"),
+    )
+    normal = ParagraphStyle(
+        "NormalGarantia",
+        parent=styles["Normal"],
+        fontSize=8.5,
+        leading=12,
+        alignment=TA_JUSTIFY,
+    )
+
+    elementos = []
+    elementos.append(Paragraph("TELEBRAS - Análise de Garantia Contratual", titulo))
+    elementos.append(Paragraph("Relatório Executivo - GCC", subtitulo))
+    elementos.append(Paragraph(f"Gerado em: {data_hora_brasilia()}", subtitulo))
+
+    elementos.append(Paragraph("1. Memória de cálculo", h2))
+    tabela_dados = [
+        ["Indicador", "Valor"],
+        ["Valor original do contrato", moeda(dados["valor_original"])],
+        ["Percentual da garantia", f"{dados['percentual_garantia_pct']:.2f}%".replace(".", ",")],
+        ["Garantia original", moeda(dados["garantia_original"])],
+        ["Valor atualizado do contrato", moeda(dados["valor_atualizado"])],
+        ["Nova garantia exigida", moeda(dados["garantia_exigida"])],
+        ["Garantia atualmente constituída", moeda(dados["garantia_constituida"])],
+        ["Endosso necessário", moeda(dados["endosso_necessario"])],
+        ["Encerramento da vigência", dados["data_fim_vigencia"].strftime("%d/%m/%Y")],
+        ["Validade mínima da garantia", dados["data_validade_minima"].strftime("%d/%m/%Y")],
+    ]
+    tabela = Table(tabela_dados, colWidths=[8.2 * cm, 7.8 * cm], repeatRows=1, hAlign="CENTER")
+    tabela.setStyle(
+        TableStyle(
+            [
+                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
+                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                ("FONTSIZE", (0, 0), (-1, -1), 8),
+                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2F3")),
+                ("BACKGROUND", (0, 1), (-1, -1), colors.white),
+                ("BACKGROUND", (0, 7), (-1, 7), colors.HexColor("#EAF2F8")),
+                ("FONTNAME", (0, 7), (-1, 7), "Helvetica-Bold"),
+                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                ("LEFTPADDING", (0, 0), (-1, -1), 5),
+                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+            ]
+        )
+    )
+    elementos.append(tabela)
+    elementos.append(Spacer(1, 10))
+
+    elementos.append(Paragraph("2. Informações para instrução processual", h2))
+    for paragrafo in texto_instrucao.strip().split("\n\n"):
+        elementos.append(Paragraph(paragrafo.replace("\n", " "), normal))
+        elementos.append(Spacer(1, 5))
+
+    doc.build(elementos)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+# ============================================================
+# Interface
+# ============================================================
 
 css()
 
@@ -155,16 +301,17 @@ with st.expander("Contexto importado do Valor Global", expanded=True):
         )
 
 st.subheader("Dados para cálculo")
-col1, col2, col3 = st.columns(3)
+st.caption("Informe valores monetários no padrão brasileiro, por exemplo: 85.771.019,12.")
 
+col1, col2, col3 = st.columns(3)
 with col1:
-    valor_original = st.number_input(
+    valor_original_txt = st.text_input(
         "Valor original do contrato",
-        min_value=0.0,
-        value=valor_original_padrao,
-        step=1000.0,
-        format="%.2f",
+        value=moeda(valor_original_padrao, com_prefixo=False),
+        help="Use ponto para milhares e vírgula para centavos. Ex.: 85.771.019,12",
     )
+    valor_original = parse_moeda_br(valor_original_txt)
+    st.markdown(f"<div class='valor-formatado-apoio'>{moeda(valor_original)}</div>", unsafe_allow_html=True)
 
 with col2:
     percentual_garantia_pct = st.number_input(
@@ -177,38 +324,59 @@ with col2:
     )
 
 with col3:
-    valor_atualizado = st.number_input(
+    valor_atualizado_txt = st.text_input(
         "Valor atualizado do contrato",
-        min_value=0.0,
-        value=valor_atualizado_padrao,
-        step=1000.0,
-        format="%.2f",
+        value=moeda(valor_atualizado_padrao, com_prefixo=False),
+        help="Use ponto para milhares e vírgula para centavos. Ex.: 91.609.000,27",
     )
+    valor_atualizado = parse_moeda_br(valor_atualizado_txt)
+    st.markdown(f"<div class='valor-formatado-apoio'>{moeda(valor_atualizado)}</div>", unsafe_allow_html=True)
 
 percentual_garantia = percentual_garantia_pct / 100
 
 garantia_original = valor_original * percentual_garantia
 garantia_exigida = valor_atualizado * percentual_garantia
 
-col4, col5 = st.columns(2)
+default_garantia_constituida = garantia_original
+
+col4, col5, col6 = st.columns(3)
 with col4:
-    garantia_constituida = st.number_input(
+    garantia_constituida_txt = st.text_input(
         "Garantia atualmente constituída",
-        min_value=0.0,
-        value=garantia_original,
-        step=1000.0,
-        format="%.2f",
-        help="Informe o valor da garantia atualmente vigente/aceita. Por padrão, o sistema usa a garantia original.",
+        value=moeda(default_garantia_constituida, com_prefixo=False),
+        help=(
+            "Informe o valor total da garantia já apresentada e aceita, incluindo garantia original "
+            "e eventuais endossos anteriores de reajustes, repactuações ou aditivos."
+        ),
     )
+    garantia_constituida = parse_moeda_br(garantia_constituida_txt)
+    st.markdown(f"<div class='valor-formatado-apoio'>{moeda(garantia_constituida)}</div>", unsafe_allow_html=True)
 
 with col5:
     prazo_dias = st.number_input(
-        "Prazo contratual para apresentação/endosso (dias úteis)",
+        "Prazo para apresentação/endosso (dias úteis)",
         min_value=1,
         max_value=60,
         value=5,
         step=1,
     )
+
+with col6:
+    data_fim_vigencia = st.date_input(
+        "Encerramento da vigência contratual",
+        value=date.today(),
+        format="DD/MM/YYYY",
+    )
+    data_validade_minima = data_fim_vigencia + relativedelta(months=3)
+    st.markdown(
+        f"<div class='valor-formatado-apoio'>Validade mínima: {data_validade_minima.strftime('%d/%m/%Y')}</div>",
+        unsafe_allow_html=True,
+    )
+
+st.info(
+    "No campo ‘Garantia atualmente constituída’, considere a garantia original e todos os endossos anteriores já aceitos. "
+    "O sistema calculará apenas o endosso complementar necessário para atingir a nova garantia exigida."
+)
 
 endosso_necessario = max(garantia_exigida - garantia_constituida, 0.0)
 excesso_garantia = max(garantia_constituida - garantia_exigida, 0.0)
@@ -249,6 +417,8 @@ memoria = [
     {"Indicador": "Nova garantia exigida", "Valor": moeda(garantia_exigida)},
     {"Indicador": "Garantia atualmente constituída", "Valor": moeda(garantia_constituida)},
     {"Indicador": "Endosso necessário", "Valor": moeda(endosso_necessario)},
+    {"Indicador": "Encerramento da vigência contratual", "Valor": data_fim_vigencia.strftime("%d/%m/%Y")},
+    {"Indicador": "Validade mínima da garantia", "Valor": data_validade_minima.strftime("%d/%m/%Y")},
 ]
 st.dataframe(memoria, use_container_width=True, hide_index=True)
 
@@ -261,28 +431,37 @@ texto_instrucao = montar_texto_instrucao(
     garantia_constituida,
     garantia_exigida,
     endosso_necessario,
-).replace("5 dias úteis", f"{prazo_dias} dias úteis")
+    prazo_dias,
+    data_fim_vigencia,
+    data_validade_minima,
+)
 
 st.text_area(
     "Texto sugerido",
     value=texto_instrucao,
-    height=260,
+    height=330,
 )
 
-st.download_button(
-    "Baixar informações da garantia (TXT)",
-    data=(
-        "GARANTIA CONTRATUAL\n"
-        f"Gerado em: {data_hora_brasilia()}\n\n"
-        f"Valor original do contrato: {moeda(valor_original)}\n"
-        f"Percentual da garantia: {percentual_garantia_pct:.2f}%\n"
-        f"Garantia original: {moeda(garantia_original)}\n"
-        f"Valor atualizado do contrato: {moeda(valor_atualizado)}\n"
-        f"Nova garantia exigida: {moeda(garantia_exigida)}\n"
-        f"Garantia atualmente constituída: {moeda(garantia_constituida)}\n"
-        f"Endosso necessário: {moeda(endosso_necessario)}\n\n"
-        f"{texto_instrucao}"
-    ).encode("utf-8"),
-    file_name="garantia_contratual.txt",
-    mime="text/plain",
-)
+st.subheader("Relatório")
+dados_pdf = {
+    "valor_original": valor_original,
+    "percentual_garantia_pct": percentual_garantia_pct,
+    "garantia_original": garantia_original,
+    "valor_atualizado": valor_atualizado,
+    "garantia_exigida": garantia_exigida,
+    "garantia_constituida": garantia_constituida,
+    "endosso_necessario": endosso_necessario,
+    "data_fim_vigencia": data_fim_vigencia,
+    "data_validade_minima": data_validade_minima,
+}
+
+if REPORTLAB_OK:
+    pdf_bytes = gerar_pdf_garantia(dados_pdf, texto_instrucao)
+    st.download_button(
+        "Baixar Relatório de Garantia em PDF",
+        data=pdf_bytes,
+        file_name="relatorio_garantia_contratual.pdf",
+        mime="application/pdf",
+    )
+else:
+    st.error("A biblioteca reportlab não está disponível. Inclua reportlab no requirements.txt para habilitar o PDF.")
