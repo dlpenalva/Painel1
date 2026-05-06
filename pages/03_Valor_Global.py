@@ -2,22 +2,17 @@ import re
 import unicodedata
 from io import BytesIO
 from datetime import datetime
-from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
 
 
-st.set_page_config(page_title="Análises de Reajustes - Valor Global", layout="wide")
+st.set_page_config(page_title="Valor Global do Contrato", layout="wide")
 
 
 # ============================================================
 # Utilitários de formatação e normalização
 # ============================================================
-
-def agora_brasilia():
-    return datetime.now(ZoneInfo("America/Sao_Paulo"))
-
 
 def normalizar_texto(valor):
     """Normaliza textos para comparação robusta de nomes de colunas/abas."""
@@ -168,58 +163,29 @@ def localizar_aba(xls, opcoes):
 
 
 def ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=None):
-    """Lê aba encontrando automaticamente a linha de cabeçalho.
-
-    A detecção é tolerante a linhas superiores mescladas, espaços, acentos e caixa.
-    Quando termos obrigatórios são informados, escolhe a linha que contém todos eles
-    como cabeçalhos reais, evitando confundir textos como "Dados do item..." com a
-    coluna "Item".
-    """
+    """Lê aba encontrando automaticamente a linha de cabeçalho."""
     bruto = pd.read_excel(BytesIO(bytes_arquivo), sheet_name=aba, header=None)
     termos_obrigatorios = [normalizar_texto(t) for t in (termos_obrigatorios or [])]
 
-    linha_cabecalho = None
-    melhor_linha = None
-    melhor_pontuacao = -1
-
+    linha_cabecalho = 0
     for idx, row in bruto.iterrows():
         valores = [normalizar_texto(v) for v in row.tolist()]
-        valores_validos = [v for v in valores if v]
-        if not valores_validos:
-            continue
-
+        texto_linha = " ".join(valores)
         if not termos_obrigatorios:
-            linha_cabecalho = idx
-            break
-
-        # Pontua por termos encontrados como célula exata ou contidos em uma célula.
-        pontuacao = 0
-        for termo in termos_obrigatorios:
-            if termo in valores_validos:
-                pontuacao += 2
-            elif any(termo and termo in v for v in valores_validos):
-                pontuacao += 1
-
-        if pontuacao > melhor_pontuacao:
-            melhor_pontuacao = pontuacao
-            melhor_linha = idx
-
-        # Exige todos os termos, preferencialmente por célula exata ou por conteúdo inequívoco.
-        if pontuacao >= len(termos_obrigatorios) * 2:
-            linha_cabecalho = idx
-            break
-        if all(any(termo and (termo == v or termo in v) for v in valores_validos) for termo in termos_obrigatorios):
-            linha_cabecalho = idx
-            break
-
-    if linha_cabecalho is None:
-        linha_cabecalho = melhor_linha if melhor_linha is not None else 0
+            if any(v for v in valores):
+                linha_cabecalho = idx
+                break
+        else:
+            if all(t in texto_linha for t in termos_obrigatorios):
+                linha_cabecalho = idx
+                break
 
     df = pd.read_excel(BytesIO(bytes_arquivo), sheet_name=aba, header=linha_cabecalho)
     df = df.dropna(how="all").copy()
     df.columns = [str(c).strip() for c in df.columns]
     df = df.loc[:, ~pd.Series(df.columns).astype(str).str.startswith("Unnamed").values]
     return df
+
 
 def ler_parametros(bytes_arquivo, xls):
     aba = localizar_aba(xls, ["PARAMETROS_REAJUSTE", "PARAMETROS", "Parâmetros"])
@@ -313,7 +279,6 @@ def padronizar_ciclos(df):
     col_variacao = localizar_coluna(df, ["Variação", "Variacao", "Percentual"])
     col_fator = localizar_coluna(df, ["Fator"])
     col_fator_acum = localizar_coluna(df, ["Fator acumulado", "Fator acumulado final", "Fator Acumulado"])
-    col_tratamento = localizar_coluna(df, ["Tratamento financeiro do ciclo", "Tratamento financeiro", "Tratamento"])
 
     linhas = []
     fator_acumulado_calculado = 1.0
@@ -324,7 +289,6 @@ def padronizar_ciclos(df):
             continue
 
         situacao = row.get(col_situacao, "") if col_situacao else ""
-        tratamento = row.get(col_tratamento, "A apurar") if col_tratamento else ("Precluso" if "PRECLUS" in str(situacao).upper() else "A apurar")
         variacao = percentual_para_decimal(row.get(col_variacao, 0)) if col_variacao else 0.0
         fator = fator_de_valor(row.get(col_fator, None) if col_fator else None, variacao=variacao)
 
@@ -336,7 +300,7 @@ def padronizar_ciclos(df):
             fator_acum = fator_acumulado_calculado * fator
 
         # Fator acumulado efetivo para cálculos financeiros: não aplica ciclo precluso/adiantado comum.
-        if contem_preclusao_ou_adiantamento(situacao) or tratamento_sem_retroativo(tratamento, situacao):
+        if contem_preclusao_ou_adiantamento(situacao):
             fator_acumulado_calculado = fator_acumulado_calculado
             fator_acum_efetivo = fator_acumulado_calculado
             fator_efetivo = 1.0
@@ -352,7 +316,6 @@ def padronizar_ciclos(df):
             "Janela de admissibilidade": row.get(col_janela_adm, "") if col_janela_adm else "",
             "Data do pedido": row.get(col_pedido, "") if col_pedido else "",
             "Situação": situacao,
-            "Tratamento financeiro do ciclo": tratamento,
             "Variação": variacao,
             "Fator": fator,
             "Fator acumulado": fator_acum,
@@ -394,7 +357,6 @@ def ler_financeiro(bytes_arquivo, xls, ciclos):
         # Fallback: se não houver ciclo, assume C1.
         resultado["Ciclo"] = "C1"
 
-    resultado = resultado[~resultado["Ciclo"].astype(str).str.upper().eq("TOTAL")].copy()
     resultado = resultado[resultado["Valor pago/faturado"].fillna(0) != 0].copy()
     return resultado.reset_index(drop=True)
 
@@ -440,7 +402,7 @@ def ler_itens(bytes_arquivo, xls):
     if not aba:
         raise ValueError("Aba ITENS_REMANESCENTES não encontrada.")
 
-    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item", "Quantidade contratada", "Valor unitário original"])
+    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item"])
     if df.empty:
         raise ValueError("Aba ITENS_REMANESCENTES está vazia.")
 
@@ -452,49 +414,25 @@ def ler_itens(bytes_arquivo, xls):
     if col_item is None or col_qtd is None or col_vu is None:
         raise ValueError("Aba ITENS_REMANESCENTES precisa conter Item, Quantidade contratada e Valor unitário original.")
 
-    valor_total_referencia = None
-    if col_total is not None:
-        total_rows = df[df[col_item].astype(str).str.strip().str.upper().eq("TOTAL")]
-        if not total_rows.empty:
-            totais_validos = total_rows[col_total].apply(numero_br)
-            totais_validos = totais_validos[totais_validos > 0]
-            if not totais_validos.empty:
-                valor_total_referencia = float(totais_validos.iloc[-1])
-
-    df = df[~df[col_item].astype(str).str.strip().str.upper().eq("TOTAL")].copy()
-    df = df[df[col_item].notna()].copy()
-    df = df[df[col_item].astype(str).str.strip() != ""].copy()
-
-    itens = pd.DataFrame(index=df.index)
+    itens = pd.DataFrame()
     itens["Item"] = df[col_item]
     itens["Quantidade contratada"] = df[col_qtd].apply(numero_br)
     itens["Valor unitário original"] = df[col_vu].apply(numero_br)
 
-    if col_total is not None:
+    if col_total:
         total_informado = df[col_total].apply(numero_br)
-        itens["Valor total original"] = total_informado.where(
-            total_informado > 0,
-            itens["Quantidade contratada"] * itens["Valor unitário original"],
-        )
+        itens["Valor total original"] = total_informado.where(total_informado > 0, itens["Quantidade contratada"] * itens["Valor unitário original"])
     else:
         itens["Valor total original"] = itens["Quantidade contratada"] * itens["Valor unitário original"]
 
-    itens = itens[
-        (itens["Quantidade contratada"] > 0)
-        | (itens["Valor unitário original"] > 0)
-        | (itens["Valor total original"] > 0)
-    ].copy()
-
+    # Detecta colunas de remanescente físico.
     colunas_rem = []
     for col in df.columns:
         n = normalizar_texto(col)
-        nome_original = str(col)
-        possui_ciclo = re.search(r"C\s*\d+", nome_original, flags=re.IGNORECASE) is not None
-        eh_inicio_ciclo = "inicio" in n or "inicial" in n or possui_ciclo
-        eh_coluna_excluida = "atual" in n or "data_corte" in n or "corte" in n
-        if "remanescente" in n and "valor" not in n and "total" not in n and eh_inicio_ciclo and not eh_coluna_excluida:
+        if "remanescente" in n and "valor" not in n and "total" not in n:
             colunas_rem.append(col)
 
+    # Compatibilidade com modelo antigo.
     col_consumido = localizar_coluna(df, ["Consumido no Ciclo", "Consumido"])
     if not colunas_rem:
         col_qtd_rem = localizar_coluna(df, ["Qtd Remanescente", "Quantidade Remanescente", "Remanescente"])
@@ -502,66 +440,30 @@ def ler_itens(bytes_arquivo, xls):
             colunas_rem = [col_qtd_rem]
 
     for col in colunas_rem:
-        itens[col] = df.loc[itens.index, col].apply(numero_br) if col in df.columns else 0.0
+        itens[col] = df[col].apply(numero_br)
 
     if col_consumido:
-        itens["Consumido no Ciclo"] = df.loc[itens.index, col_consumido].apply(numero_br)
-
-    if valor_total_referencia is not None:
-        itens.attrs["valor_original_contrato_referencia"] = valor_total_referencia
+        itens["Consumido no Ciclo"] = df[col_consumido].apply(numero_br)
 
     return itens, colunas_rem
 
 
 # ============================================================
-# Cálculos financeiros/executivos
+# Cálculos
 # ============================================================
 
-def fator_fmt(valor):
-    try:
-        valor = float(valor)
-    except Exception:
-        valor = 1.0
-    return f"{valor:.4f}".replace('.', ',')
-
-
-def obter_tratamento(row):
-    for col in ["Tratamento financeiro do ciclo", "Tratamento", "Situação"]:
-        if col in row.index and str(row.get(col, "")).strip():
-            return str(row.get(col, "")).strip()
-    return "A apurar"
-
-
-def tratamento_sem_retroativo(tratamento, situacao=""):
-    texto = normalizar_texto(f"{tratamento} {situacao}")
-    return any(x in texto for x in ["ja_concedido", "preclus", "sem_efeito", "adiantado"])
-
-
 def mapa_fatores(ciclos):
-    mapa = {"C0": {
-        "fator": 1.0,
-        "fator_acumulado": 1.0,
-        "fator_acumulado_efetivo": 1.0,
-        "fator_retroativo": 1.0,
-        "situacao": "BASE",
-        "tratamento": "Base",
-        "variacao": 0.0,
-    }}
+    mapa = {"C0": {"fator": 1.0, "fator_acumulado": 1.0, "fator_acumulado_efetivo": 1.0, "situacao": "BASE"}}
     if ciclos.empty:
         return mapa
 
     for _, row in ciclos.iterrows():
-        ciclo = row.get("Ciclo", "")
-        situacao = row.get("Situação", "")
-        tratamento = row.get("Tratamento financeiro do ciclo", "A apurar")
-        fator_efetivo = float(row.get("Fator acumulado efetivo", row.get("Fator acumulado", 1.0)) or 1.0)
+        ciclo = row["Ciclo"]
         mapa[ciclo] = {
             "fator": float(row.get("Fator", 1.0) or 1.0),
             "fator_acumulado": float(row.get("Fator acumulado", 1.0) or 1.0),
-            "fator_acumulado_efetivo": fator_efetivo,
-            "fator_retroativo": 1.0 if tratamento_sem_retroativo(tratamento, situacao) else fator_efetivo,
-            "situacao": situacao,
-            "tratamento": tratamento,
+            "fator_acumulado_efetivo": float(row.get("Fator acumulado efetivo", row.get("Fator acumulado", 1.0)) or 1.0),
+            "situacao": row.get("Situação", ""),
             "variacao": float(row.get("Variação", 0.0) or 0.0),
         }
     return mapa
@@ -569,43 +471,38 @@ def mapa_fatores(ciclos):
 
 def calcular_financeiro_por_ciclo(df_financeiro, ciclos):
     fatores = mapa_fatores(ciclos)
-    linhas = []
 
+    linhas = []
     for ciclo, grupo in df_financeiro.groupby("Ciclo", dropna=False):
         ciclo = normalizar_ciclo(ciclo) or "C1"
         total_pago = float(grupo["Valor pago/faturado"].sum())
         info = fatores.get(ciclo, {})
-        fator_retroativo = float(info.get("fator_retroativo", 1.0))
+        fator_aplicado = info.get("fator_acumulado_efetivo", 1.0)
         situacao = info.get("situacao", "")
-        tratamento = info.get("tratamento", "")
-        devido = total_pago * fator_retroativo
+
+        if ciclo == "C0":
+            fator_aplicado = 1.0
+
+        devido = total_pago * fator_aplicado
         delta = devido - total_pago
+
         linhas.append({
             "Ciclo": ciclo,
             "Situação": situacao,
-            "Tratamento financeiro": tratamento,
-            "Fator aplicado ao retroativo": fator_retroativo,
-            "Valor pago efetivo": total_pago,
-            "Valor teórico calculado": devido,
+            "Fator aplicado": fator_aplicado,
+            "Valor pago/faturado": total_pago,
+            "Valor devido reajustado": devido,
             "Delta do ciclo": delta,
         })
 
     if not linhas:
         return pd.DataFrame(columns=[
-            "Ciclo", "Situação", "Tratamento financeiro", "Fator aplicado ao retroativo",
-            "Valor pago efetivo", "Valor teórico calculado", "Delta do ciclo"
+            "Ciclo", "Situação", "Fator aplicado", "Valor pago/faturado",
+            "Valor devido reajustado", "Delta do ciclo"
         ])
 
     df = pd.DataFrame(linhas).sort_values(by="Ciclo", key=lambda s: s.map(numero_ciclo)).reset_index(drop=True)
-    df.loc[len(df)] = {
-        "Ciclo": "TOTAL",
-        "Situação": "",
-        "Tratamento financeiro": "",
-        "Fator aplicado ao retroativo": "",
-        "Valor pago efetivo": df["Valor pago efetivo"].sum(),
-        "Valor teórico calculado": df["Valor teórico calculado"].sum(),
-        "Delta do ciclo": df["Delta do ciclo"].sum(),
-    }
+    df["Delta acumulado"] = df["Delta do ciclo"].cumsum()
     return df
 
 
@@ -617,7 +514,7 @@ def ciclo_da_coluna_remanescente(coluna, fallback="C1"):
     return fallback
 
 
-def calcular_remanescentes_valor(itens, colunas_remanescentes, ciclos):
+def calcular_remanescentes(itens, colunas_remanescentes, ciclos):
     fatores = mapa_fatores(ciclos)
     linhas = []
     if not colunas_remanescentes:
@@ -626,15 +523,19 @@ def calcular_remanescentes_valor(itens, colunas_remanescentes, ciclos):
     for col in colunas_remanescentes:
         ciclo = ciclo_da_coluna_remanescente(col, fallback="C1")
         info = fatores.get(ciclo, {})
-        fator = float(info.get("fator_acumulado_efetivo", info.get("fator_acumulado", 1.0)) or 1.0)
+        fator = info.get("fator_acumulado_efetivo", info.get("fator_acumulado", 1.0))
+
         qtd_rem = itens[col].apply(numero_br)
         valor_original = qtd_rem * itens["Valor unitário original"]
-        valor_atualizado = valor_original * fator
+        valor_reajustado = valor_original * fator
+
         linhas.append({
             "Ciclo": ciclo,
+            "Coluna de origem": col,
+            "Quantidade remanescente": float(qtd_rem.sum()),
             "Remanescente original": float(valor_original.sum()),
-            "Fator aplicado": fator,
-            "Remanescente atualizado": float(valor_atualizado.sum()),
+            "Fator aplicado": float(fator),
+            "Remanescente reajustado": float(valor_reajustado.sum()),
         })
 
     df = pd.DataFrame(linhas).sort_values(by="Ciclo", key=lambda s: s.map(numero_ciclo)).reset_index(drop=True)
@@ -642,290 +543,325 @@ def calcular_remanescentes_valor(itens, colunas_remanescentes, ciclos):
     return df, ciclo_ultimo
 
 
-
-
-def construir_valores_unitarios_totais(itens, colunas_remanescentes, ciclos):
-    """Monta tabela analítica por item e por ciclo.
-
-    Regras:
-    - C0 usa a quantidade contratada original e o valor unitário original.
-    - C1, C2, C3... usam o remanescente informado no início do respectivo ciclo.
-    - Ciclos preclusos usam o fator acumulado efetivo já saneado na aba CICLOS, isto é, repetem o valor anterior.
-    """
-    if itens.empty:
-        return pd.DataFrame(columns=[
-            "Item", "Ciclo", "Valor unitário", "Quantidade", "Total R$", "Ciclo precluso"
-        ])
-
-    fatores = mapa_fatores(ciclos)
-    linhas = []
-
-    # C0: fotografia original do item.
-    for _, row in itens.iterrows():
-        item = row.get("Item", "")
-        vu_original = numero_br(row.get("Valor unitário original", 0))
-        qtd_original = numero_br(row.get("Quantidade contratada", 0))
-        linhas.append({
-            "Item": item,
-            "Ciclo": "C0",
-            "Valor unitário": vu_original,
-            "Quantidade": qtd_original,
-            "Total R$": vu_original * qtd_original,
-            "Ciclo precluso": False,
-        })
-
-    # Ciclos seguintes: quantidade = remanescente no início do ciclo.
-    rem_por_ciclo = sorted(
-        [(ciclo_da_coluna_remanescente(col, fallback="C1"), col) for col in colunas_remanescentes],
-        key=lambda x: numero_ciclo(x[0])
-    )
-
-    for ciclo, col in rem_por_ciclo:
-        info = fatores.get(ciclo, {})
-        fator = float(info.get("fator_acumulado_efetivo", info.get("fator_acumulado", 1.0)) or 1.0)
-        eh_precluso = contem_preclusao_ou_adiantamento(info.get("situacao", "")) or tratamento_sem_retroativo(info.get("tratamento", ""), info.get("situacao", ""))
-
-        for _, row in itens.iterrows():
-            item = row.get("Item", "")
-            vu_original = numero_br(row.get("Valor unitário original", 0))
-            qtd = numero_br(row.get(col, 0))
-            vu_ciclo = vu_original * fator
-            linhas.append({
-                "Item": item,
-                "Ciclo": ciclo,
-                "Valor unitário": vu_ciclo,
-                "Quantidade": qtd,
-                "Total R$": vu_ciclo * qtd,
-                "Ciclo precluso": bool(eh_precluso),
-            })
-
-    return pd.DataFrame(linhas)
-
-
-def gerar_excel_valores_unitarios_por_ciclo(df_valores, ciclos):
-    """Gera Excel analítico com valores unitários e totais por ciclo."""
-    output = BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
-        workbook = writer.book
-
-        fmt_header = workbook.add_format({
-            "bold": True,
-            "font_color": "white",
-            "bg_color": "#1F4E79",
-            "border": 1,
-            "align": "center",
-            "valign": "vcenter",
-            "text_wrap": True,
-        })
-        fmt_money = workbook.add_format({"num_format": 'R$ #,##0.00', "border": 1})
-        fmt_money_red = workbook.add_format({"num_format": 'R$ #,##0.00', "font_color": "#C00000", "border": 1})
-        fmt_num = workbook.add_format({"num_format": '#,##0.00', "border": 1})
-        fmt_text = workbook.add_format({"border": 1})
-        fmt_pct = workbook.add_format({"num_format": "0.00%", "border": 1})
-        fmt_factor = workbook.add_format({"num_format": "0.0000", "border": 1})
-
-        df_export = df_valores.copy()
-        df_export.to_excel(writer, sheet_name="VALORES_POR_CICLO", index=False)
-        ws = writer.sheets["VALORES_POR_CICLO"]
-
-        for col_idx, title in enumerate(df_export.columns):
-            ws.write(0, col_idx, title, fmt_header)
-
-        colunas = {col: idx for idx, col in enumerate(df_export.columns)}
-        ws.set_column("A:A", 16)
-        ws.set_column("B:B", 10)
-        ws.set_column("C:C", 20)
-        ws.set_column("D:D", 16)
-        ws.set_column("E:E", 22)
-        ws.set_column("F:F", 14)
-
-        for row_idx, (_, row) in enumerate(df_export.iterrows(), start=1):
-            precluso = bool(row.get("Ciclo precluso", False))
-            for col, col_idx in colunas.items():
-                value = row.get(col, "")
-                if col in ["Valor unitário", "Total R$"]:
-                    ws.write_number(row_idx, col_idx, float(value or 0), fmt_money_red if precluso else fmt_money)
-                elif col == "Quantidade":
-                    ws.write_number(row_idx, col_idx, float(value or 0), fmt_num)
-                elif col == "Ciclo precluso":
-                    ws.write(row_idx, col_idx, "Sim" if precluso else "Não", fmt_text)
-                else:
-                    ws.write(row_idx, col_idx, value, fmt_text)
-
-        df_ciclos = ciclos.copy() if isinstance(ciclos, pd.DataFrame) else pd.DataFrame()
-        df_ciclos.to_excel(writer, sheet_name="CICLOS_CONSIDERADOS", index=False)
-        ws2 = writer.sheets["CICLOS_CONSIDERADOS"]
-        for col_idx, title in enumerate(df_ciclos.columns):
-            ws2.write(0, col_idx, title, fmt_header)
-        for idx, col in enumerate(df_ciclos.columns):
-            ws2.set_column(idx, idx, max(14, min(32, len(str(col)) + 4)))
-        for row_idx in range(1, len(df_ciclos) + 1):
-            for col_idx, col in enumerate(df_ciclos.columns):
-                valor = df_ciclos.iloc[row_idx - 1, col_idx]
-                if col in ["Fator", "Fator acumulado", "Fator acumulado efetivo", "Fator ciclo efetivo"]:
-                    try:
-                        ws2.write_number(row_idx, col_idx, float(valor), fmt_factor)
-                    except Exception:
-                        ws2.write(row_idx, col_idx, valor, fmt_text)
-                elif col == "Variação":
-                    try:
-                        ws2.write_number(row_idx, col_idx, float(valor), fmt_pct)
-                    except Exception:
-                        ws2.write(row_idx, col_idx, valor, fmt_text)
-                else:
-                    ws2.write(row_idx, col_idx, "" if pd.isna(valor) else valor, fmt_text)
-
-    output.seek(0)
-    return output.getvalue()
-
-def calcular_execucao_por_diferenca(itens, colunas_remanescentes, ciclos):
+def calcular_consumo_estoque_por_diferenca(itens, colunas_remanescentes, ciclos):
+    """Calcula consumo por ciclo usando diferença entre remanescentes sucessivos."""
     if not colunas_remanescentes:
         return pd.DataFrame()
 
     fatores = mapa_fatores(ciclos)
-    rem_por_ciclo = sorted(
-        [(ciclo_da_coluna_remanescente(col, fallback="C1"), col) for col in colunas_remanescentes],
-        key=lambda x: numero_ciclo(x[0])
-    )
+
+    rem_por_ciclo = []
+    for col in colunas_remanescentes:
+        ciclo = ciclo_da_coluna_remanescente(col, fallback="C1")
+        rem_por_ciclo.append((ciclo, col))
+
+    rem_por_ciclo = sorted(rem_por_ciclo, key=lambda x: numero_ciclo(x[0]))
+
     linhas = []
 
+    # C0 = contratado inicial - remanescente início C1
     primeiro_ciclo, primeira_col = rem_por_ciclo[0]
-    qtd_consumida_c0 = itens["Quantidade contratada"] - itens[primeira_col].apply(numero_br)
-    qtd_consumida_c0 = qtd_consumida_c0.clip(lower=0)
-    valor_c0 = qtd_consumida_c0 * itens["Valor unitário original"]
+    consumido_c0_qtd = itens["Quantidade contratada"] - itens[primeira_col].apply(numero_br)
+    valor_c0 = consumido_c0_qtd * itens["Valor unitário original"]
     linhas.append({
         "Ciclo": "C0",
-        "Status financeiro": "Base",
-        "Valor executado original": float(valor_c0.sum()),
-        "Percentual acumulado aplicado": 0.0,
-        "Valor executado atualizado": float(valor_c0.sum()),
+        "Quantidade consumida estimada": float(consumido_c0_qtd.sum()),
+        "Fator aplicado": 1.0,
+        "Valor consumido original": float(valor_c0.sum()),
+        "Valor consumido reajustado": float(valor_c0.sum()),
+        "Critério": f"Quantidade contratada - {primeira_col}",
     })
 
+    # Cn = remanescente início Cn - remanescente início C(n+1)
     for idx in range(len(rem_por_ciclo) - 1):
         ciclo_atual, col_atual = rem_por_ciclo[idx]
-        _, col_proxima = rem_por_ciclo[idx + 1]
+        proximo_ciclo, col_proxima = rem_por_ciclo[idx + 1]
         qtd_consumida = itens[col_atual].apply(numero_br) - itens[col_proxima].apply(numero_br)
         qtd_consumida = qtd_consumida.clip(lower=0)
         valor_original = qtd_consumida * itens["Valor unitário original"]
-        info = fatores.get(ciclo_atual, {})
-        fator = float(info.get("fator_acumulado_efetivo", 1.0) or 1.0)
+        fator = fatores.get(ciclo_atual, {}).get("fator_acumulado_efetivo", 1.0)
         linhas.append({
             "Ciclo": ciclo_atual,
-            "Status financeiro": info.get("tratamento", info.get("situacao", "")),
-            "Valor executado original": float(valor_original.sum()),
-            "Percentual acumulado aplicado": fator - 1,
-            "Valor executado atualizado": float((valor_original * fator).sum()),
+            "Quantidade consumida estimada": float(qtd_consumida.sum()),
+            "Fator aplicado": float(fator),
+            "Valor consumido original": float(valor_original.sum()),
+            "Valor consumido reajustado": float((valor_original * fator).sum()),
+            "Critério": f"{col_atual} - {col_proxima}",
         })
 
     return pd.DataFrame(linhas)
 
 
-def inferir_ciclo_por_data(data_aditivo, ciclos):
-    try:
-        data = pd.to_datetime(data_aditivo, dayfirst=True)
-    except Exception:
-        return ""
-    candidatos = []
-    for _, row in ciclos.iterrows():
-        try:
-            base = pd.to_datetime(row.get("Data-base"), dayfirst=True)
-            if base <= data:
-                candidatos.append((base, row.get("Ciclo")))
-        except Exception:
-            continue
-    if not candidatos:
-        return ""
-    candidatos.sort(key=lambda x: x[0])
-    return candidatos[-1][1]
-
-
-def ler_aditivos(bytes_arquivo, xls, ciclos):
-    aba = localizar_aba(xls, ["ADITIVOS_QUANTITATIVOS", "ADITIVOS", "Aditivos"])
-    if not aba:
-        return pd.DataFrame()
-    try:
-        df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item"])
-    except Exception:
-        return pd.DataFrame()
-    if df.empty:
-        return pd.DataFrame()
-
-    col_item = localizar_coluna(df, ["Item"])
-    col_data = localizar_coluna(df, ["Data do aditivo", "Data"])
-    col_ciclo = localizar_coluna(df, ["Ciclo/Marco", "Ciclo", "Marco"])
-    col_tipo = localizar_coluna(df, ["Tipo de alteração", "Tipo", "Acréscimo/Supressão"])
-    col_qtd = localizar_coluna(df, ["Quantidade acrescida/suprimida", "Quantidade", "Qtd"])
-    col_vu = localizar_coluna(df, ["Valor unitário original", "VU", "Valor unitario"])
-    col_valor_original = localizar_coluna(df, ["Valor original da alteração", "Valor original do acréscimo", "Valor original"])
-    col_aplicar = localizar_coluna(df, ["Aplicar reajuste acumulado? (Sim/Não)", "Aplicar reajuste", "Aplicar"])
-    col_fator = localizar_coluna(df, ["Fator acumulado aplicável", "Fator", "Fator acumulado"])
-
-    fatores = mapa_fatores(ciclos)
-    linhas = []
-    for _, row in df.iterrows():
-        item = row.get(col_item, "") if col_item else ""
-        if not str(item).strip() or str(item).strip().upper() == "TOTAL":
-            continue
-        data_aditivo = row.get(col_data, "") if col_data else ""
-        ciclo = normalizar_ciclo(row.get(col_ciclo, "")) if col_ciclo else ""
-        if not ciclo:
-            ciclo = inferir_ciclo_por_data(data_aditivo, ciclos)
-        tipo = str(row.get(col_tipo, "Acréscimo") if col_tipo else "Acréscimo").strip() or "Acréscimo"
-        qtd = numero_br(row.get(col_qtd, 0)) if col_qtd else 0.0
-        vu = numero_br(row.get(col_vu, 0)) if col_vu else 0.0
-        valor_original = numero_br(row.get(col_valor_original, 0)) if col_valor_original else 0.0
-        if valor_original == 0 and qtd != 0 and vu != 0:
-            valor_original = qtd * vu
-        if "supress" in normalizar_texto(tipo) or "decresc" in normalizar_texto(tipo):
-            valor_original = -abs(valor_original)
-        else:
-            valor_original = abs(valor_original)
-        aplicar = str(row.get(col_aplicar, "Sim") if col_aplicar else "Sim").strip().upper()
-        fator = numero_br(row.get(col_fator, 0)) if col_fator else 0.0
-        if fator <= 0:
-            fator = fatores.get(ciclo, {}).get("fator_acumulado_efetivo", 1.0)
-        valor_atualizado = valor_original if aplicar in ["NAO", "NÃO", "N"] else valor_original * fator
-        linhas.append({
-            "Item": item,
-            "Data do aditivo": data_aditivo,
-            "Ciclo/Marco": ciclo,
-            "Tipo de alteração": tipo,
-            "Valor original da alteração": valor_original,
-            "Fator aplicado": fator,
-            "Valor atualizado da alteração": valor_atualizado,
-        })
-    return pd.DataFrame(linhas)
-
-
-def montar_comparativo_executivo(valor_original, total_pago, total_devido, delta_total, rem_original, rem_atualizado, valor_atualizado_contrato, total_aditivos):
+def montar_comparativo(valor_original, total_pago, total_devido, rem_original, rem_reaj, valor_global_fin, valor_global_est, delta_acum):
     linhas = [
-        {"Indicador": "Valor original do contrato", "Valor": valor_original},
-        {"Indicador": "Valor pago efetivo", "Valor": total_pago},
-        {"Indicador": "Valor teórico calculado", "Valor": total_devido},
-        {"Indicador": "Delta total", "Valor": delta_total},
-        {"Indicador": "Saldo remanescente original", "Valor": rem_original},
-        {"Indicador": "Saldo remanescente atualizado", "Valor": rem_atualizado},
-        {"Indicador": "Aditivos/Supressões atualizados", "Valor": total_aditivos},
-        {"Indicador": "Valor atualizado do contrato", "Valor": valor_atualizado_contrato},
+        {
+            "Indicador": "Valor original do contrato",
+            "Antes do Reajuste": valor_original,
+            "Após Reajuste": valor_original,
+            "Diferença": 0.0,
+        },
+        {
+            "Indicador": "Total pago/faturado",
+            "Antes do Reajuste": total_pago,
+            "Após Reajuste": total_devido,
+            "Diferença": total_devido - total_pago,
+        },
+        {
+            "Indicador": "Remanescente",
+            "Antes do Reajuste": rem_original,
+            "Após Reajuste": rem_reaj,
+            "Diferença": rem_reaj - rem_original,
+        },
+        {
+            "Indicador": "Valor Global Financeiro",
+            "Antes do Reajuste": total_pago + rem_original,
+            "Após Reajuste": valor_global_fin,
+            "Diferença": valor_global_fin - (total_pago + rem_original),
+        },
+        {
+            "Indicador": "Valor Global por Estoque",
+            "Antes do Reajuste": valor_original,
+            "Após Reajuste": valor_global_est,
+            "Diferença": valor_global_est - valor_original,
+        },
+        {
+            "Indicador": "Delta acumulado financeiro",
+            "Antes do Reajuste": 0.0,
+            "Após Reajuste": delta_acum,
+            "Diferença": delta_acum,
+        },
     ]
     return pd.DataFrame(linhas)
 
 
+
+def mapa_colunas_remanescentes_por_ciclo(colunas_remanescentes):
+    mapa = {}
+    for col in colunas_remanescentes or []:
+        ciclo = ciclo_da_coluna_remanescente(col, fallback="")
+        if ciclo:
+            mapa[normalizar_ciclo(ciclo)] = col
+    return mapa
+
+
+def calcular_fatores_unitarios_por_ciclo(ciclos):
+    """Monta a sequência de fatores aplicáveis aos valores unitários por ciclo.
+
+    Ciclos preclusos ou sem reajuste aplicável repetem o fator anterior.
+    """
+    fatores = []
+    fator_corrente = 1.0
+    if ciclos is None or ciclos.empty:
+        return fatores
+
+    df = ciclos.copy().sort_values(by="Ciclo", key=lambda s: s.map(numero_ciclo)).reset_index(drop=True)
+    for _, row in df.iterrows():
+        ciclo = normalizar_ciclo(row.get("Ciclo", ""))
+        if not ciclo or ciclo == "C0":
+            continue
+        situacao = row.get("Situação", "")
+        bloqueado = situacao_bloqueia_reajuste(situacao)
+        if bloqueado:
+            fator_aplicado = fator_corrente
+        else:
+            fator_lido = row.get("Fator acumulado efetivo", row.get("Fator acumulado", None))
+            try:
+                fator_lido = float(fator_lido)
+            except Exception:
+                fator_lido = fator_corrente
+            if fator_lido <= 0:
+                fator_lido = fator_corrente
+            fator_corrente = fator_lido
+            fator_aplicado = fator_corrente
+        fatores.append({
+            "Ciclo": ciclo,
+            "Situação": situacao,
+            "Ciclo precluso/bloqueado": bool(bloqueado),
+            "Fator acumulado aplicado": float(fator_aplicado),
+            "Reajuste acumulado aplicado": float(fator_aplicado) - 1,
+        })
+    return fatores
+
+
+def montar_valores_unitarios_por_ciclo(itens, colunas_remanescentes, ciclos):
+    if itens is None or itens.empty:
+        return pd.DataFrame(), pd.DataFrame(), pd.DataFrame()
+
+    mapa_rem = mapa_colunas_remanescentes_por_ciclo(colunas_remanescentes)
+    fatores_ciclo = calcular_fatores_unitarios_por_ciclo(ciclos)
+
+    linhas = []
+    for _, item in itens.iterrows():
+        item_id = item.get("Item", "")
+        vu_original = float(item.get("Valor unitário original", 0.0) or 0.0)
+        qtd_c0 = float(item.get("Quantidade contratada", 0.0) or 0.0)
+        linhas.append({
+            "Item": item_id,
+            "Ciclo": "C0",
+            "Valor unitário": vu_original,
+            "Quantidade": qtd_c0,
+            "Total R$": vu_original * qtd_c0,
+            "Situação do ciclo": "Base original",
+            "Ciclo precluso/bloqueado": False,
+        })
+        for info in fatores_ciclo:
+            ciclo = info["Ciclo"]
+            col_qtd = mapa_rem.get(ciclo)
+            qtd = float(item.get(col_qtd, 0.0) or 0.0) if col_qtd else 0.0
+            fator = float(info.get("Fator acumulado aplicado", 1.0) or 1.0)
+            vu_ciclo = vu_original * fator
+            linhas.append({
+                "Item": item_id,
+                "Ciclo": ciclo,
+                "Valor unitário": vu_ciclo,
+                "Quantidade": qtd,
+                "Total R$": vu_ciclo * qtd,
+                "Situação do ciclo": info.get("Situação", ""),
+                "Ciclo precluso/bloqueado": bool(info.get("Ciclo precluso/bloqueado", False)),
+            })
+
+    df_long = pd.DataFrame(linhas)
+    df_ciclos = pd.DataFrame([{
+        "Ciclo": "C0",
+        "Situação": "Base original",
+        "Fator acumulado aplicado": 1.0,
+        "Reajuste acumulado aplicado": 0.0,
+        "Ciclo precluso/bloqueado": False,
+    }] + fatores_ciclo)
+    df_matriz = montar_matriz_valores_unitarios(df_long)
+    return df_long, df_matriz, df_ciclos
+
+
+def montar_matriz_valores_unitarios(df_long):
+    if df_long is None or df_long.empty:
+        return pd.DataFrame()
+    ciclos_ordenados = sorted(df_long["Ciclo"].dropna().unique(), key=numero_ciclo)
+    linhas = []
+    for item, grupo in df_long.groupby("Item", dropna=False):
+        linha = {"Item": item}
+        for ciclo in ciclos_ordenados:
+            rec = grupo[grupo["Ciclo"] == ciclo]
+            if rec.empty:
+                linha[f"{ciclo} - Valor unitário"] = 0.0
+                linha[f"{ciclo} - Quantidade"] = 0.0
+                linha[f"{ciclo} - Total R$"] = 0.0
+                linha[f"{ciclo} - Precluso/Bloqueado"] = False
+            else:
+                r = rec.iloc[0]
+                linha[f"{ciclo} - Valor unitário"] = float(r.get("Valor unitário", 0.0) or 0.0)
+                linha[f"{ciclo} - Quantidade"] = float(r.get("Quantidade", 0.0) or 0.0)
+                linha[f"{ciclo} - Total R$"] = float(r.get("Total R$", 0.0) or 0.0)
+                linha[f"{ciclo} - Precluso/Bloqueado"] = bool(r.get("Ciclo precluso/bloqueado", False))
+        linhas.append(linha)
+    return pd.DataFrame(linhas)
+
+
+def gerar_excel_valores_unitarios(df_long, df_matriz, df_ciclos):
+    output = BytesIO()
+    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+        df_long_export = df_long.drop(columns=["Ciclo precluso/bloqueado"], errors="ignore")
+        df_matriz_export = df_matriz[[c for c in df_matriz.columns if "Precluso/Bloqueado" not in str(c)]].copy()
+        df_long_export.to_excel(writer, sheet_name="VALORES_POR_CICLO", index=False)
+        df_matriz_export.to_excel(writer, sheet_name="MATRIZ_VALORES_CICLO", index=False)
+        df_ciclos.to_excel(writer, sheet_name="CICLOS_CONSIDERADOS", index=False)
+
+        wb = writer.book
+        header_fmt = wb.add_format({"bold": True, "font_color": "white", "bg_color": "#1F4E78", "border": 1, "align": "center", "valign": "vcenter"})
+        money_fmt = wb.add_format({"num_format": 'R$ #,##0.00', "border": 1})
+        qty_fmt = wb.add_format({"num_format": '#,##0.00', "border": 1})
+        txt_fmt = wb.add_format({"border": 1})
+        red_money_fmt = wb.add_format({"num_format": 'R$ #,##0.00', "font_color": "#C00000", "border": 1})
+        red_qty_fmt = wb.add_format({"num_format": '#,##0.00', "font_color": "#C00000", "border": 1})
+        red_txt_fmt = wb.add_format({"font_color": "#C00000", "border": 1})
+        pct_fmt = wb.add_format({"num_format": '0.00%', "border": 1})
+        factor_fmt = wb.add_format({"num_format": '0.0000', "border": 1})
+
+        ws = writer.sheets["VALORES_POR_CICLO"]
+        for col_idx, col in enumerate(df_long_export.columns):
+            ws.write(0, col_idx, col, header_fmt)
+            ws.set_column(col_idx, col_idx, 20)
+        for row_idx, (_, row) in enumerate(df_long.iterrows(), start=1):
+            precluso = bool(row.get("Ciclo precluso/bloqueado", False))
+            for col_idx, col in enumerate(df_long_export.columns):
+                val = row.get(col, "")
+                if col in ["Valor unitário", "Total R$"]:
+                    ws.write_number(row_idx, col_idx, float(val or 0.0), red_money_fmt if precluso else money_fmt)
+                elif col == "Quantidade":
+                    ws.write_number(row_idx, col_idx, float(val or 0.0), red_qty_fmt if precluso else qty_fmt)
+                else:
+                    ws.write(row_idx, col_idx, val, red_txt_fmt if precluso else txt_fmt)
+
+        ws = writer.sheets["MATRIZ_VALORES_CICLO"]
+        for col_idx, col in enumerate(df_matriz_export.columns):
+            ws.write(0, col_idx, col, header_fmt)
+            ws.set_column(col_idx, col_idx, 20)
+        for row_idx, (_, row) in enumerate(df_matriz.iterrows(), start=1):
+            for col_idx, col in enumerate(df_matriz_export.columns):
+                val = row.get(col, "")
+                precluso_col = str(col).replace(" - Valor unitário", " - Precluso/Bloqueado").replace(" - Quantidade", " - Precluso/Bloqueado").replace(" - Total R$", " - Precluso/Bloqueado")
+                precluso = bool(row.get(precluso_col, False))
+                if "Valor unitário" in str(col) or "Total R$" in str(col):
+                    ws.write_number(row_idx, col_idx, float(val or 0.0), red_money_fmt if precluso else money_fmt)
+                elif "Quantidade" in str(col):
+                    ws.write_number(row_idx, col_idx, float(val or 0.0), red_qty_fmt if precluso else qty_fmt)
+                else:
+                    ws.write(row_idx, col_idx, val, red_txt_fmt if precluso else txt_fmt)
+
+        ws = writer.sheets["CICLOS_CONSIDERADOS"]
+        for col_idx, col in enumerate(df_ciclos.columns):
+            ws.write(0, col_idx, col, header_fmt)
+            ws.set_column(col_idx, col_idx, 24)
+        for row_idx, (_, row) in enumerate(df_ciclos.iterrows(), start=1):
+            precluso = bool(row.get("Ciclo precluso/bloqueado", False))
+            for col_idx, col in enumerate(df_ciclos.columns):
+                val = row.get(col, "")
+                if "Fator" in str(col):
+                    ws.write_number(row_idx, col_idx, float(val or 0.0), factor_fmt)
+                elif "Reajuste" in str(col):
+                    ws.write_number(row_idx, col_idx, float(val or 0.0), pct_fmt)
+                else:
+                    ws.write(row_idx, col_idx, val, red_txt_fmt if precluso else txt_fmt)
+    output.seek(0)
+    return output
+
+
+def extrair_percentual_reajuste_legacy(bytes_arquivo, xls):
+    """Busca percentual de reajuste em modelos legados, como ITENS_CICLOS."""
+    for aba in xls.sheet_names:
+        try:
+            bruto = pd.read_excel(BytesIO(bytes_arquivo), sheet_name=aba, header=None)
+        except Exception:
+            continue
+        for i in range(bruto.shape[0]):
+            for j in range(bruto.shape[1]):
+                cel = bruto.iat[i, j]
+                if "percentual_reajuste" in normalizar_texto(cel):
+                    # Procura valor à direita e, se necessário, nas células próximas.
+                    candidatos = []
+                    for jj in range(j + 1, min(j + 4, bruto.shape[1])):
+                        candidatos.append(bruto.iat[i, jj])
+                    for ii in range(i + 1, min(i + 3, bruto.shape[0])):
+                        candidatos.append(bruto.iat[ii, j])
+                    for cand in candidatos:
+                        if cand is not None and not pd.isna(cand):
+                            n = numero_br(cand)
+                            if n != 0:
+                                return n if abs(n) <= 1 else n / 100
+    return None
+
+
 def processar_arquivo_coleta(bytes_arquivo):
     xls = pd.ExcelFile(BytesIO(bytes_arquivo))
+
     params = ler_parametros(bytes_arquivo, xls)
     ciclos, origem_ciclos = ler_ciclos(bytes_arquivo, xls)
     financeiro = ler_financeiro(bytes_arquivo, xls, ciclos)
     itens, colunas_remanescentes = ler_itens(bytes_arquivo, xls)
 
-    # Remove linhas de total ou vazias da base de itens.
-    if "Item" in itens.columns:
-        itens = itens[~itens["Item"].astype(str).str.strip().str.upper().eq("TOTAL")].copy()
-        itens = itens[itens["Item"].astype(str).str.strip() != ""].copy()
-
     if ciclos.empty:
+        # Fallback pelo parâmetro de fator ou pelo percentual existente em modelos legados.
         perc_legacy = extrair_percentual_reajuste_legacy(bytes_arquivo, xls)
-        fator = fator_de_valor(params.get("fator_acumulado_total") or params.get("fator_acumulado_final") or params.get("fator_acumulado") or params.get("fator"))
+        fator = fator_de_valor(params.get("fator_acumulado_final") or params.get("fator_acumulado") or params.get("fator"))
         if fator == 1.0 and perc_legacy is not None:
             fator = 1 + perc_legacy
         ciclos = pd.DataFrame([{
@@ -935,7 +871,6 @@ def processar_arquivo_coleta(bytes_arquivo):
             "Janela de admissibilidade": "",
             "Data do pedido": "",
             "Situação": "",
-            "Tratamento financeiro do ciclo": "A apurar",
             "Variação": fator - 1,
             "Fator": fator,
             "Fator acumulado": fator,
@@ -944,42 +879,38 @@ def processar_arquivo_coleta(bytes_arquivo):
         }])
 
     df_fin_por_ciclo = calcular_financeiro_por_ciclo(financeiro, ciclos)
-    df_rem, ciclo_ultimo_rem = calcular_remanescentes_valor(itens, colunas_remanescentes, ciclos)
-    df_execucao = calcular_execucao_por_diferenca(itens, colunas_remanescentes, ciclos)
-    df_valores_unitarios = construir_valores_unitarios_totais(itens, colunas_remanescentes, ciclos)
-    df_aditivos = ler_aditivos(bytes_arquivo, xls, ciclos)
+    df_rem, ciclo_ultimo_rem = calcular_remanescentes(itens, colunas_remanescentes, ciclos)
+    df_consumo_estoque = calcular_consumo_estoque_por_diferenca(itens, colunas_remanescentes, ciclos)
+    df_valores_unitarios, df_matriz_valores_unitarios, df_ciclos_valores_unitarios = montar_valores_unitarios_por_ciclo(
+        itens, colunas_remanescentes, ciclos
+    )
 
-    valor_original_referencia = itens.attrs.get("valor_original_contrato_referencia") if hasattr(itens, "attrs") else None
-    if valor_original_referencia is not None and float(valor_original_referencia) > 0:
-        valor_original_contrato = float(valor_original_referencia)
-    else:
-        valor_original_contrato = float(itens["Valor total original"].sum()) if "Valor total original" in itens.columns else 0.0
-    total_pago_efetivo = float(df_fin_por_ciclo.loc[df_fin_por_ciclo["Ciclo"] != "TOTAL", "Valor pago efetivo"].sum()) if not df_fin_por_ciclo.empty else 0.0
-    total_teorico_calculado = float(df_fin_por_ciclo.loc[df_fin_por_ciclo["Ciclo"] != "TOTAL", "Valor teórico calculado"].sum()) if not df_fin_por_ciclo.empty else 0.0
-    delta_total = float(df_fin_por_ciclo.loc[df_fin_por_ciclo["Ciclo"] != "TOTAL", "Delta do ciclo"].sum()) if not df_fin_por_ciclo.empty else 0.0
-    if not df_fin_por_ciclo.empty:
-        df_rep = df_fin_por_ciclo[df_fin_por_ciclo["Ciclo"] != "TOTAL"].copy()
-        if "Tratamento financeiro" in df_rep.columns:
-            mask_apurar = ~df_rep["Tratamento financeiro"].astype(str).apply(lambda x: tratamento_sem_retroativo(x, ""))
-            df_rep = df_rep[mask_apurar]
-        valor_represado_a_pagar = float(df_rep["Delta do ciclo"].clip(lower=0).sum()) if "Delta do ciclo" in df_rep.columns else 0.0
-    else:
-        valor_represado_a_pagar = 0.0
+    valor_original_contrato = float(itens["Valor total original"].sum())
+    total_pago_faturado = float(df_fin_por_ciclo["Valor pago/faturado"].sum()) if not df_fin_por_ciclo.empty else 0.0
+    total_devido_reajustado = float(df_fin_por_ciclo["Valor devido reajustado"].sum()) if not df_fin_por_ciclo.empty else 0.0
+    delta_acumulado = float(df_fin_por_ciclo["Delta do ciclo"].sum()) if not df_fin_por_ciclo.empty else 0.0
 
     if not df_rem.empty:
         remanescente_original = float(df_rem.iloc[-1]["Remanescente original"])
-        remanescente_atualizado = float(df_rem.iloc[-1]["Remanescente atualizado"])
+        remanescente_reajustado = float(df_rem.iloc[-1]["Remanescente reajustado"])
         fator_remanescente = float(df_rem.iloc[-1]["Fator aplicado"])
     else:
         remanescente_original = 0.0
-        remanescente_atualizado = 0.0
+        remanescente_reajustado = 0.0
         fator_remanescente = 1.0
 
-    total_execucao_atualizada = float(df_execucao["Valor executado atualizado"].sum()) if not df_execucao.empty else max(valor_original_contrato - remanescente_original, 0.0)
-    total_aditivos_atualizados = float(df_aditivos["Valor atualizado da alteração"].sum()) if not df_aditivos.empty else 0.0
-    valor_atualizado_contrato = total_execucao_atualizada + remanescente_atualizado + total_aditivos_atualizados
+    valor_global_financeiro = total_devido_reajustado + remanescente_reajustado
 
-    fator_acumulado = float(ciclos["Fator acumulado efetivo"].iloc[-1]) if "Fator acumulado efetivo" in ciclos.columns and not ciclos.empty else fator_remanescente
+    if not df_consumo_estoque.empty:
+        valor_consumido_estoque = float(df_consumo_estoque["Valor consumido reajustado"].sum())
+    else:
+        valor_consumido_estoque = max(valor_original_contrato - remanescente_original, 0.0)
+
+    valor_global_estoque = valor_consumido_estoque + remanescente_reajustado
+    diferenca_metodos = valor_global_estoque - valor_global_financeiro
+    percentual_divergencia = (diferenca_metodos / valor_global_financeiro) if valor_global_financeiro else 0.0
+
+    fator_acumulado = float(ciclos["Fator acumulado efetivo"].iloc[-1]) if "Fator acumulado efetivo" in ciclos.columns else fator_remanescente
     indice = (
         st.session_state.get("dados_admissibilidade", {}).get("indice")
         or params.get("indice_utilizado")
@@ -987,46 +918,45 @@ def processar_arquivo_coleta(bytes_arquivo):
         or "Não informado"
     )
 
-    df_comparativo = montar_comparativo_executivo(
+    df_comparativo = montar_comparativo(
         valor_original_contrato,
-        total_pago_efetivo,
-        total_teorico_calculado,
-        delta_total,
+        total_pago_faturado,
+        total_devido_reajustado,
         remanescente_original,
-        remanescente_atualizado,
-        valor_atualizado_contrato,
-        total_aditivos_atualizados,
+        remanescente_reajustado,
+        valor_global_financeiro,
+        valor_global_estoque,
+        delta_acumulado,
     )
 
     resultado = {
-        "data_processamento": agora_brasilia().strftime("%d/%m/%Y %H:%M"),
+        "data_processamento": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "origem_ciclos": origem_ciclos,
         "indice": indice,
         "fator_acumulado": fator_acumulado,
-        "quantidade_ciclos": int(len(ciclos)),
         "valor_original_contrato": valor_original_contrato,
-        "valor_pago_efetivo": total_pago_efetivo,
-        "total_pago_faturado": total_pago_efetivo,
-        "valor_teorico_calculado": total_teorico_calculado,
-        "total_devido_reajustado": total_teorico_calculado,
-        "delta_total": delta_total,
-        "delta_acumulado": delta_total,
-        "valor_represado_a_pagar": valor_represado_a_pagar,
+        "total_pago_faturado": total_pago_faturado,
+        "total_devido_reajustado": total_devido_reajustado,
+        "delta_acumulado": delta_acumulado,
         "remanescente_original": remanescente_original,
-        "remanescente_reajustado": remanescente_atualizado,
+        "remanescente_reajustado": remanescente_reajustado,
         "fator_remanescente": fator_remanescente,
-        "valor_atualizado_contrato": valor_atualizado_contrato,
-        "valor_global_financeiro": valor_atualizado_contrato,
-        "total_aditivos_atualizados": total_aditivos_atualizados,
+        "valor_global_financeiro": valor_global_financeiro,
+        "valor_consumido_estoque": valor_consumido_estoque,
+        "valor_global_estoque": valor_global_estoque,
+        "diferenca_metodos": diferenca_metodos,
+        "percentual_divergencia": percentual_divergencia,
         "ciclo_ultimo_remanescente": ciclo_ultimo_rem,
         "df_ciclos": ciclos,
         "df_financeiro_mensal": financeiro,
         "df_financeiro_por_ciclo": df_fin_por_ciclo,
-        "df_execucao_atualizada": df_execucao,
+        "df_itens_processado": itens,
         "df_remanescentes": df_rem,
-        "df_valores_unitarios_ciclo": df_valores_unitarios,
-        "df_aditivos": df_aditivos,
+        "df_consumo_estoque": df_consumo_estoque,
         "df_comparativo": df_comparativo,
+        "df_valores_unitarios": df_valores_unitarios,
+        "df_matriz_valores_unitarios": df_matriz_valores_unitarios,
+        "df_ciclos_valores_unitarios": df_ciclos_valores_unitarios,
     }
     return resultado
 
@@ -1054,8 +984,8 @@ st.title("Valor Global do Contrato")
 
 st.markdown(
     """
-    Este módulo processa o **Arquivo de Coleta** preenchido e apresenta uma visão executiva
-    da execução financeira, dos deltas por ciclo e do valor atualizado do contrato.
+    Este módulo processa o **Arquivo de Coleta** preenchido, cruza a execução financeira mensal
+    com os remanescentes físicos/contratuais e calcula o Valor Global atualizado do contrato.
     """
 )
 
@@ -1066,7 +996,8 @@ with st.expander("Contexto da Admissibilidade", expanded=True):
         col1, col2, col3 = st.columns(3)
         col1.metric("Origem", adm.get("origem") or adm.get("tipo", "Não informado"))
         col2.metric("Índice", adm.get("indice", "Não informado"))
-        col3.metric("Ciclos", len(adm.get("ciclos", [])))
+        fator_adm = adm.get("fator_acumulado") or adm.get("fator") or 1.0
+        col3.metric("Fator herdado", fator_fmt(fator_adm))
         st.caption("Dados herdados da sessão atual. Caso o arquivo contenha parâmetros próprios, eles também serão lidos para conferência.")
     else:
         st.warning(
@@ -1078,7 +1009,7 @@ st.subheader("Carregar Arquivo de Coleta")
 arquivo = st.file_uploader("Carregue aqui o Arquivo de Coleta preenchido (.xlsx)", type=["xlsx"])
 
 if arquivo is not None:
-    if st.button("Processar Coleta Preenchida", type="primary", use_container_width=False):
+    if st.button("Processar Coleta Preenchida", type="primary"):
         try:
             resultado = processar_arquivo_coleta(arquivo.getvalue())
             st.session_state["resultado_valor_global"] = resultado
@@ -1090,45 +1021,39 @@ resultado = st.session_state.get("resultado_valor_global")
 
 if resultado:
     st.divider()
-    st.subheader("Painel Executivo")
+    st.subheader("Dashboard Executivo")
 
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Valor Original", moeda(resultado["valor_original_contrato"]))
-    col2.metric("Valor Pago Efetivo", moeda(resultado["valor_pago_efetivo"]))
-    col3.metric("Valor Teórico Calculado", moeda(resultado["valor_teorico_calculado"]))
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Valor original do contrato", moeda(resultado["valor_original_contrato"]))
+    col2.metric("Total pago/faturado", moeda(resultado["total_pago_faturado"]))
+    col3.metric("Total devido reajustado", moeda(resultado["total_devido_reajustado"]))
+    col4.metric("Delta acumulado", moeda(resultado["delta_acumulado"]))
 
-    col4, col5 = st.columns(2)
-    col4.metric("Valor Represado a Pagar", moeda(resultado.get("valor_represado_a_pagar", resultado.get("delta_total", 0))))
-    col5.metric("Ciclos", resultado.get("quantidade_ciclos", 0))
+    col5, col6, col7, col8 = st.columns(4)
+    col5.metric("Remanescente original", moeda(resultado["remanescente_original"]))
+    col6.metric("Remanescente atualizado", moeda(resultado["remanescente_reajustado"]))
+    col7.metric("Valor Global Financeiro", moeda(resultado["valor_global_financeiro"]))
+    col8.metric("Valor Global por Estoque", moeda(resultado["valor_global_estoque"]))
 
-    st.markdown(
-        f"""
-        <div style="background:#EAF2F8;border:1px solid #BFD7EA;border-radius:14px;padding:18px 22px;margin:12px 0 18px 0;">
-            <div style="font-size:0.95rem;color:#27496D;font-weight:600;">Valor Atualizado do Contrato</div>
-            <div style="font-size:clamp(1.35rem, 2.8vw, 2.05rem);color:#0B1F3A;font-weight:800;line-height:1.25;word-break:break-word;">{moeda(resultado["valor_atualizado_contrato"])}</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
+    col9, col10, col11 = st.columns(3)
+    col9.metric("Diferença entre métodos", moeda(resultado["diferenca_metodos"]))
+    col10.metric("Divergência", percentual(resultado["percentual_divergencia"]))
+    col11.metric("Reajuste acumulado", percentual(float(resultado.get("fator_acumulado", 1.0)) - 1, 2))
 
-    col6, col7, col8 = st.columns(3)
-    col6.metric("Saldo Remanescente Atualizado", moeda(resultado["remanescente_reajustado"]))
-    col7.metric("Aditivos/Supressões Atualizados", moeda(resultado["total_aditivos_atualizados"]))
-    col8.metric("Fator acumulado considerado", fator_fmt(resultado["fator_acumulado"]))
-
-    tab1, tab2, tab3, tab4 = st.tabs([
-        "Painel Financeiro por Ciclo",
-        "Valor Atualizado do Contrato",
-        "Ciclos e Deltas",
-        "Conferência",
+    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+        "Visão Financeira",
+        "Itens e Remanescentes",
+        "Comparativo Executivo",
+        "Dados Processados",
+        "Valores Unitários",
     ])
 
     with tab1:
-        st.markdown("### Painel Financeiro por Ciclo")
+        st.markdown("### Financeiro por Ciclo")
         df_fin = formatar_dataframe_moeda(
             resultado["df_financeiro_por_ciclo"],
-            colunas_moeda=["Valor pago efetivo", "Valor teórico calculado", "Delta do ciclo"],
-            colunas_fator=["Fator aplicado ao retroativo"],
+            colunas_moeda=["Valor pago/faturado", "Valor devido reajustado", "Delta do ciclo", "Delta acumulado"],
+            colunas_fator=["Fator aplicado"],
         )
         st.dataframe(df_fin, use_container_width=True, hide_index=True)
 
@@ -1140,87 +1065,97 @@ if resultado:
             st.dataframe(df_mensal, use_container_width=True, hide_index=True)
 
     with tab2:
-        st.markdown("### Composição do Valor Atualizado do Contrato")
-        df_exec = formatar_dataframe_moeda(
-            resultado["df_execucao_atualizada"],
-            colunas_moeda=["Valor executado original", "Valor executado atualizado"],
-            colunas_pct=["Percentual acumulado aplicado"],
-        )
-        st.dataframe(df_exec, use_container_width=True, hide_index=True)
-
-        st.markdown("### Saldo Remanescente Atualizado")
+        st.markdown("### Remanescentes por Ciclo")
         df_rem = formatar_dataframe_moeda(
             resultado["df_remanescentes"],
-            colunas_moeda=["Remanescente original", "Remanescente atualizado"],
+            colunas_moeda=["Remanescente original", "Remanescente reajustado"],
             colunas_fator=["Fator aplicado"],
         )
         st.dataframe(df_rem, use_container_width=True, hide_index=True)
 
-        if not resultado["df_aditivos"].empty:
-            st.markdown("### Aditivos e Supressões")
-            df_ad = formatar_dataframe_moeda(
-                resultado["df_aditivos"],
-                colunas_moeda=["Valor original da alteração", "Valor atualizado da alteração"],
+        st.markdown("### Consumo estimado por diferença de remanescentes")
+        if resultado["df_consumo_estoque"].empty:
+            st.info("Não foi possível calcular consumo por diferença de remanescentes. Verifique as colunas de remanescente no arquivo.")
+        else:
+            df_consumo = formatar_dataframe_moeda(
+                resultado["df_consumo_estoque"],
+                colunas_moeda=["Valor consumido original", "Valor consumido reajustado"],
                 colunas_fator=["Fator aplicado"],
             )
-            st.dataframe(df_ad, use_container_width=True, hide_index=True)
+            st.dataframe(df_consumo, use_container_width=True, hide_index=True)
+
+        with st.expander("Ver itens importados"):
+            df_itens = formatar_dataframe_moeda(
+                resultado["df_itens_processado"],
+                colunas_moeda=["Valor unitário original", "Valor total original"],
+            )
+            st.dataframe(df_itens, use_container_width=True, hide_index=True)
 
     with tab3:
-        st.markdown("### Delta por Ciclo")
-        df_delta = resultado["df_financeiro_por_ciclo"]
-        df_delta = df_delta[df_delta["Ciclo"] != "TOTAL"].copy()
-        st.dataframe(
-            formatar_dataframe_moeda(
-                df_delta,
-                colunas_moeda=["Valor pago efetivo", "Valor teórico calculado", "Delta do ciclo"],
-                colunas_fator=["Fator aplicado ao retroativo"],
-            ),
-            use_container_width=True,
-            hide_index=True,
+        st.markdown("### Comparativo Antes x Depois")
+        df_comp = formatar_dataframe_moeda(
+            resultado["df_comparativo"],
+            colunas_moeda=["Antes do Reajuste", "Após Reajuste", "Diferença"],
         )
+        st.dataframe(df_comp, use_container_width=True, hide_index=True)
 
-        st.markdown("### Ciclos Identificados")
-        df_ciclos = resultado["df_ciclos"].copy()
-        if not df_ciclos.empty:
-            st.dataframe(
-                formatar_dataframe_moeda(
-                    df_ciclos,
-                    colunas_fator=["Fator", "Fator acumulado", "Fator acumulado efetivo", "Fator ciclo efetivo"],
-                    colunas_pct=["Variação"],
-                ),
-                use_container_width=True,
-                hide_index=True,
-            )
-
-        st.markdown("### Valores Unitários e Totais por Ciclo")
-        df_vu = resultado.get("df_valores_unitarios_ciclo", pd.DataFrame())
-        if df_vu.empty:
-            st.info("Não há dados suficientes para montar os valores unitários por ciclo.")
-        else:
-            with st.expander("Conferir valores unitários e totais por ciclo", expanded=False):
-                df_vu_vis = formatar_dataframe_moeda(
-                    df_vu,
-                    colunas_moeda=["Valor unitário", "Total R$"],
-                )
-                st.dataframe(df_vu_vis, use_container_width=True, hide_index=True)
-
-                excel_vu = gerar_excel_valores_unitarios_por_ciclo(df_vu, resultado["df_ciclos"])
-                st.download_button(
-                    label="Baixar Valores Unitários e Totais por Ciclo",
-                    data=excel_vu,
-                    file_name="Valores_Unitarios_e_Totais_por_Ciclo.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    type="primary",
-                    use_container_width=False,
-                )
+        st.info(
+            "A visão financeira considera os valores pagos/faturados por ciclo. "
+            "A visão de estoque considera as quantidades e remanescentes físicos/contratuais. "
+            "Diferenças podem decorrer de glosas, descontos, retenções, pagamentos parciais ou divergências de competência."
+        )
 
     with tab4:
-        st.markdown("### Quadro Executivo")
-        st.dataframe(
-            formatar_dataframe_moeda(resultado["df_comparativo"], colunas_moeda=["Valor"]),
-            use_container_width=True,
-            hide_index=True,
+        st.markdown("### Ciclos e Fatores Utilizados")
+        df_ciclos = resultado["df_ciclos"].copy()
+        if not df_ciclos.empty:
+            df_ciclos_vis = formatar_dataframe_moeda(
+                df_ciclos,
+                colunas_fator=["Fator", "Fator acumulado", "Fator acumulado efetivo", "Fator ciclo efetivo"],
+                colunas_pct=["Variação"],
+            )
+            st.dataframe(df_ciclos_vis, use_container_width=True, hide_index=True)
+
+        st.markdown("### Estrutura consolidada disponível para o Relatório Global")
+        st.code(
+            "st.session_state['resultado_valor_global'] foi atualizado com os resultados processados.",
+            language="python",
         )
 
+    with tab5:
+        st.markdown("### Valores Unitários e Totais por Ciclo")
+        st.caption(
+            "C0 utiliza a quantidade contratada original. Os ciclos seguintes utilizam o remanescente informado no início de cada ciclo. "
+            "Quando o ciclo estiver precluso ou sem reajuste aplicável, o valor unitário repete o ciclo anterior."
+        )
+        df_valores = resultado.get("df_valores_unitarios", pd.DataFrame())
+        df_matriz = resultado.get("df_matriz_valores_unitarios", pd.DataFrame())
+        df_ciclos_val = resultado.get("df_ciclos_valores_unitarios", pd.DataFrame())
+
+        if df_valores.empty:
+            st.info("Não há dados suficientes para montar a tabela de valores unitários por ciclo.")
+        else:
+            st.markdown("#### Matriz de comparação por item")
+            df_matriz_vis = formatar_dataframe_moeda(
+                df_matriz[[c for c in df_matriz.columns if "Precluso/Bloqueado" not in str(c)]],
+                colunas_moeda=[c for c in df_matriz.columns if "Valor unitário" in str(c) or "Total R$" in str(c)],
+            )
+            st.dataframe(df_matriz_vis, use_container_width=True, hide_index=True)
+
+            with st.expander("Ver tabela detalhada por item e ciclo"):
+                df_valores_vis = formatar_dataframe_moeda(
+                    df_valores.drop(columns=["Ciclo precluso/bloqueado"], errors="ignore"),
+                    colunas_moeda=["Valor unitário", "Total R$"],
+                )
+                st.dataframe(df_valores_vis, use_container_width=True, hide_index=True)
+
+            st.download_button(
+                label="Baixar Valores Unitários e Totais por Ciclo",
+                data=gerar_excel_valores_unitarios(df_valores, df_matriz, df_ciclos_val),
+                file_name="Valores_Unitarios_e_Totais_por_Ciclo.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                use_container_width=False,
+            )
 else:
     st.info("Carregue e processe o Arquivo de Coleta para visualizar o Valor Global do contrato.")
