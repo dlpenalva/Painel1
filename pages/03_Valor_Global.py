@@ -145,22 +145,6 @@ def numero_ciclo(ciclo):
     return int(m.group(1)) if m else 999
 
 
-def numero_seguro(valor, padrao=0.0):
-    try:
-        n = float(valor)
-        if pd.isna(n) or n in [float("inf"), float("-inf")]:
-            return padrao
-        return n
-    except Exception:
-        return padrao
-
-
-def limpar_nan_inf_df(df):
-    if df is None or not isinstance(df, pd.DataFrame):
-        return pd.DataFrame()
-    return df.replace([float("inf"), float("-inf")], pd.NA).fillna("")
-
-
 def contem_preclusao_ou_adiantamento(situacao):
     s = normalizar_texto(situacao)
     return "preclus" in s or ("adiantado" in s and "ressalva" not in s)
@@ -760,9 +744,9 @@ def gerar_excel_valores_unitarios_por_ciclo(df_valores, ciclos):
             for col, col_idx in colunas.items():
                 value = row.get(col, "")
                 if col in ["Valor unitário", "Total R$"]:
-                    ws.write_number(row_idx, col_idx, numero_seguro(value, 0.0), fmt_money_red if precluso else fmt_money)
+                    ws.write_number(row_idx, col_idx, float(value or 0), fmt_money_red if precluso else fmt_money)
                 elif col == "Quantidade":
-                    ws.write_number(row_idx, col_idx, numero_seguro(value, 0.0), fmt_num)
+                    ws.write_number(row_idx, col_idx, float(value or 0), fmt_num)
                 elif col == "Ciclo precluso":
                     ws.write(row_idx, col_idx, "Sim" if precluso else "Não", fmt_text)
                 else:
@@ -836,81 +820,23 @@ def calcular_execucao_por_diferenca(itens, colunas_remanescentes, ciclos):
     return pd.DataFrame(linhas)
 
 
-def _marcos_ciclos_para_aditivos(ciclos):
-    """Retorna marcos de ciclo com início/fim em datetime para enquadrar aditivos.
-
-    Regra: Data-base do ciclo <= Data do aditivo <= fim do ciclo. Quando o fim não
-    estiver disponível, usa a véspera da Data-base do ciclo seguinte; para o último
-    ciclo, considera janela aberta.
-    """
-    if ciclos is None or ciclos.empty:
-        return []
-
-    marcos = []
-    for _, row in ciclos.iterrows():
-        ciclo = normalizar_ciclo(row.get("Ciclo", ""))
-        inicio = pd.to_datetime(row.get("Data-base"), dayfirst=True, errors="coerce")
-        fim = pd.to_datetime(row.get("Fim financeiro"), dayfirst=True, errors="coerce")
-        if pd.notna(inicio) and ciclo:
-            marcos.append({"ciclo": ciclo, "inicio": inicio.normalize(), "fim": fim.normalize() if pd.notna(fim) else pd.NaT})
-
-    marcos.sort(key=lambda x: x["inicio"])
-    for idx, marco in enumerate(marcos):
-        if pd.isna(marco["fim"]):
-            if idx + 1 < len(marcos):
-                marco["fim"] = marcos[idx + 1]["inicio"] - pd.Timedelta(days=1)
-            else:
-                marco["fim"] = pd.Timestamp.max.normalize()
-    return marcos
-
-
-def definir_ciclo(data_aditivo, lista_ciclos):
-    """Define o Ciclo/Marco do aditivo exclusivamente em Python.
-
-    Regra efetiva:
-    - converte Data do aditivo e Data-base dos ciclos com pd.to_datetime(..., errors='coerce');
-    - se Data do aditivo < Data-base do C1, retorna C0;
-    - caso contrário, retorna o maior Cn cuja Data-base seja menor ou igual à Data do aditivo;
-    - se a data for inválida/vazia ou não houver ciclos válidos, retorna "Fora de Ciclo".
-
-    Esta função substitui qualquer tentativa de mapeamento por fórmula interna do Excel.
-    """
-    data = pd.to_datetime(data_aditivo, dayfirst=True, errors="coerce")
-    if pd.isna(data):
-        return "Fora de Ciclo"
-    data = data.normalize()
-
-    if lista_ciclos is None or lista_ciclos.empty:
-        return "Fora de Ciclo"
-
-    marcos = []
-    for _, row in lista_ciclos.iterrows():
-        ciclo = normalizar_ciclo(row.get("Ciclo", ""))
-        inicio = pd.to_datetime(row.get("Data-base", ""), dayfirst=True, errors="coerce")
-        if ciclo and pd.notna(inicio):
-            marcos.append({"ciclo": ciclo, "inicio": inicio.normalize()})
-
-    if not marcos:
-        return "Fora de Ciclo"
-
-    marcos.sort(key=lambda x: x["inicio"])
-
-    if data < marcos[0]["inicio"]:
-        return "C0"
-
-    ciclo_encontrado = "Fora de Ciclo"
-    for marco in marcos:
-        if data >= marco["inicio"]:
-            ciclo_encontrado = marco["ciclo"]
-        else:
-            break
-
-    return ciclo_encontrado
-
-
 def inferir_ciclo_por_data(data_aditivo, ciclos):
-    """Compatibilidade: usa a função definitiva de mapeamento por Python."""
-    return definir_ciclo(data_aditivo, ciclos)
+    try:
+        data = pd.to_datetime(data_aditivo, dayfirst=True)
+    except Exception:
+        return ""
+    candidatos = []
+    for _, row in ciclos.iterrows():
+        try:
+            base = pd.to_datetime(row.get("Data-base"), dayfirst=True)
+            if base <= data:
+                candidatos.append((base, row.get("Ciclo")))
+        except Exception:
+            continue
+    if not candidatos:
+        return ""
+    candidatos.sort(key=lambda x: x[0])
+    return candidatos[-1][1]
 
 
 def ler_aditivos(bytes_arquivo, xls, ciclos):
@@ -940,8 +866,10 @@ def ler_aditivos(bytes_arquivo, xls, ciclos):
         item = row.get(col_item, "") if col_item else ""
         if not str(item).strip() or str(item).strip().upper() == "TOTAL":
             continue
-        data_aditivo = pd.to_datetime(row.get(col_data, "") if col_data else "", dayfirst=True, errors="coerce")
-        ciclo = definir_ciclo(data_aditivo, ciclos)
+        data_aditivo = row.get(col_data, "") if col_data else ""
+        ciclo = normalizar_ciclo(row.get(col_ciclo, "")) if col_ciclo else ""
+        if not ciclo:
+            ciclo = inferir_ciclo_por_data(data_aditivo, ciclos)
         tipo = str(row.get(col_tipo, "Acréscimo") if col_tipo else "Acréscimo").strip() or "Acréscimo"
         qtd = numero_br(row.get(col_qtd, 0)) if col_qtd else 0.0
         vu = numero_br(row.get(col_vu, 0)) if col_vu else 0.0
@@ -966,7 +894,7 @@ def ler_aditivos(bytes_arquivo, xls, ciclos):
             "Fator aplicado": fator,
             "Valor atualizado da alteração": valor_atualizado,
         })
-    return limpar_nan_inf_df(pd.DataFrame(linhas))
+    return pd.DataFrame(linhas)
 
 
 def montar_comparativo_executivo(valor_original, total_pago, total_devido, delta_total, rem_original, rem_atualizado, valor_atualizado_contrato, total_aditivos):
@@ -1070,15 +998,11 @@ def processar_arquivo_coleta(bytes_arquivo):
         total_aditivos_atualizados,
     )
 
-    df_aditivos = limpar_nan_inf_df(df_aditivos)
-    df_valores_unitarios = limpar_nan_inf_df(df_valores_unitarios)
-
     resultado = {
         "data_processamento": agora_brasilia().strftime("%d/%m/%Y %H:%M"),
         "origem_ciclos": origem_ciclos,
         "indice": indice,
         "fator_acumulado": fator_acumulado,
-        "variacao_acumulada": fator_acumulado - 1,
         "quantidade_ciclos": int(len(ciclos)),
         "valor_original_contrato": valor_original_contrato,
         "valor_pago_efetivo": total_pago_efetivo,
@@ -1108,7 +1032,7 @@ def processar_arquivo_coleta(bytes_arquivo):
 
 
 def formatar_dataframe_moeda(df, colunas_moeda=None, colunas_fator=None, colunas_pct=None):
-    visual = limpar_nan_inf_df(df).copy()
+    visual = df.copy()
     for col in colunas_moeda or []:
         if col in visual.columns:
             visual[col] = visual[col].apply(moeda)
@@ -1190,13 +1114,12 @@ if resultado:
     col6, col7, col8 = st.columns(3)
     col6.metric("Saldo Remanescente Atualizado", moeda(resultado["remanescente_reajustado"]))
     col7.metric("Aditivos/Supressões Atualizados", moeda(resultado["total_aditivos_atualizados"]))
-    col8.metric("Variação Acumulada", percentual(resultado.get("variacao_acumulada", resultado["fator_acumulado"] - 1), 2))
+    col8.metric("Fator acumulado considerado", fator_fmt(resultado["fator_acumulado"]))
 
-    tab1, tab2, tab3, tab4, tab5 = st.tabs([
+    tab1, tab2, tab3, tab4 = st.tabs([
         "Painel Financeiro por Ciclo",
         "Valor Atualizado do Contrato",
         "Ciclos e Deltas",
-        "Valores Unitários",
         "Conferência",
     ])
 
@@ -1241,11 +1164,6 @@ if resultado:
                 colunas_fator=["Fator aplicado"],
             )
             st.dataframe(df_ad, use_container_width=True, hide_index=True)
-            with st.expander("Conferência técnica de aditivos"):
-                st.write("Ciclos detectados pelo Python:")
-                st.write(sorted(df_ad["Ciclo/Marco"].dropna().astype(str).unique().tolist()))
-                st.write("Amostra dos lançamentos processados:")
-                st.dataframe(df_ad.head(10), use_container_width=True, hide_index=True)
 
     with tab3:
         st.markdown("### Delta por Ciclo")
@@ -1274,29 +1192,29 @@ if resultado:
                 hide_index=True,
             )
 
-    with tab4:
         st.markdown("### Valores Unitários e Totais por Ciclo")
-        df_vu = limpar_nan_inf_df(resultado.get("df_valores_unitarios_ciclo", pd.DataFrame()))
+        df_vu = resultado.get("df_valores_unitarios_ciclo", pd.DataFrame())
         if df_vu.empty:
             st.info("Não há dados suficientes para montar os valores unitários por ciclo.")
         else:
-            df_vu_vis = formatar_dataframe_moeda(
-                df_vu,
-                colunas_moeda=["Valor unitário", "Total R$"],
-            )
-            st.dataframe(df_vu_vis, use_container_width=True, hide_index=True)
+            with st.expander("Conferir valores unitários e totais por ciclo", expanded=False):
+                df_vu_vis = formatar_dataframe_moeda(
+                    df_vu,
+                    colunas_moeda=["Valor unitário", "Total R$"],
+                )
+                st.dataframe(df_vu_vis, use_container_width=True, hide_index=True)
 
-            excel_vu = gerar_excel_valores_unitarios_por_ciclo(df_vu, resultado["df_ciclos"])
-            st.download_button(
-                label="Baixar Valores Unitários e Totais por Ciclo",
-                data=excel_vu,
-                file_name="Valores_Unitarios_e_Totais_por_Ciclo.xlsx",
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary",
-                use_container_width=False,
-            )
+                excel_vu = gerar_excel_valores_unitarios_por_ciclo(df_vu, resultado["df_ciclos"])
+                st.download_button(
+                    label="Baixar Valores Unitários e Totais por Ciclo",
+                    data=excel_vu,
+                    file_name="Valores_Unitarios_e_Totais_por_Ciclo.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    type="primary",
+                    use_container_width=False,
+                )
 
-    with tab5:
+    with tab4:
         st.markdown("### Quadro Executivo")
         st.dataframe(
             formatar_dataframe_moeda(resultado["df_comparativo"], colunas_moeda=["Valor"]),
