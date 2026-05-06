@@ -201,11 +201,16 @@ def criar_pdf_relatorio(adm, res):
     data_proc = res.get("data_processamento") or agora_brasilia().strftime("%d/%m/%Y %H:%M")
 
     story.append(Paragraph("1. Identificação da Análise", styles["Subtitulo"]))
+    # Tabela em duas colunas para evitar extrapolação lateral no A4 retrato.
     story.append(tabela_pdf([
-        ["Origem", origem, "Índice", indice],
-        ["Fator acumulado", fator_fmt(fator), "Data de processamento", data_proc],
-        ["Ciclos identificados", str(res.get("quantidade_ciclos", 0)), "Valor atualizado do contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_financeiro", 0)))],
-    ], col_widths=[4.0*cm, 6.0*cm, 5.0*cm, 7.0*cm]))
+        ["Campo", "Valor"],
+        ["Origem", origem],
+        ["Índice", indice],
+        ["Fator acumulado", fator_fmt(fator)],
+        ["Data de processamento", data_proc],
+        ["Ciclos identificados", str(res.get("quantidade_ciclos", 0))],
+        ["Valor atualizado do contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_financeiro", 0)))],
+    ], header=True, col_widths=[6.0*cm, 11.5*cm]))
 
     story.append(Paragraph("2. Análise Contratual — Cláusula Oitava", styles["Subtitulo"]))
     story.append(Paragraph(texto_clausula_oito(adm), styles["Texto"]))
