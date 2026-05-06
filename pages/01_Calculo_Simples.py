@@ -69,6 +69,21 @@ def _competencias_mensais(data_inicio, data_fim):
     return [d.strftime('%m/%Y') for d in pd.date_range(inicio, fim, freq='MS')]
 
 
+def _render_equacao_ist(i_ini, i_fim, variacao):
+    equacao_html = f"""
+    <div style="background:#F4F6F8;border:1px solid #E1E6EB;border-radius:10px;padding:14px 18px;margin-top:10px;">
+        <div style="font-family:Consolas, Monaco, monospace;font-size:1.15rem;line-height:1.8;color:#334155;">
+            <span style="color:#0F766E;">({i_fim:.3f}</span>
+            <span style="color:#94A3B8;"> / </span>
+            <span style="color:#0F766E;">{i_ini:.3f}</span>
+            <span style="color:#94A3B8;">) - 1 = </span>
+            <span style="color:#B45309;font-weight:600;">{variacao*100:.4f}%</span>
+        </div>
+    </div>
+    """
+    st.markdown(equacao_html, unsafe_allow_html=True)
+
+
 def _ajustar_larguras(writer, nomes_abas):
     from openpyxl.utils import get_column_letter
 
@@ -379,6 +394,16 @@ with col1:
 with col2:
     tipo_idx = st.selectbox("Índice:", ["IST (Série Local)", "IPCA (433)", "IGP-M (189)"])
 
+chave_analise_simples = (dt_base.isoformat(), dt_solic.isoformat(), tipo_idx)
+
+st.info("Informe os dados e clique em Processar Análise para iniciar a apuração.")
+
+if st.button("Processar Análise", type="primary", use_container_width=False):
+    st.session_state["chave_analise_simples_processada"] = chave_analise_simples
+
+if st.session_state.get("chave_analise_simples_processada") != chave_analise_simples:
+    st.stop()
+
 # Definição de datas do ciclo
 dt_fim_ap = dt_base + relativedelta(months=11)
 dt_aniv = dt_base + relativedelta(years=1)
@@ -416,7 +441,7 @@ if res:
     with st.expander("🔍 Memória de Cálculo Detalhada"):
         st.write(f"**Metodologia:** {res['metodo']}")
         if "IST" in tipo_idx:
-            st.code(f"({res['i_fim']} / {res['i_ini']}) - 1 = {res['variacao']*100:.4f}%")
+            _render_equacao_ist(float(res['i_ini']), float(res['i_fim']), float(res['variacao']))
         else:
             st.dataframe(res['dados'])
 
