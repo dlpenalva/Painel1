@@ -2,6 +2,7 @@ import re
 import unicodedata
 from io import BytesIO
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
@@ -13,6 +14,10 @@ st.set_page_config(page_title="Análises de Reajustes - Valor Global", layout="w
 # ============================================================
 # Utilitários de formatação e normalização
 # ============================================================
+
+def agora_brasilia():
+    return datetime.now(ZoneInfo("America/Sao_Paulo"))
+
 
 def normalizar_texto(valor):
     """Normaliza textos para comparação robusta de nomes de colunas/abas."""
@@ -163,29 +168,58 @@ def localizar_aba(xls, opcoes):
 
 
 def ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=None):
-    """Lê aba encontrando automaticamente a linha de cabeçalho."""
+    """Lê aba encontrando automaticamente a linha de cabeçalho.
+
+    A detecção é tolerante a linhas superiores mescladas, espaços, acentos e caixa.
+    Quando termos obrigatórios são informados, escolhe a linha que contém todos eles
+    como cabeçalhos reais, evitando confundir textos como "Dados do item..." com a
+    coluna "Item".
+    """
     bruto = pd.read_excel(BytesIO(bytes_arquivo), sheet_name=aba, header=None)
     termos_obrigatorios = [normalizar_texto(t) for t in (termos_obrigatorios or [])]
 
-    linha_cabecalho = 0
+    linha_cabecalho = None
+    melhor_linha = None
+    melhor_pontuacao = -1
+
     for idx, row in bruto.iterrows():
         valores = [normalizar_texto(v) for v in row.tolist()]
-        texto_linha = " ".join(valores)
+        valores_validos = [v for v in valores if v]
+        if not valores_validos:
+            continue
+
         if not termos_obrigatorios:
-            if any(v for v in valores):
-                linha_cabecalho = idx
-                break
-        else:
-            if all(t in texto_linha for t in termos_obrigatorios):
-                linha_cabecalho = idx
-                break
+            linha_cabecalho = idx
+            break
+
+        # Pontua por termos encontrados como célula exata ou contidos em uma célula.
+        pontuacao = 0
+        for termo in termos_obrigatorios:
+            if termo in valores_validos:
+                pontuacao += 2
+            elif any(termo and termo in v for v in valores_validos):
+                pontuacao += 1
+
+        if pontuacao > melhor_pontuacao:
+            melhor_pontuacao = pontuacao
+            melhor_linha = idx
+
+        # Exige todos os termos, preferencialmente por célula exata ou por conteúdo inequívoco.
+        if pontuacao >= len(termos_obrigatorios) * 2:
+            linha_cabecalho = idx
+            break
+        if all(any(termo and (termo == v or termo in v) for v in valores_validos) for termo in termos_obrigatorios):
+            linha_cabecalho = idx
+            break
+
+    if linha_cabecalho is None:
+        linha_cabecalho = melhor_linha if melhor_linha is not None else 0
 
     df = pd.read_excel(BytesIO(bytes_arquivo), sheet_name=aba, header=linha_cabecalho)
     df = df.dropna(how="all").copy()
     df.columns = [str(c).strip() for c in df.columns]
     df = df.loc[:, ~pd.Series(df.columns).astype(str).str.startswith("Unnamed").values]
     return df
-
 
 def ler_parametros(bytes_arquivo, xls):
     aba = localizar_aba(xls, ["PARAMETROS_REAJUSTE", "PARAMETROS", "Parâmetros"])
@@ -360,6 +394,7 @@ def ler_financeiro(bytes_arquivo, xls, ciclos):
         # Fallback: se não houver ciclo, assume C1.
         resultado["Ciclo"] = "C1"
 
+    resultado = resultado[~resultado["Ciclo"].astype(str).str.upper().eq("TOTAL")].copy()
     resultado = resultado[resultado["Valor pago/faturado"].fillna(0) != 0].copy()
     return resultado.reset_index(drop=True)
 
@@ -405,7 +440,7 @@ def ler_itens(bytes_arquivo, xls):
     if not aba:
         raise ValueError("Aba ITENS_REMANESCENTES não encontrada.")
 
-    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item"])
+    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item", "Quantidade contratada", "Valor unitário original"])
     if df.empty:
         raise ValueError("Aba ITENS_REMANESCENTES está vazia.")
 
@@ -678,7 +713,7 @@ def ler_aditivos(bytes_arquivo, xls, ciclos):
         valor_original = numero_br(row.get(col_valor_original, 0)) if col_valor_original else 0.0
         if valor_original == 0 and qtd != 0 and vu != 0:
             valor_original = qtd * vu
-        if "supress" in normalizar_texto(tipo):
+        if "supress" in normalizar_texto(tipo) or "decresc" in normalizar_texto(tipo):
             valor_original = -abs(valor_original)
         else:
             valor_original = abs(valor_original)

@@ -224,6 +224,9 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         fmt_factor = workbook.add_format({'num_format': '0.0000', 'border': 1})
         fmt_factor_auto = workbook.add_format({'num_format': '0.0000', 'bg_color': '#EDEDED', 'border': 1})
         fmt_no_border = workbook.add_format({})
+        fmt_int_no_border = workbook.add_format({'num_format': '0'})
+        fmt_percent_no_border = workbook.add_format({'num_format': '0.00%'})
+        fmt_factor_no_border = workbook.add_format({'num_format': '0.0000'})
 
         # PARAMETROS_REAJUSTE
         parametros = pd.DataFrame([
@@ -241,9 +244,9 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws.set_column('B:B', 36)
         ws.write(0, 0, 'Campo', fmt_header)
         ws.write(0, 1, 'Valor', fmt_header)
-        ws.write_number(4, 1, len(ciclos), fmt_no_border)     # B5 Quantidade de ciclos
-        ws.write_number(5, 1, float(dados_admissibilidade.get('variacao_acumulada', 0.0)), fmt_percent)  # B6
-        ws.write_number(6, 1, float(dados_admissibilidade.get('fator_acumulado', dados_admissibilidade.get('fator', 1.0))), fmt_factor)  # B7
+        ws.write_number(4, 1, len(ciclos), fmt_int_no_border)     # B5 Quantidade de ciclos
+        ws.write_number(5, 1, float(dados_admissibilidade.get('variacao_acumulada', 0.0)), fmt_percent_no_border)  # B6
+        ws.write_number(6, 1, float(dados_admissibilidade.get('fator_acumulado', dados_admissibilidade.get('fator', 1.0))), fmt_factor_no_border)  # B7
 
         # CICLOS
         ciclos_rows = []
@@ -371,7 +374,9 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             ws_ad.write_formula(row, 6, f'=IF(OR(E{excel_row}="",F{excel_row}=""),"",E{excel_row}*F{excel_row})', fmt_money_auto)
             ws_ad.write(row, 7, 'Sim', fmt_input)
             ws_ad.write_formula(row, 8, f'=IF(C{excel_row}="","",IFERROR(VLOOKUP(C{excel_row},{ciclo_range},11,FALSE),1))', fmt_factor_auto)
-            ws_ad.write_formula(row, 9, f'=IF(G{excel_row}="","",IF(UPPER(D{excel_row})="SUPRESSÃO",-ABS(G{excel_row}),ABS(G{excel_row}))*IF(UPPER(H{excel_row})="NÃO",1,I{excel_row}))', fmt_money_auto)
+            ws_ad.write_formula(row, 9, f'=IF(G{excel_row}="","",IF(OR(UPPER(D{excel_row})="DECRÉSCIMO",UPPER(D{excel_row})="DECRESCIMO",UPPER(D{excel_row})="SUPRESSÃO",UPPER(D{excel_row})="SUPRESSAO"),-ABS(G{excel_row}),ABS(G{excel_row}))*IF(OR(UPPER(H{excel_row})="NÃO",UPPER(H{excel_row})="NAO"),1,I{excel_row}))', fmt_money_auto)
+        ws_ad.data_validation(1, 3, 199, 3, {'validate': 'list', 'source': ['Acréscimo', 'Decréscimo']})
+        ws_ad.data_validation(1, 7, 199, 7, {'validate': 'list', 'source': ['Sim', 'Não']})
         ws_ad.write(200, 0, 'TOTAL', fmt_total)
         for col in range(1, 6):
             ws_ad.write(200, col, '', fmt_total)
