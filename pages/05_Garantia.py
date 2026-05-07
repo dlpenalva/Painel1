@@ -2,6 +2,7 @@ from datetime import datetime, date
 from io import BytesIO
 from zoneinfo import ZoneInfo
 
+import pandas as pd
 import streamlit as st
 from dateutil.relativedelta import relativedelta
 
@@ -58,6 +59,48 @@ def numero_para_input(valor):
 
 def data_hora_brasilia():
     return datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
+
+
+def limpar_texto(valor):
+    if valor is None:
+        return ""
+    if isinstance(valor, float) and pd.isna(valor):
+        return ""
+    return str(valor).strip()
+
+
+def normalizar_historico(df_hist):
+    """Limpa a tabela de histórico e retorna apenas linhas efetivamente preenchidas."""
+    if df_hist is None or df_hist.empty:
+        return pd.DataFrame(columns=[
+            "Data", "Evento", "Valor contratual de referência", "Garantia exigida",
+            "Garantia apresentada/endossada", "Observação"
+        ])
+
+    df = df_hist.copy()
+    colunas = [
+        "Data", "Evento", "Valor contratual de referência", "Garantia exigida",
+        "Garantia apresentada/endossada", "Observação"
+    ]
+    for col in colunas:
+        if col not in df.columns:
+            df[col] = "" if col in ["Data", "Evento", "Observação"] else 0.0
+
+    for col in ["Data", "Evento", "Observação"]:
+        df[col] = df[col].apply(limpar_texto)
+
+    for col in ["Valor contratual de referência", "Garantia exigida", "Garantia apresentada/endossada"]:
+        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+
+    mask = (
+        df["Data"].ne("") |
+        df["Evento"].ne("") |
+        df["Observação"].ne("") |
+        df["Valor contratual de referência"].ne(0) |
+        df["Garantia exigida"].ne(0) |
+        df["Garantia apresentada/endossada"].ne(0)
+    )
+    return df.loc[mask, colunas].reset_index(drop=True)
 
 
 def css():
@@ -139,6 +182,7 @@ def montar_texto_instrucao(
     prazo_dias,
     data_fim_vigencia,
     data_validade_minima,
+    historico_usado=False,
 ):
     percentual = percentual_garantia * 100
     if endosso > 0:
@@ -152,13 +196,19 @@ def montar_texto_instrucao(
             "não foi identificada necessidade de endosso complementar, desde que esse valor esteja efetivamente vigente e aceito."
         )
 
+    origem_garantia = (
+        "A garantia atualmente constituída considerada nesta análise decorre do histórico de garantias e endossos informado no módulo, contemplando a garantia original e os endossos anteriores registrados."
+        if historico_usado else
+        "Para fins de conferência, o campo “Garantia atualmente constituída” deve refletir o valor total da garantia já apresentada e aceita, incluindo a garantia original e eventuais endossos anteriores decorrentes de reajustes, repactuações, acréscimos ou outros aditivos contratuais."
+    )
+
     return f"""Considerando o valor original do contrato de {moeda(valor_original)}, a garantia contratual original correspondente a {percentual:.2f}% equivale a {moeda(garantia_original)}.
 
 Após a atualização do valor contratual para {moeda(valor_atualizado)}, a garantia contratual exigida, calculada pelo mesmo percentual de {percentual:.2f}%, passa a ser de {moeda(garantia_exigida)}.
 
 {conclusao}
 
-Para fins de conferência, o campo “Garantia atualmente constituída” deve refletir o valor total da garantia já apresentada e aceita, incluindo a garantia original e eventuais endossos anteriores decorrentes de reajustes, repactuações, acréscimos ou outros aditivos contratuais.
+{origem_garantia}
 
 Nos termos da Cláusula Décima, a garantia contratual deve ser apresentada no prazo de até {prazo_dias} dias úteis contados do recebimento da convocação pela TELEBRAS, prorrogável por igual período mediante solicitação justificada e aceita pela Gerência de Compras e Contratos.
 
@@ -166,7 +216,11 @@ Ainda nos termos da Cláusula Décima, a validade da garantia, qualquer que seja
 """
 
 
-def gerar_pdf_garantia(dados, texto_instrucao):
+def _paragrafo_tabela(valor, estilo):
+    return Paragraph(limpar_texto(valor).replace("&", "&amp;"), estilo)
+
+
+def gerar_pdf_garantia(dados, texto_instrucao, historico_df=None):
     if not REPORTLAB_OK:
         return None
 
@@ -214,6 +268,12 @@ def gerar_pdf_garantia(dados, texto_instrucao):
         leading=12,
         alignment=TA_JUSTIFY,
     )
+    celula = ParagraphStyle(
+        "CelulaGarantia",
+        parent=styles["Normal"],
+        fontSize=6.8,
+        leading=8,
+    )
 
     elementos = []
     elementos.append(Paragraph("TELEBRAS - Análise de Garantia Contratual", titulo))
@@ -254,7 +314,51 @@ def gerar_pdf_garantia(dados, texto_instrucao):
     elementos.append(tabela)
     elementos.append(Spacer(1, 10))
 
-    elementos.append(Paragraph("2. Informações para instrução processual", h2))
+    if historico_df is not None and not historico_df.empty:
+        elementos.append(Paragraph("2. Histórico de garantias e endossos considerados", h2))
+        dados_hist = [[
+            _paragrafo_tabela("Data", celula),
+            _paragrafo_tabela("Evento", celula),
+            _paragrafo_tabela("Valor ref.", celula),
+            _paragrafo_tabela("Garantia exigida", celula),
+            _paragrafo_tabela("Apresentada/endossada", celula),
+            _paragrafo_tabela("Observação", celula),
+        ]]
+        for _, row in historico_df.iterrows():
+            dados_hist.append([
+                _paragrafo_tabela(row.get("Data", ""), celula),
+                _paragrafo_tabela(row.get("Evento", ""), celula),
+                _paragrafo_tabela(moeda(row.get("Valor contratual de referência", 0.0)), celula),
+                _paragrafo_tabela(moeda(row.get("Garantia exigida", 0.0)), celula),
+                _paragrafo_tabela(moeda(row.get("Garantia apresentada/endossada", 0.0)), celula),
+                _paragrafo_tabela(row.get("Observação", ""), celula),
+            ])
+        tabela_hist = Table(
+            dados_hist,
+            colWidths=[1.8 * cm, 3.2 * cm, 2.7 * cm, 2.7 * cm, 3.0 * cm, 2.6 * cm],
+            repeatRows=1,
+            hAlign="CENTER",
+        )
+        tabela_hist.setStyle(
+            TableStyle(
+                [
+                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
+                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+                    ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2F3")),
+                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+                    ("LEFTPADDING", (0, 0), (-1, -1), 3),
+                    ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+                ]
+            )
+        )
+        elementos.append(tabela_hist)
+        elementos.append(Spacer(1, 10))
+        secao_texto = "3. Informações para instrução processual"
+    else:
+        secao_texto = "2. Informações para instrução processual"
+
+    elementos.append(Paragraph(secao_texto, h2))
     for paragrafo in texto_instrucao.strip().split("\n\n"):
         elementos.append(Paragraph(paragrafo.replace("\n", " "), normal))
         elementos.append(Spacer(1, 5))
@@ -349,8 +453,8 @@ with col4:
             "e eventuais endossos anteriores de reajustes, repactuações ou aditivos."
         ),
     )
-    garantia_constituida = parse_moeda_br(garantia_constituida_txt)
-    st.markdown(f"<div class='valor-formatado-apoio'>{moeda(garantia_constituida)}</div>", unsafe_allow_html=True)
+    garantia_constituida_manual = parse_moeda_br(garantia_constituida_txt)
+    st.markdown(f"<div class='valor-formatado-apoio'>{moeda(garantia_constituida_manual)}</div>", unsafe_allow_html=True)
 
 with col5:
     prazo_dias = st.number_input(
@@ -378,6 +482,93 @@ st.info(
     "O sistema calculará apenas o endosso complementar necessário para atingir a nova garantia exigida."
 )
 
+# ============================================================
+# Histórico opcional de garantias e endossos
+# ============================================================
+
+usar_historico = st.checkbox(
+    "Detalhar histórico de garantias e endossos anteriores",
+    value=False,
+    help="Use esta opção quando quiser demonstrar garantia original e endossos já apresentados. Se preenchido, o total do histórico substituirá o campo manual de garantia atualmente constituída.",
+)
+
+historico_limpo = pd.DataFrame()
+if usar_historico:
+    with st.expander("Histórico de Garantias e Endossos", expanded=True):
+        st.caption(
+            "Preencha os eventos já constituídos/aceitos. A coluna ‘Garantia apresentada/endossada’ será somada para definir a garantia atualmente constituída."
+        )
+        eventos = [
+            "Garantia original",
+            "Endosso por reajuste",
+            "Endosso por repactuação",
+            "Endosso por aditivo",
+            "Endosso por acréscimo",
+            "Redução por supressão",
+            "Outro",
+        ]
+        historico_base = pd.DataFrame(
+            [
+                {
+                    "Data": "",
+                    "Evento": "Garantia original",
+                    "Valor contratual de referência": valor_original,
+                    "Garantia exigida": garantia_original,
+                    "Garantia apresentada/endossada": garantia_original,
+                    "Observação": "Garantia original contratual",
+                },
+                {
+                    "Data": "",
+                    "Evento": "Endosso por reajuste",
+                    "Valor contratual de referência": 0.0,
+                    "Garantia exigida": 0.0,
+                    "Garantia apresentada/endossada": 0.0,
+                    "Observação": "",
+                },
+                {
+                    "Data": "",
+                    "Evento": "Endosso por aditivo",
+                    "Valor contratual de referência": 0.0,
+                    "Garantia exigida": 0.0,
+                    "Garantia apresentada/endossada": 0.0,
+                    "Observação": "",
+                },
+            ]
+        )
+        historico_editado = st.data_editor(
+            historico_base,
+            hide_index=True,
+            use_container_width=True,
+            num_rows="dynamic",
+            key="garantia_historico_editor",
+            column_config={
+                "Data": st.column_config.TextColumn("Data", help="Informe no formato dd/mm/aaaa."),
+                "Evento": st.column_config.SelectboxColumn("Evento", options=eventos, required=False),
+                "Valor contratual de referência": st.column_config.NumberColumn(
+                    "Valor contratual de referência", min_value=0.0, step=0.01, format="R$ %.2f"
+                ),
+                "Garantia exigida": st.column_config.NumberColumn(
+                    "Garantia exigida", min_value=0.0, step=0.01, format="R$ %.2f"
+                ),
+                "Garantia apresentada/endossada": st.column_config.NumberColumn(
+                    "Garantia apresentada/endossada", min_value=0.0, step=0.01, format="R$ %.2f"
+                ),
+                "Observação": st.column_config.TextColumn("Observação"),
+            },
+        )
+        historico_limpo = normalizar_historico(historico_editado)
+
+        if not historico_limpo.empty:
+            total_historico = float(historico_limpo["Garantia apresentada/endossada"].sum())
+            st.success(f"Garantia atualmente constituída pelo histórico: {moeda(total_historico)}")
+        else:
+            st.warning("Histórico selecionado, mas sem lançamentos válidos. O sistema usará o valor manual informado acima.")
+
+historico_usado = usar_historico and not historico_limpo.empty
+garantia_constituida = (
+    float(historico_limpo["Garantia apresentada/endossada"].sum()) if historico_usado else garantia_constituida_manual
+)
+
 endosso_necessario = max(garantia_exigida - garantia_constituida, 0.0)
 excesso_garantia = max(garantia_constituida - garantia_exigida, 0.0)
 
@@ -395,6 +586,11 @@ with colr3:
         moeda(endosso_necessario),
         "Diferença entre a nova garantia exigida e a garantia atualmente constituída",
         destaque=True,
+    )
+
+if historico_usado:
+    st.caption(
+        f"Garantia atualmente constituída calculada pelo histórico: {moeda(garantia_constituida)}."
     )
 
 if endosso_necessario > 0:
@@ -416,6 +612,7 @@ memoria = [
     {"Indicador": "Valor atualizado do contrato", "Valor": moeda(valor_atualizado)},
     {"Indicador": "Nova garantia exigida", "Valor": moeda(garantia_exigida)},
     {"Indicador": "Garantia atualmente constituída", "Valor": moeda(garantia_constituida)},
+    {"Indicador": "Origem da garantia constituída", "Valor": "Histórico detalhado" if historico_usado else "Campo manual"},
     {"Indicador": "Endosso necessário", "Valor": moeda(endosso_necessario)},
     {"Indicador": "Encerramento da vigência contratual", "Valor": data_fim_vigencia.strftime("%d/%m/%Y")},
     {"Indicador": "Validade mínima da garantia", "Valor": data_validade_minima.strftime("%d/%m/%Y")},
@@ -434,6 +631,7 @@ texto_instrucao = montar_texto_instrucao(
     prazo_dias,
     data_fim_vigencia,
     data_validade_minima,
+    historico_usado=historico_usado,
 )
 
 st.text_area(
@@ -456,7 +654,11 @@ dados_pdf = {
 }
 
 if REPORTLAB_OK:
-    pdf_bytes = gerar_pdf_garantia(dados_pdf, texto_instrucao)
+    pdf_bytes = gerar_pdf_garantia(
+        dados_pdf,
+        texto_instrucao,
+        historico_df=historico_limpo if historico_usado else None,
+    )
     st.download_button(
         "Baixar Relatório de Garantia em PDF",
         data=pdf_bytes,
