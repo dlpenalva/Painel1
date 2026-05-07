@@ -149,6 +149,35 @@ def css():
             margin-top: -8px;
             margin-bottom: 8px;
         }
+        .historico-garantia-box {
+            background: #EAF2F8;
+            border: 1px solid #BFD7EA;
+            border-left: 6px solid #1F4E78;
+            border-radius: 14px;
+            padding: 18px 20px;
+            margin: 16px 0 12px 0;
+        }
+        .historico-garantia-titulo {
+            color: #123B63;
+            font-size: 1.08rem;
+            font-weight: 800;
+            margin-bottom: 6px;
+        }
+        .historico-garantia-texto {
+            color: #334155;
+            font-size: 0.93rem;
+            line-height: 1.45;
+            margin-bottom: 0;
+        }
+        .historico-garantia-alerta {
+            background: #FFF8E5;
+            border: 1px solid #F3D58A;
+            border-radius: 10px;
+            padding: 10px 12px;
+            color: #6B4E00;
+            font-size: 0.9rem;
+            margin: 10px 0 12px 0;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -486,17 +515,42 @@ st.info(
 # Histórico opcional de garantias e endossos
 # ============================================================
 
-usar_historico = st.checkbox(
-    "Detalhar histórico de garantias e endossos anteriores",
-    value=False,
-    help="Use esta opção quando quiser demonstrar garantia original e endossos já apresentados. Se preenchido, o total do histórico substituirá o campo manual de garantia atualmente constituída.",
+st.markdown(
+    """
+    <div class="historico-garantia-box">
+        <div class="historico-garantia-titulo">Histórico de garantias e endossos anteriores</div>
+        <p class="historico-garantia-texto">
+            Ative esta opção se a contratada já apresentou garantia original e/ou endossos anteriores
+            decorrentes de reajustes, repactuações, acréscimos, supressões ou outros aditivos.
+            Quando a tabela for preenchida, a soma da coluna <b>Garantia apresentada/endossada</b>
+            substituirá o valor manual de <b>Garantia atualmente constituída</b>.
+        </p>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
+
+usar_historico = st.checkbox(
+    "Usar histórico detalhado para calcular a garantia constituída",
+    value=False,
+    help="Marque esta opção para abrir a tabela de histórico. Ao editar a tabela, pressione Enter ou clique fora da célula para atualizar os cálculos.",
+)
+
+if not usar_historico:
+    st.caption("Opcional: marque a opção acima somente se quiser demonstrar garantia original e endossos anteriores de forma detalhada.")
 
 historico_limpo = pd.DataFrame()
 if usar_historico:
     with st.expander("Histórico de Garantias e Endossos", expanded=True):
-        st.caption(
-            "Preencha os eventos já constituídos/aceitos. A coluna ‘Garantia apresentada/endossada’ será somada para definir a garantia atualmente constituída."
+        st.markdown(
+            """
+            <div class="historico-garantia-alerta">
+                <b>Como usar:</b> preencha cada evento já constituído/aceito. Após editar uma célula, pressione <b>Enter</b>
+                ou clique fora da célula para o Streamlit atualizar os cálculos. A coluna
+                <b>Garantia apresentada/endossada</b> será somada automaticamente e usada como garantia atualmente constituída.
+            </div>
+            """,
+            unsafe_allow_html=True,
         )
         eventos = [
             "Garantia original",
