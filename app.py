@@ -1,12 +1,12 @@
 import streamlit as st
 from pathlib import Path
 
-st.set_page_config(page_title="FARC - Telebras", layout="wide")
+st.set_page_config(page_title="cl8us - Telebras", layout="wide")
 
 pages_dir = Path("pages")
 
-p1 = st.Page("pages/01_Calculo_Simples.py", title="Reajuste Simples", icon="⚖️", default=True)
-p2 = st.Page("pages/02_Calculo_Represados.py", title="Reajustes Múltiplos", icon="🔄")
+p1 = st.Page("pages/01_Calculo_Simples.py", title="Reajuste Simples", default=True)
+p2 = st.Page("pages/02_Calculo_Represados.py", title="Reajustes Múltiplos")
 
 nav = {
     "Admissibilidade e Cálculo": [p1, p2]
@@ -16,12 +16,12 @@ grupo_valor_global = []
 
 if (pages_dir / "03_Valor_Global.py").exists():
     grupo_valor_global.append(
-        st.Page("pages/03_Valor_Global.py", title="Valor Global", icon="📊")
+        st.Page("pages/03_Valor_Global.py", title="Valor Global")
     )
 
 if (pages_dir / "04_Relatorio_Global.py").exists():
     grupo_valor_global.append(
-        st.Page("pages/04_Relatorio_Global.py", title="Relatório Global", icon="📝")
+        st.Page("pages/04_Relatorio_Global.py", title="Relatório Global")
     )
 
 if grupo_valor_global:
@@ -30,7 +30,7 @@ if grupo_valor_global:
 grupo_gestao = []
 if (pages_dir / "05_Garantia.py").exists():
     grupo_gestao.append(
-        st.Page("pages/05_Garantia.py", title="Garantia", icon="🛡️")
+        st.Page("pages/05_Garantia.py", title="Garantia")
     )
 
 if grupo_gestao:

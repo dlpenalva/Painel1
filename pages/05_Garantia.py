@@ -90,7 +90,7 @@ def normalizar_historico(df_hist):
         df[col] = df[col].apply(limpar_texto)
 
     for col in ["Valor contratual de referência", "Garantia exigida", "Garantia apresentada/endossada"]:
-        df[col] = pd.to_numeric(df[col], errors="coerce").fillna(0.0)
+        df[col] = df[col].apply(parse_moeda_br)
 
     mask = (
         df["Data"].ne("") |
@@ -150,33 +150,22 @@ def css():
             margin-bottom: 8px;
         }
         .historico-garantia-box {
-            background: #EAF2F8;
-            border: 1px solid #BFD7EA;
-            border-left: 6px solid #1F4E78;
-            border-radius: 14px;
-            padding: 18px 20px;
-            margin: 16px 0 12px 0;
+            background: #F4F8FB;
+            border: 1px solid #D7E3EE;
+            border-radius: 12px;
+            padding: 14px 16px;
+            margin: 10px 0 8px 0;
         }
         .historico-garantia-titulo {
             color: #123B63;
-            font-size: 1.08rem;
-            font-weight: 800;
-            margin-bottom: 6px;
+            font-size: 1rem;
+            font-weight: 700;
+            margin-bottom: 4px;
         }
         .historico-garantia-texto {
-            color: #334155;
-            font-size: 0.93rem;
-            line-height: 1.45;
-            margin-bottom: 0;
-        }
-        .historico-garantia-alerta {
-            background: #FFF8E5;
-            border: 1px solid #F3D58A;
-            border-radius: 10px;
-            padding: 10px 12px;
-            color: #6B4E00;
+            color: #475569;
             font-size: 0.9rem;
-            margin: 10px 0 12px 0;
+            margin-bottom: 0;
         }
         </style>
         """,
@@ -421,13 +410,24 @@ valor_atualizado_padrao = numero_para_input(
 )
 
 with st.expander("Contexto importado do Valor Global", expanded=True):
+    usar_valor_global = False
     if resultado_valor_global:
         col_a, col_b = st.columns(2)
         with col_a:
             st.metric("Valor original identificado", moeda(valor_original_padrao))
         with col_b:
-            st.metric("Valor atualizado identificado", moeda(valor_atualizado_padrao))
-        st.caption("Dados herdados da sessão atual do módulo Valor Global. Os campos abaixo permanecem editáveis para conferência.")
+            st.metric("Valor atualizado após esta análise", moeda(valor_atualizado_padrao))
+        usar_valor_global = st.checkbox(
+            "Usar o valor atualizado após esta análise como base da garantia",
+            value=True,
+            help=(
+                "Quando marcado, o módulo Garantia usa automaticamente o valor consolidado no módulo Valor Global. "
+                "Desmarque apenas se precisar simular ou informar valor diverso."
+            ),
+        )
+        st.caption(
+            "Dados herdados da sessão atual do módulo Valor Global. A opção acima integra a garantia ao valor consolidado da análise."
+        )
     else:
         st.info(
             "Não há dados do Valor Global disponíveis na sessão atual. Informe os valores manualmente para calcular a garantia."
@@ -461,9 +461,12 @@ with col3:
         "Valor atualizado do contrato",
         value=moeda(valor_atualizado_padrao, com_prefixo=False),
         help="Use ponto para milhares e vírgula para centavos. Ex.: 91.609.000,27",
+        disabled=bool(resultado_valor_global and usar_valor_global),
     )
-    valor_atualizado = parse_moeda_br(valor_atualizado_txt)
+    valor_atualizado = valor_atualizado_padrao if (resultado_valor_global and usar_valor_global) else parse_moeda_br(valor_atualizado_txt)
     st.markdown(f"<div class='valor-formatado-apoio'>{moeda(valor_atualizado)}</div>", unsafe_allow_html=True)
+    if resultado_valor_global and usar_valor_global:
+        st.caption("Valor importado automaticamente do módulo Valor Global.")
 
 percentual_garantia = percentual_garantia_pct / 100
 
@@ -520,10 +523,8 @@ st.markdown(
     <div class="historico-garantia-box">
         <div class="historico-garantia-titulo">Histórico de garantias e endossos anteriores</div>
         <p class="historico-garantia-texto">
-            Ative esta opção se a contratada já apresentou garantia original e/ou endossos anteriores
-            decorrentes de reajustes, repactuações, acréscimos, supressões ou outros aditivos.
-            Quando a tabela for preenchida, a soma da coluna <b>Garantia apresentada/endossada</b>
-            substituirá o valor manual de <b>Garantia atualmente constituída</b>.
+            Use esta opção quando quiser demonstrar a garantia original e os endossos já apresentados por reajustes, repactuações ou aditivos.
+            Se preenchido, o total do histórico substituirá o campo manual de garantia atualmente constituída.
         </p>
     </div>
     """,
@@ -531,26 +532,16 @@ st.markdown(
 )
 
 usar_historico = st.checkbox(
-    "Usar histórico detalhado para calcular a garantia constituída",
+    "Detalhar histórico",
     value=False,
-    help="Marque esta opção para abrir a tabela de histórico. Ao editar a tabela, pressione Enter ou clique fora da célula para atualizar os cálculos.",
+    help="Se marcado, a tabela abaixo será usada para calcular a garantia atualmente constituída.",
 )
-
-if not usar_historico:
-    st.caption("Opcional: marque a opção acima somente se quiser demonstrar garantia original e endossos anteriores de forma detalhada.")
 
 historico_limpo = pd.DataFrame()
 if usar_historico:
     with st.expander("Histórico de Garantias e Endossos", expanded=True):
-        st.markdown(
-            """
-            <div class="historico-garantia-alerta">
-                <b>Como usar:</b> preencha cada evento já constituído/aceito. Após editar uma célula, pressione <b>Enter</b>
-                ou clique fora da célula para o Streamlit atualizar os cálculos. A coluna
-                <b>Garantia apresentada/endossada</b> será somada automaticamente e usada como garantia atualmente constituída.
-            </div>
-            """,
-            unsafe_allow_html=True,
+        st.caption(
+            "Preencha os eventos já constituídos/aceitos. A coluna ‘Garantia apresentada/endossada’ será somada para definir a garantia atualmente constituída."
         )
         eventos = [
             "Garantia original",
@@ -589,8 +580,18 @@ if usar_historico:
                 },
             ]
         )
+        colunas_monetarias_historico = [
+            "Valor contratual de referência",
+            "Garantia exigida",
+            "Garantia apresentada/endossada",
+        ]
+        historico_base_editor = historico_base.copy()
+        for col_moeda in colunas_monetarias_historico:
+            if col_moeda in historico_base_editor.columns:
+                historico_base_editor[col_moeda] = historico_base_editor[col_moeda].apply(moeda)
+
         historico_editado = st.data_editor(
-            historico_base,
+            historico_base_editor,
             hide_index=True,
             use_container_width=True,
             num_rows="dynamic",
@@ -598,14 +599,17 @@ if usar_historico:
             column_config={
                 "Data": st.column_config.TextColumn("Data", help="Informe no formato dd/mm/aaaa."),
                 "Evento": st.column_config.SelectboxColumn("Evento", options=eventos, required=False),
-                "Valor contratual de referência": st.column_config.NumberColumn(
-                    "Valor contratual de referência", min_value=0.0, step=0.01, format="R$ %.2f"
+                "Valor contratual de referência": st.column_config.TextColumn(
+                    "Valor contratual de referência",
+                    help="Informe em formato de moeda. Ex.: R$ 1.000,00.",
                 ),
-                "Garantia exigida": st.column_config.NumberColumn(
-                    "Garantia exigida", min_value=0.0, step=0.01, format="R$ %.2f"
+                "Garantia exigida": st.column_config.TextColumn(
+                    "Garantia exigida",
+                    help="Informe em formato de moeda. Ex.: R$ 50.000,00.",
                 ),
-                "Garantia apresentada/endossada": st.column_config.NumberColumn(
-                    "Garantia apresentada/endossada", min_value=0.0, step=0.01, format="R$ %.2f"
+                "Garantia apresentada/endossada": st.column_config.TextColumn(
+                    "Garantia apresentada/endossada",
+                    help="Informe em formato de moeda. Ex.: R$ 50.000,00.",
                 ),
                 "Observação": st.column_config.TextColumn("Observação"),
             },
@@ -703,6 +707,19 @@ dados_pdf = {
     "garantia_exigida": garantia_exigida,
     "garantia_constituida": garantia_constituida,
     "endosso_necessario": endosso_necessario,
+    "data_fim_vigencia": data_fim_vigencia,
+    "data_validade_minima": data_validade_minima,
+}
+
+st.session_state["resultado_garantia"] = {
+    "valor_original": valor_original,
+    "valor_atualizado_base": valor_atualizado,
+    "percentual_garantia": percentual_garantia,
+    "garantia_original": garantia_original,
+    "garantia_exigida": garantia_exigida,
+    "garantia_constituida": garantia_constituida,
+    "endosso_necessario": endosso_necessario,
+    "origem_valor_atualizado": "Valor Global" if (resultado_valor_global and usar_valor_global) else "Manual",
     "data_fim_vigencia": data_fim_vigencia,
     "data_validade_minima": data_validade_minima,
 }
