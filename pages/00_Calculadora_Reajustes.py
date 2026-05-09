@@ -43,8 +43,6 @@ def selecionar_fluxo(tipo):
 render_marca_topo()
 
 st.title("Calculadora de Reajustes")
-st.caption("Entrada única para análise de ciclo único ou de múltiplos ciclos.")
-
 st.markdown(
     """
     <style>
