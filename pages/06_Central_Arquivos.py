@@ -190,6 +190,16 @@ itens = [
         "pages/03_Valor_Global.py",
     ),
     item_arquivo(
+        "Valores Unitários e Totais por Ciclo",
+        "Conferência dos valores unitários e totais remanescentes por ciclo.",
+        "XLSX",
+        "arquivo_valores_unitarios_xlsx",
+        "Valores_Unitarios_e_Totais_por_Ciclo.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Valor Global",
+        "pages/03_Valor_Global.py",
+    ),
+    item_arquivo(
         "Relatório Executivo",
         "Instrução processual e síntese da análise de reajuste.",
         "PDF",

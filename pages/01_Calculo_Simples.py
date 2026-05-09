@@ -7,160 +7,26 @@ from zoneinfo import ZoneInfo
 from dateutil.relativedelta import relativedelta
 from io import BytesIO
 
-st.set_page_config(page_title="Análises de Reajustes - Reajuste Simples", layout="wide")
+if not st.session_state.get("_calculadora_reajustes_embedded", False):
+    st.set_page_config(page_title="Análises de Reajustes - Reajuste Simples", layout="wide")
 
 
-def render_marca_topo():
-    """Identidade visual própria do sistema, sem uso de logomarca institucional."""
-    st.markdown(
-        """
-        <style>
-        .tlb-cl8us-brand {
-            display: inline-flex;
-            flex-direction: column;
-            gap: 1px;
-            margin: 0 0 0.70rem 0;
-            padding: 0;
-        }
-        .tlb-cl8us-brand-main {
-            display: flex;
-            align-items: baseline;
-            gap: 0.45rem;
-            line-height: 1.05;
-            letter-spacing: -0.02em;
-        }
-        .tlb-cl8us-tlb {
-            color: #123B63;
-            font-size: 1.38rem;
-            font-weight: 750;
-            font-family: "Inter", "Segoe UI", Arial, sans-serif;
-        }
-        .tlb-cl8us-dot {
-            color: #C0842B;
-            font-size: 1.18rem;
-            font-weight: 700;
-        }
-        .tlb-cl8us-name {
-            color: #0F172A;
-            font-size: 1.42rem;
-            font-weight: 800;
-            font-family: "Consolas", "SFMono-Regular", "Cascadia Mono", "Courier New", monospace;
-            letter-spacing: -0.04em;
-        }
-        .tlb-cl8us-subtitle {
-            color: #64748B;
-            font-size: 0.74rem;
-            font-weight: 500;
-            font-family: "Inter", "Segoe UI", Arial, sans-serif;
-            margin-top: 0.12rem;
-            letter-spacing: 0.01em;
-        }
-        </style>
-        <div class="tlb-cl8us-brand" aria-label="TLB cl8us - apoio à gestão de contratos">
-            <div class="tlb-cl8us-brand-main">
-                <span class="tlb-cl8us-tlb">TLB</span>
-                <span class="tlb-cl8us-dot">·</span>
-                <span class="tlb-cl8us-name">cl8us</span>
-            </div>
-            <div class="tlb-cl8us-subtitle">apoio à gestão de contratos</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
+from _ui_utils import render_indice_contrato_selectbox, render_marca_topo
+from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
+from _reajuste_utils import _competencias_mensais, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br
 
 def get_index_data(serie_codigo, data_inicio, data_fim):
-    url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie_codigo}/dados?formato=json&dataInicial={data_inicio.strftime('%d/%m/%Y')}&dataFinal={data_fim.strftime('%d/%m/%Y')}"
     try:
-        response = requests.get(url, timeout=15)
-        df = pd.DataFrame(response.json())
-        if df.empty:
-            return None
-        df['valor_decimal'] = df['valor'].astype(float) / 100
-        df['data'] = pd.to_datetime(df['data'], dayfirst=True)
-        var_final = (1 + df['valor_decimal']).prod() - 1
-        return {'variacao': var_final, 'metodo': "Produtório de taxas mensais (SGS/BCB)", 'dados': df[['data', 'valor']]}
+        return coletar_sgs_produtorio(serie_codigo, data_inicio, data_fim, timeout=15)
     except Exception:
         return None
-
-
-def _carregar_ist_local():
-    """Carrega o IST local aceitando os dois layouts usados no projeto.
-
-    Layout novo/atual: MES_ANO;INDICE_NIVEL, com competências como jan/22.
-    Layout antigo: data;indice.
-    Retorna DataFrame padronizado com colunas data e indice.
-    """
-    df = pd.read_csv('ist.csv', sep=';', decimal=',', encoding='utf-8-sig')
-    df.columns = [str(col).strip().lower() for col in df.columns]
-
-    if 'data' in df.columns and 'indice' in df.columns:
-        df['data'] = pd.to_datetime(df['data'], dayfirst=True, errors='coerce').dt.normalize()
-        df['indice'] = pd.to_numeric(df['indice'], errors='coerce')
-    elif 'mes_ano' in df.columns and 'indice_nivel' in df.columns:
-        meses = {
-            'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
-            'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12,
-        }
-
-        def converter_mes_ano(valor):
-            texto = str(valor).strip().lower()
-            if '/' not in texto:
-                return pd.NaT
-            mes_txt, ano_txt = texto.split('/', 1)
-            mes = meses.get(mes_txt[:3])
-            if mes is None:
-                return pd.NaT
-            ano = int(ano_txt)
-            if ano < 100:
-                ano += 2000
-            return pd.Timestamp(ano, mes, 1)
-
-        df['data'] = df['mes_ano'].apply(converter_mes_ano)
-        df['indice'] = pd.to_numeric(df['indice_nivel'], errors='coerce')
-    else:
-        raise KeyError("O arquivo ist.csv deve conter as colunas 'data'/'indice' ou 'MES_ANO'/'INDICE_NIVEL'.")
-
-    df = df.dropna(subset=['data', 'indice']).copy()
-    return df[['data', 'indice']]
 
 
 def get_ist_local(data_inicio, data_fim):
     try:
-        df = _carregar_ist_local()
-
-        # IST por número-índice: mês-base do ciclo versus o mesmo mês 12 meses depois.
-        # Exemplo: data-base 10/2023 => out/2023 a out/2024.
-        r_ini = pd.Timestamp(data_inicio.year, data_inicio.month, 1).normalize()
-        marco_final = data_inicio + relativedelta(years=1)
-        r_fim = pd.Timestamp(marco_final.year, marco_final.month, 1).normalize()
-
-        v_ini_rows = df[df['data'].dt.to_period('M') == r_ini.to_period('M')]
-        v_fim_rows = df[df['data'].dt.to_period('M') == r_fim.to_period('M')]
-
-        if v_ini_rows.empty or v_fim_rows.empty:
-            return None
-
-        v_ini = float(v_ini_rows['indice'].iloc[0])
-        v_fim = float(v_fim_rows['indice'].iloc[0])
-
-        return {
-            'variacao': (v_fim / v_ini) - 1,
-            'i_ini': v_ini,
-            'i_fim': v_fim,
-            'd_ini': r_ini,
-            'd_fim': r_fim,
-            'metodo': "Divisão de Número-Índice (Série Local)"
-        }
+        return calcular_ist_numero_indice(data_inicio)
     except Exception:
         return None
-
-
-def _formatar_data(valor):
-    try:
-        return pd.to_datetime(valor).strftime('%d/%m/%Y')
-    except Exception:
-        return ""
 
 
 def _formatar_mes_ano(valor):
@@ -168,54 +34,6 @@ def _formatar_mes_ano(valor):
         return pd.to_datetime(valor).strftime('%m/%Y')
     except Exception:
         return ""
-
-
-def _competencias_mensais(data_inicio, data_fim):
-    if not data_inicio or not data_fim:
-        return []
-    inicio = pd.to_datetime(data_inicio, dayfirst=True).replace(day=1)
-    fim = pd.to_datetime(data_fim, dayfirst=True).replace(day=1)
-    if fim < inicio:
-        return []
-    return [d.strftime('%m/%Y') for d in pd.date_range(inicio, fim, freq='MS')]
-
-
-
-
-def _parse_moeda_br(valor):
-    """Converte texto monetário brasileiro em float, preservando campos vazios como 0."""
-    if valor is None:
-        return 0.0
-    if isinstance(valor, (int, float)):
-        return float(valor)
-    texto = str(valor).strip()
-    if not texto:
-        return 0.0
-    texto = texto.replace('R$', '').replace('\xa0', '').replace(' ', '')
-    if ',' in texto:
-        texto = texto.replace('.', '').replace(',', '.')
-    else:
-        if texto.count('.') > 1:
-            partes = texto.split('.')
-            texto = ''.join(partes[:-1]) + '.' + partes[-1]
-    try:
-        return float(texto)
-    except Exception:
-        return 0.0
-
-
-def _formatar_moeda_br(valor):
-    try:
-        valor = round(float(valor), 2)
-    except Exception:
-        valor = 0.0
-    return f"R$ {valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-
-
-def _formatar_moeda_br_md(valor):
-    """Formata moeda escapando o $ para exibição correta no Markdown do Streamlit."""
-    return _formatar_moeda_br(valor).replace('$', '\\$')
-
 
 
 def _render_card_contexto_contrato():
@@ -768,8 +586,10 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
 
     output.seek(0)
     return output.getvalue()
-render_marca_topo()
-st.title("Reajuste Simples")
+if not st.session_state.get("_calculadora_reajustes_embedded", False):
+    render_marca_topo()
+if not st.session_state.get("_calculadora_reajustes_embedded", False):
+    st.title("Único")
 
 contexto_contratual = _render_contexto_contratual_anterior()
 
@@ -778,7 +598,7 @@ with col1:
     dt_base = st.date_input("Data-Base Anterior:", value=datetime(2023, 8, 2), format="DD/MM/YYYY")
     dt_solic = st.date_input("Data do Pedido:", value=datetime(2024, 4, 9), format="DD/MM/YYYY")
 with col2:
-    tipo_idx = st.selectbox("Índice:", ["IST (Série Local)", "IPCA (433)", "IGP-M (189)"])
+    tipo_idx = render_indice_contrato_selectbox(key="indice_fluxo_unico")
 
 chave_analise_simples = (
     dt_base.isoformat(),

@@ -7,152 +7,43 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 from dateutil.relativedelta import relativedelta
 
-st.set_page_config(page_title="Análises de Reajustes - Reajustes Múltiplos", layout="wide")
+if not st.session_state.get("_calculadora_reajustes_embedded", False):
+    st.set_page_config(page_title="Análises de Reajustes - Reajustes Múltiplos", layout="wide")
 
 
-def render_marca_topo():
-    """Identidade visual própria do sistema, sem uso de logomarca institucional."""
-    st.markdown(
-        """
-        <style>
-        .tlb-cl8us-brand {
-            display: inline-flex;
-            flex-direction: column;
-            gap: 1px;
-            margin: 0 0 0.70rem 0;
-            padding: 0;
-        }
-        .tlb-cl8us-brand-main {
-            display: flex;
-            align-items: baseline;
-            gap: 0.45rem;
-            line-height: 1.05;
-            letter-spacing: -0.02em;
-        }
-        .tlb-cl8us-tlb {
-            color: #123B63;
-            font-size: 1.38rem;
-            font-weight: 750;
-            font-family: "Inter", "Segoe UI", Arial, sans-serif;
-        }
-        .tlb-cl8us-dot {
-            color: #C0842B;
-            font-size: 1.18rem;
-            font-weight: 700;
-        }
-        .tlb-cl8us-name {
-            color: #0F172A;
-            font-size: 1.42rem;
-            font-weight: 800;
-            font-family: "Consolas", "SFMono-Regular", "Cascadia Mono", "Courier New", monospace;
-            letter-spacing: -0.04em;
-        }
-        .tlb-cl8us-subtitle {
-            color: #64748B;
-            font-size: 0.74rem;
-            font-weight: 500;
-            font-family: "Inter", "Segoe UI", Arial, sans-serif;
-            margin-top: 0.12rem;
-            letter-spacing: 0.01em;
-        }
-        </style>
-        <div class="tlb-cl8us-brand" aria-label="TLB cl8us - apoio à gestão de contratos">
-            <div class="tlb-cl8us-brand-main">
-                <span class="tlb-cl8us-tlb">TLB</span>
-                <span class="tlb-cl8us-dot">·</span>
-                <span class="tlb-cl8us-name">cl8us</span>
-            </div>
-            <div class="tlb-cl8us-subtitle">apoio à gestão de contratos</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-def _carregar_ist_local():
-    """Carrega o IST local aceitando os dois layouts usados no projeto.
-
-    Layout novo/atual: MES_ANO;INDICE_NIVEL, com competências como jan/22.
-    Layout antigo: data;indice.
-    Retorna DataFrame padronizado com colunas data e indice.
-    """
-    df = pd.read_csv('ist.csv', sep=';', decimal=',', encoding='utf-8-sig')
-    df.columns = [str(col).strip().lower() for col in df.columns]
-
-    if 'data' in df.columns and 'indice' in df.columns:
-        df['data'] = pd.to_datetime(df['data'], dayfirst=True, errors='coerce').dt.normalize()
-        df['indice'] = pd.to_numeric(df['indice'], errors='coerce')
-    elif 'mes_ano' in df.columns and 'indice_nivel' in df.columns:
-        meses = {
-            'jan': 1, 'fev': 2, 'mar': 3, 'abr': 4, 'mai': 5, 'jun': 6,
-            'jul': 7, 'ago': 8, 'set': 9, 'out': 10, 'nov': 11, 'dez': 12,
-        }
-
-        def converter_mes_ano(valor):
-            texto = str(valor).strip().lower()
-            if '/' not in texto:
-                return pd.NaT
-            mes_txt, ano_txt = texto.split('/', 1)
-            mes = meses.get(mes_txt[:3])
-            if mes is None:
-                return pd.NaT
-            ano = int(ano_txt)
-            if ano < 100:
-                ano += 2000
-            return pd.Timestamp(ano, mes, 1)
-
-        df['data'] = df['mes_ano'].apply(converter_mes_ano)
-        df['indice'] = pd.to_numeric(df['indice_nivel'], errors='coerce')
-    else:
-        raise KeyError("O arquivo ist.csv deve conter as colunas 'data'/'indice' ou 'MES_ANO'/'INDICE_NIVEL'.")
-
-    df = df.dropna(subset=['data', 'indice']).copy()
-    return df[['data', 'indice']]
-
+from _ui_utils import render_indice_contrato_selectbox, render_marca_topo
+from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
+from _reajuste_utils import _competencias_mensais, _data_para_datetime, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br, _percentual_formatado
 
 def get_data_rep(serie, d_ini, d_fim, is_ist):
     try:
         if is_ist:
-            df = _carregar_ist_local()
-
-            # IST por número-índice: mês-base do ciclo versus o mesmo mês 12 meses depois.
-            # Exemplo: data-base 10/2023 => out/2023 a out/2024.
-            r_ini = pd.Timestamp(d_ini.year, d_ini.month, 1).normalize()
-            marco_final = d_ini + relativedelta(years=1)
-            r_fim = pd.Timestamp(marco_final.year, marco_final.month, 1).normalize()
-
-            v_ini_rows = df[df['data'].dt.to_period('M') == r_ini.to_period('M')]
-            v_fim_rows = df[df['data'].dt.to_period('M') == r_fim.to_period('M')]
-
-            if v_ini_rows.empty or v_fim_rows.empty:
+            resultado = calcular_ist_numero_indice(d_ini)
+            if not resultado:
+                r_ini = pd.Timestamp(d_ini.year, d_ini.month, 1).normalize()
+                r_fim = pd.Timestamp((d_ini + relativedelta(years=1)).year, (d_ini + relativedelta(years=1)).month, 1).normalize()
                 st.error(f"Dados do IST não encontrados para o período {r_ini.strftime('%m/%Y')} ou {r_fim.strftime('%m/%Y')}")
                 return None
-
-            v_ini = float(v_ini_rows['indice'].iloc[0])
-            v_fim = float(v_fim_rows['indice'].iloc[0])
-
             return {
-                'var': (v_fim / v_ini) - 1,
-                'i_ini': v_ini,
-                'i_fim': v_fim,
-                'p_ini': r_ini,
-                'p_fim': r_fim,
-                'metodo': "Divisão de Número-Índice (IST)",
-                'dados': pd.DataFrame({'data': [r_ini, r_fim], 'indice': [v_ini, v_fim]})
+                "var": resultado["variacao"],
+                "i_ini": resultado["i_ini"],
+                "i_fim": resultado["i_fim"],
+                "p_ini": resultado["d_ini"],
+                "p_fim": resultado["d_fim"],
+                "metodo": "Divisão de Número-Índice (IST)",
+                "dados": resultado["dados"],
             }
-        else:
-            # Manutenção da lógica do IPCA/IGP-M via SGS/BCB
-            url = f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie}/dados?formato=json&dataInicial={d_ini.strftime('%d/%m/%Y')}&dataFinal={d_fim.strftime('%d/%m/%Y')}"
-            response = requests.get(url, timeout=10)
-            df_t = pd.DataFrame(response.json())
-            df_t['v'] = df_t['valor'].astype(float) / 100
-            df_t['data'] = pd.to_datetime(df_t['data'], dayfirst=True)
-            return {
-                'var': (1 + df_t['v']).prod() - 1,
-                'metodo': "Produtório de taxas mensais (SGS/BCB)",
-                'p_ini': d_ini,
-                'p_fim': d_fim,
-                'dados': df_t[['data', 'valor']]
-            }
+
+        resultado = coletar_sgs_produtorio(serie, d_ini, d_fim, timeout=10)
+        if not resultado:
+            return None
+        return {
+            "var": resultado["variacao"],
+            "metodo": resultado["metodo"],
+            "p_ini": d_ini,
+            "p_fim": d_fim,
+            "dados": resultado["dados"],
+        }
     except Exception as e:
         st.error(f"Erro técnico na coleta de dados: {str(e)}")
         return None
@@ -171,85 +62,6 @@ def _render_equacao_ist(res_c):
     </div>
     """
     st.markdown(equacao_html, unsafe_allow_html=True)
-
-
-def _formatar_data(valor):
-    """Formata datas para DD/MM/AAAA sem quebrar quando o valor estiver vazio."""
-    if valor is None or valor == "":
-        return ""
-    try:
-        return pd.to_datetime(valor, dayfirst=True).strftime("%d/%m/%Y")
-    except Exception:
-        return str(valor)
-
-
-def _data_para_datetime(valor):
-    if valor is None or valor == "":
-        return None
-    try:
-        return pd.to_datetime(valor, dayfirst=True).to_pydatetime()
-    except Exception:
-        return None
-
-
-def _competencias_mensais(data_inicio, data_fim):
-    """Gera competências mensais inclusivas no formato MM/AAAA."""
-    inicio = _data_para_datetime(data_inicio)
-    fim = _data_para_datetime(data_fim)
-    if inicio is None or fim is None:
-        return []
-    atual = inicio.replace(day=1)
-    limite = fim.replace(day=1)
-    competencias = []
-    while atual <= limite:
-        competencias.append(atual.strftime("%m/%Y"))
-        atual = atual + relativedelta(months=1)
-    return competencias
-
-
-def _percentual_formatado(valor):
-    try:
-        return f"{float(valor) * 100:,.2f}%".replace('.', ',')
-    except Exception:
-        return ""
-
-
-
-
-def _parse_moeda_br(valor):
-    """Converte texto monetário brasileiro em float, preservando campos vazios como 0."""
-    if valor is None:
-        return 0.0
-    if isinstance(valor, (int, float)):
-        return float(valor)
-    texto = str(valor).strip()
-    if not texto:
-        return 0.0
-    texto = texto.replace('R$', '').replace('\xa0', '').replace(' ', '')
-    if ',' in texto:
-        texto = texto.replace('.', '').replace(',', '.')
-    else:
-        if texto.count('.') > 1:
-            partes = texto.split('.')
-            texto = ''.join(partes[:-1]) + '.' + partes[-1]
-    try:
-        return float(texto)
-    except Exception:
-        return 0.0
-
-
-def _formatar_moeda_br(valor):
-    try:
-        valor = round(float(valor), 2)
-    except Exception:
-        valor = 0.0
-    return f"R$ {valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
-
-
-def _formatar_moeda_br_md(valor):
-    """Formata moeda escapando o $ para exibição correta no Markdown do Streamlit."""
-    return _formatar_moeda_br(valor).replace('$', '\\$')
-
 
 
 def _render_card_contexto_contrato():
@@ -685,15 +497,17 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
 
     output.seek(0)
     return output.getvalue()
-render_marca_topo()
-st.title("Reajustes Múltiplos")
+if not st.session_state.get("_calculadora_reajustes_embedded", False):
+    render_marca_topo()
+if not st.session_state.get("_calculadora_reajustes_embedded", False):
+    st.title("Múltiplos")
 
 contexto_contratual = _render_contexto_contratual_anterior()
 
 with st.sidebar:
     dt_base_original = st.date_input("Data-Base Original:", value=datetime(2022, 10, 10), format="DD/MM/YYYY")
     qtd_ciclos = st.number_input("Ciclos:", min_value=1, max_value=5, value=2)
-    idx_sel = st.selectbox("Índice:", ["IST (Série Local)", "IPCA (433)", "IGP-M (189)"])
+    idx_sel = render_indice_contrato_selectbox(key="indice_fluxo_multiplos")
 
 # Primeira etapa: coleta dos dados de cada ciclo, sem processar automaticamente os índices.
 # Isso evita que a página abra com um cenário fictício já calculado.
