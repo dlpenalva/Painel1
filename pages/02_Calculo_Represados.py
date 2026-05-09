@@ -1,4 +1,5 @@
 import streamlit as st
+import json
 import pandas as pd
 import requests
 import io
@@ -7,6 +8,65 @@ from zoneinfo import ZoneInfo
 from dateutil.relativedelta import relativedelta
 
 st.set_page_config(page_title="Análises de Reajustes - Reajustes Múltiplos", layout="wide")
+
+
+def render_marca_topo():
+    """Identidade visual própria do sistema, sem uso de logomarca institucional."""
+    st.markdown(
+        """
+        <style>
+        .tlb-cl8us-brand {
+            display: inline-flex;
+            flex-direction: column;
+            gap: 1px;
+            margin: 0 0 0.70rem 0;
+            padding: 0;
+        }
+        .tlb-cl8us-brand-main {
+            display: flex;
+            align-items: baseline;
+            gap: 0.45rem;
+            line-height: 1.05;
+            letter-spacing: -0.02em;
+        }
+        .tlb-cl8us-tlb {
+            color: #123B63;
+            font-size: 1.38rem;
+            font-weight: 750;
+            font-family: "Inter", "Segoe UI", Arial, sans-serif;
+        }
+        .tlb-cl8us-dot {
+            color: #C0842B;
+            font-size: 1.18rem;
+            font-weight: 700;
+        }
+        .tlb-cl8us-name {
+            color: #0F172A;
+            font-size: 1.42rem;
+            font-weight: 800;
+            font-family: "Consolas", "SFMono-Regular", "Cascadia Mono", "Courier New", monospace;
+            letter-spacing: -0.04em;
+        }
+        .tlb-cl8us-subtitle {
+            color: #64748B;
+            font-size: 0.74rem;
+            font-weight: 500;
+            font-family: "Inter", "Segoe UI", Arial, sans-serif;
+            margin-top: 0.12rem;
+            letter-spacing: 0.01em;
+        }
+        </style>
+        <div class="tlb-cl8us-brand" aria-label="TLB cl8us - apoio à gestão de contratos">
+            <div class="tlb-cl8us-brand-main">
+                <span class="tlb-cl8us-tlb">TLB</span>
+                <span class="tlb-cl8us-dot">·</span>
+                <span class="tlb-cl8us-name">cl8us</span>
+            </div>
+            <div class="tlb-cl8us-subtitle">apoio à gestão de contratos</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 def _carregar_ist_local():
     """Carrega o IST local aceitando os dois layouts usados no projeto.
@@ -180,7 +240,7 @@ def _parse_moeda_br(valor):
 
 def _formatar_moeda_br(valor):
     try:
-        valor = float(valor)
+        valor = round(float(valor), 2)
     except Exception:
         valor = 0.0
     return f"R$ {valor:,.2f}".replace(',', 'X').replace('.', ',').replace('X', '.')
@@ -209,15 +269,15 @@ def _render_card_contexto_contrato():
 def _render_contexto_contratual_anterior():
     """Coleta contexto do contrato para uso pelo Valor Global.
 
-    Este bloco é opcional. Quando preenchido, permite que o módulo Valor Global
-    parta da fotografia contratual já formalizada antes da análise atual.
+    Este bloco é opcional. Quando preenchido, registra memória formal anterior
+    para relatórios e governança, sem alterar automaticamente o Valor Total Atualizado.
     """
     contexto_salvo = st.session_state.get('contexto_contratual_anterior', {}) or {}
     _render_card_contexto_contrato()
     with st.expander('Preencher/editar Contexto do Contrato', expanded=False):
         st.caption(
-            'Preencha apenas quando o contrato já possuir reajustes, repactuações, aditivos ou supressões formalizados antes desta análise. '
-            'O valor formalizado deve representar a fotografia consolidada do contrato antes dos ciclos agora analisados.'
+            'Preencha apenas quando o contrato já possuir eventos formalizados antes desta análise. '
+            'Este contexto é memória processual e de governança; não altera automaticamente o Valor Total Atualizado, que permanece calculado por execução atualizada + saldo remanescente atualizado.'
         )
         col_ctx1, col_ctx2 = st.columns(2)
         with col_ctx1:
@@ -227,11 +287,11 @@ def _render_contexto_contratual_anterior():
                 placeholder='Ex.: 20.000.000,00',
                 key='ctx_valor_original_contrato',
             )
-            opcoes_ciclo_concedido = ['Nenhum / C0', 'C1', 'C2', 'C3', 'C4', 'C5', 'C6', 'Outro / informar em observação']
+            opcoes_ciclo_concedido = ['C0 / Nenhum', 'C1', 'C2', 'C3', 'C4', 'Outro']
             ciclo_salvo = str(contexto_salvo.get('ultimo_ciclo_concedido', '') or '').strip()
             if ciclo_salvo in opcoes_ciclo_concedido:
                 indice_ciclo_salvo = opcoes_ciclo_concedido.index(ciclo_salvo)
-            elif ciclo_salvo == '' or ciclo_salvo.upper() == 'C0':
+            elif ciclo_salvo == '' or ciclo_salvo.upper() == 'C0' or ciclo_salvo == 'Nenhum / C0':
                 indice_ciclo_salvo = 0
             elif ciclo_salvo.upper() in opcoes_ciclo_concedido:
                 indice_ciclo_salvo = opcoes_ciclo_concedido.index(ciclo_salvo.upper())
@@ -258,6 +318,72 @@ def _render_contexto_contratual_anterior():
                 height=82,
             )
 
+        st.markdown("#### Eventos históricos anteriores")
+        st.caption(
+            "Opcional. Registre apenas eventos formalizados relevantes para memória processual. "
+            "Esses registros aparecem em relatórios e linha do tempo, mas não entram automaticamente no cálculo do Valor Total Atualizado."
+        )
+        eventos_salvos = contexto_salvo.get('eventos_historicos_anteriores') or []
+        if not eventos_salvos:
+            eventos_salvos = [
+                {
+                    'Tipo de evento': '',
+                    'Ciclo': 'C0 / Nenhum',
+                    'Data': '',
+                    'Valor formalizado/impacto': '',
+                    'Incorporado ao valor formalizado?': 'Sim',
+                    'Observação': '',
+                }
+            ]
+        df_eventos_ctx = pd.DataFrame(eventos_salvos)
+        if 'Valor formalizado/impacto' not in df_eventos_ctx.columns:
+            if 'Valor atualizado/formalizado' in df_eventos_ctx.columns:
+                df_eventos_ctx['Valor formalizado/impacto'] = df_eventos_ctx['Valor atualizado/formalizado']
+            elif 'Valor original' in df_eventos_ctx.columns:
+                df_eventos_ctx['Valor formalizado/impacto'] = df_eventos_ctx['Valor original']
+            else:
+                df_eventos_ctx['Valor formalizado/impacto'] = ''
+        colunas_eventos = [
+            'Tipo de evento', 'Ciclo', 'Data', 'Valor formalizado/impacto',
+            'Incorporado ao valor formalizado?', 'Observação'
+        ]
+        for col_evento in colunas_eventos:
+            if col_evento not in df_eventos_ctx.columns:
+                df_eventos_ctx[col_evento] = ''
+        df_eventos_ctx = df_eventos_ctx[colunas_eventos]
+        eventos_editados = st.data_editor(
+            df_eventos_ctx,
+            hide_index=True,
+            use_container_width=True,
+            num_rows='dynamic',
+            key='ctx_eventos_historicos_anteriores',
+            column_config={
+                'Tipo de evento': st.column_config.SelectboxColumn(
+                    'Tipo de evento',
+                    options=['', 'Reajuste', 'Repactuação', 'Aditivo', 'Supressão', 'Apostila anterior', 'Acordo negocial', 'Outro'],
+                ),
+                'Ciclo': st.column_config.SelectboxColumn(
+                    'Ciclo',
+                    options=['C0 / Nenhum', 'C1', 'C2', 'C3', 'C4', 'Outro'],
+                ),
+                'Incorporado ao valor formalizado?': st.column_config.SelectboxColumn(
+                    'Incorporado ao valor formalizado?',
+                    options=['Sim', 'Não'],
+                ),
+            },
+        )
+        eventos_limpos = []
+        for _, evento_row in eventos_editados.iterrows():
+            evento = {col: str(evento_row.get(col, '') or '').strip() for col in colunas_eventos}
+            possui_conteudo_relevante = any([
+                evento.get('Tipo de evento', ''),
+                evento.get('Data', ''),
+                evento.get('Valor formalizado/impacto', ''),
+                evento.get('Observação', ''),
+            ])
+            if possui_conteudo_relevante:
+                eventos_limpos.append(evento)
+
         valor_original = _parse_moeda_br(valor_original_txt)
         valor_formalizado = _parse_moeda_br(valor_formalizado_txt)
         contexto = {
@@ -267,6 +393,7 @@ def _render_contexto_contratual_anterior():
             'valor_formalizado_anterior_texto': valor_formalizado_txt,
             'ultimo_ciclo_concedido': ultimo_ciclo.strip(),
             'observacao_historico': observacao.strip(),
+            'eventos_historicos_anteriores': eventos_limpos,
         }
         st.session_state['contexto_contratual_anterior'] = contexto
 
@@ -303,9 +430,11 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         fmt_input = workbook.add_format({'bg_color': '#FFF2CC', 'border': 1})
         fmt_input_date = workbook.add_format({'num_format': 'dd/mm/yyyy', 'bg_color': '#FFF2CC', 'border': 1})
         fmt_date = workbook.add_format({'num_format': 'dd/mm/yyyy', 'border': 1})
+        fmt_date_no_border = workbook.add_format({'num_format': 'dd/mm/yyyy'})
         fmt_input_num = workbook.add_format({'num_format': '#,##0.00', 'bg_color': '#FFF2CC', 'border': 1})
         fmt_input_money = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#FFF2CC', 'border': 1})
         fmt_money = workbook.add_format({'num_format': 'R$ #,##0.00', 'border': 1})
+        fmt_money_no_border = workbook.add_format({'num_format': 'R$ #,##0.00'})
         fmt_money_auto = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#EDEDED', 'border': 1})
         fmt_number = workbook.add_format({'num_format': '#,##0.00', 'border': 1})
         fmt_text = workbook.add_format({'border': 1})
@@ -334,6 +463,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             ['Valor contratual formalizado antes desta análise', dados_admissibilidade.get('contexto_contratual_anterior', {}).get('valor_formalizado_anterior', '')],
             ['Último ciclo já concedido/formalizado', dados_admissibilidade.get('contexto_contratual_anterior', {}).get('ultimo_ciclo_concedido', '')],
             ['Observação sobre histórico anterior', dados_admissibilidade.get('contexto_contratual_anterior', {}).get('observacao_historico', '')],
+            ['Eventos históricos anteriores', 'Ver aba EVENTOS_HISTORICOS_ANTERIORES' if dados_admissibilidade.get('contexto_contratual_anterior', {}).get('eventos_historicos_anteriores', []) else ''],
             ['Data de geração do arquivo', data_geracao],
         ], columns=['Campo', 'Valor'])
         parametros.to_excel(writer, sheet_name='PARAMETROS_REAJUSTE', index=False)
@@ -346,8 +476,36 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws.write_number(5, 1, float(dados_admissibilidade.get('variacao_acumulada', 0.0)), fmt_percent_no_border)  # B6
         ws.write_number(6, 1, float(dados_admissibilidade.get('fator_acumulado', dados_admissibilidade.get('fator', 1.0))), fmt_factor_no_border)  # B7
         contexto_excel = dados_admissibilidade.get('contexto_contratual_anterior', {}) or {}
-        ws.write_number(7, 1, float(contexto_excel.get('valor_original_contrato') or 0.0), fmt_money)
-        ws.write_number(8, 1, float(contexto_excel.get('valor_formalizado_anterior') or 0.0), fmt_money)
+        valor_original_contexto_txt = str(contexto_excel.get('valor_original_contrato_texto') or '').strip()
+        valor_formalizado_contexto_txt = str(contexto_excel.get('valor_formalizado_anterior_texto') or '').strip()
+        valor_original_contexto = float(contexto_excel.get('valor_original_contrato') or 0.0)
+        valor_formalizado_contexto = float(contexto_excel.get('valor_formalizado_anterior') or 0.0)
+        if valor_original_contexto_txt or valor_original_contexto > 0:
+            ws.write_number(7, 1, valor_original_contexto, fmt_money_no_border)
+        else:
+            ws.write_blank(7, 1, None, fmt_no_border)
+        if valor_formalizado_contexto_txt or valor_formalizado_contexto > 0:
+            ws.write_number(8, 1, valor_formalizado_contexto, fmt_money_no_border)
+        else:
+            ws.write_blank(8, 1, None, fmt_no_border)
+
+        # Eventos históricos anteriores em aba própria, para evitar JSON longo em B12.
+        eventos_historicos_excel = contexto_excel.get('eventos_historicos_anteriores') or []
+        if eventos_historicos_excel:
+            ws_ev = workbook.add_worksheet('EVENTOS_HISTORICOS_ANTERIORES')
+            writer.sheets['EVENTOS_HISTORICOS_ANTERIORES'] = ws_ev
+            ev_headers = ['Tipo de evento', 'Ciclo', 'Data', 'Valor formalizado/impacto', 'Incorporado ao valor formalizado?', 'Observação']
+            for col, title in enumerate(ev_headers):
+                ws_ev.write(0, col, title, fmt_header)
+            for row_idx, evento in enumerate(eventos_historicos_excel, start=1):
+                valor_evento = evento.get('Valor formalizado/impacto', evento.get('Valor atualizado/formalizado', evento.get('Valor original', '')))
+                ws_ev.write(row_idx, 0, evento.get('Tipo de evento', ''), fmt_text)
+                ws_ev.write(row_idx, 1, evento.get('Ciclo', ''), fmt_text)
+                ws_ev.write(row_idx, 2, evento.get('Data', ''), fmt_text)
+                ws_ev.write(row_idx, 3, valor_evento, fmt_text)
+                ws_ev.write(row_idx, 4, evento.get('Incorporado ao valor formalizado?', ''), fmt_text)
+                ws_ev.write(row_idx, 5, evento.get('Observação', ''), fmt_text)
+            ws_ev.set_column('A:F', 28)
 
         # CICLOS
         ciclos_rows = []
@@ -389,11 +547,15 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         for row in range(1, len(df_ciclos) + 1):
             data_base_excel = pd.to_datetime(df_ciclos.iloc[row-1]['Data-base'], dayfirst=True, errors='coerce')
             if pd.notna(data_base_excel):
-                ws.write_datetime(row, 1, data_base_excel.to_pydatetime(), fmt_date)
+                ws.write_datetime(row, 1, data_base_excel.to_pydatetime(), fmt_date_no_border if row in [1, 2, 3] else fmt_date)
             ws.write(row, 8, df_ciclos.iloc[row-1]['Variação'], workbook.add_format({'num_format': '0.00%'}))
             ws.write(row, 9, df_ciclos.iloc[row-1]['Fator'], workbook.add_format({'num_format': '0.0000'}))
             ws.write(row, 10, df_ciclos.iloc[row-1]['Fator acumulado'], workbook.add_format({'num_format': '0.0000'}))
             ws.write(row, 11, df_ciclos.iloc[row-1]['Tratamento financeiro do ciclo'], workbook.add_format({}))
+            if 'Percentual apurado pelo índice' in df_ciclos.columns:
+                ws.write(row, 15, df_ciclos.iloc[row-1]['Percentual apurado pelo índice'], fmt_percent)
+            if 'Percentual aplicado' in df_ciclos.columns:
+                ws.write(row, 16, df_ciclos.iloc[row-1]['Percentual aplicado'], fmt_percent)
 
         # FINANCEIRO_MENSAL
         financeiro_rows = []
@@ -416,7 +578,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             ws.write(row, 2, '', fmt_input_money)
         ws.write(200, 0, 'TOTAL', fmt_total)
         ws.write(200, 1, '', fmt_total)
-        ws.write_formula(200, 2, '=SUM(C2:C200)', fmt_total_money)
+        ws.write_formula(200, 2, '=ROUND(SUM(C2:C200),2)', fmt_total_money)
 
         # ITENS_REMANESCENTES
         ws_it = workbook.add_worksheet('ITENS_REMANESCENTES')
@@ -440,13 +602,13 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             ws_it.write(row, 0, '', fmt_text)       # A sem preenchimento
             ws_it.write(row, 1, '', fmt_number)     # B sem preenchimento
             ws_it.write(row, 2, '', fmt_money)      # C sem preenchimento
-            ws_it.write_formula(row, 3, f'=IF(OR(B{row+1}="",C{row+1}=""),"",B{row+1}*C{row+1})', fmt_money_auto)
+            ws_it.write_formula(row, 3, f'=IF(OR(B{row+1}="",C{row+1}=""),"",ROUND(B{row+1}*C{row+1},2))', fmt_money_auto)
             for col in range(4, 4 + len(rem_cols)):
                 ws_it.write(row, col, '', fmt_input_num)
         ws_it.write(200, 0, 'TOTAL', fmt_total)
         ws_it.write(200, 1, '', fmt_total)
         ws_it.write(200, 2, '', fmt_total)
-        ws_it.write_formula(200, 3, '=SUM(D3:D200)', fmt_total_money)
+        ws_it.write_formula(200, 3, '=ROUND(SUM(D3:D200),2)', fmt_total_money)
         for col in range(4, 4 + len(rem_cols)):
             col_letter = chr(ord('A') + col)
             ws_it.write_formula(200, col, f'=SUM({col_letter}3:{col_letter}200)', fmt_total_num)
@@ -497,10 +659,10 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             ws_ad.write(row, 3, 'Acréscimo', fmt_input)
             ws_ad.write(row, 4, '', fmt_input_num)
             ws_ad.write(row, 5, '', fmt_input_money)
-            ws_ad.write_formula(row, 6, f'=IF(OR(E{excel_row}="",F{excel_row}=""),"",E{excel_row}*F{excel_row})', fmt_money_auto)
+            ws_ad.write_formula(row, 6, f'=IF(OR(E{excel_row}="",F{excel_row}=""),"",ROUND(E{excel_row}*F{excel_row},2))', fmt_money_auto)
             ws_ad.write(row, 7, 'Sim', fmt_input)
             ws_ad.write_formula(row, 8, f'=IF(C{excel_row}="","",IFERROR(VLOOKUP(C{excel_row},{ciclo_range},11,FALSE),1))', fmt_factor_auto)
-            ws_ad.write_formula(row, 9, f'=IF(G{excel_row}="","",IF(OR(UPPER(D{excel_row})="DECRÉSCIMO",UPPER(D{excel_row})="DECRESCIMO",UPPER(D{excel_row})="SUPRESSÃO",UPPER(D{excel_row})="SUPRESSAO"),-ABS(G{excel_row}),ABS(G{excel_row}))*IF(OR(UPPER(H{excel_row})="NÃO",UPPER(H{excel_row})="NAO"),1,I{excel_row}))', fmt_money_auto)
+            ws_ad.write_formula(row, 9, f'=IF(G{excel_row}="","",ROUND(IF(OR(UPPER(D{excel_row})="DECRÉSCIMO",UPPER(D{excel_row})="DECRESCIMO",UPPER(D{excel_row})="SUPRESSÃO",UPPER(D{excel_row})="SUPRESSAO"),-ABS(G{excel_row}),ABS(G{excel_row}))*IF(OR(UPPER(H{excel_row})="NÃO",UPPER(H{excel_row})="NAO"),1,I{excel_row}),2))', fmt_money_auto)
             ws_ad.write(row, 10, 'Computar nesta análise', fmt_input)
         ws_ad.data_validation(1, 3, 199, 3, {'validate': 'list', 'source': ['Acréscimo', 'Decréscimo']})
         ws_ad.data_validation(1, 7, 199, 7, {'validate': 'list', 'source': ['Sim', 'Não']})
@@ -515,17 +677,15 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws_ad.write(200, 0, 'TOTAL', fmt_total)
         for col in range(1, 6):
             ws_ad.write(200, col, '', fmt_total)
-        ws_ad.write_formula(200, 6, '=SUM(G2:G200)', fmt_total_money)
+        ws_ad.write_formula(200, 6, '=ROUND(SUM(G2:G200),2)', fmt_total_money)
         ws_ad.write(200, 7, '', fmt_total)
         ws_ad.write(200, 8, '', fmt_total)
-        ws_ad.write_formula(200, 9, '=SUM(J2:J200)', fmt_total_money)
+        ws_ad.write_formula(200, 9, '=ROUND(SUM(J2:J200),2)', fmt_total_money)
         ws_ad.write(200, 10, '', fmt_total)
 
     output.seek(0)
     return output.getvalue()
-
-
-st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
+render_marca_topo()
 st.title("Reajustes Múltiplos")
 
 contexto_contratual = _render_contexto_contratual_anterior()
@@ -611,7 +771,7 @@ for i in range(1, int(qtd_ciclos) + 1):
                         max_value=100.0,
                         value=0.0,
                         step=0.01,
-                        format="%.4f",
+                        format="%.2f",
                         key=f"percentual_negocial_c{i}",
                     ) / 100
                     data_inicio_efeito_negocial = st.date_input(
@@ -748,8 +908,10 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
         if res_c:
             fator_indice = 1 + res_c['var']
             percentual_indice = float(res_c['var'])
-            percentual_aplicado = percentual_indice
+            ciclo_negativo = percentual_indice < 0
+            percentual_aplicado = 0.0 if ciclo_negativo else percentual_indice
             situacao_aplicada = sit_emoji
+            tratamento_negativo = "Ciclo negativo - percentual aplicado 0,00% no acumulado" if ciclo_negativo else ""
             if situacao_limpa == "PRECLUSO" and superacao_negocial:
                 percentual_aplicado = percentual_negocial
                 fator_ciclo = 1 + percentual_aplicado
@@ -757,6 +919,12 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             elif situacao_limpa == "PRECLUSO":
                 percentual_aplicado = 0.0
                 fator_ciclo = 1.0
+                if ciclo_negativo:
+                    situacao_aplicada = f"{sit_emoji} | 🔻 CICLO NEGATIVO (APLICADO 0,00%)"
+            elif ciclo_negativo:
+                percentual_aplicado = 0.0
+                fator_ciclo = 1.0
+                situacao_aplicada = f"{sit_emoji} | 🔻 CICLO NEGATIVO (APLICADO 0,00%)"
             else:
                 fator_ciclo = fator_indice
             fator_acum *= fator_ciclo
@@ -770,6 +938,12 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
                 st.caption(f"Ciclo admitido por negociação entre as partes. Percentual aplicado: {v_aplicado_fmt}.")
             elif situacao_limpa == "PRECLUSO":
                 st.caption("Variação apurada apenas para registro, sem composição no acumulado final.")
+            elif ciclo_negativo:
+                st.warning(
+                    "A variação final apurada para este ciclo foi negativa. Para fins de composição acumulada, "
+                    "o percentual aplicado neste ciclo será tratado como 0,00%. Meses negativos isolados dentro "
+                    "do ciclo não são zerados; a regra somente se aplica quando o resultado final do ciclo é negativo."
+                )
 
             with st.expander(f"🔍 Memória de Cálculo Detalhada - Ciclo {i}"):
                 st.write(f"**Metodologia:** {res_c['metodo']}")
@@ -801,10 +975,13 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
                 "Janela": janela_ciclo,
                 "JanelaAdm": janela_adm,
                 "Início financeiro": inicio_efeito_financeiro.strftime('%d/%m/%Y') if inicio_efeito_financeiro else "",
+                "Ciclo negativo": "Sim" if ciclo_negativo else "Não",
             })
         else:
             percentual_indice = 0.0
             percentual_aplicado = 0.0
+            ciclo_negativo = False
+            tratamento_negativo = ""
             situacao_aplicada = sit_emoji
             st.warning(
                 "Não há dados disponíveis para o índice selecionado no intervalo de apuração deste ciclo. "
@@ -825,6 +1002,8 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             'percentual_aplicado': float(percentual_aplicado),
             'justificativa_negocial': justificativa_negocial.strip(),
             'referencia_documental': referencia_documental.strip(),
+            'ciclo_negativo': bool(ciclo_negativo),
+            'tratamento_ciclo_negativo': tratamento_negativo,
             'variacao': float(percentual_aplicado),
             'variacao_formatada': f"{percentual_aplicado * 100:,.2f}%".replace('.', ','),
             'fator': float(fator_ciclo),

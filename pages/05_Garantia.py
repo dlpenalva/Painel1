@@ -20,13 +20,72 @@ except Exception:
 st.set_page_config(page_title="Análises de Reajustes - Garantia", layout="wide")
 
 
+def render_marca_topo():
+    """Identidade visual própria do sistema, sem uso de logomarca institucional."""
+    st.markdown(
+        """
+        <style>
+        .tlb-cl8us-brand {
+            display: inline-flex;
+            flex-direction: column;
+            gap: 1px;
+            margin: 0 0 0.70rem 0;
+            padding: 0;
+        }
+        .tlb-cl8us-brand-main {
+            display: flex;
+            align-items: baseline;
+            gap: 0.45rem;
+            line-height: 1.05;
+            letter-spacing: -0.02em;
+        }
+        .tlb-cl8us-tlb {
+            color: #123B63;
+            font-size: 1.38rem;
+            font-weight: 750;
+            font-family: "Inter", "Segoe UI", Arial, sans-serif;
+        }
+        .tlb-cl8us-dot {
+            color: #C0842B;
+            font-size: 1.18rem;
+            font-weight: 700;
+        }
+        .tlb-cl8us-name {
+            color: #0F172A;
+            font-size: 1.42rem;
+            font-weight: 800;
+            font-family: "Consolas", "SFMono-Regular", "Cascadia Mono", "Courier New", monospace;
+            letter-spacing: -0.04em;
+        }
+        .tlb-cl8us-subtitle {
+            color: #64748B;
+            font-size: 0.74rem;
+            font-weight: 500;
+            font-family: "Inter", "Segoe UI", Arial, sans-serif;
+            margin-top: 0.12rem;
+            letter-spacing: 0.01em;
+        }
+        </style>
+        <div class="tlb-cl8us-brand" aria-label="TLB cl8us - apoio à gestão de contratos">
+            <div class="tlb-cl8us-brand-main">
+                <span class="tlb-cl8us-tlb">TLB</span>
+                <span class="tlb-cl8us-dot">·</span>
+                <span class="tlb-cl8us-name">cl8us</span>
+            </div>
+            <div class="tlb-cl8us-subtitle">apoio à gestão de contratos</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 # ============================================================
 # Utilitários
 # ============================================================
 
 def moeda(valor, com_prefixo=True):
     try:
-        valor = float(valor)
+        valor = round(float(valor), 2)
     except Exception:
         valor = 0.0
     texto = f"{valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -59,6 +118,43 @@ def numero_para_input(valor):
 
 def data_hora_brasilia():
     return datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
+
+
+def obter_contexto_valor_global(resultado_valor_global):
+    """Extrai, de forma defensiva, os principais valores vindos do módulo Valor Global."""
+    resultado_valor_global = resultado_valor_global or {}
+    contexto = resultado_valor_global.get("contexto_contratual_anterior", {}) or {}
+
+    valor_original = numero_para_input(resultado_valor_global.get("valor_original_contrato", 0.0))
+    valor_total_atualizado = numero_para_input(
+        resultado_valor_global.get(
+            "valor_atualizado_contrato",
+            resultado_valor_global.get("valor_global_contrato", resultado_valor_global.get("valor_global_estoque", 0.0)),
+        )
+    )
+    valor_formalizado_anterior = numero_para_input(
+        resultado_valor_global.get(
+            "valor_formalizado_anterior",
+            contexto.get("valor_formalizado_anterior", 0.0),
+        )
+    )
+    valor_executado_atualizado = numero_para_input(resultado_valor_global.get("valor_executado_atualizado", 0.0))
+    remanescente_atualizado = numero_para_input(resultado_valor_global.get("remanescente_reajustado", 0.0))
+    total_aditivos = numero_para_input(resultado_valor_global.get("total_aditivos_atualizados", 0.0))
+    quantidade_aditivos = int(numero_para_input(resultado_valor_global.get("quantidade_aditivos_total", 0)))
+    data_processamento = limpar_texto(resultado_valor_global.get("data_processamento", ""))
+
+    return {
+        "valor_original": valor_original,
+        "valor_total_atualizado": valor_total_atualizado,
+        "valor_formalizado_anterior": valor_formalizado_anterior,
+        "valor_executado_atualizado": valor_executado_atualizado,
+        "remanescente_atualizado": remanescente_atualizado,
+        "total_aditivos": total_aditivos,
+        "quantidade_aditivos": quantidade_aditivos,
+        "data_processamento": data_processamento,
+        "contexto": contexto,
+    }
 
 
 def limpar_texto(valor):
@@ -201,8 +297,16 @@ def montar_texto_instrucao(
     data_fim_vigencia,
     data_validade_minima,
     historico_usado=False,
+    origem_base="Manual",
+    valor_formalizado_anterior=0.0,
+    valor_executado_atualizado=0.0,
+    remanescente_atualizado=0.0,
 ):
     percentual = percentual_garantia * 100
+    valor_formalizado_anterior = numero_para_input(valor_formalizado_anterior)
+    valor_executado_atualizado = numero_para_input(valor_executado_atualizado)
+    remanescente_atualizado = numero_para_input(remanescente_atualizado)
+
     if endosso > 0:
         conclusao = (
             f"Considerando a garantia atualmente constituída no valor de {moeda(garantia_constituida)}, "
@@ -220,9 +324,32 @@ def montar_texto_instrucao(
         "Para fins de conferência, o campo “Garantia atualmente constituída” deve refletir o valor total da garantia já apresentada e aceita, incluindo a garantia original e eventuais endossos anteriores decorrentes de reajustes, repactuações, acréscimos ou outros aditivos contratuais."
     )
 
+    texto_base = (
+        "O valor-base utilizado para a nova garantia foi importado do módulo Valor Global como Valor Total Atualizado do Contrato. "
+        "Esse valor corresponde à soma da execução atualizada por ciclo com o saldo remanescente atualizado, sem soma autônoma dos aditivos/supressões, os quais permanecem como eventos de governança e rastreabilidade."
+        if origem_base == "Valor Global" else
+        "O valor-base utilizado para a nova garantia foi informado manualmente neste módulo."
+    )
+
+    detalhe_composicao = ""
+    if origem_base == "Valor Global" and (valor_executado_atualizado > 0 or remanescente_atualizado > 0):
+        detalhe_composicao = (
+            f" Para conferência, a composição importada indica execução atualizada por ciclo de {moeda(valor_executado_atualizado)} "
+            f"e saldo remanescente atualizado de {moeda(remanescente_atualizado)}."
+        )
+
+    referencia_formalizada = ""
+    if valor_formalizado_anterior > 0 and abs(valor_formalizado_anterior - valor_atualizado) > 0.01:
+        referencia_formalizada = (
+            f" Como referência histórica, o valor contratual formalizado antes desta análise consta como {moeda(valor_formalizado_anterior)}. "
+            "Esse valor é apresentado para memória administrativa e não substitui o valor-base selecionado para o cálculo da garantia nesta tela."
+        )
+
     return f"""Considerando o valor original do contrato de {moeda(valor_original)}, a garantia contratual original correspondente a {percentual:.2f}% equivale a {moeda(garantia_original)}.
 
-Após a atualização do valor contratual para {moeda(valor_atualizado)}, a garantia contratual exigida, calculada pelo mesmo percentual de {percentual:.2f}%, passa a ser de {moeda(garantia_exigida)}.
+{texto_base}{detalhe_composicao}{referencia_formalizada}
+
+Após a definição do valor-base para garantia em {moeda(valor_atualizado)}, a garantia contratual exigida, calculada pelo mesmo percentual de {percentual:.2f}%, passa a ser de {moeda(garantia_exigida)}.
 
 {conclusao}
 
@@ -294,8 +421,8 @@ def gerar_pdf_garantia(dados, texto_instrucao, historico_df=None):
     )
 
     elementos = []
-    elementos.append(Paragraph("TELEBRAS - Análise de Garantia Contratual", titulo))
-    elementos.append(Paragraph("Relatório Executivo - GCC", subtitulo))
+    elementos.append(Paragraph("Garantia Contratual", titulo))
+    elementos.append(Paragraph("Monitoramento", subtitulo))
     elementos.append(Paragraph(f"Gerado em: {data_hora_brasilia()}", subtitulo))
 
     elementos.append(Paragraph("1. Memória de cálculo", h2))
@@ -304,7 +431,9 @@ def gerar_pdf_garantia(dados, texto_instrucao, historico_df=None):
         ["Valor original do contrato", moeda(dados["valor_original"])],
         ["Percentual da garantia", f"{dados['percentual_garantia_pct']:.2f}%".replace(".", ",")],
         ["Garantia original", moeda(dados["garantia_original"])],
-        ["Valor atualizado do contrato", moeda(dados["valor_atualizado"])],
+        ["Valor-base da garantia", moeda(dados["valor_atualizado"])],
+        ["Origem do valor-base", dados.get("origem_base", "Manual")],
+        ["Valor formalizado anterior", moeda(dados.get("valor_formalizado_anterior", 0.0)) if dados.get("valor_formalizado_anterior", 0.0) else "Não informado"],
         ["Nova garantia exigida", moeda(dados["garantia_exigida"])],
         ["Garantia atualmente constituída", moeda(dados["garantia_constituida"])],
         ["Endosso necessário", moeda(dados["endosso_necessario"])],
@@ -391,8 +520,7 @@ def gerar_pdf_garantia(dados, texto_instrucao, historico_df=None):
 # ============================================================
 
 css()
-
-st.image("https://www.telebras.com.br/wp-content/uploads/2019/06/Telebras_Logo_AzulProfundo.png", width=250)
+render_marca_topo()
 st.title("Garantia Contratual")
 st.write(
     "Este módulo calcula a garantia contratual original, a garantia exigida após atualização do valor do contrato "
@@ -400,29 +528,47 @@ st.write(
 )
 
 resultado_valor_global = st.session_state.get("resultado_valor_global", {}) or {}
+ctx_valor_global = obter_contexto_valor_global(resultado_valor_global)
 
-valor_original_padrao = numero_para_input(resultado_valor_global.get("valor_original_contrato", 0.0))
-valor_atualizado_padrao = numero_para_input(
-    resultado_valor_global.get(
-        "valor_atualizado_contrato",
-        resultado_valor_global.get("valor_global_contrato", resultado_valor_global.get("valor_global_estoque", 0.0)),
-    )
-)
+valor_original_padrao = ctx_valor_global["valor_original"]
+valor_atualizado_padrao = ctx_valor_global["valor_total_atualizado"]
+valor_formalizado_anterior_padrao = ctx_valor_global["valor_formalizado_anterior"]
+valor_executado_atualizado_padrao = ctx_valor_global["valor_executado_atualizado"]
+remanescente_atualizado_padrao = ctx_valor_global["remanescente_atualizado"]
 
 with st.expander("Contexto importado do Valor Global", expanded=True):
     usar_valor_global = False
     if resultado_valor_global:
-        col_a, col_b = st.columns(2)
+        col_a, col_b, col_c = st.columns(3)
         with col_a:
             st.metric("Valor original identificado", moeda(valor_original_padrao))
         with col_b:
-            st.metric("Valor atualizado após esta análise", moeda(valor_atualizado_padrao))
+            st.metric("Valor Total Atualizado do Contrato", moeda(valor_atualizado_padrao))
+        with col_c:
+            st.metric("Valor formalizado anterior", moeda(valor_formalizado_anterior_padrao) if valor_formalizado_anterior_padrao > 0 else "Não informado")
+
+        if valor_executado_atualizado_padrao > 0 or remanescente_atualizado_padrao > 0:
+            composicao_html = (
+                "Composição importada do Valor Global: execução atualizada por ciclo "
+                f"{moeda(valor_executado_atualizado_padrao).replace('$', '&#36;')} + saldo remanescente atualizado "
+                f"{moeda(remanescente_atualizado_padrao).replace('$', '&#36;')}."
+            )
+            st.markdown(
+                f"<div style='color:#6B7280; font-size:0.92rem; margin-top:4px; margin-bottom:12px;'>{composicao_html}</div>",
+                unsafe_allow_html=True,
+            )
+        if ctx_valor_global.get("quantidade_aditivos", 0):
+            st.caption(
+                f"Aditivos registrados no Valor Global: {ctx_valor_global.get('quantidade_aditivos', 0)}. "
+                "Eles permanecem como eventos de governança/rastreabilidade e não são somados autonomamente ao Valor Total Atualizado."
+            )
+
         usar_valor_global = st.checkbox(
-            "Usar o valor atualizado após esta análise como base da garantia",
+            "Usar o Valor Total Atualizado do Contrato como base da garantia",
             value=True,
             help=(
-                "Quando marcado, o módulo Garantia usa automaticamente o valor consolidado no módulo Valor Global. "
-                "Desmarque apenas se precisar simular ou informar valor diverso."
+                "Quando marcado, o módulo Garantia usa o Valor Total Atualizado do Contrato consolidado no módulo Valor Global. "
+                "Esse valor corresponde à execução atualizada por ciclo + saldo remanescente atualizado."
             ),
         )
         st.caption(
@@ -458,7 +604,7 @@ with col2:
 
 with col3:
     valor_atualizado_txt = st.text_input(
-        "Valor atualizado do contrato",
+        "Valor-base para cálculo da garantia",
         value=moeda(valor_atualizado_padrao, com_prefixo=False),
         help="Use ponto para milhares e vírgula para centavos. Ex.: 91.609.000,27",
         disabled=bool(resultado_valor_global and usar_valor_global),
@@ -466,12 +612,12 @@ with col3:
     valor_atualizado = valor_atualizado_padrao if (resultado_valor_global and usar_valor_global) else parse_moeda_br(valor_atualizado_txt)
     st.markdown(f"<div class='valor-formatado-apoio'>{moeda(valor_atualizado)}</div>", unsafe_allow_html=True)
     if resultado_valor_global and usar_valor_global:
-        st.caption("Valor importado automaticamente do módulo Valor Global.")
+        st.caption("Valor Total Atualizado importado automaticamente do módulo Valor Global.")
 
 percentual_garantia = percentual_garantia_pct / 100
 
-garantia_original = valor_original * percentual_garantia
-garantia_exigida = valor_atualizado * percentual_garantia
+garantia_original = round(valor_original * percentual_garantia, 2)
+garantia_exigida = round(valor_atualizado * percentual_garantia, 2)
 
 default_garantia_constituida = garantia_original
 
@@ -623,12 +769,13 @@ if usar_historico:
             st.warning("Histórico selecionado, mas sem lançamentos válidos. O sistema usará o valor manual informado acima.")
 
 historico_usado = usar_historico and not historico_limpo.empty
-garantia_constituida = (
-    float(historico_limpo["Garantia apresentada/endossada"].sum()) if historico_usado else garantia_constituida_manual
+garantia_constituida = round(
+    float(historico_limpo["Garantia apresentada/endossada"].sum()) if historico_usado else garantia_constituida_manual,
+    2,
 )
 
-endosso_necessario = max(garantia_exigida - garantia_constituida, 0.0)
-excesso_garantia = max(garantia_constituida - garantia_exigida, 0.0)
+endosso_necessario = round(max(garantia_exigida - garantia_constituida, 0.0), 2)
+excesso_garantia = round(max(garantia_constituida - garantia_exigida, 0.0), 2)
 
 st.divider()
 st.subheader("Resultado")
@@ -637,7 +784,7 @@ colr1, colr2, colr3 = st.columns(3)
 with colr1:
     card("Garantia original", moeda(garantia_original), f"{percentual_garantia_pct:.2f}% sobre o valor original")
 with colr2:
-    card("Nova garantia exigida", moeda(garantia_exigida), f"{percentual_garantia_pct:.2f}% sobre o valor atualizado")
+    card("Nova garantia exigida", moeda(garantia_exigida), f"{percentual_garantia_pct:.2f}% sobre o valor-base")
 with colr3:
     card(
         "Endosso necessário",
@@ -667,7 +814,11 @@ memoria = [
     {"Indicador": "Valor original do contrato", "Valor": moeda(valor_original)},
     {"Indicador": "Percentual da garantia", "Valor": f"{percentual_garantia_pct:.2f}%".replace(".", ",")},
     {"Indicador": "Garantia original", "Valor": moeda(garantia_original)},
-    {"Indicador": "Valor atualizado do contrato", "Valor": moeda(valor_atualizado)},
+    {"Indicador": "Valor-base da garantia", "Valor": moeda(valor_atualizado)},
+    {"Indicador": "Origem do valor-base", "Valor": "Valor Global" if (resultado_valor_global and usar_valor_global) else "Manual"},
+    {"Indicador": "Valor formalizado anterior", "Valor": moeda(valor_formalizado_anterior_padrao) if valor_formalizado_anterior_padrao > 0 else "Não informado"},
+    {"Indicador": "Execução atualizada por ciclo", "Valor": moeda(valor_executado_atualizado_padrao) if (resultado_valor_global and usar_valor_global) else "Não importado"},
+    {"Indicador": "Saldo remanescente atualizado", "Valor": moeda(remanescente_atualizado_padrao) if (resultado_valor_global and usar_valor_global) else "Não importado"},
     {"Indicador": "Nova garantia exigida", "Valor": moeda(garantia_exigida)},
     {"Indicador": "Garantia atualmente constituída", "Valor": moeda(garantia_constituida)},
     {"Indicador": "Origem da garantia constituída", "Valor": "Histórico detalhado" if historico_usado else "Campo manual"},
@@ -690,6 +841,10 @@ texto_instrucao = montar_texto_instrucao(
     data_fim_vigencia,
     data_validade_minima,
     historico_usado=historico_usado,
+    origem_base="Valor Global" if (resultado_valor_global and usar_valor_global) else "Manual",
+    valor_formalizado_anterior=valor_formalizado_anterior_padrao,
+    valor_executado_atualizado=valor_executado_atualizado_padrao if (resultado_valor_global and usar_valor_global) else 0.0,
+    remanescente_atualizado=remanescente_atualizado_padrao if (resultado_valor_global and usar_valor_global) else 0.0,
 )
 
 st.text_area(
@@ -704,6 +859,8 @@ dados_pdf = {
     "percentual_garantia_pct": percentual_garantia_pct,
     "garantia_original": garantia_original,
     "valor_atualizado": valor_atualizado,
+    "origem_base": "Valor Global" if (resultado_valor_global and usar_valor_global) else "Manual",
+    "valor_formalizado_anterior": valor_formalizado_anterior_padrao,
     "garantia_exigida": garantia_exigida,
     "garantia_constituida": garantia_constituida,
     "endosso_necessario": endosso_necessario,
@@ -714,12 +871,16 @@ dados_pdf = {
 st.session_state["resultado_garantia"] = {
     "valor_original": valor_original,
     "valor_atualizado_base": valor_atualizado,
+    "valor_total_atualizado_contrato": valor_atualizado,
+    "valor_formalizado_anterior": valor_formalizado_anterior_padrao,
+    "valor_executado_atualizado": valor_executado_atualizado_padrao if (resultado_valor_global and usar_valor_global) else 0.0,
+    "remanescente_atualizado": remanescente_atualizado_padrao if (resultado_valor_global and usar_valor_global) else 0.0,
     "percentual_garantia": percentual_garantia,
     "garantia_original": garantia_original,
     "garantia_exigida": garantia_exigida,
     "garantia_constituida": garantia_constituida,
     "endosso_necessario": endosso_necessario,
-    "origem_valor_atualizado": "Valor Global" if (resultado_valor_global and usar_valor_global) else "Manual",
+    "origem_valor_base": "Valor Global" if (resultado_valor_global and usar_valor_global) else "Manual",
     "data_fim_vigencia": data_fim_vigencia,
     "data_validade_minima": data_validade_minima,
 }
@@ -730,6 +891,7 @@ if REPORTLAB_OK:
         texto_instrucao,
         historico_df=historico_limpo if historico_usado else None,
     )
+    st.session_state["arquivo_garantia_pdf"] = pdf_bytes
     st.download_button(
         "Baixar Relatório de Garantia em PDF",
         data=pdf_bytes,

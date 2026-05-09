@@ -1,0 +1,22 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+.streamlit/secrets.toml
+
+*.xlsx
+*.xls
+*.pdf
+*.docx
+*.zip
+
+# CSVs geralmente ficam fora do repositório, exceto o IST local usado pelo sistema
+*.csv
+!ist.csv
+
+*_BACKUP*
+*_backup*
+*_restore*
+08.clausula_BACKUPS/
