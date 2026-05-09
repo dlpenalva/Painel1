@@ -76,5 +76,19 @@ if (pages_dir / "08_Avaliacao_Aditivos.py").exists():
 if grupo_gestao:
     nav["🛡️ Gestão Contratual"] = grupo_gestao
 
+grupo_instrucao = []
+if (pages_dir / "09_Infos_Previas.py").exists():
+    grupo_instrucao.append(
+        st.Page("pages/09_Infos_Previas.py", title="Infos Prévias")
+    )
+
+if (pages_dir / "10_Saneador.py").exists():
+    grupo_instrucao.append(
+        st.Page("pages/10_Saneador.py", title="Saneador")
+    )
+
+if grupo_instrucao:
+    nav["🧾 Instrução Processual"] = grupo_instrucao
+
 pg = st.navigation(nav)
 pg.run()

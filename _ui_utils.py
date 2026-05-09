@@ -37,6 +37,12 @@ def render_marca_topo():
             margin-top: 0.12rem;
             letter-spacing: 0.01em;
         }
+        .tlb-cl8us-separator {
+            width: 172px;
+            border-bottom: 2px solid #1F4E79;
+            opacity: 0.78;
+            margin-top: 0.42rem;
+        }
         </style>
         <div class="tlb-cl8us-brand" aria-label="TLB cl8us - apoio à gestão de contratos">
             <div class="tlb-cl8us-brand-main">
@@ -45,6 +51,7 @@ def render_marca_topo():
                 <span class="tlb-cl8us-name">cl8us</span>
             </div>
             <div class="tlb-cl8us-subtitle">apoio à gestão de contratos</div>
+            <div class="tlb-cl8us-separator"></div>
         </div>
         """,
         unsafe_allow_html=True,

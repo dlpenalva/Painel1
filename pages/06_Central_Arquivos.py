@@ -5,93 +5,7 @@ from io import BytesIO
 st.set_page_config(page_title="TLB · cl8us - Central de Arquivos", layout="wide")
 
 
-def render_marca_topo():
-    """Identidade visual própria do sistema, sem uso de logomarca institucional."""
-    st.markdown(
-        """
-        <style>
-        .tlb-cl8us-brand {
-            display: inline-flex;
-            flex-direction: column;
-            gap: 1px;
-            margin: 0 0 0.70rem 0;
-            padding: 0;
-        }
-        .tlb-cl8us-brand-main {
-            display: flex;
-            align-items: baseline;
-            gap: 0.45rem;
-            line-height: 1.05;
-            letter-spacing: -0.02em;
-        }
-        .tlb-cl8us-tlb { color: #123B63; font-size: 1.38rem; font-weight: 750; font-family: "Inter", "Segoe UI", Arial, sans-serif; }
-        .tlb-cl8us-dot { color: #C0842B; font-size: 1.18rem; font-weight: 700; }
-        .tlb-cl8us-name {
-            color: #0F172A;
-            font-size: 1.42rem;
-            font-weight: 800;
-            font-family: "Consolas", "SFMono-Regular", "Cascadia Mono", "Courier New", monospace;
-            letter-spacing: -0.04em;
-        }
-        .tlb-cl8us-subtitle {
-            color: #64748B;
-            font-size: 0.74rem;
-            font-weight: 500;
-            font-family: "Inter", "Segoe UI", Arial, sans-serif;
-            margin-top: 0.12rem;
-            letter-spacing: 0.01em;
-        }
-        .central-row {
-            border: 1px solid #E5EAF0;
-            border-radius: 12px;
-            padding: 0.70rem 0.85rem;
-            margin-bottom: 0.55rem;
-            background: #FFFFFF;
-        }
-        .central-header {
-            background: #F8FAFC;
-            border: 1px solid #E5EAF0;
-            border-radius: 12px;
-            padding: 0.62rem 0.85rem;
-            margin-bottom: 0.55rem;
-            font-weight: 700;
-            color: #0F172A;
-        }
-        .central-muted {
-            color: #64748B;
-            font-size: 0.86rem;
-        }
-        .central-status-ok {
-            display: inline-block;
-            padding: 0.18rem 0.50rem;
-            border-radius: 999px;
-            background: #DBEAFE;
-            color: #1E3A8A;
-            font-size: 0.80rem;
-            font-weight: 700;
-        }
-        .central-status-pendente {
-            display: inline-block;
-            padding: 0.18rem 0.50rem;
-            border-radius: 999px;
-            background: #FFF2CC;
-            color: #7C5700;
-            font-size: 0.80rem;
-            font-weight: 700;
-        }
-        </style>
-        <div class="tlb-cl8us-brand" aria-label="TLB cl8us - apoio à gestão de contratos">
-            <div class="tlb-cl8us-brand-main">
-                <span class="tlb-cl8us-tlb">TLB</span>
-                <span class="tlb-cl8us-dot">·</span>
-                <span class="tlb-cl8us-name">cl8us</span>
-            </div>
-            <div class="tlb-cl8us-subtitle">apoio à gestão de contratos</div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
+from _ui_utils import render_marca_topo
 
 def gerar_excel_catalogo(df_catalogo, df_checklist=None):
     buffer = BytesIO()
@@ -258,6 +172,26 @@ itens = [
         "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "Avaliação de Aditivos",
         "pages/08_Avaliacao_Aditivos.py",
+    ),
+    item_arquivo(
+        "Infos Prévias",
+        "Levantamento mínimo de dados e documentos antes da análise.",
+        "XLSX",
+        "arquivo_infos_previas_xlsx",
+        "Infos_Previas_Instrucao_Processual.xlsx",
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "Infos Prévias",
+        "pages/09_Infos_Previas.py",
+    ),
+    item_arquivo(
+        "Saneador",
+        "Minuta narrativa integrada para conferência antes da assinatura.",
+        "DOCX",
+        "arquivo_saneador_docx",
+        "Saneador_Instrucao_Processual.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "Saneador",
+        "pages/10_Saneador.py",
     ),
 ]
 

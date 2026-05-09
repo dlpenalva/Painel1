@@ -23,16 +23,16 @@ def executar_motor(nome_arquivo: str):
 
 def _obter_fluxo_query():
     try:
-        fluxo = st.query_params.get("fluxo", "unico")
+        fluxo = st.query_params.get("fluxo", "")
         if isinstance(fluxo, list):
-            fluxo = fluxo[0] if fluxo else "unico"
+            fluxo = fluxo[0] if fluxo else ""
         return str(fluxo).lower()
     except Exception:
         try:
-            fluxo = st.experimental_get_query_params().get("fluxo", ["unico"])
-            return str(fluxo[0]).lower() if fluxo else "unico"
+            fluxo = st.experimental_get_query_params().get("fluxo", [""])
+            return str(fluxo[0]).lower() if fluxo else ""
         except Exception:
-            return "unico"
+            return ""
 
 
 def selecionar_fluxo(tipo):
@@ -95,9 +95,6 @@ st.markdown(
         border: 2.2px solid #D97706;
         box-shadow: 0 0 0 2px rgba(217, 119, 6, .10);
     }
-    .calc-card-muted {
-        opacity: .74;
-    }
     .calc-card-title {
         font-weight: 800;
         font-size: 1.16rem;
@@ -123,28 +120,29 @@ st.markdown(
 )
 
 fluxo_query = _obter_fluxo_query()
-if fluxo_query in ["multiplos", "múltiplos", "multiplo", "múltiplo"]:
-    selecionar_fluxo("Múltiplos ciclos")
-elif "calculadora_tipo_analise" not in st.session_state:
+if fluxo_query in ["unico", "único"]:
     selecionar_fluxo("Ciclo único")
+elif fluxo_query in ["multiplos", "múltiplos", "multiplo", "múltiplo"]:
+    selecionar_fluxo("Múltiplos ciclos")
 
-tipo = st.session_state.get("calculadora_tipo_analise", "Ciclo único")
+tipo = st.session_state.get("calculadora_tipo_analise")
+
+st.subheader("A análise envolve mais de um ciclo de reajuste?")
 
 unico_classes = "calc-card-link calc-card-unico"
 mult_classes = "calc-card-link calc-card-multiplos"
 
 if tipo == "Ciclo único":
     unico_classes += " calc-card-selected-unico"
-    mult_classes += " calc-card-muted"
     unico_status = "Selecionado"
-    mult_status = "&nbsp;"
 else:
-    mult_classes += " calc-card-selected-multiplos"
-    unico_classes += " calc-card-muted"
     unico_status = "&nbsp;"
-    mult_status = "Selecionado"
 
-st.subheader("A análise envolve mais de um ciclo de reajuste?")
+if tipo == "Múltiplos ciclos":
+    mult_classes += " calc-card-selected-multiplos"
+    mult_status = "Selecionado"
+else:
+    mult_status = "&nbsp;"
 
 st.markdown(
     f"""
@@ -169,6 +167,17 @@ st.markdown(
     """,
     unsafe_allow_html=True,
 )
+
+if not tipo:
+    st.markdown(
+        """
+        <div class="calc-note">
+            <b>Para iniciar:</b> selecione uma das opções acima. A área de cálculo só será carregada após essa escolha.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+    st.stop()
 
 st.markdown(
     """
