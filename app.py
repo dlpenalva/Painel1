@@ -29,11 +29,12 @@ st.markdown(
 
 pages_dir = Path("pages")
 
-p1 = st.Page("pages/01_Calculo_Simples.py", title="Reajuste Simples", default=True)
-p2 = st.Page("pages/02_Calculo_Represados.py", title="Reajustes Múltiplos")
+p0 = st.Page("pages/00_Calculadora_Reajustes.py", title="Calculadora de Reajustes", default=True)
 
+# S5.2: a Calculadora passa a ser a entrada única visível.
+# Os motores anteriores continuam preservados nos arquivos 01 e 02, executados internamente pela Calculadora.
 nav = {
-    "📌 Admissibilidade e Cálculo": [p1, p2]
+    "📌 Admissibilidade e Cálculo": [p0]
 }
 
 grupo_valor_global = []
