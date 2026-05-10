@@ -103,6 +103,16 @@ def percentual_para_decimal(valor):
     return n
 
 
+
+
+def percentual_duas_casas_decimal(valor):
+    """Saneia percentual para 2 casas percentuais efetivas antes do cálculo.
+
+    Ex.: 4,8834596935% (0.048834596935) -> 4,88% (0.0488).
+    Não altera a apuração do índice, o intervalo, a admissibilidade ou os ciclos.
+    """
+    return round(percentual_para_decimal(valor), 4)
+
 def fator_de_valor(valor, variacao=None):
     """Retorna fator. Aceita fator direto ou variação."""
     if valor is not None and not pd.isna(valor):
@@ -478,23 +488,19 @@ def dataframe_ciclos_de_session_state():
 
 
 def ler_ciclos(bytes_arquivo, xls):
-    # Para evitar confusão com ITENS_CICLOS, aceitar apenas aba CICLOS/CICLO por correspondência exata.
-    # Ajuste pontual: se o Arquivo de Coleta tiver aba CICLOS/CICLO válida,
-    # ela prevalece sobre ciclos antigos gravados na sessão.
-    mapa_exato = {normalizar_texto(s): s for s in xls.sheet_names}
-    aba = mapa_exato.get("ciclos") or mapa_exato.get("ciclo")
-    if aba:
-        df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Ciclo"])
-        ciclos_arquivo = padronizar_ciclos(df)
-        if not ciclos_arquivo.empty:
-            return ciclos_arquivo, "arquivo"
-
-    # Fallback: dados da sessão, apenas se o arquivo não trouxer aba CICLOS/CICLO válida.
+    # Prioridade: dados da sessão. Caso não existam, usa Excel.
     df_session = dataframe_ciclos_de_session_state()
     if not df_session.empty:
         return padronizar_ciclos(df_session), "session_state"
 
-    return pd.DataFrame(), "indisponível"
+    # Para evitar confusão com ITENS_CICLOS, aceitar apenas aba CICLOS/CICLO por correspondência exata.
+    mapa_exato = {normalizar_texto(s): s for s in xls.sheet_names}
+    aba = mapa_exato.get("ciclos") or mapa_exato.get("ciclo")
+    if not aba:
+        return pd.DataFrame(), "indisponível"
+
+    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Ciclo"])
+    return padronizar_ciclos(df), "arquivo"
 
 
 def padronizar_ciclos(df):
@@ -537,8 +543,13 @@ def padronizar_ciclos(df):
         superacao_negocial = normalizar_texto(superacao_txt) in ["sim", "s", "true", "1", "yes"] or "acordo" in normalizar_texto(row.get(col_situacao_aplicada, "") if col_situacao_aplicada else "")
         situacao_aplicada = row.get(col_situacao_aplicada, situacao) if col_situacao_aplicada else situacao
         tratamento = row.get(col_tratamento, "A apurar") if col_tratamento else ("Precluso" if "PRECLUS" in str(situacao_automatica).upper() and not superacao_negocial else "A apurar")
-        variacao_indice = percentual_para_decimal(row.get(col_percentual_indice, row.get(col_variacao, 0))) if (col_percentual_indice or col_variacao) else 0.0
-        variacao = percentual_para_decimal(row.get(col_percentual_aplicado, row.get(col_variacao, 0))) if (col_percentual_aplicado or col_variacao) else 0.0
+        # A apuração do índice permanece intacta. Para o cálculo operacional do
+        # Valor Global, o percentual aplicado é saneado para 2 casas percentuais
+        # efetivas, de modo que o sistema use o mesmo percentual exibido/documentado
+        # no Arquivo de Coleta. Ex.: 4,8834596935% -> 4,88%.
+        variacao_indice = percentual_duas_casas_decimal(row.get(col_percentual_indice, row.get(col_variacao, 0))) if (col_percentual_indice or col_variacao) else 0.0
+        variacao = percentual_duas_casas_decimal(row.get(col_percentual_aplicado, row.get(col_variacao, 0))) if (col_percentual_aplicado or col_variacao) else 0.0
+        percentual_aplicado_informado = bool(col_percentual_aplicado or col_variacao)
         ciclo_negativo_txt = row.get(col_ciclo_negativo, "") if col_ciclo_negativo else ""
         ciclo_negativo = normalizar_texto(ciclo_negativo_txt) in ["sim", "s", "true", "1", "yes"] or variacao_indice < 0 or (col_percentual_indice is None and variacao < 0)
         tratamento_negativo = row.get(col_tratamento_negativo, "") if col_tratamento_negativo else ""
@@ -548,11 +559,18 @@ def padronizar_ciclos(df):
                 tratamento_negativo = "Ciclo negativo - percentual aplicado 0,00% no acumulado"
             if "ciclo negativo" not in normalizar_texto(str(situacao_aplicada)):
                 situacao_aplicada = f"{situacao_aplicada} | CICLO NEGATIVO (APLICADO 0,00%)"
-        fator = fator_de_valor(row.get(col_fator, None) if col_fator else None, variacao=variacao)
+        if percentual_aplicado_informado:
+            fator = round(1.0 + variacao, 10)
+        else:
+            fator = fator_de_valor(row.get(col_fator, None) if col_fator else None, variacao=variacao)
         if ciclo_negativo and not superacao_negocial:
             fator = 1.0
 
-        if col_fator_acum:
+        # Quando há percentual aplicado/variação no Arquivo de Coleta, o fator
+        # acumulado é recalculado a partir do percentual saneado, evitando uso de
+        # precisão oculta gravada em colunas de fator. Se a planilha trouxer apenas
+        # fator, preserva-se o comportamento anterior.
+        if col_fator_acum and not percentual_aplicado_informado:
             fator_acum = fator_de_valor(row.get(col_fator_acum, None), variacao=None)
             if fator_acum <= 0:
                 fator_acum = fator_acumulado_calculado * fator

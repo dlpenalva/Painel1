@@ -216,6 +216,107 @@ def _render_contexto_contratual_anterior():
             )
     return st.session_state.get('contexto_contratual_anterior', {})
 
+
+
+# ============================================================
+# Saneamento operacional de percentuais para o Arquivo de Coleta
+# ============================================================
+
+def _percentual_decimal_seguro(valor):
+    """Converte percentual/fração para decimal, sem alterar a apuração do índice.
+
+    Entrada esperada nos motores: decimal (0.048834...). A função também aceita
+    textos percentuais por segurança, mas não muda intervalos, admissibilidade ou
+    metodologia do IST/IPCA/IGP-M.
+    """
+    if valor is None:
+        return 0.0
+    try:
+        if pd.isna(valor):
+            return 0.0
+    except Exception:
+        pass
+    if isinstance(valor, str):
+        texto = valor.strip()
+        if not texto or texto.lower() in ["nan", "none", "null"]:
+            return 0.0
+        tem_percentual = "%" in texto
+        texto = texto.replace("%", "").replace("R$", "").replace("\xa0", "").replace(" ", "")
+        if "," in texto:
+            texto = texto.replace(".", "").replace(",", ".")
+        try:
+            numero = float(texto)
+        except Exception:
+            return 0.0
+        if tem_percentual or abs(numero) > 1:
+            return numero / 100.0
+        return numero
+    try:
+        numero = float(valor)
+    except Exception:
+        return 0.0
+    if abs(numero) > 1:
+        return numero / 100.0
+    return numero
+
+
+def _percentual_duas_casas_decimal(valor):
+    """Saneia o percentual aplicado para 2 casas percentuais efetivas.
+
+    Ex.: 4,8834596935% (0.048834596935) -> 4,88% (0.0488).
+    """
+    return round(_percentual_decimal_seguro(valor), 4)
+
+
+def _ciclo_sem_acumulacao_para_coleta(ciclo, tratamento, situacao):
+    """Identifica ciclos que não devem acumular fator operacional no arquivo de coleta."""
+    texto = f"{tratamento} {situacao} {ciclo.get('situacao_automatica', '')}".upper()
+    superacao = bool(ciclo.get('superacao_negocial', False))
+    if superacao:
+        return False
+    if "PRECLUS" in texto:
+        return True
+    if "ADIANT" in texto and "RESSALVA" not in texto:
+        return True
+    return False
+
+
+def _sanear_ciclos_para_arquivo_coleta(ciclos):
+    """Prepara ciclos para gravação no Arquivo de Coleta.
+
+    A apuração original do índice, o intervalo, a admissibilidade e as datas não
+    são alterados. Apenas o percentual aplicado oficial é gravado com 2 casas
+    percentuais efetivas, e os fatores do XLS passam a ser calculados a partir
+    desse percentual saneado.
+    """
+    ciclos_saneados = []
+    fator_acumulado = 1.0
+
+    for ciclo in ciclos or []:
+        ciclo_s = dict(ciclo)
+        situacao = str(ciclo_s.get('situacao', ''))
+        tratamento = 'Precluso' if 'PRECLUSO' in situacao.upper() else str(ciclo_s.get('tratamento_financeiro', 'A apurar') or 'A apurar')
+
+        percentual_indice = _percentual_duas_casas_decimal(ciclo_s.get('percentual_indice', ciclo_s.get('variacao', 0.0)))
+        percentual_aplicado = _percentual_duas_casas_decimal(ciclo_s.get('percentual_aplicado', ciclo_s.get('variacao', 0.0)))
+
+        if _ciclo_sem_acumulacao_para_coleta(ciclo_s, tratamento, situacao):
+            fator_ciclo = 1.0
+        else:
+            fator_ciclo = round(1.0 + percentual_aplicado, 10)
+            fator_acumulado = round(fator_acumulado * fator_ciclo, 12)
+
+        ciclo_s['variacao'] = percentual_aplicado
+        ciclo_s['percentual_indice'] = percentual_indice
+        ciclo_s['percentual_aplicado'] = percentual_aplicado
+        ciclo_s['fator'] = fator_ciclo
+        ciclo_s['fator_acumulado'] = fator_acumulado
+        ciclo_s['tratamento_financeiro'] = tratamento
+        ciclos_saneados.append(ciclo_s)
+
+    variacao_acumulada = round(fator_acumulado - 1.0, 12)
+    return ciclos_saneados, fator_acumulado, variacao_acumulada
+
 def gerar_arquivo_coleta_excel(dados_admissibilidade):
     """Gera o Arquivo de Coleta para as fases de Valor Global e Relatório.
 
@@ -225,7 +326,8 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
     - Aditivos por item/lançamento, com acréscimo ou supressão.
     """
     output = io.BytesIO()
-    ciclos = dados_admissibilidade.get('ciclos', [])
+    ciclos_originais = dados_admissibilidade.get('ciclos', [])
+    ciclos, fator_acumulado_saneado, variacao_acumulada_saneada = _sanear_ciclos_para_arquivo_coleta(ciclos_originais)
     data_geracao = datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')
 
     with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
@@ -269,8 +371,8 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             ['Índice utilizado', dados_admissibilidade.get('indice', '')],
             ['Data-base original', dados_admissibilidade.get('data_base_original', '')],
             ['Quantidade de ciclos', len(ciclos)],
-            ['Variação acumulada final', dados_admissibilidade.get('variacao_acumulada', 0.0)],
-            ['Fator acumulado total', dados_admissibilidade.get('fator_acumulado', dados_admissibilidade.get('fator', 1.0))],
+            ['Variação acumulada final', variacao_acumulada_saneada],
+            ['Fator acumulado total', fator_acumulado_saneado],
             ['Valor original do contrato (contexto)', dados_admissibilidade.get('contexto_contratual_anterior', {}).get('valor_original_contrato', '')],
             ['Valor contratual formalizado antes desta análise', dados_admissibilidade.get('contexto_contratual_anterior', {}).get('valor_formalizado_anterior', '')],
             ['Último ciclo já concedido/formalizado', dados_admissibilidade.get('contexto_contratual_anterior', {}).get('ultimo_ciclo_concedido', '')],
@@ -285,8 +387,8 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws.write(0, 0, 'Campo', fmt_header)
         ws.write(0, 1, 'Valor', fmt_header)
         ws.write_number(4, 1, len(ciclos), fmt_int_no_border)     # B5 Quantidade de ciclos
-        ws.write_number(5, 1, float(dados_admissibilidade.get('variacao_acumulada', 0.0)), fmt_percent_no_border)  # B6
-        ws.write_number(6, 1, float(dados_admissibilidade.get('fator_acumulado', dados_admissibilidade.get('fator', 1.0))), fmt_factor_no_border)  # B7
+        ws.write_number(5, 1, float(variacao_acumulada_saneada), fmt_percent_no_border)  # B6
+        ws.write_number(6, 1, float(fator_acumulado_saneado), fmt_factor_no_border)  # B7
         contexto_excel = dados_admissibilidade.get('contexto_contratual_anterior', {}) or {}
         valor_original_contexto_txt = str(contexto_excel.get('valor_original_contrato_texto') or '').strip()
         valor_formalizado_contexto_txt = str(contexto_excel.get('valor_formalizado_anterior_texto') or '').strip()
