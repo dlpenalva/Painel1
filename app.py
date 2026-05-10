@@ -1,5 +1,6 @@
 import streamlit as st
 from pathlib import Path
+from _ui_utils import render_versao_sidebar
 
 st.set_page_config(page_title="TLB · cl8us - Apoio à Gestão de Contratos", layout="wide")
 
@@ -41,7 +42,7 @@ grupo_valor_global = []
 
 if (pages_dir / "03_Valor_Global.py").exists():
     grupo_valor_global.append(
-        st.Page("pages/03_Valor_Global.py", title="Valor Global")
+        st.Page("pages/03_Valor_Global.py", title="Valores")
     )
 
 if (pages_dir / "04_Relatorio_Global.py").exists():
@@ -92,3 +93,4 @@ if grupo_instrucao:
 
 pg = st.navigation(nav)
 pg.run()
+render_versao_sidebar()
