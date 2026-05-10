@@ -478,19 +478,23 @@ def dataframe_ciclos_de_session_state():
 
 
 def ler_ciclos(bytes_arquivo, xls):
-    # Prioridade: dados da sessão. Caso não existam, usa Excel.
+    # Para evitar confusão com ITENS_CICLOS, aceitar apenas aba CICLOS/CICLO por correspondência exata.
+    # Ajuste pontual: se o Arquivo de Coleta tiver aba CICLOS/CICLO válida,
+    # ela prevalece sobre ciclos antigos gravados na sessão.
+    mapa_exato = {normalizar_texto(s): s for s in xls.sheet_names}
+    aba = mapa_exato.get("ciclos") or mapa_exato.get("ciclo")
+    if aba:
+        df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Ciclo"])
+        ciclos_arquivo = padronizar_ciclos(df)
+        if not ciclos_arquivo.empty:
+            return ciclos_arquivo, "arquivo"
+
+    # Fallback: dados da sessão, apenas se o arquivo não trouxer aba CICLOS/CICLO válida.
     df_session = dataframe_ciclos_de_session_state()
     if not df_session.empty:
         return padronizar_ciclos(df_session), "session_state"
 
-    # Para evitar confusão com ITENS_CICLOS, aceitar apenas aba CICLOS/CICLO por correspondência exata.
-    mapa_exato = {normalizar_texto(s): s for s in xls.sheet_names}
-    aba = mapa_exato.get("ciclos") or mapa_exato.get("ciclo")
-    if not aba:
-        return pd.DataFrame(), "indisponível"
-
-    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Ciclo"])
-    return padronizar_ciclos(df), "arquivo"
+    return pd.DataFrame(), "indisponível"
 
 
 def padronizar_ciclos(df):
