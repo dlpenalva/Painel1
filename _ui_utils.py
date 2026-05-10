@@ -43,6 +43,16 @@ def render_marca_topo():
             opacity: 0.78;
             margin-top: 0.42rem;
         }
+        .tlb-cl8us-aviso {
+            display: block;
+            margin-top: 0.42rem;
+            color: #A16207;
+            font-family: "Inter", "Segoe UI", Arial, sans-serif;
+            font-size: 0.74rem;
+            font-style: italic;
+            font-weight: 400;
+            line-height: 1.20;
+        }
         </style>
         <div class="tlb-cl8us-brand" aria-label="TLB cl8us - apoio à gestão de contratos">
             <div class="tlb-cl8us-brand-main">
@@ -52,10 +62,33 @@ def render_marca_topo():
             </div>
             <div class="tlb-cl8us-subtitle">apoio à gestão de contratos</div>
             <div class="tlb-cl8us-separator"></div>
+            <div class="tlb-cl8us-aviso">AVISO: use apenas para docs não sigilosos e de livre acesso.</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_versao_sidebar():
+    """Exibe versão discreta no rodapé do menu lateral."""
+    st.sidebar.markdown(
+        """
+        <style>
+        .tlb-cl8us-sidebar-version {
+            color: #94A3B8;
+            font-size: 0.72rem;
+            font-weight: 500;
+            margin-top: 1.25rem;
+            padding-top: 0.70rem;
+            border-top: 1px solid #E2E8F0;
+            line-height: 1.2;
+        }
+        </style>
+        <div class="tlb-cl8us-sidebar-version">v. 09/05/2026 · 23h</div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 
 def render_indice_contrato_selectbox(key=None, index=0, options=None):
     """Renderiza o campo de índice com destaque visual consistente entre os fluxos."""
@@ -96,4 +129,3 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
             st.caption(f"Índice selecionado para esta análise: **{selecionado}**.")
 
     return selecionado
-
