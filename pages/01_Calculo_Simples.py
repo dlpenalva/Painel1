@@ -449,6 +449,8 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         fmt_percent = workbook.add_format({'num_format': '0.00%', 'border': 1})
         fmt_factor = workbook.add_format({'num_format': '0.0000', 'border': 1})
         fmt_factor_auto = workbook.add_format({'num_format': '0.0000', 'bg_color': '#EDEDED', 'border': 1})
+        cores_ciclos_col_c = ['#EAF2F8', '#E2F0D9', '#FFF2CC', '#FCE4D6', '#E4DFEC', '#DDEBF7', '#F4CCCC', '#D9EAD3']
+        fmt_ciclos_col_c = [workbook.add_format({'bg_color': cor, 'border': 1}) for cor in cores_ciclos_col_c]
         fmt_no_border = workbook.add_format({})
         fmt_int_no_border = workbook.add_format({'num_format': '0'})
         fmt_percent_no_border = workbook.add_format({'num_format': '0.00%'})
@@ -566,9 +568,8 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             ciclo_nome = ciclo.get('ciclo', '')
             for competencia in _competencias_mensais(ciclo.get('financeiro_inicio', ''), ciclo.get('financeiro_fim', '')):
                 financeiro_rows.append({'Ciclo': ciclo_nome, 'Competência': competencia, 'Valor pago/faturado': ''})
-        while len(financeiro_rows) < 199:
+        if not financeiro_rows:
             financeiro_rows.append({'Ciclo': '', 'Competência': '', 'Valor pago/faturado': ''})
-        financeiro_rows = financeiro_rows[:199]
         df_fin = pd.DataFrame(financeiro_rows)
         df_fin.to_excel(writer, sheet_name='FINANCEIRO_MENSAL', index=False)
         ws = writer.sheets['FINANCEIRO_MENSAL']
@@ -577,11 +578,13 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws.set_column('C:C', 24)
         for col, title in enumerate(df_fin.columns):
             ws.write(0, col, title, fmt_header)
-        for row in range(1, 200):
+        for row in range(1, len(df_fin) + 1):
             ws.write(row, 2, '', fmt_input_money)
-        ws.write(200, 0, 'TOTAL', fmt_total)
-        ws.write(200, 1, '', fmt_total)
-        ws.write_formula(200, 2, '=ROUND(SUM(C2:C200),2)', fmt_total_money)
+        total_row_fin = len(df_fin) + 1
+        ultima_linha_fin_excel = len(df_fin) + 1
+        ws.write(total_row_fin, 0, 'TOTAL', fmt_total)
+        ws.write(total_row_fin, 1, '', fmt_total)
+        ws.write_formula(total_row_fin, 2, f'=ROUND(SUM(C2:C{ultima_linha_fin_excel}),2)', fmt_total_money)
 
         # ITENS_REMANESCENTES
         ws_it = workbook.add_worksheet('ITENS_REMANESCENTES')
@@ -670,6 +673,16 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws_ad.data_validation(1, 3, 199, 3, {'validate': 'list', 'source': ['Acréscimo', 'Decréscimo']})
         ws_ad.data_validation(1, 7, 199, 7, {'validate': 'list', 'source': ['Sim', 'Não']})
         ws_ad.data_validation(1, 10, 199, 10, {'validate': 'list', 'source': ['Computar nesta análise', 'Informativo - já incluído no valor formalizado']})
+        # Destaque visual discreto por ciclo somente na coluna C (Ciclo/Marco).
+        ciclos_para_cor = ['C0'] + [str(c.get('ciclo', '')).strip().upper() for c in ciclos if str(c.get('ciclo', '')).strip()]
+        ciclos_para_cor = list(dict.fromkeys([c for c in ciclos_para_cor if c]))
+        for idx_cor, ciclo_cor in enumerate(ciclos_para_cor):
+            ws_ad.conditional_format(1, 2, 199, 2, {
+                'type': 'formula',
+                'criteria': f'=$C2="{ciclo_cor}"',
+                'format': fmt_ciclos_col_c[idx_cor % len(fmt_ciclos_col_c)],
+            })
+
         # Se o usuário selecionar Decréscimo/Supressão, destacar toda a linha em fonte vermelha.
         ws_ad.conditional_format(1, 0, 199, 10, {
             'type': 'formula',

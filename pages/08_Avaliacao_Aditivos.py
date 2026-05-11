@@ -241,7 +241,15 @@ st.info(
 with st.expander("Parâmetros do contrato", expanded=True):
     col1, col2 = st.columns(2)
     with col1:
-        valor_original = st.number_input("Valor original do contrato (R$)", min_value=0.0, value=0.0, step=1000.0, format="%.2f")
+        valor_original_txt = st.text_input(
+            "Valor original do contrato (R$)",
+            value="",
+            placeholder="Ex.: 167.770,65",
+            help="Aceita padrão brasileiro, como 167.770,65, R$ 167.770,65 ou 167770,65.",
+        )
+        valor_original = numero_br(valor_original_txt)
+        if valor_original_txt.strip():
+            st.caption(f"Valor interpretado: {moeda(valor_original)}")
         reajustes_pct_input = st.number_input("Reajustes/revisões/reequilíbrios acumulados sobre o original (%)", value=0.0, step=0.01, format="%.2f")
     with col2:
         ajustes_monetarios = st.number_input("Ajustes monetários adicionais sobre o original (R$)", value=0.0, step=1000.0, format="%.2f")

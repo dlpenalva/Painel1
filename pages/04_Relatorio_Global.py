@@ -90,6 +90,21 @@ def normalizar_status(status):
     return texto or "NÃO INFORMADO"
 
 
+
+
+def status_docx_caixa_baixa(valor):
+    """Formata o resultado/tratamento da análise em caixa baixa apenas para o DOCX.
+
+    Mantém as tabelas e demais telas inalteradas, mas evita que a minuta traga
+    resultados como TEMPESTIVO, PRECLUSO ou ADMISSÍVEL COM RESSALVA em caixa alta.
+    """
+    texto = texto_seguro(valor, "")
+    texto = re.sub(r"^[▲■●•\-\s]+", "", str(texto)).strip()
+    if not texto:
+        return ""
+    return texto.lower()
+
+
 def texto_clausula_oito(adm):
     ciclos = []
     if adm:
@@ -693,9 +708,11 @@ def gerar_minuta_apostilamento_docx(adm, res):
         for _, ad in df_ad_docx.iterrows():
             identificacao = texto_seguro(ad.get("Aditivo", ad.get("Identificação", "Termo Aditivo")), "Termo Aditivo")
             data_ad = formatar_data_br(ad.get("Data do aditivo", ""))
-            valor_ad = moeda(ad.get("Valor do aditivo na assinatura", ad.get("Valor original da alteração", 0)))
+            ciclo_ad = texto_seguro(ad.get("Ciclo/Marco", ""), "ciclo de referência aplicável")
+            valor_original_ad = moeda(ad.get("Valor do aditivo na assinatura", ad.get("Valor original da alteração", 0)))
+            valor_atualizado_ad = moeda(ad.get("Valor do aditivo reajustado", ad.get("Valor atualizado da alteração", 0)))
             considerandos.append(
-                f"O {identificacao}, de {data_ad if data_ad else '[campo a preencher]'}, com valor de {valor_ad} na data de assinatura;"
+                f"O {identificacao}, de {data_ad if data_ad else '[campo a preencher]'}, foi considerado na análise pelo valor original de {valor_original_ad} e pelo valor atualizado de {valor_atualizado_ad}, conforme o ciclo de referência {ciclo_ad};"
             )
 
     for item in considerandos:
@@ -714,13 +731,14 @@ def gerar_minuta_apostilamento_docx(adm, res):
             nome = _limpar_texto_formal(_nome_ciclo_minuta(ciclo, idx))
             pct = _limpar_texto_formal(_percentual_ciclo_minuta(ciclo))
             efeito = _limpar_texto_formal(_efeito_ciclo_minuta(ciclo))
-            situacao = _limpar_texto_formal(
+            situacao = status_docx_caixa_baixa(
                 ciclo.get("situacao_aplicada")
                 or ciclo.get("Situação aplicada")
                 or ciclo.get("situacao")
                 or ciclo.get("Situação")
                 or ""
             )
+            situacao = _limpar_texto_formal(situacao)
             complemento = f", com tratamento aplicado: {situacao}" if situacao else ""
             _adicionar_subitem(
                 document,
@@ -758,10 +776,10 @@ def gerar_minuta_apostilamento_docx(adm, res):
     _adicionar_subitem(
         document,
         f"({_romano(subitem_idx)})",
-        f"Total consolidado: valor pago efetivo de {moeda(res.get('total_pago_faturado', res.get('valor_pago_efetivo', 0)))}, valor teórico calculado de {moeda(res.get('total_devido_reajustado', res.get('valor_teorico_calculado', 0)))} e saldo retroativo total a pagar de {moeda(res.get('valor_represado_a_pagar', res.get('delta_acumulado', 0)))}."
+        f"Total consolidado dos ciclos analisados para fins de retroativo: valor pago efetivo de {moeda(res.get('total_pago_faturado', res.get('valor_pago_efetivo', 0)))}, valor teórico calculado de {moeda(res.get('total_devido_reajustado', res.get('valor_teorico_calculado', 0)))} e saldo retroativo total a pagar de {moeda(res.get('valor_represado_a_pagar', res.get('delta_acumulado', 0)))}."
     )
 
-    _adicionar_item_numerado(document, 3, "Registra-se, ainda, que a memória de cálculo consignou os saldos remanescentes do contrato nos marcos de início dos ciclos de reajuste:")
+    _adicionar_item_numerado(document, 3, "Registra-se, ainda, que a memória de cálculo consignou os saldos remanescentes atualizados do contrato nos marcos de início dos ciclos de reajuste:")
     df_rem = res.get("df_remanescentes")
     if isinstance(df_rem, pd.DataFrame) and not df_rem.empty:
         subitem_idx = 1
@@ -782,7 +800,7 @@ def gerar_minuta_apostilamento_docx(adm, res):
     _adicionar_subitem(
         document,
         "b)",
-        f"Valor consolidado da execução atualizada por ciclos: {moeda(res.get('valor_executado_atualizado', res.get('total_devido_reajustado', 0)))}."
+        f"Valor executado total atualizado, considerado até o início do ciclo atual ({texto_seguro(res.get('ciclo_ultimo_remanescente', 'Cxx'), 'Cxx')}): {moeda(res.get('valor_executado_atualizado', res.get('total_devido_reajustado', 0)))}."
     )
     _adicionar_subitem(
         document,

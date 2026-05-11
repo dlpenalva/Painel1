@@ -1712,58 +1712,115 @@ def ler_aditivos(bytes_arquivo, xls, ciclos):
 
 
 def consolidar_aditivos_executivo(df_aditivos):
-    """Agrupa linhas de itens em aditivos executivos, evitando poluição visual."""
+    """Consolida as linhas detalhadas de aditivos por instrumento.
+
+    A aba ADITIVOS_QUANTITATIVOS permanece detalhada, item a item. Para painéis,
+    planilhas executivas e DOCX, contudo, o que deve ser contado é o instrumento
+    aditivo, não cada linha de acréscimo/supressão. Como o layout atual não exige
+    número formal do aditivo, a data do aditivo é usada como chave principal.
+
+    Regra prática atual:
+    - várias linhas na mesma data representam um mesmo aditivo;
+    - acréscimos e supressões na mesma data não viram aditivos distintos;
+    - a quantidade de linhas fica preservada como informação técnica;
+    - a tabela detalhada original continua disponível em df_aditivos.
+    """
+    colunas = [
+        "Aditivo", "Data do aditivo", "Ciclo/Marco", "Tipo de alteração", "Tratamento do aditivo",
+        "Quantidade de linhas", "Valor do aditivo na assinatura", "Fator aplicado",
+        "Valor do aditivo reajustado", "Computa no Valor Global"
+    ]
     if df_aditivos is None or not isinstance(df_aditivos, pd.DataFrame) or df_aditivos.empty:
-        return pd.DataFrame(columns=[
-            "Aditivo", "Data do aditivo", "Ciclo/Marco", "Tipo de alteração", "Tratamento do aditivo",
-            "Quantidade de linhas", "Valor do aditivo na assinatura", "Fator aplicado", "Valor do aditivo reajustado", "Computa no Valor Global"
-        ])
+        return pd.DataFrame(columns=colunas)
+
     df = df_aditivos.copy()
-    # Segurança adicional: elimina linhas de total/orientação ou resíduos de leitura indevida.
-    if "Identificação" in df.columns:
-        df = df[~df["Identificação"].astype(str).str.strip().str.upper().isin(["TOTAL", "ORIENTAÇÃO", "ORIENTACAO", "NAN"])].copy()
-    if "Item" in df.columns:
-        df = df[~df["Item"].astype(str).str.strip().str.upper().isin(["TOTAL", "ORIENTAÇÃO", "ORIENTACAO", "NAN"])].copy()
-    if "Tipo de alteração" in df.columns:
-        df = df[~df["Tipo de alteração"].astype(str).str.strip().str.lower().isin(["", "nan", "none"])].copy()
+
+    # Segurança: remove linhas de total/orientação/resíduos de leitura.
+    for col_ref in ["Identificação", "Item", "Aditivo"]:
+        if col_ref in df.columns:
+            df = df[~df[col_ref].astype(str).str.strip().str.upper().isin([
+                "TOTAL", "ORIENTAÇÃO", "ORIENTACAO", "NAN", "NONE", ""
+            ])].copy()
+
+    if df.empty:
+        return pd.DataFrame(columns=colunas)
+
     for col in ["Data do aditivo", "Ciclo/Marco", "Tipo de alteração", "Tratamento do aditivo", "Computa no Valor Global"]:
         if col not in df.columns:
             df[col] = ""
+    for col in ["Valor do aditivo na assinatura", "Valor do aditivo reajustado"]:
+        if col not in df.columns:
+            df[col] = 0.0
+
     df["_data"] = pd.to_datetime(df["Data do aditivo"], dayfirst=True, errors="coerce")
-    df["_ciclo"] = df["Ciclo/Marco"].astype(str)
+    # Chave principal: data do aditivo. Se não houver data, concentra como "sem data".
+    df["_data_chave"] = df["_data"].apply(lambda x: x.strftime("%Y-%m-%d") if not pd.isna(x) else "SEM_DATA")
+    df["_ciclo"] = df["Ciclo/Marco"].astype(str).apply(normalizar_ciclo)
     df["_tipo"] = df["Tipo de alteração"].astype(str)
     df["_trat"] = df["Tratamento do aditivo"].astype(str)
     df["_comp"] = df["Computa no Valor Global"].astype(bool)
+    df["_valor_ass"] = df["Valor do aditivo na assinatura"].apply(numero_seguro)
+    df["_valor_reaj"] = df["Valor do aditivo reajustado"].apply(numero_seguro)
+
+    def _juntar_unicos(serie):
+        valores = []
+        for v in serie:
+            txt = str(v or "").strip()
+            if txt and txt.lower() not in ["nan", "none"] and txt not in valores:
+                valores.append(txt)
+        return ", ".join(valores)
+
+    def _data_primeira(serie):
+        validas = [v for v in serie if not pd.isna(v)]
+        return min(validas) if validas else pd.NaT
+
     agrupado = (
-        df.groupby(["_data", "_ciclo", "_tipo", "_trat", "_comp"], dropna=False)
+        df.groupby("_data_chave", dropna=False)
         .agg(
-            quantidade_linhas=("Valor do aditivo na assinatura", "size"),
-            valor_assinatura=("Valor do aditivo na assinatura", "sum"),
-            valor_reajustado=("Valor do aditivo reajustado", "sum"),
+            data_aditivo=("_data", _data_primeira),
+            ciclos=("_ciclo", _juntar_unicos),
+            tratamentos=("_trat", _juntar_unicos),
+            computa=("_comp", "any"),
+            quantidade_linhas=("_valor_ass", "size"),
+            valor_assinatura=("_valor_ass", "sum"),
+            valor_reajustado=("_valor_reaj", "sum"),
+            tipos=("_tipo", lambda s: ", ".join(sorted({str(x).strip() for x in s if str(x).strip() and str(x).strip().lower() not in ["nan", "none"]}))),
         )
         .reset_index()
-        .sort_values(["_data", "_ciclo", "_tipo"], na_position="last")
-        .reset_index(drop=True)
     )
+    agrupado["_ordem"] = pd.to_datetime(agrupado["data_aditivo"], errors="coerce")
+    agrupado = agrupado.sort_values(["_ordem", "_data_chave"], na_position="last").reset_index(drop=True)
+
     linhas = []
     for idx, row in agrupado.iterrows():
         valor_ass = numero_seguro(row.get("valor_assinatura", 0), 0.0)
         valor_reaj = numero_seguro(row.get("valor_reajustado", 0), 0.0)
         fator = (valor_reaj / valor_ass) if abs(valor_ass) > 0.005 else 1.0
+        tipos_txt = str(row.get("tipos", "")).strip()
+        tipos_norm = normalizar_texto(tipos_txt)
+        if ("," in tipos_txt) or ("acresc" in tipos_norm and ("supress" in tipos_norm or "decresc" in tipos_norm)):
+            tipo_exibicao = "Acréscimo/Supressão"
+        else:
+            tipo_exibicao = tipos_txt or "Aditivo"
+
+        ciclo_txt = str(row.get("ciclos", "")).strip()
+        if not ciclo_txt:
+            ciclo_txt = "Não informado"
+        tratamento_txt = str(row.get("tratamentos", "")).strip() or "Computar nesta análise"
+
         linhas.append({
             "Aditivo": f"Aditivo {idx + 1}",
-            "Data do aditivo": row.get("_data"),
-            "Ciclo/Marco": normalizar_ciclo(row.get("_ciclo", "")),
-            "Tipo de alteração": row.get("_tipo", ""),
-            "Tratamento do aditivo": row.get("_trat", ""),
+            "Data do aditivo": row.get("data_aditivo"),
+            "Ciclo/Marco": ciclo_txt,
+            "Tipo de alteração": tipo_exibicao,
+            "Tratamento do aditivo": tratamento_txt,
             "Quantidade de linhas": int(row.get("quantidade_linhas", 0)),
             "Valor do aditivo na assinatura": valor_ass,
             "Fator aplicado": fator,
             "Valor do aditivo reajustado": valor_reaj,
-            "Computa no Valor Global": bool(row.get("_comp", True)),
+            "Computa no Valor Global": bool(row.get("computa", True)),
         })
     return limpar_nan_inf_df(pd.DataFrame(linhas))
-
 
 def montar_comparativo_executivo(
     valor_original,
@@ -1937,7 +1994,7 @@ def montar_composicao_valor_total(df_execucao, remanescente_atualizado, ciclo_ul
                     "Componente": f"{ciclo} - execução atualizada",
                     "Ciclo/Referência": ciclo,
                     "Valor": round(valor, 2),
-                    "Observação": "Valor executado/consumido no ciclo, atualizado pelo fator aplicável à execução.",
+                    "Observação": ("Valor executado/consumido no C0, correspondente ao ciclo-base sem atualização por reajuste." if ciclo.upper() == "C0" else "Valor executado/consumido no ciclo, atualizado pelo fator aplicável à execução."),
                 })
                 soma_componentes += valor
 
