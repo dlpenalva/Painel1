@@ -1216,8 +1216,8 @@ def gerar_planilha_executiva(resultado):
             ("Valor teórico calculado", resultado.get("valor_teorico_calculado", 0.0), "money"),
             ("Valor represado a pagar", resultado.get("valor_represado_a_pagar", 0.0), "money"),
             ("Saldo remanescente atualizado", resultado.get("remanescente_reajustado", 0.0), "money"),
-            ("Aditivos/Supressões registrados (informativo)", resultado.get("total_aditivos_atualizados", 0.0), "money"),
-            ("Aditivos/Supressões informativos", resultado.get("total_aditivos_informativos", 0.0), "money"),
+            ("Aditivos da análise atual (controle)", resultado.get("total_aditivos_atualizados", 0.0), "money"),
+            ("Aditivos históricos já incorporados", resultado.get("total_aditivos_informativos", 0.0), "money"),
             ("Reajuste acumulado", resultado.get("variacao_acumulada", resultado.get("fator_acumulado", 1.0) - 1), "pct"),
             ("Valor Total Atualizado do Contrato", resultado.get("valor_atualizado_contrato", 0.0), "money_bold"),
         ]
@@ -1302,7 +1302,7 @@ def gerar_planilha_executiva(resultado):
         # ====================================================
         ws_a = workbook.add_worksheet("ADITIVOS_CONSOLIDADOS")
         writer.sheets["ADITIVOS_CONSOLIDADOS"] = ws_a
-        ws_a.write(0, 0, "Aditivos e Supressões", fmt_title)
+        ws_a.write(0, 0, "Aditivos", fmt_title)
         df_ad = limpar_nan_inf_df(resultado.get("df_aditivos_executivo", resultado.get("df_aditivos", pd.DataFrame()))).copy()
         if not df_ad.empty:
             cols = [c for c in ["Aditivo", "Ciclo/Marco", "Tipo de alteração", "Tratamento do aditivo", "Quantidade de linhas", "Valor do aditivo na assinatura", "Fator aplicado", "Valor do aditivo reajustado", "Computa no Valor Global"] if c in df_ad.columns]
@@ -1853,8 +1853,8 @@ def montar_comparativo_executivo(
         {"Indicador": "Valor represado a pagar", "Valor": delta_total},
         {"Indicador": "Saldo remanescente original", "Valor": rem_original},
         {"Indicador": "Saldo remanescente atualizado", "Valor": rem_atualizado},
-        {"Indicador": "Aditivos/Supressões registrados (informativo)", "Valor": total_aditivos},
-        {"Indicador": "Aditivos/Supressões informativos", "Valor": total_aditivos_informativos},
+        {"Indicador": "Aditivos da análise atual (controle)", "Valor": total_aditivos},
+        {"Indicador": "Aditivos históricos já incorporados", "Valor": total_aditivos_informativos},
         {"Indicador": "Valor Total Atualizado do Contrato", "Valor": valor_atualizado_contrato},
     ])
     return pd.DataFrame(linhas)
@@ -3103,7 +3103,7 @@ if resultado:
         st.caption("Valor formalizado antes desta análise: " + moeda(valor_formalizado_painel))
 
     colp1, colp2 = st.columns(2)
-    colp1.metric("Valor Pago Efetivo", moeda(resultado["valor_pago_efetivo"]))
+    colp1.metric("Valor financeiro pago até o mês mais recente", moeda(resultado["valor_pago_efetivo"]))
     colp2.metric("Valor Teórico Calculado", moeda(resultado["valor_teorico_calculado"]))
 
     col4, col5 = st.columns(2)
@@ -3120,20 +3120,21 @@ if resultado:
         unsafe_allow_html=True,
     )
 
+
     col6, col7, col8 = st.columns(3)
     col6.metric("Saldo Remanescente Atualizado", moeda(resultado["remanescente_reajustado"]))
-    col7.metric("Aditivos/Supressões Registrados", moeda(resultado["total_aditivos_atualizados"]))
+    col7.metric("Aditivos da análise atual (controle)", moeda(resultado["total_aditivos_atualizados"]))
     col8.metric("Variação Acumulada", percentual(resultado.get("variacao_acumulada", resultado["fator_acumulado"] - 1), 2))
 
     if resultado.get("total_aditivos_informativos", 0.0):
-        st.caption("Aditivos informativos já incorporados ao valor formalizado anterior: " + moeda(resultado.get("total_aditivos_informativos", 0.0)))
+        st.caption("Aditivos históricos já incorporados ao valor formalizado anterior: " + moeda(resultado.get("total_aditivos_informativos", 0.0)))
 
     tab_timeline, tab1, tab2, tab_aditivos, tab3, tab4, tab_auditoria, tab5 = st.tabs([
         "Linha do Tempo",
         "Painel Financeiro por Ciclo",
-        "Valor Atualizado do Contrato",
-        "Aditivos e Supressões",
-        "Ciclos e Deltas",
+        "Valor Atualizado",
+        "Aditivos",
+        "Ciclos",
         "Valores Unitários",
         "Auditoria",
         "Conferência",
