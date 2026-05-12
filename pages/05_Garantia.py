@@ -739,6 +739,8 @@ if REPORTLAB_OK:
         data=pdf_bytes,
         file_name="relatorio_garantia.pdf",
         mime="application/pdf",
+        type="primary",
+        use_container_width=False,
     )
 else:
     st.info("Instale reportlab para gerar o PDF: pip install reportlab")
