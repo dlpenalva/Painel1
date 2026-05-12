@@ -71,7 +71,7 @@ if (pages_dir / "05_Garantia.py").exists():
 
 if (pages_dir / "08_Avaliacao_Aditivos.py").exists():
     grupo_gestao.append(
-        st.Page("pages/08_Avaliacao_Aditivos.py", title="Avaliação de Aditivos")
+        st.Page("pages/08_Avaliacao_Aditivos.py", title="Aditivos: 25%")
     )
 
 if grupo_gestao:

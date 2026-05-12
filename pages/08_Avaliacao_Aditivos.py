@@ -4,7 +4,7 @@ from io import BytesIO
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-st.set_page_config(page_title="TLB · cl8us - Avaliação de Aditivos", layout="wide")
+st.set_page_config(page_title="TLB · cl8us - Aditivos: 25%", layout="wide")
 
 
 from _ui_utils import render_marca_topo
@@ -230,7 +230,7 @@ def gerar_excel(resultado, eventos, parametros):
 
 render_marca_topo()
 
-st.title("Avaliação de Aditivos")
+st.title("Aditivos: 25%")
 st.caption("Módulo estanque para controle de acréscimos, supressões e limite de 25%. Não altera o Valor Global.")
 
 st.info(
@@ -374,9 +374,9 @@ resumo = pd.DataFrame([
 excel_bytes = gerar_excel(resumo, eventos_calculados, parametros)
 st.session_state["arquivo_avaliacao_aditivos_xlsx"] = excel_bytes
 st.download_button(
-    "Baixar Avaliação de Aditivos em XLSX",
+    "Baixar Aditivos: 25% em XLSX",
     data=excel_bytes,
-    file_name="Avaliacao_Aditivos_Limite_25.xlsx",
+    file_name="Aditivos_25.xlsx",
     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     type="primary",
 )
