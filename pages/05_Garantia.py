@@ -615,11 +615,13 @@ st.markdown("### Garantia/endossos já apresentados")
 col_ap1, col_ap2 = st.columns(2)
 with col_ap1:
     garantia_apresentada_txt = st.text_input(
-        "Total de garantia/endossos já apresentados",
+        "Total de garantia/endossos já apresentados (R$)",
         value=moeda(valor_garantia_original, com_prefixo=False),
-        help="Informe a garantia original e todos os endossos já aceitos pela Administração.",
+        placeholder="Ex.: 7.914.629,92",
+        help="Informe o valor monetário total da garantia original e dos endossos já aceitos pela Administração. Não é quantidade de endossos.",
     )
     garantia_apresentada = parse_moeda_br(garantia_apresentada_txt)
+    st.caption("Informe o valor em reais. Ex.: 7.914.629,92, e não a quantidade de endossos.")
     st.markdown(f"<div class='valor-formatado-apoio'>{moeda(garantia_apresentada)}</div>", unsafe_allow_html=True)
 with col_ap2:
     prazo_dias = st.number_input("Prazo para apresentação/endosso (dias úteis)", min_value=1, max_value=60, value=5, step=1)
