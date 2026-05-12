@@ -78,9 +78,9 @@ def render_versao_sidebar():
             color: #94A3B8;
             font-size: 0.72rem;
             font-weight: 500;
-            margin-top: 1.25rem;
-            padding-top: 0.70rem;
-            border-top: 1px solid #E2E8F0;
+            margin-top: 7.50rem;
+            padding-top: 0;
+            border-top: none;
             line-height: 1.2;
         }
         </style>

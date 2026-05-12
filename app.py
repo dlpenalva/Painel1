@@ -88,6 +88,11 @@ if (pages_dir / "10_Saneador.py").exists():
         st.Page("pages/10_Saneador.py", title="Saneador")
     )
 
+if (pages_dir / "11_Cl8us_Orienta.py").exists():
+    grupo_instrucao.append(
+        st.Page("pages/11_Cl8us_Orienta.py", title="💡 Cl8us Orienta")
+    )
+
 if grupo_instrucao:
     nav["🧾 Instrução Processual"] = grupo_instrucao
 
