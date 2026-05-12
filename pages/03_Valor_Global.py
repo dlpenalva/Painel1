@@ -103,16 +103,6 @@ def percentual_para_decimal(valor):
     return n
 
 
-
-
-def percentual_duas_casas_decimal(valor):
-    """Saneia percentual para 2 casas percentuais efetivas antes do cálculo.
-
-    Ex.: 4,8834596935% (0.048834596935) -> 4,88% (0.0488).
-    Não altera a apuração do índice, o intervalo, a admissibilidade ou os ciclos.
-    """
-    return round(percentual_para_decimal(valor), 4)
-
 def fator_de_valor(valor, variacao=None):
     """Retorna fator. Aceita fator direto ou variação."""
     if valor is not None and not pd.isna(valor):
@@ -543,13 +533,8 @@ def padronizar_ciclos(df):
         superacao_negocial = normalizar_texto(superacao_txt) in ["sim", "s", "true", "1", "yes"] or "acordo" in normalizar_texto(row.get(col_situacao_aplicada, "") if col_situacao_aplicada else "")
         situacao_aplicada = row.get(col_situacao_aplicada, situacao) if col_situacao_aplicada else situacao
         tratamento = row.get(col_tratamento, "A apurar") if col_tratamento else ("Precluso" if "PRECLUS" in str(situacao_automatica).upper() and not superacao_negocial else "A apurar")
-        # A apuração do índice permanece intacta. Para o cálculo operacional do
-        # Valor Global, o percentual aplicado é saneado para 2 casas percentuais
-        # efetivas, de modo que o sistema use o mesmo percentual exibido/documentado
-        # no Arquivo de Coleta. Ex.: 4,8834596935% -> 4,88%.
-        variacao_indice = percentual_duas_casas_decimal(row.get(col_percentual_indice, row.get(col_variacao, 0))) if (col_percentual_indice or col_variacao) else 0.0
-        variacao = percentual_duas_casas_decimal(row.get(col_percentual_aplicado, row.get(col_variacao, 0))) if (col_percentual_aplicado or col_variacao) else 0.0
-        percentual_aplicado_informado = bool(col_percentual_aplicado or col_variacao)
+        variacao_indice = percentual_para_decimal(row.get(col_percentual_indice, row.get(col_variacao, 0))) if (col_percentual_indice or col_variacao) else 0.0
+        variacao = percentual_para_decimal(row.get(col_percentual_aplicado, row.get(col_variacao, 0))) if (col_percentual_aplicado or col_variacao) else 0.0
         ciclo_negativo_txt = row.get(col_ciclo_negativo, "") if col_ciclo_negativo else ""
         ciclo_negativo = normalizar_texto(ciclo_negativo_txt) in ["sim", "s", "true", "1", "yes"] or variacao_indice < 0 or (col_percentual_indice is None and variacao < 0)
         tratamento_negativo = row.get(col_tratamento_negativo, "") if col_tratamento_negativo else ""
@@ -559,18 +544,11 @@ def padronizar_ciclos(df):
                 tratamento_negativo = "Ciclo negativo - percentual aplicado 0,00% no acumulado"
             if "ciclo negativo" not in normalizar_texto(str(situacao_aplicada)):
                 situacao_aplicada = f"{situacao_aplicada} | CICLO NEGATIVO (APLICADO 0,00%)"
-        if percentual_aplicado_informado:
-            fator = round(1.0 + variacao, 10)
-        else:
-            fator = fator_de_valor(row.get(col_fator, None) if col_fator else None, variacao=variacao)
+        fator = fator_de_valor(row.get(col_fator, None) if col_fator else None, variacao=variacao)
         if ciclo_negativo and not superacao_negocial:
             fator = 1.0
 
-        # Quando há percentual aplicado/variação no Arquivo de Coleta, o fator
-        # acumulado é recalculado a partir do percentual saneado, evitando uso de
-        # precisão oculta gravada em colunas de fator. Se a planilha trouxer apenas
-        # fator, preserva-se o comportamento anterior.
-        if col_fator_acum and not percentual_aplicado_informado:
+        if col_fator_acum:
             fator_acum = fator_de_valor(row.get(col_fator_acum, None), variacao=None)
             if fator_acum <= 0:
                 fator_acum = fator_acumulado_calculado * fator
@@ -1216,8 +1194,8 @@ def gerar_planilha_executiva(resultado):
             ("Valor teórico calculado", resultado.get("valor_teorico_calculado", 0.0), "money"),
             ("Valor represado a pagar", resultado.get("valor_represado_a_pagar", 0.0), "money"),
             ("Saldo remanescente atualizado", resultado.get("remanescente_reajustado", 0.0), "money"),
-            ("Aditivos da análise atual (controle)", resultado.get("total_aditivos_atualizados", 0.0), "money"),
-            ("Aditivos históricos já incorporados", resultado.get("total_aditivos_informativos", 0.0), "money"),
+            ("Aditivos/Supressões registrados (informativo)", resultado.get("total_aditivos_atualizados", 0.0), "money"),
+            ("Aditivos/Supressões informativos", resultado.get("total_aditivos_informativos", 0.0), "money"),
             ("Reajuste acumulado", resultado.get("variacao_acumulada", resultado.get("fator_acumulado", 1.0) - 1), "pct"),
             ("Valor Total Atualizado do Contrato", resultado.get("valor_atualizado_contrato", 0.0), "money_bold"),
         ]
@@ -1302,7 +1280,7 @@ def gerar_planilha_executiva(resultado):
         # ====================================================
         ws_a = workbook.add_worksheet("ADITIVOS_CONSOLIDADOS")
         writer.sheets["ADITIVOS_CONSOLIDADOS"] = ws_a
-        ws_a.write(0, 0, "Aditivos", fmt_title)
+        ws_a.write(0, 0, "Aditivos e Supressões", fmt_title)
         df_ad = limpar_nan_inf_df(resultado.get("df_aditivos_executivo", resultado.get("df_aditivos", pd.DataFrame()))).copy()
         if not df_ad.empty:
             cols = [c for c in ["Aditivo", "Ciclo/Marco", "Tipo de alteração", "Tratamento do aditivo", "Quantidade de linhas", "Valor do aditivo na assinatura", "Fator aplicado", "Valor do aditivo reajustado", "Computa no Valor Global"] if c in df_ad.columns]
@@ -1712,115 +1690,58 @@ def ler_aditivos(bytes_arquivo, xls, ciclos):
 
 
 def consolidar_aditivos_executivo(df_aditivos):
-    """Consolida as linhas detalhadas de aditivos por instrumento.
-
-    A aba ADITIVOS_QUANTITATIVOS permanece detalhada, item a item. Para painéis,
-    planilhas executivas e DOCX, contudo, o que deve ser contado é o instrumento
-    aditivo, não cada linha de acréscimo/supressão. Como o layout atual não exige
-    número formal do aditivo, a data do aditivo é usada como chave principal.
-
-    Regra prática atual:
-    - várias linhas na mesma data representam um mesmo aditivo;
-    - acréscimos e supressões na mesma data não viram aditivos distintos;
-    - a quantidade de linhas fica preservada como informação técnica;
-    - a tabela detalhada original continua disponível em df_aditivos.
-    """
-    colunas = [
-        "Aditivo", "Data do aditivo", "Ciclo/Marco", "Tipo de alteração", "Tratamento do aditivo",
-        "Quantidade de linhas", "Valor do aditivo na assinatura", "Fator aplicado",
-        "Valor do aditivo reajustado", "Computa no Valor Global"
-    ]
+    """Agrupa linhas de itens em aditivos executivos, evitando poluição visual."""
     if df_aditivos is None or not isinstance(df_aditivos, pd.DataFrame) or df_aditivos.empty:
-        return pd.DataFrame(columns=colunas)
-
+        return pd.DataFrame(columns=[
+            "Aditivo", "Data do aditivo", "Ciclo/Marco", "Tipo de alteração", "Tratamento do aditivo",
+            "Quantidade de linhas", "Valor do aditivo na assinatura", "Fator aplicado", "Valor do aditivo reajustado", "Computa no Valor Global"
+        ])
     df = df_aditivos.copy()
-
-    # Segurança: remove linhas de total/orientação/resíduos de leitura.
-    for col_ref in ["Identificação", "Item", "Aditivo"]:
-        if col_ref in df.columns:
-            df = df[~df[col_ref].astype(str).str.strip().str.upper().isin([
-                "TOTAL", "ORIENTAÇÃO", "ORIENTACAO", "NAN", "NONE", ""
-            ])].copy()
-
-    if df.empty:
-        return pd.DataFrame(columns=colunas)
-
+    # Segurança adicional: elimina linhas de total/orientação ou resíduos de leitura indevida.
+    if "Identificação" in df.columns:
+        df = df[~df["Identificação"].astype(str).str.strip().str.upper().isin(["TOTAL", "ORIENTAÇÃO", "ORIENTACAO", "NAN"])].copy()
+    if "Item" in df.columns:
+        df = df[~df["Item"].astype(str).str.strip().str.upper().isin(["TOTAL", "ORIENTAÇÃO", "ORIENTACAO", "NAN"])].copy()
+    if "Tipo de alteração" in df.columns:
+        df = df[~df["Tipo de alteração"].astype(str).str.strip().str.lower().isin(["", "nan", "none"])].copy()
     for col in ["Data do aditivo", "Ciclo/Marco", "Tipo de alteração", "Tratamento do aditivo", "Computa no Valor Global"]:
         if col not in df.columns:
             df[col] = ""
-    for col in ["Valor do aditivo na assinatura", "Valor do aditivo reajustado"]:
-        if col not in df.columns:
-            df[col] = 0.0
-
     df["_data"] = pd.to_datetime(df["Data do aditivo"], dayfirst=True, errors="coerce")
-    # Chave principal: data do aditivo. Se não houver data, concentra como "sem data".
-    df["_data_chave"] = df["_data"].apply(lambda x: x.strftime("%Y-%m-%d") if not pd.isna(x) else "SEM_DATA")
-    df["_ciclo"] = df["Ciclo/Marco"].astype(str).apply(normalizar_ciclo)
+    df["_ciclo"] = df["Ciclo/Marco"].astype(str)
     df["_tipo"] = df["Tipo de alteração"].astype(str)
     df["_trat"] = df["Tratamento do aditivo"].astype(str)
     df["_comp"] = df["Computa no Valor Global"].astype(bool)
-    df["_valor_ass"] = df["Valor do aditivo na assinatura"].apply(numero_seguro)
-    df["_valor_reaj"] = df["Valor do aditivo reajustado"].apply(numero_seguro)
-
-    def _juntar_unicos(serie):
-        valores = []
-        for v in serie:
-            txt = str(v or "").strip()
-            if txt and txt.lower() not in ["nan", "none"] and txt not in valores:
-                valores.append(txt)
-        return ", ".join(valores)
-
-    def _data_primeira(serie):
-        validas = [v for v in serie if not pd.isna(v)]
-        return min(validas) if validas else pd.NaT
-
     agrupado = (
-        df.groupby("_data_chave", dropna=False)
+        df.groupby(["_data", "_ciclo", "_tipo", "_trat", "_comp"], dropna=False)
         .agg(
-            data_aditivo=("_data", _data_primeira),
-            ciclos=("_ciclo", _juntar_unicos),
-            tratamentos=("_trat", _juntar_unicos),
-            computa=("_comp", "any"),
-            quantidade_linhas=("_valor_ass", "size"),
-            valor_assinatura=("_valor_ass", "sum"),
-            valor_reajustado=("_valor_reaj", "sum"),
-            tipos=("_tipo", lambda s: ", ".join(sorted({str(x).strip() for x in s if str(x).strip() and str(x).strip().lower() not in ["nan", "none"]}))),
+            quantidade_linhas=("Valor do aditivo na assinatura", "size"),
+            valor_assinatura=("Valor do aditivo na assinatura", "sum"),
+            valor_reajustado=("Valor do aditivo reajustado", "sum"),
         )
         .reset_index()
+        .sort_values(["_data", "_ciclo", "_tipo"], na_position="last")
+        .reset_index(drop=True)
     )
-    agrupado["_ordem"] = pd.to_datetime(agrupado["data_aditivo"], errors="coerce")
-    agrupado = agrupado.sort_values(["_ordem", "_data_chave"], na_position="last").reset_index(drop=True)
-
     linhas = []
     for idx, row in agrupado.iterrows():
         valor_ass = numero_seguro(row.get("valor_assinatura", 0), 0.0)
         valor_reaj = numero_seguro(row.get("valor_reajustado", 0), 0.0)
         fator = (valor_reaj / valor_ass) if abs(valor_ass) > 0.005 else 1.0
-        tipos_txt = str(row.get("tipos", "")).strip()
-        tipos_norm = normalizar_texto(tipos_txt)
-        if ("," in tipos_txt) or ("acresc" in tipos_norm and ("supress" in tipos_norm or "decresc" in tipos_norm)):
-            tipo_exibicao = "Acréscimo/Supressão"
-        else:
-            tipo_exibicao = tipos_txt or "Aditivo"
-
-        ciclo_txt = str(row.get("ciclos", "")).strip()
-        if not ciclo_txt:
-            ciclo_txt = "Não informado"
-        tratamento_txt = str(row.get("tratamentos", "")).strip() or "Computar nesta análise"
-
         linhas.append({
             "Aditivo": f"Aditivo {idx + 1}",
-            "Data do aditivo": row.get("data_aditivo"),
-            "Ciclo/Marco": ciclo_txt,
-            "Tipo de alteração": tipo_exibicao,
-            "Tratamento do aditivo": tratamento_txt,
+            "Data do aditivo": row.get("_data"),
+            "Ciclo/Marco": normalizar_ciclo(row.get("_ciclo", "")),
+            "Tipo de alteração": row.get("_tipo", ""),
+            "Tratamento do aditivo": row.get("_trat", ""),
             "Quantidade de linhas": int(row.get("quantidade_linhas", 0)),
             "Valor do aditivo na assinatura": valor_ass,
             "Fator aplicado": fator,
             "Valor do aditivo reajustado": valor_reaj,
-            "Computa no Valor Global": bool(row.get("computa", True)),
+            "Computa no Valor Global": bool(row.get("_comp", True)),
         })
     return limpar_nan_inf_df(pd.DataFrame(linhas))
+
 
 def montar_comparativo_executivo(
     valor_original,
@@ -1853,8 +1774,8 @@ def montar_comparativo_executivo(
         {"Indicador": "Valor represado a pagar", "Valor": delta_total},
         {"Indicador": "Saldo remanescente original", "Valor": rem_original},
         {"Indicador": "Saldo remanescente atualizado", "Valor": rem_atualizado},
-        {"Indicador": "Aditivos da análise atual (controle)", "Valor": total_aditivos},
-        {"Indicador": "Aditivos históricos já incorporados", "Valor": total_aditivos_informativos},
+        {"Indicador": "Aditivos/Supressões registrados (informativo)", "Valor": total_aditivos},
+        {"Indicador": "Aditivos/Supressões informativos", "Valor": total_aditivos_informativos},
         {"Indicador": "Valor Total Atualizado do Contrato", "Valor": valor_atualizado_contrato},
     ])
     return pd.DataFrame(linhas)
@@ -1994,7 +1915,7 @@ def montar_composicao_valor_total(df_execucao, remanescente_atualizado, ciclo_ul
                     "Componente": f"{ciclo} - execução atualizada",
                     "Ciclo/Referência": ciclo,
                     "Valor": round(valor, 2),
-                    "Observação": ("Valor executado/consumido no C0, correspondente ao ciclo-base sem atualização por reajuste." if ciclo.upper() == "C0" else "Valor executado/consumido no ciclo, atualizado pelo fator aplicável à execução."),
+                    "Observação": "Valor executado/consumido no ciclo, atualizado pelo fator aplicável à execução.",
                 })
                 soma_componentes += valor
 
@@ -2088,6 +2009,33 @@ def montar_auditoria_consistencia(resultado):
             "Não há consolidado executivo de aditivos. Se houver aditivos no caso, revise a aba ADITIVOS_QUANTITATIVOS.",
             total_aditivos,
         )
+
+    # Alerta de preenchimento: muitas datas distintas em aditivos podem indicar arraste acidental no Excel.
+    df_ad_raw = resultado.get("df_aditivos", pd.DataFrame())
+    if isinstance(df_ad_raw, pd.DataFrame) and not df_ad_raw.empty and "Data do aditivo" in df_ad_raw.columns:
+        datas_ad = pd.to_datetime(df_ad_raw["Data do aditivo"], dayfirst=True, errors="coerce").dropna().dt.normalize().drop_duplicates().sort_values()
+        qtd_datas = int(len(datas_ad))
+        sequencia_curta = False
+        if qtd_datas >= 3:
+            difs = datas_ad.diff().dropna().dt.days.tolist()
+            sequencia_curta = any(d in [1, 2] for d in difs)
+        if qtd_datas > 3 or sequencia_curta:
+            detalhe_datas = ", ".join([d.strftime("%d/%m/%Y") for d in datas_ad.head(8)])
+            add_check(
+                "Datas dos aditivos",
+                "ATENÇÃO",
+                "Foram identificadas várias datas distintas na aba de aditivos. Confirme se cada data corresponde efetivamente a um instrumento aditivo diferente. Em preenchimentos manuais, o Excel pode arrastar datas em sequência e gerar contagem indevida de aditivos.",
+                f"{qtd_datas} data(s): {detalhe_datas}",
+            )
+        else:
+            add_check(
+                "Datas dos aditivos",
+                "OK",
+                "Quantidade de datas distintas em aditivos dentro do padrão esperado para conferência executiva.",
+                f"{qtd_datas} data(s)",
+            )
+    else:
+        add_check("Datas dos aditivos", "OK", "Não há datas de aditivos para auditoria específica.", "0 data(s)")
 
     df_ciclos = resultado.get("df_ciclos", pd.DataFrame())
     if isinstance(df_ciclos, pd.DataFrame) and not df_ciclos.empty:
@@ -3103,7 +3051,7 @@ if resultado:
         st.caption("Valor formalizado antes desta análise: " + moeda(valor_formalizado_painel))
 
     colp1, colp2 = st.columns(2)
-    colp1.metric("Valor financeiro pago até o mês mais recente", moeda(resultado["valor_pago_efetivo"]))
+    colp1.metric("Valor Pago Efetivo", moeda(resultado["valor_pago_efetivo"]))
     colp2.metric("Valor Teórico Calculado", moeda(resultado["valor_teorico_calculado"]))
 
     col4, col5 = st.columns(2)
@@ -3120,21 +3068,20 @@ if resultado:
         unsafe_allow_html=True,
     )
 
-
     col6, col7, col8 = st.columns(3)
     col6.metric("Saldo Remanescente Atualizado", moeda(resultado["remanescente_reajustado"]))
-    col7.metric("Aditivos da análise atual (controle)", moeda(resultado["total_aditivos_atualizados"]))
+    col7.metric("Aditivos/Supressões Registrados", moeda(resultado["total_aditivos_atualizados"]))
     col8.metric("Variação Acumulada", percentual(resultado.get("variacao_acumulada", resultado["fator_acumulado"] - 1), 2))
 
     if resultado.get("total_aditivos_informativos", 0.0):
-        st.caption("Aditivos históricos já incorporados ao valor formalizado anterior: " + moeda(resultado.get("total_aditivos_informativos", 0.0)))
+        st.caption("Aditivos informativos já incorporados ao valor formalizado anterior: " + moeda(resultado.get("total_aditivos_informativos", 0.0)))
 
     tab_timeline, tab1, tab2, tab_aditivos, tab3, tab4, tab_auditoria, tab5 = st.tabs([
         "Linha do Tempo",
         "Painel Financeiro por Ciclo",
-        "Valor Atualizado",
-        "Aditivos",
-        "Ciclos",
+        "Valor Atualizado do Contrato",
+        "Aditivos e Supressões",
+        "Ciclos e Deltas",
         "Valores Unitários",
         "Auditoria",
         "Conferência",
@@ -3298,7 +3245,16 @@ if resultado:
                         return ""
                     return moeda(valor)
                 df_aud_vis["Diferença/Valor"] = df_aud_vis["Diferença/Valor"].apply(_formatar_diferenca_auditoria)
-            st.dataframe(df_aud_vis, use_container_width=True, hide_index=True)
+            def _estilo_linha_auditoria(row):
+                status = str(row.get("Status", "")).upper()
+                if "ATENÇÃO" in status or "ATENCAO" in status:
+                    return ["background-color: #FFF2CC; color: #7A4A00; font-weight: 600" for _ in row]
+                return ["" for _ in row]
+
+            if "Status" in df_aud_vis.columns:
+                st.dataframe(df_aud_vis.style.apply(_estilo_linha_auditoria, axis=1), use_container_width=True, hide_index=True)
+            else:
+                st.dataframe(df_aud_vis, use_container_width=True, hide_index=True)
             qtd_atencao = int((df_aud["Status"].astype(str).str.upper() == "ATENÇÃO").sum()) if "Status" in df_aud.columns else 0
             if qtd_atencao:
                 st.warning(f"Foram identificados {qtd_atencao} ponto(s) para revisão manual.")

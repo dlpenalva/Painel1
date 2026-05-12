@@ -52,6 +52,40 @@ def texto_seguro(valor, padrao="[campo a preencher]"):
     return texto
 
 
+def limpar_texto_saneador(valor):
+    """Remove emojis/marcadores visuais e reduz caixa alta de status no Saneador."""
+    texto = "" if valor is None else str(valor)
+    substituicoes = {
+        "✅": "", "❌": "", "⚠️": "", "⚠": "", "🟡": "", "🔴": "", "🟢": "", "🔵": "",
+        "🛡️": "", "🛡": "", "📊": "", "📝": "", "⚖️": "", "⚖": "", "🔄": "", "📥": "", "🔍": "",
+        "▲": "", "■": "", "●": "", "•": "",
+    }
+    for antigo, novo in substituicoes.items():
+        texto = texto.replace(antigo, novo)
+    texto = "".join(ch for ch in texto if ord(ch) <= 0xFFFF)
+    trocas_status = {
+        "TEMPESTIVO": "tempestivo",
+        "PRECLUSO": "precluso",
+        "ADMISSÍVEL": "admissível",
+        "ADMISSIVEL": "admissível",
+        "RESSALVA": "ressalva",
+        "ADIANTADO": "adiantado",
+        "CICLO NEGATIVO": "ciclo negativo",
+        "APLICADO 0,00%": "aplicado 0,00%",
+        "CICLO ADMITIDO POR NEGOCIAÇÃO ENTRE AS PARTES": "ciclo admitido por negociação entre as partes",
+    }
+    for antigo, novo in trocas_status.items():
+        texto = texto.replace(antigo, novo)
+    texto = re.sub(r"[ \t]+", " ", texto)
+    texto = re.sub(r" *\n *", "\n", texto)
+    return texto.strip()
+
+
+def status_saneador(valor):
+    texto = limpar_texto_saneador(valor)
+    return texto.lower() if texto else ""
+
+
 def normalizar_df_infos(df):
     if not isinstance(df, pd.DataFrame) or df.empty:
         return pd.DataFrame(columns=COLUNAS_INFOS)
@@ -112,7 +146,7 @@ def extrair_delta_por_ciclo(resultado):
     partes = []
     for _, row in df.head(8).iterrows():
         ciclo = texto_seguro(row.get("Ciclo", ""), "")
-        situacao = texto_seguro(row.get("Situação", ""), "")
+        situacao = status_saneador(row.get("Situação", ""))
         pago = row.get("Valor pago efetivo", row.get("Valor pago", None))
         teorico = row.get("Valor teórico calculado", row.get("Valor devido", None))
         delta = row.get("Delta do ciclo", row.get("Valor represado", None))
@@ -143,7 +177,7 @@ def resumo_fontes(df_infos, resultado_vg, resultado_garantia, df_checklist, even
     linhas.append({"Fonte": "Valor Global", "Status": "Disponível" if isinstance(resultado_vg, dict) and bool(resultado_vg) else "Não disponível"})
     linhas.append({"Fonte": "Garantia", "Status": "Disponível" if isinstance(resultado_garantia, dict) and bool(resultado_garantia) else "Não disponível"})
     linhas.append({"Fonte": "Checklist Processual", "Status": "Disponível" if isinstance(df_checklist, pd.DataFrame) and not df_checklist.empty else "Não disponível"})
-    linhas.append({"Fonte": "Avaliação de Aditivos", "Status": "Disponível" if isinstance(eventos_aditivos, pd.DataFrame) and not eventos_aditivos.empty else "Não disponível"})
+    linhas.append({"Fonte": "Aditivos: 25%", "Status": "Disponível" if isinstance(eventos_aditivos, pd.DataFrame) and not eventos_aditivos.empty else "Não disponível"})
     return pd.DataFrame(linhas)
 
 
@@ -200,15 +234,15 @@ def montar_saneador_integrado(df_infos, resultado_vg, resultado_garantia, df_che
     aditivos_resumo = ""
     if isinstance(eventos_aditivos, pd.DataFrame) and not eventos_aditivos.empty:
         aditivos_resumo = (
-            f" A página de Avaliação de Aditivos registra {len(eventos_aditivos)} evento(s) informado(s), "
+            f" A página de Aditivos: 25% registra {len(eventos_aditivos)} evento(s) informado(s), "
             "os quais devem ser utilizados apenas para governança do limite de acréscimos e supressões, sem alterar automaticamente o Valor Global."
         )
 
     paragrafos = [
         "Despacho Saneador para Formalização de Termo de Apostila",
         (
-            "Trata-se de saneamento da instrução processual destinada à formalização de Termo de Apostila para registro "
-            "do reajuste contratual. Este documento consolida a sequência de atos, informações e resultados apurados "
+            "Este saneamento da instrução processual subsidia a formalização de Termo de Apostila para registro "
+            "do reajuste contratual. O documento consolida a sequência de atos, informações e resultados apurados "
             "antes da assinatura, com a finalidade de demonstrar a regularidade mínima da instrução."
         ),
         (
@@ -267,7 +301,8 @@ def montar_saneador_integrado(df_infos, resultado_vg, resultado_garantia, df_che
         "alçadas competentes e os procedimentos internos aplicáveis."
     )
 
-    return "\n\n".join(paragrafos)
+    texto_final = "\n\n".join(paragrafos)
+    return limpar_texto_saneador(texto_final)
 
 
 def gerar_docx_texto(texto):
@@ -342,7 +377,7 @@ fontes = resumo_fontes(df_infos, resultado_vg, resultado_garantia, df_checklist,
 
 st.info(
     "O Saneador é gerado automaticamente a partir dos dados disponíveis no sistema. "
-    "Ele conta a história processual: pleito, premissas, cálculo, Valor Global, garantia, aditivos e conferência da instrução."
+    "Ele consolida pleito, premissas, cálculo, valores, garantia, aditivos e conferência da instrução."
 )
 
 st.dataframe(fontes, use_container_width=True, hide_index=True)

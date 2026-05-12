@@ -90,55 +90,117 @@ def normalizar_status(status):
     return texto or "NÃO INFORMADO"
 
 
-
-
-def status_docx_caixa_baixa(valor):
-    """Formata o resultado/tratamento da análise em caixa baixa apenas para o DOCX.
-
-    Mantém as tabelas e demais telas inalteradas, mas evita que a minuta traga
-    resultados como TEMPESTIVO, PRECLUSO ou ADMISSÍVEL COM RESSALVA em caixa alta.
-    """
+def _status_relatorio(valor):
+    """Status textual, sem emojis e sem caixa alta, para relatórios executivos."""
     texto = texto_seguro(valor, "")
     texto = re.sub(r"^[▲■●•\-\s]+", "", str(texto)).strip()
     if not texto:
-        return ""
+        return "não informado"
+    t = texto.upper()
+    if "NEGOC" in t or "ACORDO" in t:
+        return "aceito por negociação entre as partes"
+    if "PRECLUS" in t:
+        return "precluso"
+    if "RESSALVA" in t:
+        return "admissível com ressalva"
+    if "TEMPEST" in t:
+        return "tempestivo"
+    if "ADIANT" in t:
+        return "adiantado"
     return texto.lower()
 
 
+def _ciclos_df_para_relatorio(adm, res):
+    """Monta quadro de ciclos para relatório, incluindo C0 como ciclo-base."""
+    df = None
+    if isinstance(res, dict) and isinstance(res.get("df_ciclos"), pd.DataFrame) and not res.get("df_ciclos").empty:
+        df = res.get("df_ciclos").copy()
+    else:
+        ciclos = []
+        if adm:
+            ciclos = adm.get("ciclos") or adm.get("detalhamento_ciclos") or []
+        df = pd.DataFrame(ciclos)
+
+    linhas = [{
+        "Ciclo": "C0",
+        "Data-base": "ciclo-base inicial",
+        "Data do pedido": "não se aplica",
+        "Classificação": "base sem reajuste",
+        "Percentual aplicado": "0,00%",
+        "Observação": "Período inicial do contrato, sem aplicação de reajuste.",
+    }]
+
+    if isinstance(df, pd.DataFrame) and not df.empty:
+        for _, row in df.iterrows():
+            ciclo = texto_seguro(row.get("Ciclo", row.get("ciclo", "")), "")
+            if not ciclo or str(ciclo).upper() == "C0":
+                continue
+            acordo = texto_seguro(row.get("Acordo negocial", row.get("acordo_negocial", "")), "")
+            situacao = row.get("Situação aplicada", row.get("situacao_aplicada", row.get("Situação", row.get("situacao", ""))))
+            if str(acordo).strip().lower() in ["sim", "s", "true", "1"]:
+                classificacao = "aceito por negociação entre as partes"
+            else:
+                classificacao = _status_relatorio(situacao)
+
+            percentual_val = row.get("Percentual aplicado", row.get("percentual_aplicado", row.get("Variação", row.get("variacao", 0))))
+            try:
+                percentual_txt = percentual(float(percentual_val), 2)
+            except Exception:
+                percentual_txt = texto_seguro(percentual_val, "0,00%")
+
+            obs = []
+            if classificacao == "aceito por negociação entre as partes":
+                obs.append("Tratamento negocial informado na análise.")
+            justificativa = texto_seguro(row.get("Justificativa negocial", row.get("justificativa_negocial", "")), "")
+            if justificativa:
+                obs.append(justificativa)
+
+            linhas.append({
+                "Ciclo": ciclo,
+                "Data-base": formatar_data_br(row.get("Data-base", row.get("data_base", ""))),
+                "Data do pedido": formatar_data_br(row.get("Data do pedido", row.get("data_pedido", ""))),
+                "Classificação": classificacao,
+                "Percentual aplicado": percentual_txt,
+                "Observação": " ".join(obs) if obs else "",
+            })
+
+    return pd.DataFrame(linhas)
+
+
 def texto_clausula_oito(adm):
+    """Síntese enxuta, sem afirmar tempestividade quando houver tratamento negocial."""
     ciclos = []
     if adm:
         ciclos = adm.get("ciclos") or adm.get("detalhamento_ciclos") or []
 
+    if not ciclos:
+        return (
+            "A análise deve ser lida a partir da Cláusula Oitava, separando a existência do ciclo, "
+            "a admissibilidade do pedido e o início dos efeitos financeiros."
+        )
+
+    qtd = len(ciclos)
+    plural = "pleitos" if qtd > 1 else "pleito"
     status_gerais = []
+    tem_negocial = False
     for c in ciclos:
-        status_gerais.append(str(c.get("situacao") or c.get("Situação") or c.get("status") or "").upper())
+        status_gerais.append(str(c.get("situacao") or c.get("Situação") or c.get("status") or c.get("situacao_aplicada") or "").upper())
+        if c.get("superacao_negocial") or str(c.get("Acordo negocial", "")).strip().lower() in ["sim", "s", "true", "1"]:
+            tem_negocial = True
     texto_status = " ".join(status_gerais)
 
+    partes = [
+        f"A análise contempla {qtd} {plural} de reajuste, devendo distinguir ciclo, admissibilidade e efeitos financeiros."
+    ]
     if "PRECLUS" in texto_status:
-        return (
-            "A análise registra ciclo classificado como precluso, em razão da ausência de solicitação "
-            "dentro do prazo de 90 dias previsto no Parágrafo Quinto da Cláusula Oitava, observando-se "
-            "também a regra do Parágrafo Sétimo quanto à possibilidade de novo pleito após ultrapassados "
-            "12 meses da data em que poderia ter sido requerido."
-        )
+        partes.append("Há ciclo classificado como precluso, mantido para memória e rastreabilidade, sem gerar retroativo a pagar.")
+    if tem_negocial or "NEGOC" in texto_status or "ACORDO" in texto_status:
+        partes.append("Há ciclo aceito por negociação entre as partes, razão pela qual o relatório não deve descrevê-lo como simples pleito tempestivo.")
     if "RESSALVA" in texto_status:
-        return (
-            "A análise registra pleito admissível com ressalva, por ter sido apresentado no mesmo mês de "
-            "implemento da anualidade, porém antes do dia exato de completude dos 12 meses. Os efeitos "
-            "financeiros devem observar os Parágrafos Primeiro e Segundo da Cláusula Oitava."
-        )
-    if "ADIANT" in texto_status:
-        return (
-            "A análise registra pleito apresentado antes do implemento da anualidade contratual. Nos termos "
-            "dos Parágrafos Primeiro e Segundo da Cláusula Oitava, eventual reconhecimento de efeitos "
-            "financeiros deve observar a completude dos 12 meses e a data juridicamente apta para o pedido."
-        )
-    return (
-        "O pleito foi classificado como tempestivo, considerando a anualidade prevista no Parágrafo Primeiro "
-        "da Cláusula Oitava e a apresentação da solicitação dentro da janela contratual de 90 dias prevista "
-        "no Parágrafo Quinto. Os efeitos financeiros devem observar o Parágrafo Segundo da mesma cláusula."
-    )
+        partes.append("Há pleito admissível com ressalva, com efeitos financeiros a serem conferidos conforme a cláusula contratual.")
+    if not any(["PRECLUS" in texto_status, tem_negocial, "NEGOC" in texto_status, "ACORDO" in texto_status, "RESSALVA" in texto_status]):
+        partes.append("Nos ciclos classificados como tempestivos, os efeitos financeiros devem observar a data juridicamente aplicável ao pedido e a cláusula de reajuste.")
+    return " ".join(partes)
 
 
 def texto_contexto_contrato(res):
@@ -146,8 +208,6 @@ def texto_contexto_contrato(res):
     if not contexto or not contexto.get("contexto_informado"):
         return "Não houve contexto contratual anterior informado para esta análise."
     linhas = []
-    linhas.append("O histórico anterior corresponde às informações inseridas no início da análise, no bloco Contexto do Contrato, e representa memória formal do contrato antes da análise atual.")
-    linhas.append("Essas informações são utilizadas para governança, rastreabilidade, linha do tempo e instrução processual. Elas não são somadas automaticamente ao Valor Total Atualizado do Contrato; quando já incorporadas ou retiradas do contrato, seus efeitos devem estar refletidos nas medições/execução financeira, nas quantidades dos itens ou nos saldos remanescentes informados.")
     if contexto.get("valor_formalizado_anterior"):
         linhas.append(f"Valor formalizado antes desta análise: {moeda(contexto.get('valor_formalizado_anterior', 0))}.")
     if contexto.get("ultimo_ciclo_concedido"):
@@ -157,49 +217,65 @@ def texto_contexto_contrato(res):
     eventos = contexto.get("eventos_historicos_anteriores", []) or []
     if eventos:
         linhas.append(f"Eventos históricos anteriores registrados: {len(eventos)}.")
+    linhas.append("O contexto informado serve para memória e governança. Seus efeitos só impactam os valores quando estiverem refletidos na execução, nos itens ou no saldo remanescente do Arquivo de Coleta.")
     return "\n".join(linhas)
 
 
-def gerar_texto_instrucao(adm, res):
-    origem = (adm or {}).get("origem") or (adm or {}).get("tipo") or "Não informado"
+def texto_contexto_analise(adm, res):
     indice = res.get("indice", (adm or {}).get("indice", "Não informado"))
     fator = res.get("fator_acumulado", (adm or {}).get("fator_acumulado", (adm or {}).get("fator", 1.0)))
-    linha_origem = "" if str(origem).strip().lower() in ["", "não informado", "nao informado"] else f"Origem da análise: {origem}\n"
+    df_ciclos = _ciclos_df_para_relatorio(adm, res)
+    ciclos_validos = df_ciclos[df_ciclos["Ciclo"].astype(str).str.upper() != "C0"] if not df_ciclos.empty else pd.DataFrame()
+    qtd_ciclos = len(ciclos_validos)
+    classificacoes = []
+    if not ciclos_validos.empty:
+        for _, row in ciclos_validos.iterrows():
+            ciclo = row.get("Ciclo", "")
+            classificacao = row.get("Classificação", "")
+            pct_apl = row.get("Percentual aplicado", "")
+            trecho = f"{ciclo}: {classificacao}"
+            if pct_apl:
+                trecho += f", percentual aplicado {pct_apl}"
+            classificacoes.append(trecho)
+    resumo_ciclos = "; ".join(classificacoes) if classificacoes else "sem ciclos de reajuste informados"
+
+    contexto_txt = texto_contexto_contrato(res)
+    return (
+        "A análise consolida a admissibilidade dos pleitos de reajuste e a quantificação financeira apurada com base no Arquivo de Coleta. "
+        "O C0 é tratado como ciclo-base inicial, sem aplicação de reajuste. "
+        f"Foram considerados {qtd_ciclos} ciclo(s) de reajuste: {resumo_ciclos}. "
+        f"Índice utilizado: {indice}. Fator acumulado considerado: {fator_fmt(fator)}. "
+        "O Valor Total Atualizado do Contrato mantém a composição execução atualizada por ciclo + saldo remanescente atualizado. "
+        "O bloco financeiro serve para apurar o valor represado/retroativo. Aditivos e supressões são apresentados como eventos de controle e governança, sem soma autônoma quando seus efeitos já estiverem refletidos na execução ou no saldo remanescente. "
+        f"{contexto_txt}"
+    )
+
+
+def gerar_texto_instrucao(adm, res):
     return f"""
 RELATÓRIO EXECUTIVO — VALOR ATUALIZADO DO CONTRATO
 
 1. Contexto da análise
 
-A presente análise consolida os resultados da etapa de admissibilidade do reajuste contratual e da etapa de quantificação do impacto financeiro, com base nos dados constantes do Arquivo de Coleta preenchido.
+{texto_contexto_analise(adm, res)}
 
-{linha_origem}Índice utilizado: {indice}
-Fator acumulado considerado: {fator_fmt(fator)}
-Data/hora de geração: {datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')}
+2. Síntese dos ciclos
 
-2. Fundamentação contratual
+{_ciclos_df_para_relatorio(adm, res).to_string(index=False)}
 
-{texto_clausula_oito(adm)}
-
-3. Contexto do Contrato
-
-{texto_contexto_contrato(res)}
-
-4. Resultado financeiro consolidado
+3. Síntese financeira
 
 Valor original do contrato: {moeda(res.get('valor_original_contrato', 0))}
-Valor pago efetivo: {moeda(res.get('total_pago_faturado', 0))}
+Valor financeiro pago até o mês mais recente: {moeda(res.get('total_pago_faturado', 0))}
 Valor teórico calculado: {moeda(res.get('total_devido_reajustado', 0))}
 Valor represado a pagar: {moeda(res.get('valor_represado_a_pagar', 0))}
-Valor executado atualizado por ciclos: {moeda(res.get('valor_executado_atualizado', 0))}
+Valor executado total atualizado, considerado até o início do ciclo atual: {moeda(res.get('valor_executado_atualizado', 0))}
 Saldo remanescente atualizado: {moeda(res.get('remanescente_reajustado', 0))}
-Aditivos/Supressões registrados para controle: {moeda(res.get('total_aditivos_atualizados', 0))}
+Aditivos da análise atual, para controle: {moeda(res.get('total_aditivos_atualizados', 0))}
 Valor Total Atualizado do Contrato: {moeda(res.get('valor_atualizado_contrato', res.get('valor_global_estoque', 0)))}
 
-5. Observação executiva
-
-Os ciclos classificados como preclusos permanecem registrados para fins de memória e rastreabilidade, mas não compõem o impacto financeiro do reajuste acumulado nem o valor represado a pagar. O Valor Total Atualizado do Contrato corresponde à execução atualizada por ciclo somada ao saldo remanescente atualizado. Aditivos e supressões são exibidos como eventos contratuais de controle e governança, sem soma autônoma ao total quando seus efeitos já estiverem refletidos na execução ou no saldo remanescente.
+Data/hora de geração: {datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')}
 """.strip()
-
 
 def df_visual(df, moeda_cols=None, fator_cols=None, pct_cols=None):
     if df is None or not isinstance(df, pd.DataFrame):
@@ -286,11 +362,13 @@ def criar_pdf_relatorio(adm, res):
     ])
     story.append(tabela_pdf(dados_identificacao, col_widths=[6 * cm, 11 * cm]))
 
-    story.append(Paragraph("2. Fundamentação Contratual — Cláusula Oitava", styles["Subtitulo"]))
-    story.append(Paragraph(texto_clausula_oito(adm), styles["Texto"]))
+    story.append(Paragraph("2. Contexto da análise", styles["Subtitulo"]))
+    story.append(Paragraph(texto_contexto_analise(adm, res).replace("\n", "<br/>"), styles["Texto"]))
 
-    story.append(Paragraph("3. Contexto do Contrato", styles["Subtitulo"]))
-    story.append(Paragraph(texto_contexto_contrato(res).replace("\n", "<br/>"), styles["Texto"]))
+    df_ciclos_rel = _ciclos_df_para_relatorio(adm, res)
+    if isinstance(df_ciclos_rel, pd.DataFrame) and not df_ciclos_rel.empty:
+        story.append(Paragraph("3. Síntese dos ciclos", styles["Subtitulo"]))
+        story.append(tabela_dataframe_pdf(df_ciclos_rel, max_linhas=20))
 
     story.append(Paragraph("4. Indicadores Executivos", styles["Subtitulo"]))
     story.append(tabela_pdf([
@@ -305,23 +383,7 @@ def criar_pdf_relatorio(adm, res):
         ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)))],
     ], header=True, col_widths=[8.5 * cm, 8.5 * cm]))
 
-    story.append(Paragraph("5. Ciclos, Percentuais e Efeitos Financeiros", styles["Subtitulo"]))
-    df_ciclos = res.get("df_ciclos")
-    if isinstance(df_ciclos, pd.DataFrame) and not df_ciclos.empty:
-        cols = [c for c in ["Ciclo", "Data-base", "Data do pedido", "Situação", "Percentual apurado pelo índice", "Percentual aplicado", "Fator acumulado efetivo"] if c in df_ciclos.columns]
-        if not cols:
-            cols = [c for c in ["Ciclo", "Data-base", "Data do pedido", "Situação", "Variação", "Fator acumulado efetivo"] if c in df_ciclos.columns]
-        df_c = df_ciclos[cols].copy()
-        if "Situação" in df_c.columns:
-            df_c["Situação"] = df_c["Situação"].apply(normalizar_status)
-        for col_pct in ["Variação", "Percentual apurado pelo índice", "Percentual aplicado"]:
-            if col_pct in df_c.columns:
-                df_c[col_pct] = df_c[col_pct].apply(lambda x: percentual(x, 2))
-        if "Fator acumulado efetivo" in df_c.columns:
-            df_c["Fator acumulado efetivo"] = df_c["Fator acumulado efetivo"].apply(fator_fmt)
-        story.append(tabela_dataframe_pdf(df_c, max_linhas=12))
-
-    story.append(Paragraph("6. Financeiro por Ciclo", styles["Subtitulo"]))
+    story.append(Paragraph("5. Financeiro por Ciclo", styles["Subtitulo"]))
     df_fin = df_visual(
         res.get("df_financeiro_por_ciclo"),
         moeda_cols=["Valor pago efetivo", "Valor teórico calculado", "Valor pago/faturado", "Valor devido reajustado", "Delta do ciclo", "Delta acumulado"],
@@ -330,7 +392,7 @@ def criar_pdf_relatorio(adm, res):
     keep_fin = [c for c in ["Ciclo", "Situação", "Tratamento financeiro", "Fator aplicado ao retroativo", "Fator aplicado", "Valor pago efetivo", "Valor teórico calculado", "Valor pago/faturado", "Valor devido reajustado", "Delta do ciclo"] if c in df_fin.columns]
     story.append(tabela_dataframe_pdf(df_fin[keep_fin] if keep_fin else df_fin, max_linhas=20))
 
-    story.append(Paragraph("7. Composição do Valor Total Atualizado do Contrato", styles["Subtitulo"]))
+    story.append(Paragraph("6. Composição do Valor Total Atualizado do Contrato", styles["Subtitulo"]))
     df_comp = res.get("df_composicao_valor_total")
     if isinstance(df_comp, pd.DataFrame) and not df_comp.empty:
         df_comp_pdf = df_comp.copy()
@@ -352,7 +414,7 @@ def criar_pdf_relatorio(adm, res):
 
     df_ad = res.get("df_aditivos_executivo", res.get("df_aditivos"))
     if isinstance(df_ad, pd.DataFrame) and not df_ad.empty:
-        story.append(Paragraph("8. Aditivos e Supressões", styles["Subtitulo"]))
+        story.append(Paragraph("7. Aditivos e Supressões", styles["Subtitulo"]))
         df_adv = df_visual(
             df_ad,
             moeda_cols=["Valor do aditivo na assinatura", "Valor do aditivo reajustado", "Valor original da alteração", "Valor atualizado da alteração"],
@@ -360,9 +422,6 @@ def criar_pdf_relatorio(adm, res):
         )
         keep_ad = [c for c in ["Aditivo", "Ciclo/Marco", "Tratamento do aditivo", "Quantidade de linhas", "Valor do aditivo na assinatura", "Fator aplicado", "Valor do aditivo reajustado"] if c in df_adv.columns]
         story.append(tabela_dataframe_pdf(df_adv[keep_ad], max_linhas=12))
-
-    story.append(Paragraph("9. Informações para instrução processual", styles["Subtitulo"]))
-    story.append(Paragraph(gerar_texto_instrucao(adm, res).replace("\n", "<br/>"), styles["Texto"]))
 
     doc.build(story)
     pdf = buffer.getvalue()
@@ -708,11 +767,9 @@ def gerar_minuta_apostilamento_docx(adm, res):
         for _, ad in df_ad_docx.iterrows():
             identificacao = texto_seguro(ad.get("Aditivo", ad.get("Identificação", "Termo Aditivo")), "Termo Aditivo")
             data_ad = formatar_data_br(ad.get("Data do aditivo", ""))
-            ciclo_ad = texto_seguro(ad.get("Ciclo/Marco", ""), "ciclo de referência aplicável")
-            valor_original_ad = moeda(ad.get("Valor do aditivo na assinatura", ad.get("Valor original da alteração", 0)))
-            valor_atualizado_ad = moeda(ad.get("Valor do aditivo reajustado", ad.get("Valor atualizado da alteração", 0)))
+            valor_ad = moeda(ad.get("Valor do aditivo na assinatura", ad.get("Valor original da alteração", 0)))
             considerandos.append(
-                f"O {identificacao}, de {data_ad if data_ad else '[campo a preencher]'}, foi considerado na análise pelo valor original de {valor_original_ad} e pelo valor atualizado de {valor_atualizado_ad}, conforme o ciclo de referência {ciclo_ad};"
+                f"O {identificacao}, de {data_ad if data_ad else '[campo a preencher]'}, com valor de {valor_ad} na data de assinatura;"
             )
 
     for item in considerandos:
@@ -731,14 +788,13 @@ def gerar_minuta_apostilamento_docx(adm, res):
             nome = _limpar_texto_formal(_nome_ciclo_minuta(ciclo, idx))
             pct = _limpar_texto_formal(_percentual_ciclo_minuta(ciclo))
             efeito = _limpar_texto_formal(_efeito_ciclo_minuta(ciclo))
-            situacao = status_docx_caixa_baixa(
+            situacao = _limpar_texto_formal(
                 ciclo.get("situacao_aplicada")
                 or ciclo.get("Situação aplicada")
                 or ciclo.get("situacao")
                 or ciclo.get("Situação")
                 or ""
             )
-            situacao = _limpar_texto_formal(situacao)
             complemento = f", com tratamento aplicado: {situacao}" if situacao else ""
             _adicionar_subitem(
                 document,
@@ -776,10 +832,10 @@ def gerar_minuta_apostilamento_docx(adm, res):
     _adicionar_subitem(
         document,
         f"({_romano(subitem_idx)})",
-        f"Total consolidado dos ciclos analisados para fins de retroativo: valor pago efetivo de {moeda(res.get('total_pago_faturado', res.get('valor_pago_efetivo', 0)))}, valor teórico calculado de {moeda(res.get('total_devido_reajustado', res.get('valor_teorico_calculado', 0)))} e saldo retroativo total a pagar de {moeda(res.get('valor_represado_a_pagar', res.get('delta_acumulado', 0)))}."
+        f"Total consolidado: valor pago efetivo de {moeda(res.get('total_pago_faturado', res.get('valor_pago_efetivo', 0)))}, valor teórico calculado de {moeda(res.get('total_devido_reajustado', res.get('valor_teorico_calculado', 0)))} e saldo retroativo total a pagar de {moeda(res.get('valor_represado_a_pagar', res.get('delta_acumulado', 0)))}."
     )
 
-    _adicionar_item_numerado(document, 3, "Registra-se, ainda, que a memória de cálculo consignou os saldos remanescentes atualizados do contrato nos marcos de início dos ciclos de reajuste:")
+    _adicionar_item_numerado(document, 3, "Registra-se, ainda, que a memória de cálculo consignou os saldos remanescentes do contrato nos marcos de início dos ciclos de reajuste:")
     df_rem = res.get("df_remanescentes")
     if isinstance(df_rem, pd.DataFrame) and not df_rem.empty:
         subitem_idx = 1
@@ -800,7 +856,7 @@ def gerar_minuta_apostilamento_docx(adm, res):
     _adicionar_subitem(
         document,
         "b)",
-        f"Valor executado total atualizado, considerado até o início do ciclo atual ({texto_seguro(res.get('ciclo_ultimo_remanescente', 'Cxx'), 'Cxx')}): {moeda(res.get('valor_executado_atualizado', res.get('total_devido_reajustado', 0)))}."
+        f"Valor consolidado da execução atualizada por ciclos: {moeda(res.get('valor_executado_atualizado', res.get('total_devido_reajustado', 0)))}."
     )
     _adicionar_subitem(
         document,
@@ -872,13 +928,10 @@ st.divider()
 tab1, tab2, tab3, tab4 = st.tabs(["Relatório Executivo", "Tabelas", "PDF", "Minuta de Apostilamento"])
 
 with tab1:
-    st.markdown("### Fundamentação Contratual")
-    st.info(texto_clausula_oito(adm))
+    st.markdown("### Contexto da análise")
+    st.info(texto_contexto_analise(adm, res))
 
-    st.markdown("### Contexto do Contrato")
-    st.info(texto_contexto_contrato(res))
-
-    st.markdown("### Informações para instrução processual")
+    st.markdown("### Texto executivo consolidado")
     texto = gerar_texto_instrucao(adm, res)
     st.text_area("Copie para o processo:", texto, height=420)
 
