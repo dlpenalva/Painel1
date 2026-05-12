@@ -1,6 +1,7 @@
 from datetime import datetime, date
 from io import BytesIO
 from zoneinfo import ZoneInfo
+from html import escape
 
 import pandas as pd
 import streamlit as st
@@ -17,10 +18,14 @@ try:
 except Exception:
     REPORTLAB_OK = False
 
+from _ui_utils import render_marca_topo
+
 st.set_page_config(page_title="Análises de Reajustes - Garantia", layout="wide")
 
 
-from _ui_utils import render_marca_topo
+# ============================================================
+# Utilitários
+# ============================================================
 
 def moeda(valor, com_prefixo=True):
     try:
@@ -32,16 +37,22 @@ def moeda(valor, com_prefixo=True):
 
 
 def parse_moeda_br(valor):
-    """Aceita entradas como 85771019,12, 85.771.019,12 ou R$ 85.771.019,12."""
+    """Aceita 85771019,12, 85.771.019,12, 85771019.12 ou R$ 85.771.019,12."""
     if valor is None:
         return 0.0
     if isinstance(valor, (int, float)):
+        try:
+            if pd.isna(valor):
+                return 0.0
+        except Exception:
+            pass
         return float(valor)
     texto = str(valor).strip()
     if not texto:
         return 0.0
     texto = texto.replace("R$", "").replace(" ", "")
-    texto = texto.replace(".", "").replace(",", ".")
+    if "," in texto:
+        texto = texto.replace(".", "").replace(",", ".")
     try:
         return float(texto)
     except Exception:
@@ -49,18 +60,56 @@ def parse_moeda_br(valor):
 
 
 def numero_para_input(valor):
+    return parse_moeda_br(valor)
+
+
+def limpar_texto(valor):
+    if valor is None:
+        return ""
     try:
-        return float(valor)
+        if isinstance(valor, float) and pd.isna(valor):
+            return ""
     except Exception:
-        return 0.0
+        pass
+    return str(valor).strip()
 
 
 def data_hora_brasilia():
     return datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
 
 
+def data_para_texto(valor):
+    if valor is None:
+        return ""
+    try:
+        if pd.isna(valor):
+            return ""
+    except Exception:
+        pass
+    if isinstance(valor, (datetime, date)):
+        return valor.strftime("%d/%m/%Y")
+    try:
+        dt = pd.to_datetime(valor, dayfirst=True, errors="coerce")
+        if pd.notna(dt):
+            return dt.strftime("%d/%m/%Y")
+    except Exception:
+        pass
+    return limpar_texto(valor)
+
+
+def primeira_coluna_existente(df, candidatos):
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return None
+    mapa = {str(c).strip().lower(): c for c in df.columns}
+    for cand in candidatos:
+        chave = str(cand).strip().lower()
+        if chave in mapa:
+            return mapa[chave]
+    return None
+
+
 def obter_contexto_valor_global(resultado_valor_global):
-    """Extrai, de forma defensiva, os principais valores vindos do módulo Valor Global."""
+    """Extrai dados importados do módulo Valores, sem alterar a regra pétrea do Valor Total Atualizado."""
     resultado_valor_global = resultado_valor_global or {}
     contexto = resultado_valor_global.get("contexto_contratual_anterior", {}) or {}
 
@@ -72,16 +121,20 @@ def obter_contexto_valor_global(resultado_valor_global):
         )
     )
     valor_formalizado_anterior = numero_para_input(
-        resultado_valor_global.get(
-            "valor_formalizado_anterior",
-            contexto.get("valor_formalizado_anterior", 0.0),
-        )
+        resultado_valor_global.get("valor_formalizado_anterior", contexto.get("valor_formalizado_anterior", 0.0))
     )
     valor_executado_atualizado = numero_para_input(resultado_valor_global.get("valor_executado_atualizado", 0.0))
     remanescente_atualizado = numero_para_input(resultado_valor_global.get("remanescente_reajustado", 0.0))
-    total_aditivos = numero_para_input(resultado_valor_global.get("total_aditivos_atualizados", 0.0))
+    variacao_acumulada = numero_para_input(resultado_valor_global.get("variacao_acumulada", 0.0))
     quantidade_aditivos = int(numero_para_input(resultado_valor_global.get("quantidade_aditivos_total", 0)))
-    data_processamento = limpar_texto(resultado_valor_global.get("data_processamento", ""))
+
+    df_aditivos = resultado_valor_global.get("df_aditivos_executivo", pd.DataFrame())
+    if not isinstance(df_aditivos, pd.DataFrame):
+        df_aditivos = pd.DataFrame()
+
+    df_ciclos = resultado_valor_global.get("df_ciclos", pd.DataFrame())
+    if not isinstance(df_ciclos, pd.DataFrame):
+        df_ciclos = pd.DataFrame()
 
     return {
         "valor_original": valor_original,
@@ -89,53 +142,125 @@ def obter_contexto_valor_global(resultado_valor_global):
         "valor_formalizado_anterior": valor_formalizado_anterior,
         "valor_executado_atualizado": valor_executado_atualizado,
         "remanescente_atualizado": remanescente_atualizado,
-        "total_aditivos": total_aditivos,
+        "variacao_acumulada": variacao_acumulada,
         "quantidade_aditivos": quantidade_aditivos,
-        "data_processamento": data_processamento,
-        "contexto": contexto,
+        "df_aditivos": df_aditivos,
+        "df_ciclos": df_ciclos,
     }
 
 
-def limpar_texto(valor):
-    if valor is None:
-        return ""
-    if isinstance(valor, float) and pd.isna(valor):
-        return ""
-    return str(valor).strip()
+def extrair_aditivos_para_garantia(df_aditivos):
+    """Consolida aditivos para leitura orgânica da garantia.
 
+    Mantém a lógica de instrumento: se houver várias linhas técnicas, agrupa por data + ciclo.
+    """
+    colunas_saida = ["Evento", "Data", "Ciclo", "Valor original", "Valor atualizado", "Endosso esperado"]
+    if not isinstance(df_aditivos, pd.DataFrame) or df_aditivos.empty:
+        return pd.DataFrame(columns=colunas_saida)
 
-def normalizar_historico(df_hist):
-    """Limpa a tabela de histórico e retorna apenas linhas efetivamente preenchidas."""
-    if df_hist is None or df_hist.empty:
-        return pd.DataFrame(columns=[
-            "Data", "Evento", "Valor contratual de referência", "Garantia exigida",
-            "Garantia apresentada/endossada", "Observação"
-        ])
-
-    df = df_hist.copy()
-    colunas = [
-        "Data", "Evento", "Valor contratual de referência", "Garantia exigida",
-        "Garantia apresentada/endossada", "Observação"
-    ]
-    for col in colunas:
-        if col not in df.columns:
-            df[col] = "" if col in ["Data", "Evento", "Observação"] else 0.0
-
-    for col in ["Data", "Evento", "Observação"]:
-        df[col] = df[col].apply(limpar_texto)
-
-    for col in ["Valor contratual de referência", "Garantia exigida", "Garantia apresentada/endossada"]:
-        df[col] = df[col].apply(parse_moeda_br)
-
-    mask = (
-        df["Data"].ne("") |
-        df["Evento"].ne("") |
-        df["Observação"].ne("") |
-        df["Valor contratual de referência"].ne(0) |
-        df["Garantia exigida"].ne(0) |
-        df["Garantia apresentada/endossada"].ne(0)
+    df = df_aditivos.copy()
+    col_data = primeira_coluna_existente(df, ["Data do aditivo", "Data", "Data assinatura", "Data de assinatura"])
+    col_ciclo = primeira_coluna_existente(df, ["Ciclo/Marco", "Ciclo", "Ciclo de referência", "ciclos"])
+    col_valor_original = primeira_coluna_existente(
+        df,
+        [
+            "Valor original consolidado",
+            "Valor do aditivo na assinatura",
+            "Valor da alteração na assinatura",
+            "Valor assinado",
+            "Valor original",
+            "Valor",
+        ],
     )
-    return df.loc[mask, colunas].reset_index(drop=True)
+    col_valor_atualizado = primeira_coluna_existente(
+        df,
+        [
+            "Valor atualizado consolidado",
+            "Valor do aditivo reajustado",
+            "Valor atualizado do aditivo",
+            "Valor da alteração atualizado",
+            "Valor atualizado",
+        ],
+    )
+    col_aditivo = primeira_coluna_existente(df, ["Aditivo", "Instrumento", "Identificação", "Identificacao"])
+
+    if col_data:
+        df["_data_ref"] = df[col_data].apply(data_para_texto)
+    else:
+        df["_data_ref"] = ""
+
+    if col_ciclo:
+        df["_ciclo_ref"] = df[col_ciclo].apply(limpar_texto)
+    else:
+        df["_ciclo_ref"] = ""
+
+    if col_aditivo:
+        df["_aditivo_ref"] = df[col_aditivo].apply(limpar_texto)
+    else:
+        df["_aditivo_ref"] = ""
+
+    if col_valor_original:
+        df["_valor_original"] = df[col_valor_original].apply(parse_moeda_br)
+    else:
+        df["_valor_original"] = 0.0
+
+    if col_valor_atualizado:
+        df["_valor_atualizado"] = df[col_valor_atualizado].apply(parse_moeda_br)
+    else:
+        df["_valor_atualizado"] = df["_valor_original"]
+
+    # Chave defensiva: data + ciclo; quando a data não existir, usa aditivo + ciclo.
+    df["_chave"] = df.apply(
+        lambda r: "|".join([
+            r.get("_data_ref") or r.get("_aditivo_ref") or "Aditivo sem data",
+            r.get("_ciclo_ref") or "",
+        ]),
+        axis=1,
+    )
+
+    linhas = []
+    for idx, (_, grupo) in enumerate(df.groupby("_chave", dropna=False), start=1):
+        data_ref = limpar_texto(grupo["_data_ref"].iloc[0]) if "_data_ref" in grupo else ""
+        ciclo_ref = limpar_texto(grupo["_ciclo_ref"].iloc[0]) if "_ciclo_ref" in grupo else ""
+        aditivo_ref = limpar_texto(grupo["_aditivo_ref"].iloc[0]) if "_aditivo_ref" in grupo else ""
+        evento = aditivo_ref if aditivo_ref and not aditivo_ref.isdigit() else f"Aditivo {idx}"
+        valor_original = round(float(grupo["_valor_original"].sum()), 2)
+        valor_atualizado = round(float(grupo["_valor_atualizado"].sum()), 2)
+        linhas.append(
+            {
+                "Evento": evento,
+                "Data": data_ref or "Não informada",
+                "Ciclo": ciclo_ref or "Não informado",
+                "Valor original": valor_original,
+                "Valor atualizado": valor_atualizado,
+                "Endosso esperado": 0.0,
+            }
+        )
+
+    return pd.DataFrame(linhas, columns=colunas_saida)
+
+
+def resumo_ciclos_texto(df_ciclos, variacao_acumulada):
+    if isinstance(df_ciclos, pd.DataFrame) and not df_ciclos.empty and "Ciclo" in df_ciclos.columns:
+        ciclos = []
+        col_pct = primeira_coluna_existente(df_ciclos, ["Percentual aplicado", "Variação", "Variacao", "%", "Percentual"])
+        for _, row in df_ciclos.iterrows():
+            ciclo = limpar_texto(row.get("Ciclo", ""))
+            if not ciclo or ciclo.upper() == "C0":
+                continue
+            if col_pct:
+                pct = parse_moeda_br(row.get(col_pct, 0.0))
+                if abs(pct) < 1:
+                    pct *= 100
+                ciclos.append(f"{ciclo} ({pct:.2f}%)".replace(".", ","))
+            else:
+                ciclos.append(ciclo)
+        if ciclos:
+            return ", ".join(ciclos)
+    if variacao_acumulada:
+        pct = variacao_acumulada * 100 if abs(variacao_acumulada) < 1 else variacao_acumulada
+        return f"reajuste acumulado informado ({pct:.2f}%)".replace(".", ",")
+    return "reajustes informados na análise"
 
 
 def css():
@@ -156,52 +281,25 @@ def css():
             padding: 20px 22px;
             margin: 8px 0 16px 0;
         }
-        .garantia-label {
-            color: #475569;
-            font-size: 0.92rem;
-            margin-bottom: 4px;
+        .garantia-label { color: #475569; font-size: 0.92rem; margin-bottom: 4px; }
+        .garantia-valor { color: #1F2937; font-size: 1.55rem; font-weight: 700; line-height: 1.2; }
+        .garantia-valor-destaque { color: #123B63; font-size: 2rem; font-weight: 800; line-height: 1.2; }
+        .garantia-nota { color: #64748B; font-size: 0.88rem; margin-top: 6px; }
+        .valor-formatado-apoio { color: #64748B; font-size: 0.86rem; margin-top: -8px; margin-bottom: 8px; }
+        .linha-tempo-box {
+            background: #FBFCFE;
+            border: 1px solid #E1E7EF;
+            border-radius: 14px;
+            padding: 16px 18px;
+            margin: 10px 0 12px 0;
         }
-        .garantia-valor {
-            color: #1F2937;
-            font-size: 1.75rem;
-            font-weight: 700;
-            line-height: 1.2;
-        }
-        .garantia-valor-destaque {
-            color: #123B63;
-            font-size: 2.1rem;
-            font-weight: 800;
-            line-height: 1.2;
-        }
-        .garantia-nota {
-            color: #64748B;
-            font-size: 0.9rem;
-            margin-top: 6px;
-        }
-        .valor-formatado-apoio {
-            color: #64748B;
-            font-size: 0.88rem;
-            margin-top: -8px;
-            margin-bottom: 8px;
-        }
-        .historico-garantia-box {
-            background: #F4F8FB;
-            border: 1px solid #D7E3EE;
-            border-radius: 12px;
-            padding: 14px 16px;
-            margin: 10px 0 8px 0;
-        }
-        .historico-garantia-titulo {
-            color: #123B63;
-            font-size: 1rem;
-            font-weight: 700;
-            margin-bottom: 4px;
-        }
-        .historico-garantia-texto {
-            color: #475569;
-            font-size: 0.9rem;
-            margin-bottom: 0;
-        }
+        .linha-tempo-titulo { color: #123B63; font-weight: 800; font-size: 1rem; margin-bottom: 5px; }
+        .linha-tempo-texto { color: #334155; font-size: 0.94rem; margin-bottom: 0; }
+        .garantia-tabela-wrap { width: 100%; overflow-x: auto; margin: 10px 0 18px 0; }
+        table.garantia-tabela { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.92rem; }
+        table.garantia-tabela th { background: #1F4E78; color: white; padding: 9px 10px; text-align: left; font-weight: 700; }
+        table.garantia-tabela td { border: 1px solid #E5EAF0; padding: 9px 10px; vertical-align: top; white-space: normal; overflow-wrap: anywhere; word-break: normal; line-height: 1.35; }
+        table.garantia-tabela td.valor { white-space: nowrap; overflow-wrap: normal; text-align: left; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -224,231 +322,143 @@ def card(label, valor, nota=None, destaque=False):
     )
 
 
-def montar_texto_instrucao(
-    valor_original,
-    percentual_garantia,
-    garantia_original,
-    valor_atualizado,
-    garantia_constituida,
-    garantia_exigida,
-    endosso,
-    prazo_dias,
-    data_fim_vigencia,
-    data_validade_minima,
-    historico_usado=False,
-    origem_base="Manual",
-    valor_formalizado_anterior=0.0,
-    valor_executado_atualizado=0.0,
-    remanescente_atualizado=0.0,
-):
-    percentual = percentual_garantia * 100
-    valor_formalizado_anterior = numero_para_input(valor_formalizado_anterior)
-    valor_executado_atualizado = numero_para_input(valor_executado_atualizado)
-    remanescente_atualizado = numero_para_input(remanescente_atualizado)
 
-    if endosso > 0:
-        conclusao = (
-            f"Considerando a garantia atualmente constituída no valor de {moeda(garantia_constituida)}, "
-            f"faz-se necessário o endosso complementar no montante de {moeda(endosso)}."
+
+def ordenar_linha_tempo_garantia(df):
+    """Ordena a linha do tempo: contrato original primeiro, eventos por data e reajustes atuais ao final.
+
+    Também cria a coluna Ordem para permitir ajuste manual pelo usuário no editor.
+    """
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        return df
+
+    base = df.copy()
+
+    def rank_evento(row, idx):
+        evento = limpar_texto(row.get("Evento", "")).lower()
+        data_txt = limpar_texto(row.get("Data", ""))
+
+        if evento.startswith("contrato original"):
+            return -10_000
+        if evento.startswith("reajustes atuais"):
+            return 10_000_000
+
+        dt = pd.to_datetime(data_txt, dayfirst=True, errors="coerce")
+        if pd.notna(dt):
+            return int(dt.strftime("%Y%m%d"))
+        return 5_000_000 + idx
+
+    base["_ordem_auto"] = [rank_evento(row, idx) for idx, row in base.iterrows()]
+    base = base.sort_values(by=["_ordem_auto", "Evento"], kind="stable").drop(columns=["_ordem_auto"])
+    base = base.reset_index(drop=True)
+    base.insert(0, "Ordem", range(1, len(base) + 1))
+    return base
+
+
+def render_linha_tempo_garantia(df):
+    """Renderiza a linha do tempo com quebra de texto adequada nas células."""
+    if not isinstance(df, pd.DataFrame) or df.empty:
+        st.info("Nenhum evento informado para a linha do tempo da garantia.")
+        return
+    colunas = ["Evento", "Data", "Ciclo", "Valor atualizado", "Endosso esperado"]
+    linhas = []
+    for _, row in df.iterrows():
+        evento = escape(limpar_texto(row.get("Evento", "")))
+        data = escape(limpar_texto(row.get("Data", "")))
+        ciclo = escape(limpar_texto(row.get("Ciclo", "")))
+        valor = escape(moeda(row.get("Valor atualizado", row.get("Valor-base", 0.0))))
+        endosso = escape(moeda(row.get("Endosso esperado", 0.0)))
+        linhas.append(
+            f"<tr><td>{evento}</td><td>{data}</td><td>{ciclo}</td><td class='valor'>{valor}</td><td class='valor'>{endosso}</td></tr>"
         )
-    else:
-        conclusao = (
-            f"Considerando a garantia atualmente constituída no valor de {moeda(garantia_constituida)}, "
-            "não foi identificada necessidade de endosso complementar, desde que esse valor esteja efetivamente vigente e aceito."
-        )
+    html = """
+    <div class="garantia-tabela-wrap">
+      <table class="garantia-tabela">
+        <colgroup>
+          <col style="width: 28%;">
+          <col style="width: 18%;">
+          <col style="width: 14%;">
+          <col style="width: 20%;">
+          <col style="width: 20%;">
+        </colgroup>
+        <thead>
+          <tr>
+            <th>Evento</th><th>Data</th><th>Ciclo</th><th>Valor-base</th><th>Endosso esperado</th>
+          </tr>
+        </thead>
+        <tbody>
+          {linhas}
+        </tbody>
+      </table>
+    </div>
+    """.format(linhas="\n".join(linhas))
+    st.markdown(html, unsafe_allow_html=True)
 
-    origem_garantia = (
-        "A garantia atualmente constituída considerada nesta análise decorre do histórico de garantias e endossos informado no módulo, contemplando a garantia original e os endossos anteriores registrados."
-        if historico_usado else
-        "Para fins de conferência, o campo “Garantia atualmente constituída” deve refletir o valor total da garantia já apresentada e aceita, incluindo a garantia original e eventuais endossos anteriores decorrentes de reajustes, repactuações, acréscimos ou outros aditivos contratuais."
-    )
-
-    texto_base = (
-        "O valor-base utilizado para a nova garantia foi importado do módulo Valor Global como Valor Total Atualizado do Contrato. "
-        "Esse valor corresponde à soma da execução atualizada por ciclo com o saldo remanescente atualizado, sem soma autônoma dos aditivos/supressões, os quais permanecem como eventos de governança e rastreabilidade."
-        if origem_base == "Valor Global" else
-        "O valor-base utilizado para a nova garantia foi informado manualmente neste módulo."
-    )
-
-    detalhe_composicao = ""
-    if origem_base == "Valor Global" and (valor_executado_atualizado > 0 or remanescente_atualizado > 0):
-        detalhe_composicao = (
-            f" Para conferência, a composição importada indica execução atualizada por ciclo de {moeda(valor_executado_atualizado)} "
-            f"e saldo remanescente atualizado de {moeda(remanescente_atualizado)}."
-        )
-
-    referencia_formalizada = ""
-    if valor_formalizado_anterior > 0 and abs(valor_formalizado_anterior - valor_atualizado) > 0.01:
-        referencia_formalizada = (
-            f" Como referência histórica, o valor contratual formalizado antes desta análise consta como {moeda(valor_formalizado_anterior)}. "
-            "Esse valor é apresentado para memória administrativa e não substitui o valor-base selecionado para o cálculo da garantia nesta tela."
-        )
-
-    return f"""Considerando o valor original do contrato de {moeda(valor_original)}, a garantia contratual original correspondente a {percentual:.2f}% equivale a {moeda(garantia_original)}.
-
-{texto_base}{detalhe_composicao}{referencia_formalizada}
-
-Após a definição do valor-base para garantia em {moeda(valor_atualizado)}, a garantia contratual exigida, calculada pelo mesmo percentual de {percentual:.2f}%, passa a ser de {moeda(garantia_exigida)}.
-
-{conclusao}
-
-{origem_garantia}
-
-Nos termos da Cláusula Décima, a garantia contratual deve ser apresentada no prazo de até {prazo_dias} dias úteis contados do recebimento da convocação pela TELEBRAS, prorrogável por igual período mediante solicitação justificada e aceita pela Gerência de Compras e Contratos.
-
-Ainda nos termos da Cláusula Décima, a validade da garantia, qualquer que seja a modalidade escolhida, deverá abranger período adicional de 3 meses após o término da vigência contratual. Assim, considerando o encerramento da vigência em {data_fim_vigencia.strftime('%d/%m/%Y')}, a garantia deverá permanecer válida, no mínimo, até {data_validade_minima.strftime('%d/%m/%Y')}.
-"""
-
-
-def _paragrafo_tabela(valor, estilo):
-    return Paragraph(limpar_texto(valor).replace("&", "&amp;"), estilo)
-
-
-def gerar_pdf_garantia(dados, texto_instrucao, historico_df=None):
+def gerar_pdf_garantia(dados, df_linha_tempo):
     if not REPORTLAB_OK:
         return None
-
     buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer,
-        pagesize=A4,
-        rightMargin=1.6 * cm,
-        leftMargin=1.6 * cm,
-        topMargin=1.5 * cm,
-        bottomMargin=1.5 * cm,
-    )
-
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.6*cm, leftMargin=1.6*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
     styles = getSampleStyleSheet()
-    titulo = ParagraphStyle(
-        "TituloGarantia",
-        parent=styles["Title"],
-        alignment=TA_CENTER,
-        fontSize=13,
-        leading=16,
-        spaceAfter=8,
-    )
-    subtitulo = ParagraphStyle(
-        "SubtituloGarantia",
-        parent=styles["Normal"],
-        alignment=TA_CENTER,
-        fontSize=9,
-        leading=12,
-        textColor=colors.HexColor("#334155"),
-        spaceAfter=14,
-    )
-    h2 = ParagraphStyle(
-        "H2Garantia",
-        parent=styles["Heading2"],
-        fontSize=10,
-        leading=13,
-        spaceBefore=8,
-        spaceAfter=6,
-        textColor=colors.HexColor("#123B63"),
-    )
-    normal = ParagraphStyle(
-        "NormalGarantia",
-        parent=styles["Normal"],
-        fontSize=8.5,
-        leading=12,
-        alignment=TA_JUSTIFY,
-    )
-    celula = ParagraphStyle(
-        "CelulaGarantia",
-        parent=styles["Normal"],
-        fontSize=6.8,
-        leading=8,
-    )
+    titulo = ParagraphStyle("TituloGarantia", parent=styles["Title"], alignment=TA_CENTER, fontSize=13, leading=16, spaceAfter=8)
+    subtitulo = ParagraphStyle("SubtituloGarantia", parent=styles["Normal"], alignment=TA_CENTER, fontSize=9, leading=12, textColor=colors.HexColor("#334155"), spaceAfter=14)
+    h2 = ParagraphStyle("H2Garantia", parent=styles["Heading2"], fontSize=10, leading=13, spaceBefore=8, spaceAfter=6, textColor=colors.HexColor("#123B63"))
+    normal = ParagraphStyle("NormalGarantia", parent=styles["Normal"], fontSize=8.5, leading=12, alignment=TA_JUSTIFY)
 
     elementos = []
     elementos.append(Paragraph("Garantia Contratual", titulo))
-    elementos.append(Paragraph("Monitoramento", subtitulo))
+    elementos.append(Paragraph("Histórico da garantia e endosso complementar", subtitulo))
     elementos.append(Paragraph(f"Gerado em: {data_hora_brasilia()}", subtitulo))
 
-    elementos.append(Paragraph("1. Memória de cálculo", h2))
+    elementos.append(Paragraph("1. Resultado", h2))
     tabela_dados = [
         ["Indicador", "Valor"],
-        ["Valor original do contrato", moeda(dados["valor_original"])],
+        ["Garantia/endossos esperados acumulados", moeda(dados["garantia_esperada_acumulada"])],
+        ["Garantia/endossos já apresentados", moeda(dados["garantia_apresentada"])],
+        ["Endosso complementar estimado", moeda(dados["endosso_complementar"])],
         ["Percentual da garantia", f"{dados['percentual_garantia_pct']:.2f}%".replace(".", ",")],
-        ["Garantia original", moeda(dados["garantia_original"])],
-        ["Valor-base da garantia", moeda(dados["valor_atualizado"])],
-        ["Origem do valor-base", dados.get("origem_base", "Manual")],
-        ["Valor formalizado anterior", moeda(dados.get("valor_formalizado_anterior", 0.0)) if dados.get("valor_formalizado_anterior", 0.0) else "Não informado"],
-        ["Nova garantia exigida", moeda(dados["garantia_exigida"])],
-        ["Garantia atualmente constituída", moeda(dados["garantia_constituida"])],
-        ["Endosso necessário", moeda(dados["endosso_necessario"])],
-        ["Encerramento da vigência", dados["data_fim_vigencia"].strftime("%d/%m/%Y")],
-        ["Validade mínima da garantia", dados["data_validade_minima"].strftime("%d/%m/%Y")],
+        ["Valor Total Atualizado do Contrato", moeda(dados["valor_total_atualizado"])],
     ]
-    tabela = Table(tabela_dados, colWidths=[8.2 * cm, 7.8 * cm], repeatRows=1, hAlign="CENTER")
-    tabela.setStyle(
-        TableStyle(
-            [
-                ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
-                ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                ("FONTSIZE", (0, 0), (-1, -1), 8),
-                ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2F3")),
-                ("BACKGROUND", (0, 1), (-1, -1), colors.white),
-                ("BACKGROUND", (0, 7), (-1, 7), colors.HexColor("#EAF2F8")),
-                ("FONTNAME", (0, 7), (-1, 7), "Helvetica-Bold"),
-                ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                ("LEFTPADDING", (0, 0), (-1, -1), 5),
-                ("RIGHTPADDING", (0, 0), (-1, -1), 5),
-            ]
-        )
-    )
+    tabela = Table(tabela_dados, colWidths=[8.2*cm, 7.8*cm], repeatRows=1, hAlign="CENTER")
+    tabela.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1F4E78")),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ("FONTSIZE", (0,0), (-1,-1), 8),
+        ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor("#D9E2F3")),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+    ]))
     elementos.append(tabela)
     elementos.append(Spacer(1, 10))
 
-    if historico_df is not None and not historico_df.empty:
-        elementos.append(Paragraph("2. Histórico de garantias e endossos considerados", h2))
-        dados_hist = [[
-            _paragrafo_tabela("Data", celula),
-            _paragrafo_tabela("Evento", celula),
-            _paragrafo_tabela("Valor ref.", celula),
-            _paragrafo_tabela("Garantia exigida", celula),
-            _paragrafo_tabela("Apresentada/endossada", celula),
-            _paragrafo_tabela("Observação", celula),
-        ]]
-        for _, row in historico_df.iterrows():
-            dados_hist.append([
-                _paragrafo_tabela(row.get("Data", ""), celula),
-                _paragrafo_tabela(row.get("Evento", ""), celula),
-                _paragrafo_tabela(moeda(row.get("Valor contratual de referência", 0.0)), celula),
-                _paragrafo_tabela(moeda(row.get("Garantia exigida", 0.0)), celula),
-                _paragrafo_tabela(moeda(row.get("Garantia apresentada/endossada", 0.0)), celula),
-                _paragrafo_tabela(row.get("Observação", ""), celula),
+    if isinstance(df_linha_tempo, pd.DataFrame) and not df_linha_tempo.empty:
+        elementos.append(Paragraph("2. Linha do tempo da garantia", h2))
+        linhas = [["Evento", "Data", "Ciclo", "Valor-base", "Endosso esperado"]]
+        for _, row in df_linha_tempo.iterrows():
+            linhas.append([
+                limpar_texto(row.get("Evento", "")),
+                limpar_texto(row.get("Data", "")),
+                limpar_texto(row.get("Ciclo", "")),
+                moeda(row.get("Valor atualizado", row.get("Valor-base", 0.0))),
+                moeda(row.get("Endosso esperado", 0.0)),
             ])
-        tabela_hist = Table(
-            dados_hist,
-            colWidths=[1.8 * cm, 3.2 * cm, 2.7 * cm, 2.7 * cm, 3.0 * cm, 2.6 * cm],
-            repeatRows=1,
-            hAlign="CENTER",
-        )
-        tabela_hist.setStyle(
-            TableStyle(
-                [
-                    ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
-                    ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-                    ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-                    ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2F3")),
-                    ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-                    ("LEFTPADDING", (0, 0), (-1, -1), 3),
-                    ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-                ]
-            )
-        )
-        elementos.append(tabela_hist)
+        tabela_lt = Table(linhas, colWidths=[4.0*cm, 2.5*cm, 2.2*cm, 3.8*cm, 3.5*cm], repeatRows=1, hAlign="CENTER")
+        tabela_lt.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1F4E78")),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+            ("FONTSIZE", (0,0), (-1,-1), 7),
+            ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor("#D9E2F3")),
+            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ]))
+        elementos.append(tabela_lt)
         elementos.append(Spacer(1, 10))
-        secao_texto = "3. Informações para instrução processual"
-    else:
-        secao_texto = "2. Informações para instrução processual"
 
-    elementos.append(Paragraph(secao_texto, h2))
-    for paragrafo in texto_instrucao.strip().split("\n\n"):
-        elementos.append(Paragraph(paragrafo.replace("\n", " "), normal))
-        elementos.append(Spacer(1, 5))
-
+    elementos.append(Paragraph("3. Observação", h2))
+    elementos.append(Paragraph(
+        "Os valores apresentados são auxiliares à conferência da garantia. A definição da base de cálculo deve observar a cláusula contratual de garantia e a orientação administrativa aplicável.",
+        normal,
+    ))
     doc.build(elementos)
     buffer.seek(0)
     return buffer.getvalue()
@@ -461,65 +471,32 @@ def gerar_pdf_garantia(dados, texto_instrucao, historico_df=None):
 css()
 render_marca_topo()
 st.title("Garantia Contratual")
-st.write(
-    "Este módulo calcula a garantia contratual original, a garantia exigida após atualização do valor do contrato "
-    "e o endosso complementar necessário."
-)
+st.write("Acompanhe a garantia como uma linha do tempo: contrato original, aditivos, reajustes e endosso complementar estimado.")
 
 resultado_valor_global = st.session_state.get("resultado_valor_global", {}) or {}
-ctx_valor_global = obter_contexto_valor_global(resultado_valor_global)
+ctx = obter_contexto_valor_global(resultado_valor_global)
 
-valor_original_padrao = ctx_valor_global["valor_original"]
-valor_atualizado_padrao = ctx_valor_global["valor_total_atualizado"]
-valor_formalizado_anterior_padrao = ctx_valor_global["valor_formalizado_anterior"]
-valor_executado_atualizado_padrao = ctx_valor_global["valor_executado_atualizado"]
-remanescente_atualizado_padrao = ctx_valor_global["remanescente_atualizado"]
+valor_original_padrao = ctx["valor_original"]
+valor_total_atualizado_padrao = ctx["valor_total_atualizado"]
+variacao_acumulada_padrao = ctx["variacao_acumulada"]
+df_aditivos_importado = ctx["df_aditivos"]
+df_ciclos_importado = ctx["df_ciclos"]
 
-with st.expander("Contexto importado do Valor Global", expanded=True):
-    usar_valor_global = False
+with st.expander("Contexto importado da análise atual", expanded=True):
     if resultado_valor_global:
         col_a, col_b, col_c = st.columns(3)
         with col_a:
             st.metric("Valor original identificado", moeda(valor_original_padrao))
         with col_b:
-            st.metric("Valor Total Atualizado do Contrato", moeda(valor_atualizado_padrao))
+            st.metric("Valor Total Atualizado do Contrato", moeda(valor_total_atualizado_padrao))
         with col_c:
-            st.metric("Valor formalizado anterior", moeda(valor_formalizado_anterior_padrao) if valor_formalizado_anterior_padrao > 0 else "Não informado")
-
-        if valor_executado_atualizado_padrao > 0 or remanescente_atualizado_padrao > 0:
-            composicao_html = (
-                "Composição importada do Valor Global: execução atualizada por ciclo "
-                f"{moeda(valor_executado_atualizado_padrao).replace('$', '&#36;')} + saldo remanescente atualizado "
-                f"{moeda(remanescente_atualizado_padrao).replace('$', '&#36;')}."
-            )
-            st.markdown(
-                f"<div style='color:#6B7280; font-size:0.92rem; margin-top:4px; margin-bottom:12px;'>{composicao_html}</div>",
-                unsafe_allow_html=True,
-            )
-        if ctx_valor_global.get("quantidade_aditivos", 0):
-            st.caption(
-                f"Aditivos registrados no Valor Global: {ctx_valor_global.get('quantidade_aditivos', 0)}. "
-                "Eles permanecem como eventos de governança/rastreabilidade e não são somados autonomamente ao Valor Total Atualizado."
-            )
-
-        usar_valor_global = st.checkbox(
-            "Usar o Valor Total Atualizado do Contrato como base da garantia",
-            value=True,
-            help=(
-                "Quando marcado, o módulo Garantia usa o Valor Total Atualizado do Contrato consolidado no módulo Valor Global. "
-                "Esse valor corresponde à execução atualizada por ciclo + saldo remanescente atualizado."
-            ),
-        )
-        st.caption(
-            "Dados herdados da sessão atual do módulo Valor Global. A opção acima integra a garantia ao valor consolidado da análise."
-        )
+            st.metric("Aditivos identificados", int(ctx.get("quantidade_aditivos", 0)))
+        st.caption("O Valor Total Atualizado é importado apenas como base de conferência da garantia. A regra do módulo Valores não é alterada.")
     else:
-        st.info(
-            "Não há dados do Valor Global disponíveis na sessão atual. Informe os valores manualmente para calcular a garantia."
-        )
+        st.info("Não há dados do módulo Valores na sessão atual. Informe os dados manualmente.")
 
-st.subheader("Dados para cálculo")
-st.caption("Informe valores monetários no padrão brasileiro, por exemplo: 85.771.019,12.")
+st.subheader("Dados-base")
+st.caption("O sistema sugere valores quando houver análise carregada, mas você pode ajustar manualmente.")
 
 col1, col2, col3 = st.columns(3)
 with col1:
@@ -542,302 +519,224 @@ with col2:
     )
 
 with col3:
-    valor_atualizado_txt = st.text_input(
-        "Valor-base para cálculo da garantia",
-        value=moeda(valor_atualizado_padrao, com_prefixo=False),
-        help="Use ponto para milhares e vírgula para centavos. Ex.: 91.609.000,27",
-        disabled=bool(resultado_valor_global and usar_valor_global),
+    valor_total_atualizado_txt = st.text_input(
+        "Valor Total Atualizado do Contrato",
+        value=moeda(valor_total_atualizado_padrao, com_prefixo=False),
+        help="Valor importado do módulo Valores ou informado manualmente para conferência da garantia.",
     )
-    valor_atualizado = valor_atualizado_padrao if (resultado_valor_global and usar_valor_global) else parse_moeda_br(valor_atualizado_txt)
-    st.markdown(f"<div class='valor-formatado-apoio'>{moeda(valor_atualizado)}</div>", unsafe_allow_html=True)
-    if resultado_valor_global and usar_valor_global:
-        st.caption("Valor Total Atualizado importado automaticamente do módulo Valor Global.")
+    valor_total_atualizado = parse_moeda_br(valor_total_atualizado_txt)
+    st.markdown(f"<div class='valor-formatado-apoio'>{moeda(valor_total_atualizado)}</div>", unsafe_allow_html=True)
 
 percentual_garantia = percentual_garantia_pct / 100
+valor_garantia_original = round(valor_original * percentual_garantia, 2)
 
-garantia_original = round(valor_original * percentual_garantia, 2)
-garantia_exigida = round(valor_atualizado * percentual_garantia, 2)
+# Aditivos importados ou manuais
+st.subheader("Histórico da garantia")
+st.caption("Confira os eventos identificados e ajuste os valores quando necessário.")
 
-default_garantia_constituida = garantia_original
+df_aditivos_base = extrair_aditivos_para_garantia(df_aditivos_importado)
+if not df_aditivos_base.empty:
+    df_aditivos_base["Endosso esperado"] = df_aditivos_base["Valor atualizado"].apply(lambda v: round(float(v) * percentual_garantia, 2))
 
-col4, col5, col6 = st.columns(3)
-with col4:
-    garantia_constituida_txt = st.text_input(
-        "Garantia atualmente constituída",
-        value=moeda(default_garantia_constituida, com_prefixo=False),
-        help=(
-            "Informe o valor total da garantia já apresentada e aceita, incluindo garantia original "
-            "e eventuais endossos anteriores de reajustes, repactuações ou aditivos."
-        ),
-    )
-    garantia_constituida_manual = parse_moeda_br(garantia_constituida_txt)
-    st.markdown(f"<div class='valor-formatado-apoio'>{moeda(garantia_constituida_manual)}</div>", unsafe_allow_html=True)
+linha_contrato = {
+    "Evento": "Contrato original",
+    "Data": "Assinatura/base inicial",
+    "Ciclo": "C0",
+    "Valor original": valor_original,
+    "Valor atualizado": valor_original,
+    "Endosso esperado": valor_garantia_original,
+}
 
-with col5:
-    prazo_dias = st.number_input(
-        "Prazo para apresentação/endosso (dias úteis)",
-        min_value=1,
-        max_value=60,
-        value=5,
-        step=1,
-    )
+df_linha_tempo_base = pd.concat([pd.DataFrame([linha_contrato]), df_aditivos_base], ignore_index=True)
 
-with col6:
-    data_fim_vigencia = st.date_input(
-        "Encerramento da vigência contratual",
-        value=date.today(),
-        format="DD/MM/YYYY",
-    )
-    data_validade_minima = data_fim_vigencia + relativedelta(months=3)
-    st.markdown(
-        f"<div class='valor-formatado-apoio'>Validade mínima: {data_validade_minima.strftime('%d/%m/%Y')}</div>",
-        unsafe_allow_html=True,
-    )
+# Reajuste atual como evento de fechamento da linha do tempo.
+texto_ciclos = resumo_ciclos_texto(df_ciclos_importado, variacao_acumulada_padrao)
+garantia_exigida_total = round(valor_total_atualizado * percentual_garantia, 2)
+endossos_parciais = round(float(df_linha_tempo_base["Endosso esperado"].sum()), 2) if not df_linha_tempo_base.empty else 0.0
+endosso_reajustes_atuais = round(garantia_exigida_total - endossos_parciais, 2)
+linha_reajustes = {
+    "Evento": f"Reajustes atuais — {texto_ciclos}",
+    "Data": "Análise atual",
+    "Ciclo": "Atual",
+    "Valor original": 0.0,
+    "Valor atualizado": max(valor_total_atualizado - float(df_linha_tempo_base["Valor atualizado"].sum()), 0.0) if not df_linha_tempo_base.empty else valor_total_atualizado,
+    "Endosso esperado": endosso_reajustes_atuais,
+}
 
-st.info(
-    "No campo ‘Garantia atualmente constituída’, considere a garantia original e todos os endossos anteriores já aceitos. "
-    "O sistema calculará apenas o endosso complementar necessário para atingir a nova garantia exigida."
+df_linha_tempo = pd.concat([df_linha_tempo_base, pd.DataFrame([linha_reajustes])], ignore_index=True)
+df_linha_tempo = ordenar_linha_tempo_garantia(df_linha_tempo)
+
+st.markdown("### Linha do tempo da garantia")
+st.caption(
+    "Os eventos são ordenados automaticamente por data. O contrato original fica no início e os reajustes atuais ficam ao final. "
+    "Se precisar, ajuste a coluna Ordem."
 )
 
-# ============================================================
-# Histórico opcional de garantias e endossos
-# ============================================================
+# Editor manual da linha do tempo
+editor_df = df_linha_tempo.copy()
+for col in ["Valor original", "Valor atualizado", "Endosso esperado"]:
+    editor_df[col] = editor_df[col].apply(moeda)
 
-st.markdown(
-    """
-    <div class="historico-garantia-box">
-        <div class="historico-garantia-titulo">Histórico de garantias e endossos anteriores</div>
-        <p class="historico-garantia-texto">
-            Use esta opção quando quiser demonstrar a garantia original e os endossos já apresentados por reajustes, repactuações ou aditivos.
-            Se preenchido, o total do histórico substituirá o campo manual de garantia atualmente constituída.
-        </p>
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
+with st.expander("Ajustar linha do tempo da garantia", expanded=True):
+    st.caption(
+        "Edite os valores se o histórico real do contrato for diferente do que foi importado. "
+        "A coluna Ordem permite reorganizar manualmente a sequência. "
+        "O campo ‘Endosso esperado’ alimenta o contador acumulado."
+    )
+    editado = st.data_editor(
+        editor_df,
+        hide_index=True,
+        use_container_width=True,
+        num_rows="dynamic",
+        key="garantia_linha_tempo_editor",
+        column_config={
+            "Ordem": st.column_config.NumberColumn("Ordem", min_value=1, step=1),
+            "Evento": st.column_config.TextColumn("Evento"),
+            "Data": st.column_config.TextColumn("Data"),
+            "Ciclo": st.column_config.TextColumn("Ciclo"),
+            "Valor original": st.column_config.TextColumn("Valor original"),
+            "Valor atualizado": st.column_config.TextColumn("Valor atualizado"),
+            "Endosso esperado": st.column_config.TextColumn("Endosso esperado"),
+        },
+    )
 
-usar_historico = st.checkbox(
-    "Detalhar histórico",
-    value=False,
-    help="Se marcado, a tabela abaixo será usada para calcular a garantia atualmente constituída.",
-)
+for col in ["Valor original", "Valor atualizado", "Endosso esperado"]:
+    editado[col] = editado[col].apply(parse_moeda_br)
 
-historico_limpo = pd.DataFrame()
-if usar_historico:
-    with st.expander("Histórico de Garantias e Endossos", expanded=True):
-        st.caption(
-            "Preencha os eventos já constituídos/aceitos. A coluna ‘Garantia apresentada/endossada’ será somada para definir a garantia atualmente constituída."
-        )
-        eventos = [
-            "Garantia original",
-            "Endosso por reajuste",
-            "Endosso por repactuação",
-            "Endosso por aditivo",
-            "Endosso por acréscimo",
-            "Redução por supressão",
-            "Outro",
-        ]
-        historico_base = pd.DataFrame(
-            [
-                {
-                    "Data": "",
-                    "Evento": "Garantia original",
-                    "Valor contratual de referência": valor_original,
-                    "Garantia exigida": garantia_original,
-                    "Garantia apresentada/endossada": garantia_original,
-                    "Observação": "Garantia original contratual",
-                },
-                {
-                    "Data": "",
-                    "Evento": "Endosso por reajuste",
-                    "Valor contratual de referência": 0.0,
-                    "Garantia exigida": 0.0,
-                    "Garantia apresentada/endossada": 0.0,
-                    "Observação": "",
-                },
-                {
-                    "Data": "",
-                    "Evento": "Endosso por aditivo",
-                    "Valor contratual de referência": 0.0,
-                    "Garantia exigida": 0.0,
-                    "Garantia apresentada/endossada": 0.0,
-                    "Observação": "",
-                },
-            ]
-        )
-        colunas_monetarias_historico = [
-            "Valor contratual de referência",
-            "Garantia exigida",
-            "Garantia apresentada/endossada",
-        ]
-        historico_base_editor = historico_base.copy()
-        for col_moeda in colunas_monetarias_historico:
-            if col_moeda in historico_base_editor.columns:
-                historico_base_editor[col_moeda] = historico_base_editor[col_moeda].apply(moeda)
+if "Ordem" in editado.columns:
+    editado["Ordem"] = pd.to_numeric(editado["Ordem"], errors="coerce").fillna(9999).astype(int)
+    editado = editado.sort_values(by=["Ordem"], kind="stable").reset_index(drop=True)
 
-        historico_editado = st.data_editor(
-            historico_base_editor,
-            hide_index=True,
-            use_container_width=True,
-            num_rows="dynamic",
-            key="garantia_historico_editor",
-            column_config={
-                "Data": st.column_config.TextColumn("Data", help="Informe no formato dd/mm/aaaa."),
-                "Evento": st.column_config.SelectboxColumn("Evento", options=eventos, required=False),
-                "Valor contratual de referência": st.column_config.TextColumn(
-                    "Valor contratual de referência",
-                    help="Informe em formato de moeda. Ex.: R$ 1.000,00.",
-                ),
-                "Garantia exigida": st.column_config.TextColumn(
-                    "Garantia exigida",
-                    help="Informe em formato de moeda. Ex.: R$ 50.000,00.",
-                ),
-                "Garantia apresentada/endossada": st.column_config.TextColumn(
-                    "Garantia apresentada/endossada",
-                    help="Informe em formato de moeda. Ex.: R$ 50.000,00.",
-                ),
-                "Observação": st.column_config.TextColumn("Observação"),
-            },
-        )
-        historico_limpo = normalizar_historico(historico_editado)
+render_linha_tempo_garantia(editado)
 
-        if not historico_limpo.empty:
-            total_historico = float(historico_limpo["Garantia apresentada/endossada"].sum())
-            st.success(f"Garantia atualmente constituída pelo histórico: {moeda(total_historico)}")
-        else:
-            st.warning("Histórico selecionado, mas sem lançamentos válidos. O sistema usará o valor manual informado acima.")
+garantia_esperada_acumulada = round(float(editado["Endosso esperado"].sum()), 2) if not editado.empty else 0.0
 
-historico_usado = usar_historico and not historico_limpo.empty
-garantia_constituida = round(
-    float(historico_limpo["Garantia apresentada/endossada"].sum()) if historico_usado else garantia_constituida_manual,
-    2,
-)
+st.markdown("### Garantia/endossos já apresentados")
+col_ap1, col_ap2 = st.columns(2)
+with col_ap1:
+    garantia_apresentada_txt = st.text_input(
+        "Total de garantia/endossos já apresentados",
+        value=moeda(valor_garantia_original, com_prefixo=False),
+        help="Informe a garantia original e todos os endossos já aceitos pela Administração.",
+    )
+    garantia_apresentada = parse_moeda_br(garantia_apresentada_txt)
+    st.markdown(f"<div class='valor-formatado-apoio'>{moeda(garantia_apresentada)}</div>", unsafe_allow_html=True)
+with col_ap2:
+    prazo_dias = st.number_input("Prazo para apresentação/endosso (dias úteis)", min_value=1, max_value=60, value=5, step=1)
 
-endosso_necessario = round(max(garantia_exigida - garantia_constituida, 0.0), 2)
-excesso_garantia = round(max(garantia_constituida - garantia_exigida, 0.0), 2)
+data_fim_vigencia = st.date_input("Encerramento da vigência contratual", value=date.today(), format="DD/MM/YYYY")
+data_validade_minima = data_fim_vigencia + relativedelta(months=3)
+st.caption(f"Validade mínima sugerida da garantia: {data_validade_minima.strftime('%d/%m/%Y')}")
+
+endosso_complementar = round(max(garantia_esperada_acumulada - garantia_apresentada, 0.0), 2)
+excesso_garantia = round(max(garantia_apresentada - garantia_esperada_acumulada, 0.0), 2)
 
 st.divider()
-st.subheader("Resultado")
-
+st.subheader("Resultado acumulado")
 colr1, colr2, colr3 = st.columns(3)
 with colr1:
-    card("Garantia original", moeda(garantia_original), f"{percentual_garantia_pct:.2f}% sobre o valor original")
+    card("Garantia/endossos esperados acumulados", moeda(garantia_esperada_acumulada), "Soma dos endossos esperados na linha do tempo.")
 with colr2:
-    card("Nova garantia exigida", moeda(garantia_exigida), f"{percentual_garantia_pct:.2f}% sobre o valor-base")
+    card("Garantia/endossos já apresentados", moeda(garantia_apresentada), "Valor informado pelo usuário.")
 with colr3:
-    card(
-        "Endosso necessário",
-        moeda(endosso_necessario),
-        "Diferença entre a nova garantia exigida e a garantia atualmente constituída",
-        destaque=True,
-    )
+    card("Endosso complementar estimado", moeda(endosso_complementar), f"Prazo de referência: {prazo_dias} dias úteis.", destaque=True)
 
-if historico_usado:
-    st.caption(
-        f"Garantia atualmente constituída calculada pelo histórico: {moeda(garantia_constituida)}."
-    )
-
-if endosso_necessario > 0:
-    st.warning(
-        f"Será necessário solicitar endosso complementar de {moeda(endosso_necessario)}, observado o prazo contratual de {prazo_dias} dias úteis."
-    )
+if endosso_complementar > 0:
+    st.warning(f"Pelo histórico informado, ainda haveria endosso complementar estimado de {moeda(endosso_complementar)}.")
 elif excesso_garantia > 0:
-    st.success(
-        f"A garantia atualmente constituída supera a garantia exigida em {moeda(excesso_garantia)}. Verifique se a garantia vigente está válida e aceita."
-    )
+    st.success(f"Pelo histórico informado, a garantia/endossos apresentados superam o esperado em {moeda(excesso_garantia)}. Confira validade e aceitação.")
 else:
-    st.success("A garantia atualmente constituída corresponde exatamente à garantia exigida.")
+    st.success("Pelo histórico informado, a garantia/endossos apresentados correspondem ao esperado.")
 
-st.subheader("Memória de cálculo")
-memoria = [
-    {"Indicador": "Valor original do contrato", "Valor": moeda(valor_original)},
-    {"Indicador": "Percentual da garantia", "Valor": f"{percentual_garantia_pct:.2f}%".replace(".", ",")},
-    {"Indicador": "Garantia original", "Valor": moeda(garantia_original)},
-    {"Indicador": "Valor-base da garantia", "Valor": moeda(valor_atualizado)},
-    {"Indicador": "Origem do valor-base", "Valor": "Valor Global" if (resultado_valor_global and usar_valor_global) else "Manual"},
-    {"Indicador": "Valor formalizado anterior", "Valor": moeda(valor_formalizado_anterior_padrao) if valor_formalizado_anterior_padrao > 0 else "Não informado"},
-    {"Indicador": "Execução atualizada por ciclo", "Valor": moeda(valor_executado_atualizado_padrao) if (resultado_valor_global and usar_valor_global) else "Não importado"},
-    {"Indicador": "Saldo remanescente atualizado", "Valor": moeda(remanescente_atualizado_padrao) if (resultado_valor_global and usar_valor_global) else "Não importado"},
-    {"Indicador": "Nova garantia exigida", "Valor": moeda(garantia_exigida)},
-    {"Indicador": "Garantia atualmente constituída", "Valor": moeda(garantia_constituida)},
-    {"Indicador": "Origem da garantia constituída", "Valor": "Histórico detalhado" if historico_usado else "Campo manual"},
-    {"Indicador": "Endosso necessário", "Valor": moeda(endosso_necessario)},
-    {"Indicador": "Encerramento da vigência contratual", "Valor": data_fim_vigencia.strftime("%d/%m/%Y")},
-    {"Indicador": "Validade mínima da garantia", "Valor": data_validade_minima.strftime("%d/%m/%Y")},
-]
-st.dataframe(memoria, use_container_width=True, hide_index=True)
+with st.expander("Calcule de outra forma", expanded=False):
+    st.caption(
+        "Use este bloco quando quiser montar uma linha do tempo alternativa. "
+        "Adicione as linhas necessárias; o endosso é calculado automaticamente por valor-base × percentual."
+    )
+    df_alt_base = pd.DataFrame([
+        {"Evento": "Valor original", "Valor-base": moeda(valor_original, com_prefixo=False), "Percentual da garantia (%)": f"{percentual_garantia_pct:.2f}".replace(".", ",")},
+        {"Evento": "Aditivo 1", "Valor-base": "0,00", "Percentual da garantia (%)": f"{percentual_garantia_pct:.2f}".replace(".", ",")},
+    ])
+    df_alt = st.data_editor(
+        df_alt_base,
+        hide_index=True,
+        use_container_width=True,
+        num_rows="dynamic",
+        key="garantia_calculo_alternativo_linhas",
+        column_config={
+            "Evento": st.column_config.TextColumn("Evento"),
+            "Valor-base": st.column_config.TextColumn("Valor-base"),
+            "Percentual da garantia (%)": st.column_config.TextColumn("Percentual da garantia (%)"),
+        },
+    )
+    if isinstance(df_alt, pd.DataFrame) and not df_alt.empty:
+        df_alt_calc = df_alt.copy()
+        df_alt_calc["_valor_base"] = df_alt_calc["Valor-base"].apply(parse_moeda_br)
+        df_alt_calc["_percentual"] = df_alt_calc["Percentual da garantia (%)"].apply(parse_moeda_br)
+        df_alt_calc["Endosso esperado"] = df_alt_calc.apply(
+            lambda r: round(float(r.get("_valor_base", 0.0)) * float(r.get("_percentual", 0.0)) / 100, 2),
+            axis=1,
+        )
+        total_alt = round(float(df_alt_calc["Endosso esperado"].sum()), 2)
+        col_alt_r1, col_alt_r2 = st.columns(2)
+        col_alt_r1.metric("Total de endossos pela linha alternativa", moeda(total_alt))
+        col_alt_r2.metric("Diferença frente ao apresentado", moeda(max(total_alt - garantia_apresentada, 0.0)))
+        df_alt_view = df_alt_calc[["Evento", "Valor-base", "Percentual da garantia (%)", "Endosso esperado"]].copy()
+        df_alt_view["Endosso esperado"] = df_alt_view["Endosso esperado"].apply(moeda)
+        st.dataframe(df_alt_view, use_container_width=True, hide_index=True)
 
-st.subheader("Informações para instrução processual")
-texto_instrucao = montar_texto_instrucao(
-    valor_original,
-    percentual_garantia,
-    garantia_original,
-    valor_atualizado,
-    garantia_constituida,
-    garantia_exigida,
-    endosso_necessario,
-    prazo_dias,
-    data_fim_vigencia,
-    data_validade_minima,
-    historico_usado=historico_usado,
-    origem_base="Valor Global" if (resultado_valor_global and usar_valor_global) else "Manual",
-    valor_formalizado_anterior=valor_formalizado_anterior_padrao,
-    valor_executado_atualizado=valor_executado_atualizado_padrao if (resultado_valor_global and usar_valor_global) else 0.0,
-    remanescente_atualizado=remanescente_atualizado_padrao if (resultado_valor_global and usar_valor_global) else 0.0,
-)
-
-st.text_area(
-    "Texto sugerido",
-    value=texto_instrucao,
-    height=330,
-)
+with st.expander("Memória de cálculo", expanded=False):
+    memoria = [
+        {"Indicador": "Valor original do contrato", "Valor": moeda(valor_original)},
+        {"Indicador": "Percentual da garantia", "Valor": f"{percentual_garantia_pct:.2f}%".replace(".", ",")},
+        {"Indicador": "Garantia original", "Valor": moeda(valor_garantia_original)},
+        {"Indicador": "Valor Total Atualizado do Contrato", "Valor": moeda(valor_total_atualizado)},
+        {"Indicador": "Garantia exigida pelo Valor Total Atualizado", "Valor": moeda(garantia_exigida_total)},
+        {"Indicador": "Garantia/endossos esperados pela linha do tempo", "Valor": moeda(garantia_esperada_acumulada)},
+        {"Indicador": "Garantia/endossos já apresentados", "Valor": moeda(garantia_apresentada)},
+        {"Indicador": "Endosso complementar estimado", "Valor": moeda(endosso_complementar)},
+        {"Indicador": "Encerramento da vigência", "Valor": data_fim_vigencia.strftime("%d/%m/%Y")},
+        {"Indicador": "Validade mínima da garantia", "Valor": data_validade_minima.strftime("%d/%m/%Y")},
+    ]
+    st.dataframe(memoria, use_container_width=True, hide_index=True)
+    st.markdown("**Linha do tempo considerada**")
+    st.dataframe(editado.assign(
+        **{
+            "Valor original": editado["Valor original"].apply(moeda),
+            "Valor atualizado": editado["Valor atualizado"].apply(moeda),
+            "Endosso esperado": editado["Endosso esperado"].apply(moeda),
+        }
+    ), use_container_width=True, hide_index=True)
 
 st.subheader("Relatório")
 dados_pdf = {
-    "valor_original": valor_original,
+    "garantia_esperada_acumulada": garantia_esperada_acumulada,
+    "garantia_apresentada": garantia_apresentada,
+    "endosso_complementar": endosso_complementar,
     "percentual_garantia_pct": percentual_garantia_pct,
-    "garantia_original": garantia_original,
-    "valor_atualizado": valor_atualizado,
-    "origem_base": "Valor Global" if (resultado_valor_global and usar_valor_global) else "Manual",
-    "valor_formalizado_anterior": valor_formalizado_anterior_padrao,
-    "garantia_exigida": garantia_exigida,
-    "garantia_constituida": garantia_constituida,
-    "endosso_necessario": endosso_necessario,
-    "data_fim_vigencia": data_fim_vigencia,
-    "data_validade_minima": data_validade_minima,
+    "valor_total_atualizado": valor_total_atualizado,
 }
 
 st.session_state["resultado_garantia"] = {
     "valor_original": valor_original,
-    "valor_atualizado_base": valor_atualizado,
-    "valor_total_atualizado_contrato": valor_atualizado,
-    "valor_formalizado_anterior": valor_formalizado_anterior_padrao,
-    "valor_executado_atualizado": valor_executado_atualizado_padrao if (resultado_valor_global and usar_valor_global) else 0.0,
-    "remanescente_atualizado": remanescente_atualizado_padrao if (resultado_valor_global and usar_valor_global) else 0.0,
+    "valor_total_atualizado_contrato": valor_total_atualizado,
     "percentual_garantia": percentual_garantia,
-    "garantia_original": garantia_original,
-    "garantia_exigida": garantia_exigida,
-    "garantia_constituida": garantia_constituida,
-    "endosso_necessario": endosso_necessario,
-    "origem_valor_base": "Valor Global" if (resultado_valor_global and usar_valor_global) else "Manual",
+    "garantia_original": valor_garantia_original,
+    "garantia_exigida": garantia_esperada_acumulada,
+    "garantia_constituida": garantia_apresentada,
+    "endosso_necessario": endosso_complementar,
     "data_fim_vigencia": data_fim_vigencia,
     "data_validade_minima": data_validade_minima,
+    "linha_tempo_garantia": editado,
 }
 
 if REPORTLAB_OK:
-    pdf_bytes = gerar_pdf_garantia(
-        dados_pdf,
-        texto_instrucao,
-        historico_df=historico_limpo if historico_usado else None,
-    )
-    st.session_state["arquivo_garantia_pdf"] = pdf_bytes
+    pdf_bytes = gerar_pdf_garantia(dados_pdf, editado)
     st.download_button(
-        "Baixar Relatório de Garantia em PDF",
+        "Baixar relatório de garantia (PDF)",
         data=pdf_bytes,
-        file_name="relatorio_garantia_contratual.pdf",
+        file_name="relatorio_garantia.pdf",
         mime="application/pdf",
-        type="primary",
-        use_container_width=False,
     )
 else:
-    st.error("A biblioteca reportlab não está disponível. Inclua reportlab no requirements.txt para habilitar o PDF.")
+    st.info("Instale reportlab para gerar o PDF: pip install reportlab")
