@@ -779,7 +779,23 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
 
             st.markdown(f"- Variação do Ciclo: **{v_fmt}**")
             if situacao_limpa == "PRECLUSO" and superacao_negocial:
-                st.caption(f"Ciclo admitido por negociação entre as partes. Percentual aplicado: {v_aplicado_fmt}.")
+                st.markdown(
+                    f"""
+                    <div style="
+                        background:#F5F3FF;
+                        border:1px solid #C4B5FD;
+                        border-left:5px solid #7C3AED;
+                        border-radius:10px;
+                        padding:0.70rem 0.85rem;
+                        margin:0.75rem 0 0.55rem 0;
+                        color:#3B0764;
+                        font-weight:750;
+                    ">
+                        Ciclo admitido por negociação entre as partes. Percentual aplicado: {v_aplicado_fmt}.
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
             elif situacao_limpa == "PRECLUSO":
                 st.caption("Variação apurada apenas para registro, sem composição no acumulado final.")
             elif ciclo_negativo:

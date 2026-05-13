@@ -213,31 +213,5 @@ st.markdown(
 for item in itens:
     render_linha_arquivo(item)
 
-st.divider()
-st.subheader("Exportação da Central")
-
-df_catalogo = pd.DataFrame(
-    [
-        {
-            "Arquivo": item["Arquivo"],
-            "Finalidade": item["Finalidade"],
-            "Formato": item["Formato"],
-            "Status": "Disponível" if st.session_state.get(item["session_key"]) else "Gerar no módulo",
-            "Módulo": item.get("modulo", ""),
-        }
-        for item in itens
-    ]
-)
-
-checklist = st.session_state.get("checklist_processual")
-excel_bytes = gerar_excel_catalogo(df_catalogo, checklist if isinstance(checklist, pd.DataFrame) else None)
-st.session_state["arquivo_central_arquivos_xlsx"] = excel_bytes
-st.download_button(
-    "Baixar Central de Arquivos em XLSX",
-    data=excel_bytes,
-    file_name="Central_de_Arquivos.xlsx",
-    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-    type="primary",
-)
-
-st.caption("A Central mostra o botão Baixar quando o arquivo já foi gerado na sessão. Caso contrário, oferece atalho para o módulo correspondente.")
+# A exportação consolidada da Central foi removida para reduzir redundância.
+# Os arquivos devem ser baixados individualmente nos módulos/itens correspondentes.

@@ -1254,7 +1254,9 @@ def gerar_planilha_executiva(resultado):
                 col_atual += 3
             ws_i.set_column(0, 0, 16)
             ws_i.set_column(1, max(1, col_atual), 18)
+            ultima_linha_item = 2
             for r_idx, item in enumerate(itens_ordenados, start=3):
+                ultima_linha_item = r_idx
                 ws_i.write(r_idx, 0, item, fmt_text)
                 col_atual = 1
                 for ciclo in ciclos_ordenados:
@@ -1272,6 +1274,27 @@ def gerar_planilha_executiva(resultado):
                     ws_i.write_number(r_idx, col_atual + 1, vu, fmt_ciclo(ciclo, "money", precluso))
                     ws_i.write_number(r_idx, col_atual + 2, total, fmt_ciclo(ciclo, "money", precluso))
                     col_atual += 3
+
+            # Linha de total por ciclo, logo abaixo dos itens, somando apenas as colunas "Valor total".
+            total_row = ultima_linha_item + 1
+            ws_i.write(total_row, 0, "TOTAL", fmt_subtitle)
+            col_atual = 1
+            for ciclo in ciclos_ordenados:
+                primeira_linha_excel = 4
+                ultima_linha_excel = ultima_linha_item + 1
+                col_total_excel = col_atual + 2
+                if col_total_excel < 26:
+                    col_letter = chr(ord('A') + col_total_excel)
+                    formula = f"=SUM({col_letter}{primeira_linha_excel}:{col_letter}{ultima_linha_excel})"
+                    ws_i.write_blank(total_row, col_atual, None, fmt_ciclo(ciclo, "text", False))
+                    ws_i.write_blank(total_row, col_atual + 1, None, fmt_ciclo(ciclo, "text", False))
+                    ws_i.write_formula(total_row, col_atual + 2, formula, fmt_ciclo(ciclo, "money", False, header=True))
+                else:
+                    total_valor = df_vu[df_vu["Ciclo"].astype(str) == str(ciclo)]["Total R$"].apply(numero_seguro).sum()
+                    ws_i.write_blank(total_row, col_atual, None, fmt_ciclo(ciclo, "text", False))
+                    ws_i.write_blank(total_row, col_atual + 1, None, fmt_ciclo(ciclo, "text", False))
+                    ws_i.write_number(total_row, col_atual + 2, total_valor, fmt_ciclo(ciclo, "money", False, header=True))
+                col_atual += 3
         else:
             ws_i.write(2, 0, "Não há dados de itens disponíveis.", fmt_text)
 
@@ -1690,11 +1713,18 @@ def ler_aditivos(bytes_arquivo, xls, ciclos):
 
 
 def consolidar_aditivos_executivo(df_aditivos):
-    """Agrupa linhas de itens em aditivos executivos, evitando poluição visual."""
+    """Agrupa linhas de itens em instrumentos aditivos executivos.
+
+    Regra operacional: o instrumento é consolidado por data + ciclo/marco + tratamento,
+    independentemente de conter acréscimos e supressões no mesmo ato. Assim, um mesmo
+    termo aditivo com itens de acréscimo e decréscimo aparece como um único aditivo,
+    preservando a quantidade de linhas de cada natureza para auditoria.
+    """
     if df_aditivos is None or not isinstance(df_aditivos, pd.DataFrame) or df_aditivos.empty:
         return pd.DataFrame(columns=[
             "Aditivo", "Data do aditivo", "Ciclo/Marco", "Tipo de alteração", "Tratamento do aditivo",
-            "Quantidade de linhas", "Valor do aditivo na assinatura", "Fator aplicado", "Valor do aditivo reajustado", "Computa no Valor Global"
+            "Quantidade de linhas", "Valor do aditivo na assinatura", "Fator aplicado", "Valor do aditivo reajustado", "Computa no Valor Global",
+            "Quantidade de acréscimos", "Quantidade de supressões"
         ])
     df = df_aditivos.copy()
     # Segurança adicional: elimina linhas de total/orientação ou resíduos de leitura indevida.
@@ -1709,18 +1739,28 @@ def consolidar_aditivos_executivo(df_aditivos):
             df[col] = ""
     df["_data"] = pd.to_datetime(df["Data do aditivo"], dayfirst=True, errors="coerce")
     df["_ciclo"] = df["Ciclo/Marco"].astype(str)
-    df["_tipo"] = df["Tipo de alteração"].astype(str)
     df["_trat"] = df["Tratamento do aditivo"].astype(str)
     df["_comp"] = df["Computa no Valor Global"].astype(bool)
+    df["_eh_supressao"] = df["Tipo de alteração"].astype(str).apply(lambda v: "supress" in normalizar_texto(v) or "decresc" in normalizar_texto(v))
+    df["_eh_acrescimo"] = ~df["_eh_supressao"]
+
+    # Consolida o instrumento pelo marco material do ato: mesma data + mesmo ciclo.
+    # Não separa acréscimo e supressão em dois aditivos, pois ambos podem compor o
+    # mesmo termo/instrumento formal. O tratamento e a marcação computável são
+    # agregados para preservar governança sem duplicar a contagem.
     agrupado = (
-        df.groupby(["_data", "_ciclo", "_tipo", "_trat", "_comp"], dropna=False)
+        df.groupby(["_data", "_ciclo"], dropna=False)
         .agg(
             quantidade_linhas=("Valor do aditivo na assinatura", "size"),
+            quantidade_acrescimos=("_eh_acrescimo", "sum"),
+            quantidade_supressoes=("_eh_supressao", "sum"),
             valor_assinatura=("Valor do aditivo na assinatura", "sum"),
             valor_reajustado=("Valor do aditivo reajustado", "sum"),
+            tratamentos=("_trat", lambda x: " / ".join(sorted({str(v).strip() for v in x if str(v).strip()}))),
+            computa=("_comp", "max"),
         )
         .reset_index()
-        .sort_values(["_data", "_ciclo", "_tipo"], na_position="last")
+        .sort_values(["_data", "_ciclo"], na_position="last")
         .reset_index(drop=True)
     )
     linhas = []
@@ -1728,20 +1768,29 @@ def consolidar_aditivos_executivo(df_aditivos):
         valor_ass = numero_seguro(row.get("valor_assinatura", 0), 0.0)
         valor_reaj = numero_seguro(row.get("valor_reajustado", 0), 0.0)
         fator = (valor_reaj / valor_ass) if abs(valor_ass) > 0.005 else 1.0
+        qtd_ad = int(numero_seguro(row.get("quantidade_acrescimos", 0), 0))
+        qtd_sup = int(numero_seguro(row.get("quantidade_supressoes", 0), 0))
+        resumo_qtd = []
+        if qtd_ad:
+            resumo_qtd.append(f"{qtd_ad} itens ad.")
+        if qtd_sup:
+            resumo_qtd.append(f"{qtd_sup} itens exc.")
+        qtd_total = int(numero_seguro(row.get("quantidade_linhas", 0), 0))
         linhas.append({
             "Aditivo": f"Aditivo {idx + 1}",
             "Data do aditivo": row.get("_data"),
             "Ciclo/Marco": normalizar_ciclo(row.get("_ciclo", "")),
-            "Tipo de alteração": row.get("_tipo", ""),
-            "Tratamento do aditivo": row.get("_trat", ""),
-            "Quantidade de linhas": int(row.get("quantidade_linhas", 0)),
+            "Tipo de alteração": "Aditivo consolidado",
+            "Tratamento do aditivo": row.get("tratamentos", ""),
+            "Quantidade de linhas": " / ".join(resumo_qtd) if resumo_qtd else str(qtd_total),
             "Valor do aditivo na assinatura": valor_ass,
             "Fator aplicado": fator,
             "Valor do aditivo reajustado": valor_reaj,
-            "Computa no Valor Global": bool(row.get("_comp", True)),
+            "Computa no Valor Global": bool(row.get("computa", True)),
+            "Quantidade de acréscimos": qtd_ad,
+            "Quantidade de supressões": qtd_sup,
         })
     return limpar_nan_inf_df(pd.DataFrame(linhas))
-
 
 def montar_comparativo_executivo(
     valor_original,
@@ -2496,35 +2545,48 @@ def montar_eventos_linha_tempo(resultado):
         aditivos_temp = aditivos_temp.dropna(subset=["_data_evento"]).copy()
 
         if not aditivos_temp.empty:
-            aditivos_temp["_tipo_evento"] = aditivos_temp.get("Tipo de alteração", "Aditivo").apply(
-                lambda v: "Supressão" if ("supress" in normalizar_texto(v) or "decresc" in normalizar_texto(v)) else "Aditivo"
+            aditivos_temp["_eh_supressao"] = aditivos_temp.get("Tipo de alteração", "Aditivo").apply(
+                lambda v: "supress" in normalizar_texto(v) or "decresc" in normalizar_texto(v)
             )
+            aditivos_temp["_eh_acrescimo"] = ~aditivos_temp["_eh_supressao"]
             aditivos_temp["_ciclo"] = aditivos_temp.get("Ciclo/Marco", "").apply(normalizar_ciclo)
             aditivos_temp["_tratamento"] = aditivos_temp.get("Tratamento do aditivo", "").apply(_texto_evento)
             aditivos_temp["_valor"] = aditivos_temp.get("Valor atualizado da alteração", 0.0).apply(lambda v: numero_seguro(v, 0.0))
 
             agrupados = (
                 aditivos_temp
-                .groupby(["_data_evento", "_tipo_evento", "_ciclo", "_tratamento"], dropna=False)
+                .groupby(["_data_evento", "_ciclo"], dropna=False)
                 .agg(
-                    quantidade=("_tipo_evento", "size"),
+                    quantidade=("_valor", "size"),
+                    quantidade_acrescimos=("_eh_acrescimo", "sum"),
+                    quantidade_supressoes=("_eh_supressao", "sum"),
                     valor_total=("_valor", "sum"),
+                    tratamentos=("_tratamento", lambda x: " / ".join(sorted({str(v).strip() for v in x if str(v).strip()}))),
                 )
                 .reset_index()
             )
 
             for _, row in agrupados.iterrows():
-                tipo_evento = _texto_evento(row.get("_tipo_evento", "Aditivo")) or "Aditivo"
+                tipo_evento = "Aditivo"
                 ciclo = normalizar_ciclo(row.get("_ciclo", ""))
-                tratamento = _texto_evento(row.get("_tratamento", "")) or "Computar nesta análise"
+                tratamento = _texto_evento(row.get("tratamentos", "")) or "Computar nesta análise"
                 qtd = int(numero_seguro(row.get("quantidade", 0), 0))
+                qtd_ad = int(numero_seguro(row.get("quantidade_acrescimos", 0), 0))
+                qtd_sup = int(numero_seguro(row.get("quantidade_supressoes", 0), 0))
                 valor = numero_seguro(row.get("valor_total", 0.0), 0.0)
-                titulo = f"{tipo_evento}"
-                if qtd > 1:
+                partes_qtd = []
+                if qtd_ad:
+                    partes_qtd.append(f"{qtd_ad} itens ad.")
+                if qtd_sup:
+                    partes_qtd.append(f"{qtd_sup} itens exc.")
+                titulo = "Aditivo"
+                if partes_qtd:
+                    titulo += " - " + " / ".join(partes_qtd)
+                elif qtd > 1:
                     titulo += f" - {qtd} itens"
                 elif qtd == 1:
                     titulo += " - 1 item"
-                detalhe = f"{tipo_evento} consolidado. Ciclo/Marco: {ciclo or 'não identificado'}. Tratamento: {tratamento}."
+                detalhe = f"Aditivo consolidado. Ciclo/Marco: {ciclo or 'não identificado'}. Tratamento: {tratamento}."
                 _adicionar_evento_timeline(
                     eventos,
                     row.get("_data_evento", ""),

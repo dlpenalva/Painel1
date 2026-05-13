@@ -255,15 +255,11 @@ def gerar_texto_instrucao(adm, res):
     return f"""
 RELATÓRIO EXECUTIVO — VALOR ATUALIZADO DO CONTRATO
 
-1. Contexto da análise
-
-{texto_contexto_analise(adm, res)}
-
-2. Síntese dos ciclos
+1. Síntese dos ciclos
 
 {_ciclos_df_para_relatorio(adm, res).to_string(index=False)}
 
-3. Síntese financeira
+2. Síntese financeira
 
 Valor original do contrato: {moeda(res.get('valor_original_contrato', 0))}
 Valor financeiro pago até o mês mais recente: {moeda(res.get('total_pago_faturado', 0))}
@@ -362,15 +358,12 @@ def criar_pdf_relatorio(adm, res):
     ])
     story.append(tabela_pdf(dados_identificacao, col_widths=[6 * cm, 11 * cm]))
 
-    story.append(Paragraph("2. Contexto da análise", styles["Subtitulo"]))
-    story.append(Paragraph(texto_contexto_analise(adm, res).replace("\n", "<br/>"), styles["Texto"]))
-
     df_ciclos_rel = _ciclos_df_para_relatorio(adm, res)
     if isinstance(df_ciclos_rel, pd.DataFrame) and not df_ciclos_rel.empty:
-        story.append(Paragraph("3. Síntese dos ciclos", styles["Subtitulo"]))
+        story.append(Paragraph("2. Síntese dos ciclos", styles["Subtitulo"]))
         story.append(tabela_dataframe_pdf(df_ciclos_rel, max_linhas=20))
 
-    story.append(Paragraph("4. Indicadores Executivos", styles["Subtitulo"]))
+    story.append(Paragraph("3. Indicadores Executivos", styles["Subtitulo"]))
     story.append(tabela_pdf([
         ["Indicador", "Valor"],
         ["Valor original", moeda(res.get("valor_original_contrato", 0))],
@@ -383,7 +376,7 @@ def criar_pdf_relatorio(adm, res):
         ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)))],
     ], header=True, col_widths=[8.5 * cm, 8.5 * cm]))
 
-    story.append(Paragraph("5. Financeiro por Ciclo", styles["Subtitulo"]))
+    story.append(Paragraph("4. Financeiro por Ciclo", styles["Subtitulo"]))
     df_fin = df_visual(
         res.get("df_financeiro_por_ciclo"),
         moeda_cols=["Valor pago efetivo", "Valor teórico calculado", "Valor pago/faturado", "Valor devido reajustado", "Delta do ciclo", "Delta acumulado"],
@@ -392,7 +385,7 @@ def criar_pdf_relatorio(adm, res):
     keep_fin = [c for c in ["Ciclo", "Situação", "Tratamento financeiro", "Fator aplicado ao retroativo", "Fator aplicado", "Valor pago efetivo", "Valor teórico calculado", "Valor pago/faturado", "Valor devido reajustado", "Delta do ciclo"] if c in df_fin.columns]
     story.append(tabela_dataframe_pdf(df_fin[keep_fin] if keep_fin else df_fin, max_linhas=20))
 
-    story.append(Paragraph("6. Composição do Valor Total Atualizado do Contrato", styles["Subtitulo"]))
+    story.append(Paragraph("5. Composição do Valor Total Atualizado do Contrato", styles["Subtitulo"]))
     df_comp = res.get("df_composicao_valor_total")
     if isinstance(df_comp, pd.DataFrame) and not df_comp.empty:
         df_comp_pdf = df_comp.copy()
@@ -414,7 +407,7 @@ def criar_pdf_relatorio(adm, res):
 
     df_ad = res.get("df_aditivos_executivo", res.get("df_aditivos"))
     if isinstance(df_ad, pd.DataFrame) and not df_ad.empty:
-        story.append(Paragraph("7. Aditivos e Supressões", styles["Subtitulo"]))
+        story.append(Paragraph("6. Aditivos", styles["Subtitulo"]))
         df_adv = df_visual(
             df_ad,
             moeda_cols=["Valor do aditivo na assinatura", "Valor do aditivo reajustado", "Valor original da alteração", "Valor atualizado da alteração"],
@@ -928,10 +921,6 @@ st.divider()
 tab1, tab2, tab3, tab4 = st.tabs(["Relatório Executivo", "Tabelas", "PDF", "Minuta de Apostilamento"])
 
 with tab1:
-    st.markdown("### Contexto da análise")
-    st.info(texto_contexto_analise(adm, res))
-
-    st.markdown("### Texto executivo consolidado")
     texto = gerar_texto_instrucao(adm, res)
     st.text_area("Copie para o processo:", texto, height=420)
 
