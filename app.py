@@ -69,6 +69,11 @@ if (pages_dir / "05_Garantia.py").exists():
         st.Page("pages/05_Garantia.py", title="Gestão da Garantia")
     )
 
+if (pages_dir / "12_Adequacao_Orcamentaria.py").exists():
+    grupo_gestao.append(
+        st.Page("pages/12_Adequacao_Orcamentaria.py", title="Adequação Orçamentária")
+    )
+
 if (pages_dir / "08_Avaliacao_Aditivos.py").exists():
     grupo_gestao.append(
         st.Page("pages/08_Avaliacao_Aditivos.py", title="Aditivos: 25%")
@@ -88,14 +93,9 @@ if (pages_dir / "10_Saneador.py").exists():
         st.Page("pages/10_Saneador.py", title="Saneador")
     )
 
-if (pages_dir / "11_Cl8us_Orienta.py").exists():
-    grupo_instrucao.append(
-        st.Page("pages/11_Cl8us_Orienta.py", title="💡 Cl8us Orienta")
-    )
-
 if grupo_instrucao:
     nav["🧾 Instrução Processual"] = grupo_instrucao
 
 pg = st.navigation(nav)
-pg.run()
 render_versao_sidebar()
+pg.run()
