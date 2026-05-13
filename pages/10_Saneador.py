@@ -35,7 +35,9 @@ def pct(valor):
         valor = float(valor or 0)
     except Exception:
         valor = 0.0
-    return f"{valor * 100:.2f}%".replace(".", ",")
+    if abs(valor) <= 1:
+        valor *= 100
+    return f"{valor:.2f}%".replace(".", ",")
 
 
 def texto_seguro(valor, padrao="[campo a preencher]"):
@@ -47,7 +49,7 @@ def texto_seguro(valor, padrao="[campo a preencher]"):
     except Exception:
         pass
     texto = str(valor).strip()
-    if not texto or texto.lower() in ["nan", "none", "null"]:
+    if not texto or texto.lower() in ["nan", "none", "null", "nat", "<na>"]:
         return padrao
     return texto
 
@@ -98,23 +100,61 @@ def normalizar_df_infos(df):
     return df[COLUNAS_INFOS].fillna("")
 
 
+def _normalizar_chave(texto):
+    import unicodedata
+
+    texto = "" if texto is None else str(texto).strip().lower()
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(ch for ch in texto if not unicodedata.combining(ch))
+    texto = re.sub(r"\s+", " ", texto)
+    return texto
+
+
 def valor_info(df, informacao, padrao="[campo a preencher]"):
     df = normalizar_df_infos(df)
     if df.empty:
         return padrao
 
-    mask = df["Informação necessária"].astype(str).str.strip().str.lower() == informacao.strip().lower()
+    alvo = _normalizar_chave(informacao)
+    chaves = df["Informação necessária"].astype(str).map(_normalizar_chave)
+    mask = chaves == alvo
     if not mask.any():
         return padrao
 
     return texto_seguro(df.loc[mask, "Valor / informação levantada"].iloc[0], padrao)
 
 
+def info_por_alias(df, aliases, padrao="[campo a preencher]", incluir_link=True):
+    """Busca a primeira informação disponível na aba Infos Prévias, aceitando variações de nome."""
+    df = normalizar_df_infos(df)
+    if df.empty:
+        return padrao
+
+    aliases_norm = [_normalizar_chave(a) for a in aliases]
+    chaves = df["Informação necessária"].astype(str).map(_normalizar_chave)
+    for alvo in aliases_norm:
+        mask = chaves == alvo
+        if not mask.any():
+            continue
+        row = df.loc[mask].iloc[0]
+        valor = texto_seguro(row.get("Valor / informação levantada", ""), "")
+        link = texto_seguro(row.get("Link SIGA (opcional)", ""), "") if incluir_link else ""
+        if valor and link and link not in valor:
+            return f"{valor} ({link})"
+        if valor:
+            return valor
+        if link:
+            return link
+    return padrao
+
+
 def status_info(df, informacao):
     df = normalizar_df_infos(df)
     if df.empty:
         return ""
-    mask = df["Informação necessária"].astype(str).str.strip().str.lower() == informacao.strip().lower()
+    alvo = _normalizar_chave(informacao)
+    chaves = df["Informação necessária"].astype(str).map(_normalizar_chave)
+    mask = chaves == alvo
     if not mask.any():
         return ""
     return texto_seguro(df.loc[mask, "Status"].iloc[0], "")
@@ -171,6 +211,53 @@ def extrair_delta_por_ciclo(resultado):
     return " Por ciclo, a apuração registrou: " + "; ".join(partes) + "."
 
 
+def _valor_numerico_positivo(valor):
+    try:
+        n = float(valor or 0)
+    except Exception:
+        return None
+    if abs(n) > 0.004:
+        return n
+    return None
+
+
+def extrair_valor_aditivos(resultado_vg, eventos_aditivos):
+    """Extrai valor consolidado de aditivos/supressões sem expor nomes internos no documento formal."""
+    if isinstance(resultado_vg, dict):
+        for chave in [
+            "total_aditivos_atualizados",
+            "total_aditivos_quantitativos_atualizados",
+            "total_aditivos_consolidados",
+            "valor_aditivos_atualizados",
+            "valor_atualizado_aditivos",
+        ]:
+            valor = _valor_numerico_positivo(resultado_vg.get(chave))
+            if valor is not None:
+                return moeda(valor)
+
+        for chave_df in ["df_aditivos_executivo", "df_aditivos", "df_aditivos_quantitativos"]:
+            df = resultado_vg.get(chave_df)
+            if isinstance(df, pd.DataFrame) and not df.empty:
+                candidatos = [c for c in df.columns if "valor" in _normalizar_chave(c) and ("atual" in _normalizar_chave(c) or "reaj" in _normalizar_chave(c))]
+                if not candidatos:
+                    candidatos = [c for c in df.columns if "valor" in _normalizar_chave(c)]
+                for col in candidatos[:1]:
+                    serie = pd.to_numeric(df[col], errors="coerce").fillna(0)
+                    total = float(serie.sum())
+                    if abs(total) > 0.004:
+                        return moeda(total)
+
+    if isinstance(eventos_aditivos, pd.DataFrame) and not eventos_aditivos.empty:
+        candidatos = [c for c in eventos_aditivos.columns if "valor" in _normalizar_chave(c)]
+        for col in candidatos[:1]:
+            serie = pd.to_numeric(eventos_aditivos[col], errors="coerce").fillna(0)
+            total = float(serie.sum())
+            if abs(total) > 0.004:
+                return moeda(total)
+
+    return "[campo a preencher]"
+
+
 def resumo_fontes(df_infos, resultado_vg, resultado_garantia, df_checklist, eventos_aditivos):
     linhas = []
     linhas.append({"Fonte": "Infos Prévias", "Status": "Disponível" if isinstance(df_infos, pd.DataFrame) and not df_infos.empty else "Não disponível"})
@@ -181,125 +268,150 @@ def resumo_fontes(df_infos, resultado_vg, resultado_garantia, df_checklist, even
     return pd.DataFrame(linhas)
 
 
+def _primeiro_valor_session_state(chaves, padrao="[campo a preencher]", como_moeda=False):
+    for chave in chaves:
+        valor = st.session_state.get(chave)
+        if isinstance(valor, dict):
+            continue
+        texto = texto_seguro(valor, "")
+        if texto:
+            if como_moeda:
+                try:
+                    return moeda(float(valor or 0))
+                except Exception:
+                    return texto
+            return texto
+    return padrao
+
+
 def montar_saneador_integrado(df_infos, resultado_vg, resultado_garantia, df_checklist, eventos_aditivos, complemento_manual=""):
+    """Monta saneador formal, sem nomes internos em documentos formais e sem alterar cálculos."""
     df_infos = normalizar_df_infos(df_infos)
 
-    data_final = valor_info(df_infos, "Data final vigente")
-    data_proposta = valor_info(df_infos, "Data da proposta")
-    indice_info = valor_info(df_infos, "Índice contratual")
-    data_pedido = valor_info(df_infos, "Data do pedido da empresa")
-    houve_reajuste = valor_info(df_infos, "Já houve reajuste anterior?")
-    percentual_anterior = valor_info(df_infos, "Percentual já concedido")
-    data_efeitos_anterior = valor_info(df_infos, "Data de efeitos financeiros anterior")
-    valor_aditivo = valor_info(df_infos, "Valor do aditivo na assinatura")
-    data_aditivo = valor_info(df_infos, "Data do aditivo")
-    percentual_garantia_info = valor_info(df_infos, "Percentual de garantia previsto")
-    valor_garantia_info = valor_info(df_infos, "Valor da garantia constituída")
-    historico_endossos = valor_info(df_infos, "Histórico de endossos")
-    ultimo_termo = valor_info(df_infos, "Último Termo de Apostila")
-    oficio_pleito = valor_info(df_infos, "Ofício de Pleito da Empresa")
+    numero_contrato = info_por_alias(df_infos, ["Número do contrato", "Contrato", "Nº do contrato"])
+    contratada = info_por_alias(df_infos, ["Contratada", "Nome da contratada"])
+    objeto = info_por_alias(df_infos, ["Objeto do contrato", "Objeto"])
+    data_final = info_por_alias(df_infos, ["Data final vigente", "Data final da vigência", "Vigência final"])
+    data_proposta = info_por_alias(df_infos, ["Data da proposta", "Data-base da proposta"])
+    indice_info = info_por_alias(df_infos, ["Índice contratual", "Índice de reajuste"])
+    data_pedido = info_por_alias(df_infos, ["Data do pedido da empresa", "Data do pedido", "Data do pleito"])
+    documento_pleito = info_por_alias(df_infos, ["Ofício de Pleito da Empresa", "Documento do pleito", "Pleito da empresa", "Pedido de reajuste"])
+    houve_reajuste = info_por_alias(df_infos, ["Já houve reajuste anterior?", "Reajuste anterior"])
+    percentual_anterior = info_por_alias(df_infos, ["Percentual já concedido", "Percentual anterior"])
+    data_efeitos_anterior = info_por_alias(df_infos, ["Data de efeitos financeiros anterior", "Efeitos financeiros anteriores"])
+    ultimo_termo = info_por_alias(df_infos, ["Último Termo de Apostila", "Último termo"])
 
-    tipo_analise = st.session_state.get("calculadora_tipo_analise", "[campo a preencher]")
+    adequacao_doc = info_por_alias(df_infos, ["Documento da adequação orçamentária", "Adequação orçamentária", "Adequação orçamentária realizada"])
+    adequacao_valor = info_por_alias(df_infos, ["Valor da adequação orçamentária", "Valor adequado", "Valor da complementação orçamentária"], padrao="")
+    certidoes = info_por_alias(df_infos, ["Certidões de regularidade", "Certidões", "Regularidade fiscal"])
+    concordancia = info_por_alias(df_infos, ["Concordância da contratada", "Manifestação da contratada", "Aceite da contratada", "Anuência da contratada"])
+    documentos_desatualizados = info_por_alias(df_infos, ["Documentos desatualizados", "Documentos a desconsiderar", "Documentos instruídos desatualizados"])
+    documentacao_apoio = info_por_alias(df_infos, ["Documentação de apoio", "Documentos de apoio", "Documentação suporte"])
+
+    resultado_adequacao = st.session_state.get("resultado_adequacao_orcamentaria")
+    if isinstance(resultado_adequacao, dict) and resultado_adequacao:
+        for chave in ["complementacao_necessaria", "complementacao", "valor_adequacao", "valor_total"]:
+            valor = _valor_numerico_positivo(resultado_adequacao.get(chave))
+            if valor is not None:
+                adequacao_valor = moeda(valor)
+                break
+        if adequacao_doc == "[campo a preencher]":
+            adequacao_doc = texto_seguro(resultado_adequacao.get("documento"), "[campo a preencher]")
+
+    if not adequacao_valor:
+        adequacao_valor = "[campo a preencher]"
 
     vg_disponivel = isinstance(resultado_vg, dict) and bool(resultado_vg)
-    gar_disponivel = isinstance(resultado_garantia, dict) and bool(resultado_garantia)
 
     indice_resultado = texto_seguro(resultado_vg.get("indice") if vg_disponivel else None, indice_info)
     qtd_ciclos = texto_seguro(resultado_vg.get("quantidade_ciclos") if vg_disponivel else None)
-    data_processamento_vg = texto_seguro(resultado_vg.get("data_processamento") if vg_disponivel else None)
     valor_original = moeda(resultado_vg.get("valor_original_contrato", 0)) if vg_disponivel else "[campo a preencher]"
-    valor_formalizado = moeda(resultado_vg.get("valor_formalizado_anterior", 0)) if vg_disponivel else "[campo a preencher]"
-    valor_pago = moeda(resultado_vg.get("valor_pago_efetivo", 0)) if vg_disponivel else "[campo a preencher]"
-    valor_teorico = moeda(resultado_vg.get("valor_teorico_calculado", 0)) if vg_disponivel else "[campo a preencher]"
+    valor_pago = moeda(resultado_vg.get("valor_pago_efetivo", resultado_vg.get("total_pago_faturado", 0))) if vg_disponivel else "[campo a preencher]"
+    valor_teorico = moeda(resultado_vg.get("valor_teorico_calculado", resultado_vg.get("total_devido_reajustado", 0))) if vg_disponivel else "[campo a preencher]"
     valor_represado = moeda(resultado_vg.get("valor_represado_a_pagar", 0)) if vg_disponivel else "[campo a preencher]"
     remanescente = moeda(resultado_vg.get("remanescente_reajustado", 0)) if vg_disponivel else "[campo a preencher]"
     valor_executado = moeda(resultado_vg.get("valor_executado_atualizado", 0)) if vg_disponivel else "[campo a preencher]"
     valor_total = moeda(resultado_vg.get("valor_atualizado_contrato", 0)) if vg_disponivel else "[campo a preencher]"
     ciclo_rem = texto_seguro(resultado_vg.get("ciclo_ultimo_remanescente") if vg_disponivel else None)
     variacao = pct(resultado_vg.get("variacao_acumulada", 0)) if vg_disponivel else "[campo a preencher]"
-    qtd_aditivos = texto_seguro(resultado_vg.get("quantidade_aditivos_total") if vg_disponivel else None)
-    aditivos_informativos = moeda(resultado_vg.get("total_aditivos_informativos", 0)) if vg_disponivel else "[campo a preencher]"
     delta_ciclos = extrair_delta_por_ciclo(resultado_vg if vg_disponivel else {})
+    aditivos_atualizados = extrair_valor_aditivos(resultado_vg if vg_disponivel else {}, eventos_aditivos)
 
-    garantia_base = moeda(resultado_garantia.get("valor_total_atualizado_contrato", resultado_garantia.get("valor_atualizado_base", 0))) if gar_disponivel else "[campo a preencher]"
-    garantia_pct = pct(resultado_garantia.get("percentual_garantia", 0)) if gar_disponivel else percentual_garantia_info
-    garantia_exigida = moeda(resultado_garantia.get("garantia_exigida", 0)) if gar_disponivel else "[campo a preencher]"
-    garantia_constituida = moeda(resultado_garantia.get("garantia_constituida", 0)) if gar_disponivel else valor_garantia_info
-    endosso = moeda(resultado_garantia.get("endosso_necessario", 0)) if gar_disponivel else "[campo a preencher]"
-    validade_minima = texto_seguro(resultado_garantia.get("data_validade_minima") if gar_disponivel else None)
+    contrato_txt = "contrato"
+    if numero_contrato and numero_contrato != "[campo a preencher]":
+        contrato_txt = f"Contrato {numero_contrato}"
+    if contratada and contratada != "[campo a preencher]":
+        contrato_txt += f", celebrado com {contratada}"
 
-    checklist_resumo = resumo_status_df(df_checklist, "itens do checklist")
-    infos_resumo = resumo_status_df(df_infos, "itens de informações prévias")
+    titulo = "Despacho Saneador para Formalização de Termo de Apostila"
+    assunto = f"Assunto: Saneamento da instrução — Contrato {numero_contrato}."
 
-    aditivos_resumo = ""
-    if isinstance(eventos_aditivos, pd.DataFrame) and not eventos_aditivos.empty:
-        aditivos_resumo = (
-            f" A página de Aditivos: 25% registra {len(eventos_aditivos)} evento(s) informado(s), "
-            "os quais devem ser utilizados apenas para governança do limite de acréscimos e supressões, sem alterar automaticamente o Valor Global."
-        )
+    paragrafos = [titulo, assunto]
 
-    paragrafos = [
-        "Despacho Saneador para Formalização de Termo de Apostila",
+    itens = [
         (
-            "Este saneamento da instrução processual subsidia a formalização de Termo de Apostila para registro "
-            "do reajuste contratual. O documento consolida a sequência de atos, informações e resultados apurados "
-            "antes da assinatura, com a finalidade de demonstrar a regularidade mínima da instrução."
+            f"1. Realiza-se o saneamento processual relativo ao {contrato_txt}, cujo objeto é {objeto}. "
+            f"A vigência final informada é {data_final}."
         ),
         (
-            f"A contratada apresentou pleito de reajuste por meio de {oficio_pleito}, com data de pedido registrada em "
-            f"{data_pedido}. Para verificação da anualidade, foi considerada a data da proposta em {data_proposta}, bem como "
-            f"o índice contratual {indice_resultado}, extraído da documentação contratual e/ou da análise realizada no sistema."
+            f"2. A contratada apresentou pleito de reajuste por meio de {documento_pleito}, com data de pedido registrada em {data_pedido}. "
+            f"Para fins de verificação da anualidade, foi considerada a data da proposta em {data_proposta}, bem como o índice contratual {indice_resultado}, "
+            "extraído da documentação contratual e/ou da análise técnica realizada."
         ),
         (
-            f"Quanto à situação contratual prévia, foi informada vigência final em {data_final}. O levantamento também registrou "
-            f"que {houve_reajuste} quanto à existência de reajuste anterior, com percentual já concedido de {percentual_anterior}, "
-            f"efeitos financeiros anteriores em {data_efeitos_anterior} e último Termo de Apostila identificado como {ultimo_termo}."
+            f"3. Quanto ao histórico anterior, foi informado que {houve_reajuste} quanto à existência de reajuste anterior, "
+            f"com percentual já concedido de {percentual_anterior}, efeitos financeiros anteriores em {data_efeitos_anterior} "
+            f"e último Termo de Apostila identificado como {ultimo_termo}."
         ),
         (
-            f"A Calculadora de Reajustes foi utilizada no modo {tipo_analise}. A análise processada em {data_processamento_vg} "
-            f"considerou {qtd_ciclos} ciclo(s), com variação acumulada de {variacao}. O valor original do contrato informado foi "
-            f"{valor_original}, e o valor formalizado antes desta análise foi {valor_formalizado}."
+            f"4. A análise de reajuste considerou {qtd_ciclos} ciclo(s), com variação acumulada de {variacao}. "
+            f"O valor original do contrato informado foi de {valor_original}."
         ),
         (
-            f"A apuração financeira consolidada indicou valor pago efetivo de {valor_pago} e valor teórico calculado de "
-            f"{valor_teorico}, resultando em valor represado a pagar de {valor_represado}.{delta_ciclos}"
+            f"5. A apuração financeira consolidada indicou valor pago efetivo de {valor_pago} e valor teórico calculado de {valor_teorico}, "
+            f"resultando em valor represado a pagar de {valor_represado}.{delta_ciclos}"
         ),
         (
-            f"Para fins de consolidação contratual, o Valor Total Atualizado do Contrato foi apurado em {valor_total}, composto "
-            f"pela execução atualizada por ciclo, no montante de {valor_executado}, somada ao saldo remanescente atualizado de "
-            f"{remanescente}, correspondente ao ciclo/referência {ciclo_rem}. Aditivos e supressões não são somados como parcela "
-            "autônoma quando seus efeitos já estiverem incorporados à execução, ao estoque ou ao saldo remanescente, evitando dupla contagem."
+            f"6. Para fins de consolidação contratual, o Valor Total Atualizado do Contrato foi apurado em {valor_total}, composto pela "
+            f"execução atualizada por ciclo, no montante de {valor_executado}, somada ao saldo remanescente atualizado de {remanescente}, "
+            f"correspondente ao ciclo/referência {ciclo_rem}."
         ),
         (
-            f"No tocante aos aditivos e supressões, as informações prévias registraram valor de aditivo na assinatura de "
-            f"{valor_aditivo}, com data de referência {data_aditivo}. No Valor Global constam {qtd_aditivos} aditivo(s) ou "
-            f"supressão(ões) registrados para fins informativos, com valor informativo consolidado de {aditivos_informativos}."
-            f"{aditivos_resumo}"
+            f"7. Quanto aos aditivos e supressões, registra-se o valor atualizado consolidado de {aditivos_atualizados}."
         ),
         (
-            f"Quanto à garantia contratual, o levantamento inicial indicou percentual previsto de {percentual_garantia_info}, "
-            f"valor constituído de {valor_garantia_info} e histórico de endossos registrado como {historico_endossos}. A análise "
-            f"de garantia calculada no sistema considerou base de {garantia_base}, percentual de {garantia_pct}, garantia exigida "
-            f"de {garantia_exigida}, garantia constituída de {garantia_constituida} e endosso necessário de {endosso}. A validade mínima "
-            f"indicada para a garantia é {validade_minima}."
+            f"8. Foi realizada a adequação orçamentária necessária ao prosseguimento da instrução, no valor de {adequacao_valor}, "
+            f"conforme documento {adequacao_doc}."
         ),
         (
-            f"Quanto à completude da instrução, as Infos Prévias registram {infos_resumo}. O Checklist Processual registra "
-            f"{checklist_resumo}. Itens pendentes ou em conferência devem ser saneados antes da assinatura, especialmente quando "
-            "relacionados à memória de cálculo, adequação orçamentária, garantia, certidões de regularidade, validade das certidões "
-            "na véspera da assinatura e conformidade da minuta."
+            f"9. As certidões de regularidade foram juntadas aos autos, conforme documento(s) {certidoes}."
+        ),
+        (
+            f"10. A contratada manifestou concordância com os valores propostos, conforme registrado em {concordancia}."
+        ),
+        (
+            "11. A contratada deverá ser informada quanto à necessidade de apresentação do endosso da garantia contratual, quando aplicável, "
+            "observando-se o prazo e as condições previstos no contrato."
+        ),
+        (
+            f"12. Após atualizações e alinhamentos internos, alguns documentos instruídos mostram-se desatualizados, devendo ser desconsiderados: {documentos_desatualizados}."
         ),
     ]
 
     complemento_manual = (complemento_manual or "").strip()
     if complemento_manual:
-        paragrafos.append(complemento_manual)
+        itens.append(f"13. Registro complementar: {complemento_manual}")
+        numero_final = 14
+    else:
+        numero_final = 13
 
-    paragrafos.append(
-        "Diante do exposto, estando conferidos os elementos documentais, financeiros e formais necessários, e inexistindo "
-        "pendência crítica impeditiva, a instrução poderá prosseguir para formalização do Termo de Apostila, observadas as "
-        "alçadas competentes e os procedimentos internos aplicáveis."
+    itens.append(
+        f"{numero_final}. Após a conferência dos documentos acima indicados e saneadas eventuais pendências remanescentes, "
+        "a instrução poderá prosseguir para formalização do Termo de Apostila, observadas as alçadas competentes e os procedimentos internos aplicáveis."
     )
+    itens.append(f"{numero_final + 1}. Documentação de apoio: {documentacao_apoio}.")
+
+    paragrafos.extend(itens)
 
     texto_final = "\n\n".join(paragrafos)
     return limpar_texto_saneador(texto_final)
@@ -309,7 +421,9 @@ def gerar_docx_texto(texto):
     from docx import Document
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     from docx.enum.text import WD_COLOR_INDEX
-    from docx.shared import Inches, Pt
+    from docx.oxml import OxmlElement
+    from docx.oxml.ns import qn
+    from docx.shared import Inches, Pt, RGBColor
 
     document = Document()
     section = document.sections[0]
@@ -322,44 +436,58 @@ def gerar_docx_texto(texto):
     styles["Normal"].font.name = "Arial"
     styles["Normal"].font.size = Pt(10.5)
 
+    def aplicar_sombreamento(paragraph, fill="FFF2CC"):
+        pPr = paragraph._p.get_or_add_pPr()
+        shd = OxmlElement("w:shd")
+        shd.set(qn("w:fill"), fill)
+        pPr.append(shd)
+
     def add_texto_com_placeholder(paragraph, conteudo):
-        partes = re.split(r"(\[campo a preencher\])", conteudo)
+        partes = re.split(r"(\[campo a preencher[^\]]*\])", str(conteudo), flags=re.IGNORECASE)
         for parte in partes:
             if not parte:
                 continue
             run = paragraph.add_run(parte)
-            if parte == "[campo a preencher]":
+            if re.fullmatch(r"\[campo a preencher[^\]]*\]", parte, flags=re.IGNORECASE):
                 run.bold = True
                 run.font.highlight_color = WD_COLOR_INDEX.YELLOW
 
     paragrafos = [p.strip() for p in str(texto).split("\n\n") if p.strip()]
+    corpo = []
     if paragrafos:
         title = document.add_paragraph()
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = title.add_run(paragrafos[0])
         run.bold = True
         run.font.size = Pt(14)
-
-        p = document.add_paragraph()
-        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        p.add_run(f"Gerado em: {datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')}").italic = True
         corpo = paragrafos[1:]
-    else:
-        corpo = []
 
     for par in corpo:
         p = document.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        if par.startswith("Assunto:"):
+            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            prefixo = "Assunto:"
+            run = p.add_run(prefixo)
+            run.bold = True
+            add_texto_com_placeholder(p, par[len(prefixo):])
+            continue
+
+        if "Após atualizações e alinhamentos internos" in par:
+            aplicar_sombreamento(p, "EAF2F8")
+            p.paragraph_format.space_before = Pt(6)
+            p.paragraph_format.space_after = Pt(6)
+            add_texto_com_placeholder(p, par)
+            for run in p.runs:
+                run.font.color.rgb = RGBColor(18, 59, 99)
+            continue
+
         add_texto_com_placeholder(p, par)
 
     buffer = BytesIO()
     document.save(buffer)
     buffer.seek(0)
     return buffer.getvalue()
-
-
-def gerar_txt(texto):
-    return str(texto).encode("utf-8")
 
 
 render_marca_topo()
@@ -376,7 +504,7 @@ eventos_aditivos = st.session_state.get("avaliacao_aditivos_eventos")
 fontes = resumo_fontes(df_infos, resultado_vg, resultado_garantia, df_checklist, eventos_aditivos)
 
 st.info(
-    "O Saneador é gerado automaticamente a partir dos dados disponíveis no sistema. "
+    "O Saneador é gerado automaticamente a partir dos dados disponíveis na ferramenta. "
     "Ele consolida pleito, premissas, cálculo, valores, garantia, aditivos e conferência da instrução."
 )
 
@@ -416,30 +544,16 @@ texto_editado = st.text_area(
 st.session_state["saneador_texto"] = texto_editado
 
 docx_bytes = gerar_docx_texto(texto_editado)
-txt_bytes = gerar_txt(texto_editado)
-
 st.session_state["arquivo_saneador_docx"] = docx_bytes
-st.session_state["arquivo_saneador_txt"] = txt_bytes
 
-col1, col2 = st.columns(2)
-with col1:
-    st.download_button(
-        "Baixar Saneador em DOCX",
-        data=docx_bytes,
-        file_name="Saneador_Instrucao_Processual.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        type="primary",
-        use_container_width=True,
-    )
-
-with col2:
-    st.download_button(
-        "Baixar Saneador em TXT",
-        data=txt_bytes,
-        file_name="Saneador_Instrucao_Processual.txt",
-        mime="text/plain",
-        use_container_width=True,
-    )
+st.download_button(
+    "Baixar Saneador em DOCX",
+    data=docx_bytes,
+    file_name="Saneador_Instrucao_Processual.docx",
+    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    type="primary",
+    use_container_width=True,
+)
 
 with st.expander("Base de Infos Prévias utilizada", expanded=False):
     st.dataframe(df_infos, use_container_width=True, hide_index=True)
