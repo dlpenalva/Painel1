@@ -1,4 +1,4 @@
-import streamlit as st
+﻿import streamlit as st
 
 
 def render_marca_topo():
@@ -84,7 +84,7 @@ def render_versao_sidebar():
             line-height: 1.2;
         }
         </style>
-        <div class="tlb-cl8us-sidebar-version">v. 09/05/2026 · 23h</div>
+        <div class="tlb-cl8us-sidebar-version">v. 12/05/2026 - 21h</div>
         """,
         unsafe_allow_html=True,
     )
@@ -129,3 +129,5 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
             st.caption(f"Índice selecionado para esta análise: **{selecionado}**.")
 
     return selecionado
+
+
