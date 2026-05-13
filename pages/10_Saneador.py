@@ -1,4 +1,4 @@
-from datetime import datetime
+﻿from datetime import datetime
 from io import BytesIO
 from zoneinfo import ZoneInfo
 import re
@@ -503,13 +503,7 @@ eventos_aditivos = st.session_state.get("avaliacao_aditivos_eventos")
 
 fontes = resumo_fontes(df_infos, resultado_vg, resultado_garantia, df_checklist, eventos_aditivos)
 
-st.info(
-    "O Saneador é gerado automaticamente a partir dos dados disponíveis na ferramenta. "
-    "Ele consolida pleito, premissas, cálculo, valores, garantia, aditivos e conferência da instrução."
-)
-
-st.dataframe(fontes, use_container_width=True, hide_index=True)
-
+st.info("O Saneador gera uma minuta formal editável. Revise o texto antes de baixar o DOCX.")
 with st.expander("Complemento manual opcional", expanded=False):
     complemento_manual = st.text_area(
         "Usar apenas para ressalvas ou informações que ainda não estejam nos módulos da ferramenta.",
@@ -557,3 +551,5 @@ st.download_button(
 
 with st.expander("Base de Infos Prévias utilizada", expanded=False):
     st.dataframe(df_infos, use_container_width=True, hide_index=True)
+
+
