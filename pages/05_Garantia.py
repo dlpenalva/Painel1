@@ -9,7 +9,7 @@ from dateutil.relativedelta import relativedelta
 
 try:
     from reportlab.lib import colors
-    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
+    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY, TA_LEFT
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
     from reportlab.lib.units import cm
@@ -395,74 +395,220 @@ def render_linha_tempo_garantia(df):
     st.markdown(html, unsafe_allow_html=True)
 
 def gerar_pdf_garantia(dados, df_linha_tempo):
+    """Gera PDF executivo da garantia, preservando a lógica de cálculo da tela.
+
+    O relatório apresenta a garantia como uma linha do tempo: contrato original,
+    aditivos/supressões, reajustes atuais, endossos esperados, endossos já
+    apresentados e endosso complementar estimado.
+    """
     if not REPORTLAB_OK:
         return None
+
     buffer = BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.6*cm, leftMargin=1.6*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
+    doc = SimpleDocTemplate(
+        buffer,
+        pagesize=A4,
+        rightMargin=1.4 * cm,
+        leftMargin=1.4 * cm,
+        topMargin=1.2 * cm,
+        bottomMargin=1.2 * cm,
+    )
     styles = getSampleStyleSheet()
-    titulo = ParagraphStyle("TituloGarantia", parent=styles["Title"], alignment=TA_CENTER, fontSize=13, leading=16, spaceAfter=8)
-    subtitulo = ParagraphStyle("SubtituloGarantia", parent=styles["Normal"], alignment=TA_CENTER, fontSize=9, leading=12, textColor=colors.HexColor("#334155"), spaceAfter=14)
-    h2 = ParagraphStyle("H2Garantia", parent=styles["Heading2"], fontSize=10, leading=13, spaceBefore=8, spaceAfter=6, textColor=colors.HexColor("#123B63"))
-    normal = ParagraphStyle("NormalGarantia", parent=styles["Normal"], fontSize=8.5, leading=12, alignment=TA_JUSTIFY)
+    titulo = ParagraphStyle(
+        "TituloGarantia",
+        parent=styles["Title"],
+        alignment=TA_CENTER,
+        fontSize=13,
+        leading=16,
+        spaceAfter=6,
+        textColor=colors.HexColor("#0B1F3A"),
+    )
+    subtitulo = ParagraphStyle(
+        "SubtituloGarantia",
+        parent=styles["Normal"],
+        alignment=TA_CENTER,
+        fontSize=8.5,
+        leading=11,
+        textColor=colors.HexColor("#334155"),
+        spaceAfter=10,
+    )
+    h2 = ParagraphStyle(
+        "H2Garantia",
+        parent=styles["Heading2"],
+        fontSize=10,
+        leading=13,
+        spaceBefore=7,
+        spaceAfter=5,
+        textColor=colors.HexColor("#123B63"),
+    )
+    normal = ParagraphStyle(
+        "NormalGarantia",
+        parent=styles["Normal"],
+        fontSize=8.2,
+        leading=11.2,
+        alignment=TA_JUSTIFY,
+        textColor=colors.HexColor("#1F2937"),
+    )
+    celula = ParagraphStyle(
+        "CelulaGarantia",
+        parent=styles["Normal"],
+        fontSize=7.0,
+        leading=8.4,
+        alignment=TA_LEFT,
+        textColor=colors.HexColor("#1F2937"),
+    )
+    celula_branca = ParagraphStyle(
+        "CelulaGarantiaBranca",
+        parent=celula,
+        textColor=colors.white,
+    )
+    celula_negrito = ParagraphStyle(
+        "CelulaGarantiaNegrito",
+        parent=celula,
+        fontName="Helvetica-Bold",
+    )
+    observacao = ParagraphStyle(
+        "ObservacaoGarantia",
+        parent=styles["Normal"],
+        fontSize=7.6,
+        leading=9.6,
+        alignment=TA_JUSTIFY,
+        textColor=colors.HexColor("#475569"),
+    )
+
+    def _p(valor, estilo=celula):
+        texto = escape(limpar_texto(valor)).replace("\n", "<br/>")
+        return Paragraph(texto or "-", estilo)
+
+    def _pct(valor):
+        try:
+            return f"{float(valor):.2f}%".replace(".", ",")
+        except Exception:
+            return "0,00%"
+
+    garantia_esperada = parse_moeda_br(dados.get("garantia_esperada_acumulada", 0.0))
+    garantia_apresentada = parse_moeda_br(dados.get("garantia_apresentada", 0.0))
+    endosso_complementar = parse_moeda_br(dados.get("endosso_complementar", 0.0))
+    excesso_garantia = max(garantia_apresentada - garantia_esperada, 0.0)
+
+    if endosso_complementar > 0.004:
+        leitura = (
+            f"Pelo histórico informado, há necessidade estimada de endosso complementar no valor de {moeda(endosso_complementar)}."
+        )
+    elif excesso_garantia > 0.004:
+        leitura = (
+            f"Pelo histórico informado, a garantia/endossos apresentados superam o valor esperado em {moeda(excesso_garantia)}. "
+            "Recomenda-se conferir validade e aceitação formal."
+        )
+    else:
+        leitura = "Pelo histórico informado, a garantia/endossos apresentados correspondem ao valor esperado."
 
     elementos = []
     elementos.append(Paragraph("Garantia Contratual", titulo))
-    elementos.append(Paragraph("Histórico da garantia e endosso complementar", subtitulo))
+    elementos.append(Paragraph("Histórico da garantia e endosso complementar estimado", subtitulo))
     elementos.append(Paragraph(f"Gerado em: {data_hora_brasilia()}", subtitulo))
 
-    elementos.append(Paragraph("1. Resultado", h2))
-    tabela_dados = [
-        ["Indicador", "Valor"],
-        ["Garantia/endossos esperados acumulados", moeda(dados["garantia_esperada_acumulada"])],
-        ["Garantia/endossos já apresentados", moeda(dados["garantia_apresentada"])],
-        ["Endosso complementar estimado", moeda(dados["endosso_complementar"])],
-        ["Percentual da garantia", f"{dados['percentual_garantia_pct']:.2f}%".replace(".", ",")],
-        ["Valor Total Atualizado do Contrato", moeda(dados["valor_total_atualizado"])],
+    elementos.append(Paragraph("1. Resultado executivo", h2))
+    tabela_resultado = [
+        [_p("Indicador", celula_branca), _p("Valor", celula_branca)],
+        [_p("Garantia/endossos esperados acumulados"), _p(moeda(garantia_esperada), celula_negrito)],
+        [_p("Garantia/endossos já apresentados"), _p(moeda(garantia_apresentada), celula_negrito)],
+        [_p("Endosso complementar estimado"), _p(moeda(endosso_complementar), celula_negrito)],
+        [_p("Percentual da garantia"), _p(_pct(dados.get("percentual_garantia_pct", 0.0)))],
+        [_p("Prazo de referência para apresentação/endosso"), _p(f"{int(dados.get('prazo_dias', 0) or 0)} dias úteis")],
+        [_p("Encerramento da vigência contratual"), _p(dados.get("data_fim_vigencia", "[campo a preencher]"))],
+        [_p("Validade mínima sugerida da garantia"), _p(dados.get("data_validade_minima", "[campo a preencher]"))],
     ]
-    tabela = Table(tabela_dados, colWidths=[8.2*cm, 7.8*cm], repeatRows=1, hAlign="CENTER")
+    tabela = Table(tabela_resultado, colWidths=[8.2 * cm, 7.6 * cm], repeatRows=1, hAlign="CENTER")
     tabela.setStyle(TableStyle([
-        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1F4E78")),
-        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-        ("FONTSIZE", (0,0), (-1,-1), 8),
-        ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor("#D9E2F3")),
-        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 7.4),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2F3")),
+        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
+        ("BACKGROUND", (0, 3), (-1, 3), colors.HexColor("#EAF2F8")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+        ("TOPPADDING", (0, 0), (-1, -1), 4),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
     ]))
     elementos.append(tabela)
-    elementos.append(Spacer(1, 10))
+    elementos.append(Spacer(1, 7))
+    elementos.append(Paragraph(leitura, normal))
+    elementos.append(Spacer(1, 8))
+
+    elementos.append(Paragraph("2. Base de cálculo e memória", h2))
+    tabela_memoria = [
+        [_p("Base / informação", celula_branca), _p("Valor", celula_branca), _p("Observação", celula_branca)],
+        [_p("Valor original do contrato"), _p(moeda(dados.get("valor_original", 0.0))), _p("Base inicial utilizada para estimar a garantia original.")],
+        [_p("Garantia original"), _p(moeda(dados.get("garantia_original", 0.0))), _p("Valor original multiplicado pelo percentual de garantia.")],
+        [_p("Valor Total Atualizado do Contrato"), _p(moeda(dados.get("valor_total_atualizado", 0.0))), _p("Base atual de conferência importada ou informada na tela.")],
+        [_p("Garantia exigida pelo Valor Total Atualizado"), _p(moeda(dados.get("garantia_exigida_total", 0.0))), _p("Valor Total Atualizado multiplicado pelo percentual de garantia.")],
+        [_p("Garantia/endossos esperados pela linha do tempo"), _p(moeda(garantia_esperada)), _p("Soma dos endossos esperados nos eventos considerados.")],
+    ]
+    tabela_m = Table(tabela_memoria, colWidths=[5.0 * cm, 3.8 * cm, 7.0 * cm], repeatRows=1, hAlign="CENTER")
+    tabela_m.setStyle(TableStyle([
+        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, -1), 6.8),
+        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2F3")),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#FFFFFF")),
+        ("LEFTPADDING", (0, 0), (-1, -1), 4),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+    ]))
+    elementos.append(tabela_m)
+    elementos.append(Spacer(1, 8))
 
     if isinstance(df_linha_tempo, pd.DataFrame) and not df_linha_tempo.empty:
-        elementos.append(Paragraph("2. Linha do tempo da garantia", h2))
-        linhas = [["Evento", "Data", "Ciclo", "Valor-base", "Endosso esperado"]]
+        elementos.append(Paragraph("3. Linha do tempo da garantia", h2))
+        linhas = [[_p("Evento", celula_branca), _p("Data", celula_branca), _p("Ciclo", celula_branca), _p("Valor-base", celula_branca), _p("Endosso esperado", celula_branca)]]
         for _, row in df_linha_tempo.iterrows():
             linhas.append([
-                limpar_texto(row.get("Evento", "")),
-                limpar_texto(row.get("Data", "")),
-                limpar_texto(row.get("Ciclo", "")),
-                moeda(row.get("Valor atualizado", row.get("Valor-base", 0.0))),
-                moeda(row.get("Endosso esperado", 0.0)),
+                _p(row.get("Evento", "")),
+                _p(row.get("Data", "")),
+                _p(row.get("Ciclo", "")),
+                _p(moeda(row.get("Valor atualizado", row.get("Valor-base", 0.0)))),
+                _p(moeda(row.get("Endosso esperado", 0.0))),
             ])
-        tabela_lt = Table(linhas, colWidths=[4.0*cm, 2.5*cm, 2.2*cm, 3.8*cm, 3.5*cm], repeatRows=1, hAlign="CENTER")
-        tabela_lt.setStyle(TableStyle([
-            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1F4E78")),
-            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
-            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
-            ("FONTSIZE", (0,0), (-1,-1), 7),
-            ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor("#D9E2F3")),
-            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
-        ]))
+        tabela_lt = Table(linhas, colWidths=[4.4 * cm, 2.4 * cm, 1.8 * cm, 3.5 * cm, 3.7 * cm], repeatRows=1, hAlign="CENTER")
+        estilo_lt = TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("FONTSIZE", (0, 0), (-1, -1), 6.4),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2F3")),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("LEFTPADDING", (0, 0), (-1, -1), 3),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
+            ("TOPPADDING", (0, 0), (-1, -1), 3),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ])
+        for i in range(1, len(linhas)):
+            bg = colors.HexColor("#FFFFFF") if i % 2 else colors.HexColor("#F8FAFC")
+            estilo_lt.add("BACKGROUND", (0, i), (-1, i), bg)
+        tabela_lt.setStyle(estilo_lt)
         elementos.append(tabela_lt)
-        elementos.append(Spacer(1, 10))
+        elementos.append(Spacer(1, 8))
 
-    elementos.append(Paragraph("3. Observação", h2))
+    elementos.append(Paragraph("4. Observações", h2))
     elementos.append(Paragraph(
-        "Os valores apresentados são auxiliares à conferência da garantia. A definição da base de cálculo deve observar a cláusula contratual de garantia e a orientação administrativa aplicável.",
-        normal,
+        "Este relatório é auxiliar à conferência da garantia contratual. A definição da base de cálculo, do prazo de apresentação, da validade mínima e da aceitação dos endossos deve observar a cláusula contratual de garantia e a orientação administrativa aplicável.",
+        observacao,
     ))
+    elementos.append(Paragraph(
+        "A linha do tempo evita dupla contagem ao demonstrar contrato original, aditivos/supressões e reajustes atuais como eventos de garantia. O endosso complementar estimado corresponde à diferença positiva entre a garantia/endossos esperados acumulados e a garantia/endossos já apresentados.",
+        observacao,
+    ))
+
     doc.build(elementos)
     buffer.seek(0)
     return buffer.getvalue()
-
 
 # ============================================================
 # Interface
@@ -712,11 +858,17 @@ with st.expander("Memória de cálculo", expanded=False):
 
 st.subheader("Relatório")
 dados_pdf = {
+    "valor_original": valor_original,
+    "garantia_original": valor_garantia_original,
     "garantia_esperada_acumulada": garantia_esperada_acumulada,
     "garantia_apresentada": garantia_apresentada,
     "endosso_complementar": endosso_complementar,
     "percentual_garantia_pct": percentual_garantia_pct,
     "valor_total_atualizado": valor_total_atualizado,
+    "garantia_exigida_total": garantia_exigida_total,
+    "prazo_dias": prazo_dias,
+    "data_fim_vigencia": data_fim_vigencia.strftime("%d/%m/%Y"),
+    "data_validade_minima": data_validade_minima.strftime("%d/%m/%Y"),
 }
 
 st.session_state["resultado_garantia"] = {
