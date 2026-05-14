@@ -1,4 +1,4 @@
-﻿import streamlit as st
+import streamlit as st
 
 
 def render_marca_topo():
@@ -70,8 +70,8 @@ def render_marca_topo():
 
 
 def render_versao_sidebar():
-    """Função mantida por compatibilidade; não renderiza versão na barra lateral."""
-    return
+    """Função mantida por compatibilidade; não renderiza versão fixa."""
+    return None
 
 
 def render_indice_contrato_selectbox(key=None, index=0, options=None):
@@ -113,5 +113,3 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
             st.caption(f"Índice selecionado para esta análise: **{selecionado}**.")
 
     return selecionado
-
-
