@@ -70,24 +70,8 @@ def render_marca_topo():
 
 
 def render_versao_sidebar():
-    """Exibe versão discreta no rodapé do menu lateral."""
-    st.sidebar.markdown(
-        """
-        <style>
-        .tlb-cl8us-sidebar-version {
-            color: #94A3B8;
-            font-size: 0.72rem;
-            font-weight: 500;
-            margin-top: 7.50rem;
-            padding-top: 0;
-            border-top: none;
-            line-height: 1.2;
-        }
-        </style>
-        <div class="tlb-cl8us-sidebar-version">v. 12/05/2026 - 21h</div>
-        """,
-        unsafe_allow_html=True,
-    )
+    """Função mantida por compatibilidade; não renderiza versão na barra lateral."""
+    return
 
 
 def render_indice_contrato_selectbox(key=None, index=0, options=None):
