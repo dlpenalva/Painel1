@@ -395,12 +395,79 @@ def render_linha_tempo_garantia(df):
     st.markdown(html, unsafe_allow_html=True)
 
 def gerar_pdf_garantia(dados, df_linha_tempo):
-    """Gera PDF executivo da garantia, preservando a lógica de cálculo da tela.
+    if not REPORTLAB_OK:
+        return None
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=1.6*cm, leftMargin=1.6*cm, topMargin=1.5*cm, bottomMargin=1.5*cm)
+    styles = getSampleStyleSheet()
+    titulo = ParagraphStyle("TituloGarantia", parent=styles["Title"], alignment=TA_CENTER, fontSize=13, leading=16, spaceAfter=8)
+    subtitulo = ParagraphStyle("SubtituloGarantia", parent=styles["Normal"], alignment=TA_CENTER, fontSize=9, leading=12, textColor=colors.HexColor("#334155"), spaceAfter=14)
+    h2 = ParagraphStyle("H2Garantia", parent=styles["Heading2"], fontSize=10, leading=13, spaceBefore=8, spaceAfter=6, textColor=colors.HexColor("#123B63"))
+    normal = ParagraphStyle("NormalGarantia", parent=styles["Normal"], fontSize=8.5, leading=12, alignment=TA_JUSTIFY)
 
-    O relatório apresenta a garantia como uma linha do tempo: contrato original,
-    aditivos/supressões, reajustes atuais, endossos esperados, endossos já
-    apresentados e endosso complementar estimado.
-    """
+    elementos = []
+    elementos.append(Paragraph("Garantia Contratual", titulo))
+    elementos.append(Paragraph("Histórico da garantia e endosso complementar", subtitulo))
+    elementos.append(Paragraph(f"Gerado em: {data_hora_brasilia()}", subtitulo))
+
+    elementos.append(Paragraph("1. Resultado", h2))
+    tabela_dados = [
+        ["Indicador", "Valor"],
+        ["Garantia/endossos esperados acumulados", moeda(dados["garantia_esperada_acumulada"])],
+        ["Garantia/endossos já apresentados", moeda(dados["garantia_apresentada"])],
+        ["Endosso complementar estimado", moeda(dados["endosso_complementar"])],
+        ["Percentual da garantia", f"{dados['percentual_garantia_pct']:.2f}%".replace(".", ",")],
+        ["Valor Total Atualizado do Contrato", moeda(dados["valor_total_atualizado"])],
+    ]
+    tabela = Table(tabela_dados, colWidths=[8.2*cm, 7.8*cm], repeatRows=1, hAlign="CENTER")
+    tabela.setStyle(TableStyle([
+        ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1F4E78")),
+        ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+        ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+        ("FONTSIZE", (0,0), (-1,-1), 8),
+        ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor("#D9E2F3")),
+        ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+    ]))
+    elementos.append(tabela)
+    elementos.append(Spacer(1, 10))
+
+    if isinstance(df_linha_tempo, pd.DataFrame) and not df_linha_tempo.empty:
+        elementos.append(Paragraph("2. Linha do tempo da garantia", h2))
+        linhas = [["Evento", "Data", "Ciclo", "Valor-base", "Endosso esperado"]]
+        for _, row in df_linha_tempo.iterrows():
+            linhas.append([
+                limpar_texto(row.get("Evento", "")),
+                limpar_texto(row.get("Data", "")),
+                limpar_texto(row.get("Ciclo", "")),
+                moeda(row.get("Valor atualizado", row.get("Valor-base", 0.0))),
+                moeda(row.get("Endosso esperado", 0.0)),
+            ])
+        tabela_lt = Table(linhas, colWidths=[4.0*cm, 2.5*cm, 2.2*cm, 3.8*cm, 3.5*cm], repeatRows=1, hAlign="CENTER")
+        tabela_lt.setStyle(TableStyle([
+            ("BACKGROUND", (0,0), (-1,0), colors.HexColor("#1F4E78")),
+            ("TEXTCOLOR", (0,0), (-1,0), colors.white),
+            ("FONTNAME", (0,0), (-1,0), "Helvetica-Bold"),
+            ("FONTSIZE", (0,0), (-1,-1), 7),
+            ("GRID", (0,0), (-1,-1), 0.25, colors.HexColor("#D9E2F3")),
+            ("VALIGN", (0,0), (-1,-1), "MIDDLE"),
+        ]))
+        elementos.append(tabela_lt)
+        elementos.append(Spacer(1, 10))
+
+    elementos.append(Paragraph("3. Observação", h2))
+    elementos.append(Paragraph(
+        "Os valores apresentados são auxiliares à conferência da garantia. A definição da base de cálculo deve observar a cláusula contratual de garantia e a orientação administrativa aplicável.",
+        normal,
+    ))
+    doc.build(elementos)
+    buffer.seek(0)
+    return buffer.getvalue()
+
+
+
+
+def gerar_pdf_garantia_delta(dados):
+    """Gera PDF objetivo para o Método 1 — Delta da Garantia."""
     if not REPORTLAB_OK:
         return None
 
@@ -415,7 +482,7 @@ def gerar_pdf_garantia(dados, df_linha_tempo):
     )
     styles = getSampleStyleSheet()
     titulo = ParagraphStyle(
-        "TituloGarantia",
+        "TituloGarantiaDelta",
         parent=styles["Title"],
         alignment=TA_CENTER,
         fontSize=13,
@@ -424,7 +491,7 @@ def gerar_pdf_garantia(dados, df_linha_tempo):
         textColor=colors.HexColor("#0B1F3A"),
     )
     subtitulo = ParagraphStyle(
-        "SubtituloGarantia",
+        "SubtituloGarantiaDelta",
         parent=styles["Normal"],
         alignment=TA_CENTER,
         fontSize=8.5,
@@ -433,7 +500,7 @@ def gerar_pdf_garantia(dados, df_linha_tempo):
         spaceAfter=10,
     )
     h2 = ParagraphStyle(
-        "H2Garantia",
+        "H2GarantiaDelta",
         parent=styles["Heading2"],
         fontSize=10,
         leading=13,
@@ -442,7 +509,7 @@ def gerar_pdf_garantia(dados, df_linha_tempo):
         textColor=colors.HexColor("#123B63"),
     )
     normal = ParagraphStyle(
-        "NormalGarantia",
+        "NormalGarantiaDelta",
         parent=styles["Normal"],
         fontSize=8.2,
         leading=11.2,
@@ -450,25 +517,26 @@ def gerar_pdf_garantia(dados, df_linha_tempo):
         textColor=colors.HexColor("#1F2937"),
     )
     celula = ParagraphStyle(
-        "CelulaGarantia",
+        "CelulaGarantiaDelta",
         parent=styles["Normal"],
-        fontSize=7.0,
-        leading=8.4,
+        fontSize=7.2,
+        leading=8.8,
         alignment=TA_LEFT,
         textColor=colors.HexColor("#1F2937"),
     )
     celula_branca = ParagraphStyle(
-        "CelulaGarantiaBranca",
+        "CelulaGarantiaDeltaBranca",
         parent=celula,
         textColor=colors.white,
+        fontName="Helvetica-Bold",
     )
     celula_negrito = ParagraphStyle(
-        "CelulaGarantiaNegrito",
+        "CelulaGarantiaDeltaNegrito",
         parent=celula,
         fontName="Helvetica-Bold",
     )
-    observacao = ParagraphStyle(
-        "ObservacaoGarantia",
+    obs = ParagraphStyle(
+        "ObservacaoGarantiaDelta",
         parent=styles["Normal"],
         fontSize=7.6,
         leading=9.6,
@@ -480,41 +548,35 @@ def gerar_pdf_garantia(dados, df_linha_tempo):
         texto = escape(limpar_texto(valor)).replace("\n", "<br/>")
         return Paragraph(texto or "-", estilo)
 
-    def _pct(valor):
-        try:
-            return f"{float(valor):.2f}%".replace(".", ",")
-        except Exception:
-            return "0,00%"
-
-    garantia_esperada = parse_moeda_br(dados.get("garantia_esperada_acumulada", 0.0))
-    garantia_apresentada = parse_moeda_br(dados.get("garantia_apresentada", 0.0))
-    endosso_complementar = parse_moeda_br(dados.get("endosso_complementar", 0.0))
-    excesso_garantia = max(garantia_apresentada - garantia_esperada, 0.0)
+    tipo_evento = dados.get("tipo_evento", "Evento atual")
+    valor_base_evento = parse_moeda_br(dados.get("valor_base_evento", 0.0))
+    percentual_garantia_pct = parse_moeda_br(dados.get("percentual_garantia_pct", 0.0))
+    endosso_esperado = parse_moeda_br(dados.get("endosso_esperado_evento", 0.0))
+    endosso_apresentado = parse_moeda_br(dados.get("endosso_apresentado_evento", 0.0))
+    endosso_complementar = parse_moeda_br(dados.get("endosso_complementar_evento", 0.0))
+    excesso = max(endosso_apresentado - endosso_esperado, 0.0)
 
     if endosso_complementar > 0.004:
-        leitura = (
-            f"Pelo histórico informado, há necessidade estimada de endosso complementar no valor de {moeda(endosso_complementar)}."
-        )
-    elif excesso_garantia > 0.004:
-        leitura = (
-            f"Pelo histórico informado, a garantia/endossos apresentados superam o valor esperado em {moeda(excesso_garantia)}. "
-            "Recomenda-se conferir validade e aceitação formal."
-        )
+        leitura = f"O evento analisado gera endosso complementar estimado de {moeda(endosso_complementar)}."
+    elif excesso > 0.004:
+        leitura = f"O endosso já apresentado para o evento supera o esperado em {moeda(excesso)}. Recomenda-se conferir validade e aceitação formal."
     else:
-        leitura = "Pelo histórico informado, a garantia/endossos apresentados correspondem ao valor esperado."
+        leitura = "O endosso já apresentado para o evento corresponde ao valor esperado."
 
     elementos = []
     elementos.append(Paragraph("Garantia Contratual", titulo))
-    elementos.append(Paragraph("Histórico da garantia e endosso complementar estimado", subtitulo))
+    elementos.append(Paragraph("Método 1 — Delta da Garantia", subtitulo))
     elementos.append(Paragraph(f"Gerado em: {data_hora_brasilia()}", subtitulo))
 
     elementos.append(Paragraph("1. Resultado executivo", h2))
     tabela_resultado = [
         [_p("Indicador", celula_branca), _p("Valor", celula_branca)],
-        [_p("Garantia/endossos esperados acumulados"), _p(moeda(garantia_esperada), celula_negrito)],
-        [_p("Garantia/endossos já apresentados"), _p(moeda(garantia_apresentada), celula_negrito)],
-        [_p("Endosso complementar estimado"), _p(moeda(endosso_complementar), celula_negrito)],
-        [_p("Percentual da garantia"), _p(_pct(dados.get("percentual_garantia_pct", 0.0)))],
+        [_p("Tipo de evento"), _p(tipo_evento, celula_negrito)],
+        [_p("Valor-base do evento atual"), _p(moeda(valor_base_evento), celula_negrito)],
+        [_p("Percentual da garantia"), _p(f"{percentual_garantia_pct:.2f}%".replace(".", ","))],
+        [_p("Endosso esperado do evento"), _p(moeda(endosso_esperado), celula_negrito)],
+        [_p("Endosso já apresentado para o evento"), _p(moeda(endosso_apresentado), celula_negrito)],
+        [_p("Endosso complementar do evento"), _p(moeda(endosso_complementar), celula_negrito)],
         [_p("Prazo de referência para apresentação/endosso"), _p(f"{int(dados.get('prazo_dias', 0) or 0)} dias úteis")],
         [_p("Encerramento da vigência contratual"), _p(dados.get("data_fim_vigencia", "[campo a preencher]"))],
         [_p("Validade mínima sugerida da garantia"), _p(dados.get("data_validade_minima", "[campo a preencher]"))],
@@ -528,7 +590,7 @@ def gerar_pdf_garantia(dados, df_linha_tempo):
         ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2F3")),
         ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
         ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
-        ("BACKGROUND", (0, 3), (-1, 3), colors.HexColor("#EAF2F8")),
+        ("BACKGROUND", (0, 6), (-1, 6), colors.HexColor("#EAF2F8")),
         ("LEFTPADDING", (0, 0), (-1, -1), 5),
         ("RIGHTPADDING", (0, 0), (-1, -1), 5),
         ("TOPPADDING", (0, 0), (-1, -1), 4),
@@ -537,78 +599,31 @@ def gerar_pdf_garantia(dados, df_linha_tempo):
     elementos.append(tabela)
     elementos.append(Spacer(1, 7))
     elementos.append(Paragraph(leitura, normal))
-    elementos.append(Spacer(1, 8))
 
-    elementos.append(Paragraph("2. Base de cálculo e memória", h2))
-    tabela_memoria = [
-        [_p("Base / informação", celula_branca), _p("Valor", celula_branca), _p("Observação", celula_branca)],
-        [_p("Valor original do contrato"), _p(moeda(dados.get("valor_original", 0.0))), _p("Base inicial utilizada para estimar a garantia original.")],
-        [_p("Garantia original"), _p(moeda(dados.get("garantia_original", 0.0))), _p("Valor original multiplicado pelo percentual de garantia.")],
-        [_p("Valor Total Atualizado do Contrato"), _p(moeda(dados.get("valor_total_atualizado", 0.0))), _p("Base atual de conferência importada ou informada na tela.")],
-        [_p("Garantia exigida pelo Valor Total Atualizado"), _p(moeda(dados.get("garantia_exigida_total", 0.0))), _p("Valor Total Atualizado multiplicado pelo percentual de garantia.")],
-        [_p("Garantia/endossos esperados pela linha do tempo"), _p(moeda(garantia_esperada)), _p("Soma dos endossos esperados nos eventos considerados.")],
-    ]
-    tabela_m = Table(tabela_memoria, colWidths=[5.0 * cm, 3.8 * cm, 7.0 * cm], repeatRows=1, hAlign="CENTER")
-    tabela_m.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 6.8),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2F3")),
-        ("VALIGN", (0, 0), (-1, -1), "TOP"),
-        ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#FFFFFF")),
-        ("LEFTPADDING", (0, 0), (-1, -1), 4),
-        ("RIGHTPADDING", (0, 0), (-1, -1), 4),
-        ("TOPPADDING", (0, 0), (-1, -1), 3),
-        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-    ]))
-    elementos.append(tabela_m)
-    elementos.append(Spacer(1, 8))
-
-    if isinstance(df_linha_tempo, pd.DataFrame) and not df_linha_tempo.empty:
-        elementos.append(Paragraph("3. Linha do tempo da garantia", h2))
-        linhas = [[_p("Evento", celula_branca), _p("Data", celula_branca), _p("Ciclo", celula_branca), _p("Valor-base", celula_branca), _p("Endosso esperado", celula_branca)]]
-        for _, row in df_linha_tempo.iterrows():
-            linhas.append([
-                _p(row.get("Evento", "")),
-                _p(row.get("Data", "")),
-                _p(row.get("Ciclo", "")),
-                _p(moeda(row.get("Valor atualizado", row.get("Valor-base", 0.0)))),
-                _p(moeda(row.get("Endosso esperado", 0.0))),
-            ])
-        tabela_lt = Table(linhas, colWidths=[4.4 * cm, 2.4 * cm, 1.8 * cm, 3.5 * cm, 3.7 * cm], repeatRows=1, hAlign="CENTER")
-        estilo_lt = TableStyle([
-            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
-            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-            ("FONTSIZE", (0, 0), (-1, -1), 6.4),
-            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2F3")),
-            ("VALIGN", (0, 0), (-1, -1), "TOP"),
-            ("LEFTPADDING", (0, 0), (-1, -1), 3),
-            ("RIGHTPADDING", (0, 0), (-1, -1), 3),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
-        ])
-        for i in range(1, len(linhas)):
-            bg = colors.HexColor("#FFFFFF") if i % 2 else colors.HexColor("#F8FAFC")
-            estilo_lt.add("BACKGROUND", (0, i), (-1, i), bg)
-        tabela_lt.setStyle(estilo_lt)
-        elementos.append(tabela_lt)
-        elementos.append(Spacer(1, 8))
-
-    elementos.append(Paragraph("4. Observações", h2))
+    elementos.append(Paragraph("2. Memória de cálculo", h2))
     elementos.append(Paragraph(
-        "Este relatório é auxiliar à conferência da garantia contratual. A definição da base de cálculo, do prazo de apresentação, da validade mínima e da aceitação dos endossos deve observar a cláusula contratual de garantia e a orientação administrativa aplicável.",
-        observacao,
+        "Endosso esperado do evento = valor-base do evento atual × percentual da garantia.",
+        normal,
     ))
     elementos.append(Paragraph(
-        "A linha do tempo evita dupla contagem ao demonstrar contrato original, aditivos/supressões e reajustes atuais como eventos de garantia. O endosso complementar estimado corresponde à diferença positiva entre a garantia/endossos esperados acumulados e a garantia/endossos já apresentados.",
-        observacao,
+        "Endosso complementar do evento = endosso esperado do evento − endosso já apresentado para esse evento, limitado a zero quando o resultado for negativo.",
+        normal,
+    ))
+
+    elementos.append(Paragraph("3. Observações", h2))
+    elementos.append(Paragraph(
+        "O Método 1 — Delta da Garantia calcula apenas o reforço de garantia gerado pelo evento específico informado. Ele pressupõe que a garantia anterior estava regular e não substitui, quando necessário, a conferência histórica completa da garantia contratual.",
+        obs,
+    ))
+    elementos.append(Paragraph(
+        "Para auditoria da suficiência global da garantia, recomenda-se utilizar o Método 2 — Linha do Tempo Completa.",
+        obs,
     ))
 
     doc.build(elementos)
     buffer.seek(0)
     return buffer.getvalue()
+
 
 # ============================================================
 # Interface
@@ -617,7 +632,7 @@ def gerar_pdf_garantia(dados, df_linha_tempo):
 css()
 render_marca_topo()
 st.title("Garantia Contratual")
-st.write("Acompanhe a garantia como uma linha do tempo: contrato original, aditivos, reajustes e endosso complementar estimado.")
+st.write("Escolha o método de cálculo da garantia. O Método Delta calcula o reforço do evento atual; a Linha do Tempo Completa serve para conferência histórica.")
 
 resultado_valor_global = st.session_state.get("resultado_valor_global", {}) or {}
 ctx = obter_contexto_valor_global(resultado_valor_global)
@@ -628,271 +643,425 @@ variacao_acumulada_padrao = ctx["variacao_acumulada"]
 df_aditivos_importado = ctx["df_aditivos"]
 df_ciclos_importado = ctx["df_ciclos"]
 
-with st.expander("Contexto importado da análise atual", expanded=True):
-    if resultado_valor_global:
-        col_a, col_b, col_c = st.columns(3)
-        with col_a:
-            st.metric("Valor original identificado", moeda(valor_original_padrao))
-        with col_b:
-            st.metric("Valor Total Atualizado do Contrato", moeda(valor_total_atualizado_padrao))
-        with col_c:
-            st.metric("Aditivos identificados", int(ctx.get("quantidade_aditivos", 0)))
-        st.caption("O Valor Total Atualizado é importado apenas como base de conferência da garantia. A regra do módulo Valores não é alterada.")
-    else:
-        st.info("Não há dados do módulo Valores na sessão atual. Informe os dados manualmente.")
-
-st.subheader("Dados-base")
-st.caption("O sistema sugere valores quando houver análise carregada, mas você pode ajustar manualmente.")
-
-col1, col2, col3 = st.columns(3)
-with col1:
-    valor_original_txt = st.text_input(
-        "Valor original do contrato",
-        value=moeda(valor_original_padrao, com_prefixo=False),
-        help="Use ponto para milhares e vírgula para centavos. Ex.: 85.771.019,12",
-    )
-    valor_original = parse_moeda_br(valor_original_txt)
-    st.markdown(f"<div class='valor-formatado-apoio'>{moeda(valor_original)}</div>", unsafe_allow_html=True)
-
-with col2:
-    percentual_garantia_pct = st.number_input(
-        "Percentual da garantia (%)",
-        min_value=0.0,
-        max_value=100.0,
-        value=5.0,
-        step=0.1,
-        format="%.2f",
-    )
-
-with col3:
-    valor_total_atualizado_txt = st.text_input(
-        "Valor Total Atualizado do Contrato",
-        value=moeda(valor_total_atualizado_padrao, com_prefixo=False),
-        help="Valor importado do módulo Valores ou informado manualmente para conferência da garantia.",
-    )
-    valor_total_atualizado = parse_moeda_br(valor_total_atualizado_txt)
-    st.markdown(f"<div class='valor-formatado-apoio'>{moeda(valor_total_atualizado)}</div>", unsafe_allow_html=True)
-
-percentual_garantia = percentual_garantia_pct / 100
-valor_garantia_original = round(valor_original * percentual_garantia, 2)
-
-# Aditivos importados ou manuais
-st.subheader("Histórico da garantia")
-st.caption("Confira os eventos identificados e ajuste os valores quando necessário.")
-
-df_aditivos_base = extrair_aditivos_para_garantia(df_aditivos_importado)
-if not df_aditivos_base.empty:
-    df_aditivos_base["Endosso esperado"] = df_aditivos_base["Valor atualizado"].apply(lambda v: round(float(v) * percentual_garantia, 2))
-
-linha_contrato = {
-    "Evento": "Contrato original",
-    "Data": "Assinatura/base inicial",
-    "Ciclo": "C0",
-    "Valor original": valor_original,
-    "Valor atualizado": valor_original,
-    "Endosso esperado": valor_garantia_original,
-}
-
-df_linha_tempo_base = pd.concat([pd.DataFrame([linha_contrato]), df_aditivos_base], ignore_index=True)
-
-# Reajuste atual como evento de fechamento da linha do tempo.
-texto_ciclos = resumo_ciclos_texto(df_ciclos_importado, variacao_acumulada_padrao)
-garantia_exigida_total = round(valor_total_atualizado * percentual_garantia, 2)
-endossos_parciais = round(float(df_linha_tempo_base["Endosso esperado"].sum()), 2) if not df_linha_tempo_base.empty else 0.0
-endosso_reajustes_atuais = round(garantia_exigida_total - endossos_parciais, 2)
-linha_reajustes = {
-    "Evento": f"Reajustes atuais — {texto_ciclos}",
-    "Data": "Análise atual",
-    "Ciclo": "Atual",
-    "Valor original": 0.0,
-    "Valor atualizado": max(valor_total_atualizado - float(df_linha_tempo_base["Valor atualizado"].sum()), 0.0) if not df_linha_tempo_base.empty else valor_total_atualizado,
-    "Endosso esperado": endosso_reajustes_atuais,
-}
-
-df_linha_tempo = pd.concat([df_linha_tempo_base, pd.DataFrame([linha_reajustes])], ignore_index=True)
-df_linha_tempo = ordenar_linha_tempo_garantia(df_linha_tempo)
-
-st.markdown("### Linha do tempo da garantia")
-st.caption(
-    "Os eventos são ordenados automaticamente por data. O contrato original fica no início e os reajustes atuais ficam ao final. "
-    "Se precisar, ajuste a coluna Ordem."
+metodo_garantia = st.radio(
+    "Método de cálculo da garantia",
+    options=["Método 1 — Delta da Garantia", "Método 2 — Linha do Tempo Completa"],
+    index=0,
+    horizontal=True,
+    help="Use o Método Delta para calcular o endosso de um evento específico. Use a Linha do Tempo Completa para conferir todo o histórico da garantia.",
 )
 
-# Editor manual da linha do tempo
-editor_df = df_linha_tempo.copy()
-for col in ["Valor original", "Valor atualizado", "Endosso esperado"]:
-    editor_df[col] = editor_df[col].apply(moeda)
-
-with st.expander("Ajustar linha do tempo da garantia", expanded=True):
+if metodo_garantia == "Método 1 — Delta da Garantia":
+    st.subheader("Método 1 — Delta da Garantia")
     st.caption(
-        "Edite os valores se o histórico real do contrato for diferente do que foi importado. "
-        "A coluna Ordem permite reorganizar manualmente a sequência. "
-        "O campo ‘Endosso esperado’ alimenta o contador acumulado."
-    )
-    editado = st.data_editor(
-        editor_df,
-        hide_index=True,
-        use_container_width=True,
-        num_rows="dynamic",
-        key="garantia_linha_tempo_editor",
-        column_config={
-            "Ordem": st.column_config.NumberColumn("Ordem", min_value=1, step=1),
-            "Evento": st.column_config.TextColumn("Evento"),
-            "Data": st.column_config.TextColumn("Data"),
-            "Ciclo": st.column_config.TextColumn("Ciclo"),
-            "Valor original": st.column_config.TextColumn("Valor original"),
-            "Valor atualizado": st.column_config.TextColumn("Valor atualizado"),
-            "Endosso esperado": st.column_config.TextColumn("Endosso esperado"),
-        },
+        "Este método calcula o endosso complementar gerado por um evento específico. "
+        "Ele pressupõe que a garantia anterior estava regular. Para conferência histórica completa, use o Método 2."
     )
 
-for col in ["Valor original", "Valor atualizado", "Endosso esperado"]:
-    editado[col] = editado[col].apply(parse_moeda_br)
+    with st.expander("Contexto importado da análise atual", expanded=False):
+        if resultado_valor_global:
+            col_a, col_b, col_c = st.columns(3)
+            with col_a:
+                st.metric("Valor original identificado", moeda(valor_original_padrao))
+            with col_b:
+                st.metric("Valor Total Atualizado do Contrato", moeda(valor_total_atualizado_padrao))
+            with col_c:
+                st.metric("Aditivos identificados", int(ctx.get("quantidade_aditivos", 0)))
+            st.caption("Esses dados são apenas referências. O Método Delta usa o valor-base do evento informado abaixo.")
+        else:
+            st.info("Não há dados do módulo Valores na sessão atual. Informe os dados manualmente.")
 
-if "Ordem" in editado.columns:
-    editado["Ordem"] = pd.to_numeric(editado["Ordem"], errors="coerce").fillna(9999).astype(int)
-    editado = editado.sort_values(by=["Ordem"], kind="stable").reset_index(drop=True)
-
-render_linha_tempo_garantia(editado)
-
-garantia_esperada_acumulada = round(float(editado["Endosso esperado"].sum()), 2) if not editado.empty else 0.0
-
-st.markdown("### Garantia/endossos já apresentados")
-col_ap1, col_ap2 = st.columns(2)
-with col_ap1:
-    garantia_apresentada_txt = st.text_input(
-        "Total de garantia/endossos já apresentados (R$)",
-        value=moeda(valor_garantia_original, com_prefixo=False),
-        placeholder="Ex.: 7.914.629,92",
-        help="Informe o valor monetário total da garantia original e dos endossos já aceitos pela Administração. Não é quantidade de endossos.",
+    st.markdown("### Dados do evento atual")
+    tipo_evento = st.selectbox(
+        "Tipo do evento",
+        [
+            "Reajuste",
+            "Aditivo de acréscimo",
+            "Repactuação",
+            "Reequilíbrio econômico-financeiro",
+            "Outro evento com aumento de base",
+        ],
+        index=0,
     )
-    garantia_apresentada = parse_moeda_br(garantia_apresentada_txt)
-    st.caption("Informe o valor em reais. Ex.: 7.914.629,92, e não a quantidade de endossos.")
-    st.markdown(f"<div class='valor-formatado-apoio'>{moeda(garantia_apresentada)}</div>", unsafe_allow_html=True)
-with col_ap2:
-    prazo_dias = st.number_input("Prazo para apresentação/endosso (dias úteis)", min_value=1, max_value=60, value=5, step=1)
 
-data_fim_vigencia = st.date_input("Encerramento da vigência contratual", value=date.today(), format="DD/MM/YYYY")
-data_validade_minima = data_fim_vigencia + relativedelta(months=3)
-st.caption(f"Validade mínima sugerida da garantia: {data_validade_minima.strftime('%d/%m/%Y')}")
+    valor_formalizado_anterior = parse_moeda_br(ctx.get("valor_formalizado_anterior", 0.0))
+    sugestao_delta = max(valor_total_atualizado_padrao - valor_formalizado_anterior, 0.0)
+    if sugestao_delta <= 0 and valor_total_atualizado_padrao > 0 and valor_original_padrao > 0:
+        sugestao_delta = max(valor_total_atualizado_padrao - valor_original_padrao, 0.0)
 
-endosso_complementar = round(max(garantia_esperada_acumulada - garantia_apresentada, 0.0), 2)
-excesso_garantia = round(max(garantia_apresentada - garantia_esperada_acumulada, 0.0), 2)
-
-st.divider()
-st.subheader("Resultado acumulado")
-colr1, colr2, colr3 = st.columns(3)
-with colr1:
-    card("Garantia/endossos esperados acumulados", moeda(garantia_esperada_acumulada), "Soma dos endossos esperados na linha do tempo.")
-with colr2:
-    card("Garantia/endossos já apresentados", moeda(garantia_apresentada), "Valor informado pelo usuário.")
-with colr3:
-    card("Endosso complementar estimado", moeda(endosso_complementar), f"Prazo de referência: {prazo_dias} dias úteis.", destaque=True)
-
-if endosso_complementar > 0:
-    st.warning(f"Pelo histórico informado, ainda haveria endosso complementar estimado de {moeda(endosso_complementar)}.")
-elif excesso_garantia > 0:
-    st.success(f"Pelo histórico informado, a garantia/endossos apresentados superam o esperado em {moeda(excesso_garantia)}. Confira validade e aceitação.")
-else:
-    st.success("Pelo histórico informado, a garantia/endossos apresentados correspondem ao esperado.")
-
-with st.expander("Calcule de outra forma", expanded=False):
-    st.caption(
-        "Use este bloco quando quiser montar uma linha do tempo alternativa. "
-        "Adicione as linhas necessárias; o endosso é calculado automaticamente por valor-base × percentual."
-    )
-    df_alt_base = pd.DataFrame([
-        {"Evento": "Valor original", "Valor-base": moeda(valor_original, com_prefixo=False), "Percentual da garantia (%)": f"{percentual_garantia_pct:.2f}".replace(".", ",")},
-        {"Evento": "Aditivo 1", "Valor-base": "0,00", "Percentual da garantia (%)": f"{percentual_garantia_pct:.2f}".replace(".", ",")},
-    ])
-    df_alt = st.data_editor(
-        df_alt_base,
-        hide_index=True,
-        use_container_width=True,
-        num_rows="dynamic",
-        key="garantia_calculo_alternativo_linhas",
-        column_config={
-            "Evento": st.column_config.TextColumn("Evento"),
-            "Valor-base": st.column_config.TextColumn("Valor-base"),
-            "Percentual da garantia (%)": st.column_config.TextColumn("Percentual da garantia (%)"),
-        },
-    )
-    if isinstance(df_alt, pd.DataFrame) and not df_alt.empty:
-        df_alt_calc = df_alt.copy()
-        df_alt_calc["_valor_base"] = df_alt_calc["Valor-base"].apply(parse_moeda_br)
-        df_alt_calc["_percentual"] = df_alt_calc["Percentual da garantia (%)"].apply(parse_moeda_br)
-        df_alt_calc["Endosso esperado"] = df_alt_calc.apply(
-            lambda r: round(float(r.get("_valor_base", 0.0)) * float(r.get("_percentual", 0.0)) / 100, 2),
-            axis=1,
+    col_d1, col_d2, col_d3 = st.columns(3)
+    with col_d1:
+        valor_base_evento_txt = st.text_input(
+            "Valor-base do evento atual",
+            value=moeda(sugestao_delta, com_prefixo=False),
+            help="Informe o aumento de base gerado pelo evento atual. Ex.: valor do reajuste, valor do aditivo ou delta contratual do evento.",
         )
-        total_alt = round(float(df_alt_calc["Endosso esperado"].sum()), 2)
-        col_alt_r1, col_alt_r2 = st.columns(2)
-        col_alt_r1.metric("Total de endossos pela linha alternativa", moeda(total_alt))
-        col_alt_r2.metric("Diferença frente ao apresentado", moeda(max(total_alt - garantia_apresentada, 0.0)))
-        df_alt_view = df_alt_calc[["Evento", "Valor-base", "Percentual da garantia (%)", "Endosso esperado"]].copy()
-        df_alt_view["Endosso esperado"] = df_alt_view["Endosso esperado"].apply(moeda)
-        st.dataframe(df_alt_view, use_container_width=True, hide_index=True)
+        valor_base_evento = parse_moeda_br(valor_base_evento_txt)
+        st.markdown(f"<div class='valor-formatado-apoio'>{moeda(valor_base_evento)}</div>", unsafe_allow_html=True)
 
-with st.expander("Memória de cálculo", expanded=False):
-    memoria = [
-        {"Indicador": "Valor original do contrato", "Valor": moeda(valor_original)},
-        {"Indicador": "Percentual da garantia", "Valor": f"{percentual_garantia_pct:.2f}%".replace(".", ",")},
-        {"Indicador": "Garantia original", "Valor": moeda(valor_garantia_original)},
-        {"Indicador": "Valor Total Atualizado do Contrato", "Valor": moeda(valor_total_atualizado)},
-        {"Indicador": "Garantia exigida pelo Valor Total Atualizado", "Valor": moeda(garantia_exigida_total)},
-        {"Indicador": "Garantia/endossos esperados pela linha do tempo", "Valor": moeda(garantia_esperada_acumulada)},
-        {"Indicador": "Garantia/endossos já apresentados", "Valor": moeda(garantia_apresentada)},
-        {"Indicador": "Endosso complementar estimado", "Valor": moeda(endosso_complementar)},
-        {"Indicador": "Encerramento da vigência", "Valor": data_fim_vigencia.strftime("%d/%m/%Y")},
-        {"Indicador": "Validade mínima da garantia", "Valor": data_validade_minima.strftime("%d/%m/%Y")},
-    ]
-    st.dataframe(memoria, use_container_width=True, hide_index=True)
-    st.markdown("**Linha do tempo considerada**")
-    st.dataframe(editado.assign(
-        **{
-            "Valor original": editado["Valor original"].apply(moeda),
-            "Valor atualizado": editado["Valor atualizado"].apply(moeda),
-            "Endosso esperado": editado["Endosso esperado"].apply(moeda),
-        }
-    ), use_container_width=True, hide_index=True)
+    with col_d2:
+        percentual_garantia_pct = st.number_input(
+            "Percentual da garantia (%)",
+            min_value=0.0,
+            max_value=100.0,
+            value=5.0,
+            step=0.1,
+            format="%.2f",
+        )
 
-st.subheader("Relatório")
-dados_pdf = {
-    "valor_original": valor_original,
-    "garantia_original": valor_garantia_original,
-    "garantia_esperada_acumulada": garantia_esperada_acumulada,
-    "garantia_apresentada": garantia_apresentada,
-    "endosso_complementar": endosso_complementar,
-    "percentual_garantia_pct": percentual_garantia_pct,
-    "valor_total_atualizado": valor_total_atualizado,
-    "garantia_exigida_total": garantia_exigida_total,
-    "prazo_dias": prazo_dias,
-    "data_fim_vigencia": data_fim_vigencia.strftime("%d/%m/%Y"),
-    "data_validade_minima": data_validade_minima.strftime("%d/%m/%Y"),
-}
+    with col_d3:
+        endosso_apresentado_txt = st.text_input(
+            "Endosso já apresentado para este evento",
+            value="0,00",
+            help="Informe apenas eventual endosso já apresentado especificamente para o evento atual.",
+        )
+        endosso_apresentado_evento = parse_moeda_br(endosso_apresentado_txt)
+        st.markdown(f"<div class='valor-formatado-apoio'>{moeda(endosso_apresentado_evento)}</div>", unsafe_allow_html=True)
 
-st.session_state["resultado_garantia"] = {
-    "valor_original": valor_original,
-    "valor_total_atualizado_contrato": valor_total_atualizado,
-    "percentual_garantia": percentual_garantia,
-    "garantia_original": valor_garantia_original,
-    "garantia_exigida": garantia_esperada_acumulada,
-    "garantia_constituida": garantia_apresentada,
-    "endosso_necessario": endosso_complementar,
-    "data_fim_vigencia": data_fim_vigencia,
-    "data_validade_minima": data_validade_minima,
-    "linha_tempo_garantia": editado,
-}
+    col_p1, col_p2 = st.columns(2)
+    with col_p1:
+        prazo_dias = st.number_input("Prazo para apresentação/endosso (dias úteis)", min_value=1, max_value=60, value=5, step=1)
+    with col_p2:
+        data_fim_vigencia = st.date_input("Encerramento da vigência contratual", value=date.today(), format="DD/MM/YYYY")
 
-if REPORTLAB_OK:
-    pdf_bytes = gerar_pdf_garantia(dados_pdf, editado)
-    st.download_button(
-        "Baixar relatório de garantia (PDF)",
-        data=pdf_bytes,
-        file_name="relatorio_garantia.pdf",
-        mime="application/pdf",
-        type="primary",
-        use_container_width=False,
-    )
+    data_validade_minima = data_fim_vigencia + relativedelta(months=3)
+    st.caption(f"Validade mínima sugerida da garantia: {data_validade_minima.strftime('%d/%m/%Y')}")
+
+    percentual_garantia = percentual_garantia_pct / 100
+    endosso_esperado_evento = round(valor_base_evento * percentual_garantia, 2)
+    endosso_complementar_evento = round(max(endosso_esperado_evento - endosso_apresentado_evento, 0.0), 2)
+    excesso_evento = round(max(endosso_apresentado_evento - endosso_esperado_evento, 0.0), 2)
+
+    st.divider()
+    st.subheader("Resultado do delta")
+    colr1, colr2, colr3 = st.columns(3)
+    with colr1:
+        card("Endosso esperado do evento", moeda(endosso_esperado_evento), "Valor-base do evento × percentual da garantia.")
+    with colr2:
+        card("Endosso já apresentado para o evento", moeda(endosso_apresentado_evento), "Valor informado pelo usuário.")
+    with colr3:
+        card("Endosso complementar do evento", moeda(endosso_complementar_evento), f"Prazo de referência: {prazo_dias} dias úteis.", destaque=True)
+
+    if endosso_complementar_evento > 0:
+        st.warning(f"O evento analisado gera endosso complementar estimado de {moeda(endosso_complementar_evento)}.")
+    elif excesso_evento > 0:
+        st.success(f"O endosso já apresentado para o evento supera o esperado em {moeda(excesso_evento)}. Confira validade e aceitação.")
+    else:
+        st.success("O endosso já apresentado para o evento corresponde ao valor esperado.")
+
+    with st.expander("Memória de cálculo", expanded=False):
+        memoria_delta = pd.DataFrame([
+            {"Indicador": "Método", "Valor": "Método 1 — Delta da Garantia"},
+            {"Indicador": "Tipo do evento", "Valor": tipo_evento},
+            {"Indicador": "Valor-base do evento atual", "Valor": moeda(valor_base_evento)},
+            {"Indicador": "Percentual da garantia", "Valor": f"{percentual_garantia_pct:.2f}%".replace(".", ",")},
+            {"Indicador": "Endosso esperado do evento", "Valor": moeda(endosso_esperado_evento)},
+            {"Indicador": "Endosso já apresentado para o evento", "Valor": moeda(endosso_apresentado_evento)},
+            {"Indicador": "Endosso complementar do evento", "Valor": moeda(endosso_complementar_evento)},
+            {"Indicador": "Encerramento da vigência", "Valor": data_fim_vigencia.strftime("%d/%m/%Y")},
+            {"Indicador": "Validade mínima da garantia", "Valor": data_validade_minima.strftime("%d/%m/%Y")},
+        ])
+        st.dataframe(memoria_delta, use_container_width=True, hide_index=True)
+
+    dados_pdf_delta = {
+        "tipo_evento": tipo_evento,
+        "valor_base_evento": valor_base_evento,
+        "percentual_garantia_pct": percentual_garantia_pct,
+        "endosso_esperado_evento": endosso_esperado_evento,
+        "endosso_apresentado_evento": endosso_apresentado_evento,
+        "endosso_complementar_evento": endosso_complementar_evento,
+        "prazo_dias": prazo_dias,
+        "data_fim_vigencia": data_fim_vigencia.strftime("%d/%m/%Y"),
+        "data_validade_minima": data_validade_minima.strftime("%d/%m/%Y"),
+    }
+
+    st.session_state["resultado_garantia"] = {
+        "metodo_garantia": "Delta da Garantia",
+        "tipo_evento": tipo_evento,
+        "valor_base_evento": valor_base_evento,
+        "percentual_garantia": percentual_garantia,
+        "endosso_esperado_evento": endosso_esperado_evento,
+        "endosso_apresentado_evento": endosso_apresentado_evento,
+        "endosso_necessario": endosso_complementar_evento,
+        "data_fim_vigencia": data_fim_vigencia,
+        "data_validade_minima": data_validade_minima,
+    }
+
+    st.subheader("Relatório")
+    if REPORTLAB_OK:
+        pdf_bytes = gerar_pdf_garantia_delta(dados_pdf_delta)
+        st.download_button(
+            "Baixar relatório de garantia (PDF)",
+            data=pdf_bytes,
+            file_name="relatorio_garantia_delta.pdf",
+            mime="application/pdf",
+            type="primary",
+            use_container_width=False,
+        )
+    else:
+        st.info("Instale reportlab para gerar o PDF: pip install reportlab")
+
 else:
-    st.info("Instale reportlab para gerar o PDF: pip install reportlab")
+    with st.expander("Contexto importado da análise atual", expanded=True):
+        if resultado_valor_global:
+            col_a, col_b, col_c = st.columns(3)
+            with col_a:
+                st.metric("Valor original identificado", moeda(valor_original_padrao))
+            with col_b:
+                st.metric("Valor Total Atualizado do Contrato", moeda(valor_total_atualizado_padrao))
+            with col_c:
+                st.metric("Aditivos identificados", int(ctx.get("quantidade_aditivos", 0)))
+            st.caption("O Valor Total Atualizado é importado apenas como base de conferência da garantia. A regra do módulo Valores não é alterada.")
+        else:
+            st.info("Não há dados do módulo Valores na sessão atual. Informe os dados manualmente.")
+
+    st.subheader("Dados-base")
+    st.caption("O sistema sugere valores quando houver análise carregada, mas você pode ajustar manualmente.")
+
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        valor_original_txt = st.text_input(
+            "Valor original do contrato",
+            value=moeda(valor_original_padrao, com_prefixo=False),
+            help="Use ponto para milhares e vírgula para centavos. Ex.: 85.771.019,12",
+        )
+        valor_original = parse_moeda_br(valor_original_txt)
+        st.markdown(f"<div class='valor-formatado-apoio'>{moeda(valor_original)}</div>", unsafe_allow_html=True)
+
+    with col2:
+        percentual_garantia_pct = st.number_input(
+            "Percentual da garantia (%)",
+            min_value=0.0,
+            max_value=100.0,
+            value=5.0,
+            step=0.1,
+            format="%.2f",
+        )
+
+    with col3:
+        valor_total_atualizado_txt = st.text_input(
+            "Valor Total Atualizado do Contrato",
+            value=moeda(valor_total_atualizado_padrao, com_prefixo=False),
+            help="Valor importado do módulo Valores ou informado manualmente para conferência da garantia.",
+        )
+        valor_total_atualizado = parse_moeda_br(valor_total_atualizado_txt)
+        st.markdown(f"<div class='valor-formatado-apoio'>{moeda(valor_total_atualizado)}</div>", unsafe_allow_html=True)
+
+    percentual_garantia = percentual_garantia_pct / 100
+    valor_garantia_original = round(valor_original * percentual_garantia, 2)
+
+    # Aditivos importados ou manuais
+    st.subheader("Histórico da garantia")
+    st.caption("Confira os eventos identificados e ajuste os valores quando necessário.")
+
+    df_aditivos_base = extrair_aditivos_para_garantia(df_aditivos_importado)
+    if not df_aditivos_base.empty:
+        df_aditivos_base["Endosso esperado"] = df_aditivos_base["Valor atualizado"].apply(lambda v: round(float(v) * percentual_garantia, 2))
+
+    linha_contrato = {
+        "Evento": "Contrato original",
+        "Data": "Assinatura/base inicial",
+        "Ciclo": "C0",
+        "Valor original": valor_original,
+        "Valor atualizado": valor_original,
+        "Endosso esperado": valor_garantia_original,
+    }
+
+    df_linha_tempo_base = pd.concat([pd.DataFrame([linha_contrato]), df_aditivos_base], ignore_index=True)
+
+    # Reajuste atual como evento de fechamento da linha do tempo.
+    texto_ciclos = resumo_ciclos_texto(df_ciclos_importado, variacao_acumulada_padrao)
+    garantia_exigida_total = round(valor_total_atualizado * percentual_garantia, 2)
+    endossos_parciais = round(float(df_linha_tempo_base["Endosso esperado"].sum()), 2) if not df_linha_tempo_base.empty else 0.0
+    endosso_reajustes_atuais = round(garantia_exigida_total - endossos_parciais, 2)
+    linha_reajustes = {
+        "Evento": f"Reajustes atuais — {texto_ciclos}",
+        "Data": "Análise atual",
+        "Ciclo": "Atual",
+        "Valor original": 0.0,
+        "Valor atualizado": max(valor_total_atualizado - float(df_linha_tempo_base["Valor atualizado"].sum()), 0.0) if not df_linha_tempo_base.empty else valor_total_atualizado,
+        "Endosso esperado": endosso_reajustes_atuais,
+    }
+
+    df_linha_tempo = pd.concat([df_linha_tempo_base, pd.DataFrame([linha_reajustes])], ignore_index=True)
+    df_linha_tempo = ordenar_linha_tempo_garantia(df_linha_tempo)
+
+    st.markdown("### Linha do tempo da garantia")
+    st.caption(
+        "Os eventos são ordenados automaticamente por data. O contrato original fica no início e os reajustes atuais ficam ao final. "
+        "Se precisar, ajuste a coluna Ordem."
+    )
+
+    # Editor manual da linha do tempo
+    editor_df = df_linha_tempo.copy()
+    for col in ["Valor original", "Valor atualizado", "Endosso esperado"]:
+        editor_df[col] = editor_df[col].apply(moeda)
+
+    with st.expander("Ajustar linha do tempo da garantia", expanded=True):
+        st.caption(
+            "Edite os valores se o histórico real do contrato for diferente do que foi importado. "
+            "A coluna Ordem permite reorganizar manualmente a sequência. "
+            "O campo ‘Endosso esperado’ alimenta o contador acumulado."
+        )
+        editado = st.data_editor(
+            editor_df,
+            hide_index=True,
+            use_container_width=True,
+            num_rows="dynamic",
+            key="garantia_linha_tempo_editor",
+            column_config={
+                "Ordem": st.column_config.NumberColumn("Ordem", min_value=1, step=1),
+                "Evento": st.column_config.TextColumn("Evento"),
+                "Data": st.column_config.TextColumn("Data"),
+                "Ciclo": st.column_config.TextColumn("Ciclo"),
+                "Valor original": st.column_config.TextColumn("Valor original"),
+                "Valor atualizado": st.column_config.TextColumn("Valor atualizado"),
+                "Endosso esperado": st.column_config.TextColumn("Endosso esperado"),
+            },
+        )
+
+    for col in ["Valor original", "Valor atualizado", "Endosso esperado"]:
+        editado[col] = editado[col].apply(parse_moeda_br)
+
+    if "Ordem" in editado.columns:
+        editado["Ordem"] = pd.to_numeric(editado["Ordem"], errors="coerce").fillna(9999).astype(int)
+        editado = editado.sort_values(by=["Ordem"], kind="stable").reset_index(drop=True)
+
+    render_linha_tempo_garantia(editado)
+
+    garantia_esperada_acumulada = round(float(editado["Endosso esperado"].sum()), 2) if not editado.empty else 0.0
+
+    st.markdown("### Garantia/endossos já apresentados")
+    col_ap1, col_ap2 = st.columns(2)
+    with col_ap1:
+        garantia_apresentada_txt = st.text_input(
+            "Total de garantia/endossos já apresentados (R$)",
+            value=moeda(valor_garantia_original, com_prefixo=False),
+            placeholder="Ex.: 7.914.629,92",
+            help="Informe o valor monetário total da garantia original e dos endossos já aceitos pela Administração. Não é quantidade de endossos.",
+        )
+        garantia_apresentada = parse_moeda_br(garantia_apresentada_txt)
+        st.caption("Informe o valor em reais. Ex.: 7.914.629,92, e não a quantidade de endossos.")
+        st.markdown(f"<div class='valor-formatado-apoio'>{moeda(garantia_apresentada)}</div>", unsafe_allow_html=True)
+    with col_ap2:
+        prazo_dias = st.number_input("Prazo para apresentação/endosso (dias úteis)", min_value=1, max_value=60, value=5, step=1)
+
+    data_fim_vigencia = st.date_input("Encerramento da vigência contratual", value=date.today(), format="DD/MM/YYYY")
+    data_validade_minima = data_fim_vigencia + relativedelta(months=3)
+    st.caption(f"Validade mínima sugerida da garantia: {data_validade_minima.strftime('%d/%m/%Y')}")
+
+    endosso_complementar = round(max(garantia_esperada_acumulada - garantia_apresentada, 0.0), 2)
+    excesso_garantia = round(max(garantia_apresentada - garantia_esperada_acumulada, 0.0), 2)
+
+    st.divider()
+    st.subheader("Resultado acumulado")
+    colr1, colr2, colr3 = st.columns(3)
+    with colr1:
+        card("Garantia/endossos esperados acumulados", moeda(garantia_esperada_acumulada), "Soma dos endossos esperados na linha do tempo.")
+    with colr2:
+        card("Garantia/endossos já apresentados", moeda(garantia_apresentada), "Valor informado pelo usuário.")
+    with colr3:
+        card("Endosso complementar estimado", moeda(endosso_complementar), f"Prazo de referência: {prazo_dias} dias úteis.", destaque=True)
+
+    if endosso_complementar > 0:
+        st.warning(f"Pelo histórico informado, ainda haveria endosso complementar estimado de {moeda(endosso_complementar)}.")
+    elif excesso_garantia > 0:
+        st.success(f"Pelo histórico informado, a garantia/endossos apresentados superam o esperado em {moeda(excesso_garantia)}. Confira validade e aceitação.")
+    else:
+        st.success("Pelo histórico informado, a garantia/endossos apresentados correspondem ao esperado.")
+
+    with st.expander("Calcule de outra forma", expanded=False):
+        st.caption(
+            "Use este bloco quando quiser montar uma linha do tempo alternativa. "
+            "Adicione as linhas necessárias; o endosso é calculado automaticamente por valor-base × percentual."
+        )
+        df_alt_base = pd.DataFrame([
+            {"Evento": "Valor original", "Valor-base": moeda(valor_original, com_prefixo=False), "Percentual da garantia (%)": f"{percentual_garantia_pct:.2f}".replace(".", ",")},
+            {"Evento": "Aditivo 1", "Valor-base": "0,00", "Percentual da garantia (%)": f"{percentual_garantia_pct:.2f}".replace(".", ",")},
+        ])
+        df_alt = st.data_editor(
+            df_alt_base,
+            hide_index=True,
+            use_container_width=True,
+            num_rows="dynamic",
+            key="garantia_calculo_alternativo_linhas",
+            column_config={
+                "Evento": st.column_config.TextColumn("Evento"),
+                "Valor-base": st.column_config.TextColumn("Valor-base"),
+                "Percentual da garantia (%)": st.column_config.TextColumn("Percentual da garantia (%)"),
+            },
+        )
+        if isinstance(df_alt, pd.DataFrame) and not df_alt.empty:
+            df_alt_calc = df_alt.copy()
+            df_alt_calc["_valor_base"] = df_alt_calc["Valor-base"].apply(parse_moeda_br)
+            df_alt_calc["_percentual"] = df_alt_calc["Percentual da garantia (%)"].apply(parse_moeda_br)
+            df_alt_calc["Endosso esperado"] = df_alt_calc.apply(
+                lambda r: round(float(r.get("_valor_base", 0.0)) * float(r.get("_percentual", 0.0)) / 100, 2),
+                axis=1,
+            )
+            total_alt = round(float(df_alt_calc["Endosso esperado"].sum()), 2)
+            col_alt_r1, col_alt_r2 = st.columns(2)
+            col_alt_r1.metric("Total de endossos pela linha alternativa", moeda(total_alt))
+            col_alt_r2.metric("Diferença frente ao apresentado", moeda(max(total_alt - garantia_apresentada, 0.0)))
+            df_alt_view = df_alt_calc[["Evento", "Valor-base", "Percentual da garantia (%)", "Endosso esperado"]].copy()
+            df_alt_view["Endosso esperado"] = df_alt_view["Endosso esperado"].apply(moeda)
+            st.dataframe(df_alt_view, use_container_width=True, hide_index=True)
+
+    with st.expander("Memória de cálculo", expanded=False):
+        memoria = [
+            {"Indicador": "Valor original do contrato", "Valor": moeda(valor_original)},
+            {"Indicador": "Percentual da garantia", "Valor": f"{percentual_garantia_pct:.2f}%".replace(".", ",")},
+            {"Indicador": "Garantia original", "Valor": moeda(valor_garantia_original)},
+            {"Indicador": "Valor Total Atualizado do Contrato", "Valor": moeda(valor_total_atualizado)},
+            {"Indicador": "Garantia exigida pelo Valor Total Atualizado", "Valor": moeda(garantia_exigida_total)},
+            {"Indicador": "Garantia/endossos esperados pela linha do tempo", "Valor": moeda(garantia_esperada_acumulada)},
+            {"Indicador": "Garantia/endossos já apresentados", "Valor": moeda(garantia_apresentada)},
+            {"Indicador": "Endosso complementar estimado", "Valor": moeda(endosso_complementar)},
+            {"Indicador": "Encerramento da vigência", "Valor": data_fim_vigencia.strftime("%d/%m/%Y")},
+            {"Indicador": "Validade mínima da garantia", "Valor": data_validade_minima.strftime("%d/%m/%Y")},
+        ]
+        st.dataframe(memoria, use_container_width=True, hide_index=True)
+        st.markdown("**Linha do tempo considerada**")
+        st.dataframe(editado.assign(
+            **{
+                "Valor original": editado["Valor original"].apply(moeda),
+                "Valor atualizado": editado["Valor atualizado"].apply(moeda),
+                "Endosso esperado": editado["Endosso esperado"].apply(moeda),
+            }
+        ), use_container_width=True, hide_index=True)
+
+    st.subheader("Relatório")
+    dados_pdf = {
+        "garantia_esperada_acumulada": garantia_esperada_acumulada,
+        "garantia_apresentada": garantia_apresentada,
+        "endosso_complementar": endosso_complementar,
+        "percentual_garantia_pct": percentual_garantia_pct,
+        "valor_total_atualizado": valor_total_atualizado,
+    }
+
+    st.session_state["resultado_garantia"] = {
+        "metodo_garantia": "Linha do Tempo Completa",
+        "valor_original": valor_original,
+        "valor_total_atualizado_contrato": valor_total_atualizado,
+        "percentual_garantia": percentual_garantia,
+        "garantia_original": valor_garantia_original,
+        "garantia_exigida": garantia_esperada_acumulada,
+        "garantia_constituida": garantia_apresentada,
+        "endosso_necessario": endosso_complementar,
+        "data_fim_vigencia": data_fim_vigencia,
+        "data_validade_minima": data_validade_minima,
+        "linha_tempo_garantia": editado,
+    }
+
+    if REPORTLAB_OK:
+        pdf_bytes = gerar_pdf_garantia(dados_pdf, editado)
+        st.download_button(
+            "Baixar relatório de garantia (PDF)",
+            data=pdf_bytes,
+            file_name="relatorio_garantia.pdf",
+            mime="application/pdf",
+            type="primary",
+            use_container_width=False,
+        )
+    else:
+        st.info("Instale reportlab para gerar o PDF: pip install reportlab")
