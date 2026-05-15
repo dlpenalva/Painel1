@@ -260,7 +260,7 @@ def financeiro_mensal_consolidado(resultado):
         return pd.DataFrame(columns=["Competência", "Valor pago/medido"]), origem + " indisponível"
 
     col_comp = localizar_coluna(df, ["Competência", "Competencia", "Mês/Ano", "Mes/Ano", "Mês", "Mes"])
-    col_valor = localizar_coluna(df, ["Valor pago/faturado", "Valor bruto faturado", "Valor faturado", "Valor pago", "Valor medido", "Valor"])
+    col_valor = localizar_coluna(df, ["Valor bruto medido/aprovado por competência", "Valor bruto medido", "Valor medido/aprovado", "Valor pago/faturado", "Valor bruto faturado", "Valor faturado", "Valor pago", "Valor medido", "Valor"])
     if col_comp is None or col_valor is None:
         return pd.DataFrame(columns=["Competência", "Valor pago/medido"]), origem + " sem colunas reconhecidas"
 
@@ -708,7 +708,7 @@ with col3:
     )
 
 st.subheader("Base automática pela média financeira")
-st.caption("A média é calculada pela soma mensal consolidada das últimas 6 competências da aba financeira, e não pelas últimas 6 linhas do arquivo.")
+st.caption("A média é calculada pela soma mensal consolidada das últimas 6 competências da base de execução mensal, e não pelas últimas 6 linhas do arquivo. A base deve representar o valor bruto demandado, medido ou aprovado por competência.")
 
 col_m1, col_m2, col_m3, col_m4 = st.columns(4)
 with col_m1:
@@ -721,7 +721,7 @@ with col_m4:
     render_card_valor("Delta mensal estimado", (media_6 * fator_reajuste) - media_6)
 
 with st.expander("Ver competências usadas no cálculo da média", expanded=False):
-    st.caption(f"Base financeira detectada: {origem_financeira}")
+    st.caption(f"Base de execução mensal detectada: {origem_financeira}")
     if ultimos_6.empty:
         st.warning("Não foram localizadas competências financeiras válidas para cálculo da média.")
     else:

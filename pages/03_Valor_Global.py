@@ -598,20 +598,20 @@ def padronizar_ciclos(df):
 
 
 def ler_financeiro(bytes_arquivo, xls, ciclos):
-    aba = localizar_aba(xls, ["FINANCEIRO_MENSAL", "RETROATIVO", "Financeiro"])
+    aba = localizar_aba(xls, ["BASE_EXECUCAO_MENSAL", "FINANCEIRO_MENSAL", "RETROATIVO", "Financeiro"])
     if not aba:
-        raise ValueError("Aba FINANCEIRO_MENSAL não encontrada.")
+        raise ValueError("Aba BASE_EXECUCAO_MENSAL/FINANCEIRO_MENSAL não encontrada.")
 
     df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Valor"])
     if df.empty:
-        raise ValueError("Aba FINANCEIRO_MENSAL está vazia.")
+        raise ValueError("Aba BASE_EXECUCAO_MENSAL/FINANCEIRO_MENSAL está vazia.")
 
     col_ciclo = localizar_coluna(df, ["Ciclo"])
     col_comp = localizar_coluna(df, ["Competência", "Competencia"])
-    col_valor = localizar_coluna(df, ["Valor pago/faturado", "Valor bruto faturado", "Valor faturado", "Valor pago", "Valor"])
+    col_valor = localizar_coluna(df, ["Valor bruto medido/aprovado por competência", "Valor bruto medido", "Valor medido/aprovado", "Valor pago/faturado", "Valor bruto faturado", "Valor faturado", "Valor pago", "Valor medido", "Valor"])
 
     if col_valor is None:
-        raise ValueError("Não foi encontrada coluna de valor pago/faturado na aba FINANCEIRO_MENSAL.")
+        raise ValueError("Não foi encontrada coluna de valor bruto medido/aprovado na aba BASE_EXECUCAO_MENSAL/FINANCEIRO_MENSAL.")
 
     resultado = pd.DataFrame()
     resultado["Ciclo"] = df[col_ciclo].apply(normalizar_ciclo) if col_ciclo else ""

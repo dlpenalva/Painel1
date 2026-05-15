@@ -872,17 +872,17 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
                 col_referencia = df_ciclos.columns.get_loc('Referência documental')
                 ws.write(row, col_referencia, df_ciclos.iloc[row-1]['Referência documental'], fmt_text_wrap)
 
-        # FINANCEIRO_MENSAL
+        # BASE_EXECUCAO_MENSAL
         financeiro_rows = []
         for ciclo in ciclos:
             ciclo_nome = ciclo.get('ciclo', '')
             for competencia in _competencias_mensais(ciclo.get('financeiro_inicio', ''), ciclo.get('financeiro_fim', '')):
-                financeiro_rows.append({'Ciclo': ciclo_nome, 'Competência': competencia, 'Valor pago/faturado': ''})
+                financeiro_rows.append({'Ciclo': ciclo_nome, 'Competência': competencia, 'Valor bruto medido/aprovado por competência': ''})
         if not financeiro_rows:
-            financeiro_rows.append({'Ciclo': '', 'Competência': '', 'Valor pago/faturado': ''})
+            financeiro_rows.append({'Ciclo': '', 'Competência': '', 'Valor bruto medido/aprovado por competência': ''})
         df_fin = pd.DataFrame(financeiro_rows)
-        df_fin.to_excel(writer, sheet_name='FINANCEIRO_MENSAL', index=False)
-        ws = writer.sheets['FINANCEIRO_MENSAL']
+        df_fin.to_excel(writer, sheet_name='BASE_EXECUCAO_MENSAL', index=False)
+        ws = writer.sheets['BASE_EXECUCAO_MENSAL']
         ws.set_column('A:A', 12)
         ws.set_column('B:B', 18)
         ws.set_column('C:C', 24)
@@ -895,6 +895,10 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws.write(total_row_fin, 0, 'TOTAL', fmt_total)
         ws.write(total_row_fin, 1, '', fmt_total)
         ws.write_formula(total_row_fin, 2, f'=ROUND(SUM(C2:C{ultima_linha_fin_excel}),2)', fmt_total_money)
+        orientacao_row_fin = total_row_fin + 2
+        ws.write(orientacao_row_fin, 0, 'Orientação', fmt_total)
+        ws.merge_range(orientacao_row_fin, 1, orientacao_row_fin, 2, 'Preencha a base mensal por competência com o valor bruto demandado, medido ou aprovado. Se o valor vier de consumo itemizado, informe a competência de execução/faturamento e confirme, na observação do processo, se não houve glosas, descontos, retenções, notas substituídas ou divergências entre consumo, medição e faturamento. A diferença entre estoque inicial e remanescente pode apoiar a apuração física, mas não substitui automaticamente esta base mensal.', fmt_text_wrap)
+        ws.set_row(orientacao_row_fin, 78)
 
         # ITENS_REMANESCENTES
         ws_it = workbook.add_worksheet('ITENS_REMANESCENTES')
