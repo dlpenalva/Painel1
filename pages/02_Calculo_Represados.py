@@ -1,5 +1,6 @@
 import streamlit as st
 import json
+import re
 import pandas as pd
 import requests
 import io
@@ -14,6 +15,185 @@ if not st.session_state.get("_calculadora_reajustes_embedded", False):
 from _ui_utils import render_indice_contrato_selectbox, render_marca_topo
 from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _data_para_datetime, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br, _percentual_formatado
+
+
+def _data_para_date_segura(valor):
+    """Converte date/datetime/Timestamp em date para validações de corte temporal."""
+    try:
+        if isinstance(valor, datetime):
+            return valor.date()
+    except Exception:
+        pass
+    try:
+        if hasattr(valor, "date") and not isinstance(valor, str):
+            return valor.date()
+    except Exception:
+        pass
+    try:
+        dt = pd.to_datetime(valor, dayfirst=True, errors="coerce")
+        if pd.notna(dt):
+            return dt.date()
+    except Exception:
+        pass
+    return None
+
+
+def _competencias_esperadas_indice(data_inicio, data_fim):
+    """Lista competências mensais esperadas entre data_inicio e data_fim, inclusive."""
+    try:
+        inicio = pd.Timestamp(data_inicio).to_period("M")
+        fim = pd.Timestamp(data_fim).to_period("M")
+        if fim < inicio:
+            return []
+        return [p.strftime("%m/%Y") for p in pd.period_range(inicio, fim, freq="M")]
+    except Exception:
+        return []
+
+
+def _competencia_de_valor(valor):
+    """Extrai competência mm/aaaa de datas ou textos comuns."""
+    if valor is None:
+        return None
+    try:
+        if pd.isna(valor):
+            return None
+    except Exception:
+        pass
+    if isinstance(valor, (datetime, pd.Timestamp)):
+        return pd.Timestamp(valor).to_period("M").strftime("%m/%Y")
+    texto = str(valor).strip()
+    if not texto:
+        return None
+
+    # dd/mm/aaaa
+    m = re.search(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b", texto)
+    if m:
+        dia, mes, ano = m.groups()
+        try:
+            return pd.Timestamp(int(ano), int(mes), 1).to_period("M").strftime("%m/%Y")
+        except Exception:
+            return None
+
+    # mm/aaaa
+    m = re.search(r"\b(\d{1,2})/(\d{4})\b", texto)
+    if m:
+        mes, ano = m.groups()
+        try:
+            return pd.Timestamp(int(ano), int(mes), 1).to_period("M").strftime("%m/%Y")
+        except Exception:
+            return None
+
+    # aaaa-mm-dd ou aaaa-mm
+    m = re.search(r"\b(\d{4})-(\d{1,2})(?:-\d{1,2})?\b", texto)
+    if m:
+        ano, mes = m.groups()
+        try:
+            return pd.Timestamp(int(ano), int(mes), 1).to_period("M").strftime("%m/%Y")
+        except Exception:
+            return None
+
+    try:
+        dt = pd.to_datetime(texto, dayfirst=True, errors="coerce")
+        if pd.notna(dt):
+            return pd.Timestamp(dt).to_period("M").strftime("%m/%Y")
+    except Exception:
+        pass
+    return None
+
+
+def _competencias_encontradas_no_resultado(res):
+    """Extrai competências existentes no retorno do índice, especialmente para IPCA/IGP-M."""
+    comps = set()
+    if not res:
+        return comps
+
+    dados = res.get("dados") if isinstance(res, dict) else None
+
+    def adicionar_de_obj(obj):
+        if isinstance(obj, dict):
+            for v in obj.values():
+                adicionar_de_obj(v)
+        elif isinstance(obj, (list, tuple, set)):
+            for v in obj:
+                adicionar_de_obj(v)
+        else:
+            comp = _competencia_de_valor(obj)
+            if comp:
+                comps.add(comp)
+
+    if isinstance(dados, pd.DataFrame):
+        # Dá preferência a colunas com nomes de data/competência.
+        colunas_prioritarias = [
+            c for c in dados.columns
+            if str(c).strip().lower() in ["data", "dt", "competencia", "competência", "mes", "mês", "periodo", "período"]
+        ]
+        colunas = colunas_prioritarias or list(dados.columns)
+        for col in colunas:
+            for valor in dados[col].dropna().tolist():
+                comp = _competencia_de_valor(valor)
+                if comp:
+                    comps.add(comp)
+    elif dados is not None:
+        adicionar_de_obj(dados)
+
+    return comps
+
+
+def _validar_indice_disponivel(res, data_inicio, data_fim, indice_nome):
+    """Valida se o índice possui base suficiente para processar o ciclo.
+
+    Para IPCA/IGP-M, exige todas as competências mensais do intervalo.
+    Para IST, mantém a validação por retorno existente, pois o cálculo usa número-índice.
+    """
+    esperadas = _competencias_esperadas_indice(data_inicio, data_fim)
+
+    if not res:
+        return {
+            "ok": False,
+            "motivo": "sem_retorno",
+            "esperadas": esperadas,
+            "encontradas": [],
+            "faltantes": esperadas,
+        }
+
+    if "IST" in str(indice_nome).upper():
+        return {
+            "ok": True,
+            "motivo": "",
+            "esperadas": esperadas,
+            "encontradas": esperadas,
+            "faltantes": [],
+        }
+
+    encontradas = sorted(_competencias_encontradas_no_resultado(res))
+    faltantes = [c for c in esperadas if c not in set(encontradas)]
+
+    return {
+        "ok": len(faltantes) == 0,
+        "motivo": "competencias_ausentes" if faltantes else "",
+        "esperadas": esperadas,
+        "encontradas": encontradas,
+        "faltantes": faltantes,
+    }
+
+
+def _render_alerta_indice_ausente(validacao, ciclo_label="C1"):
+    faltantes = validacao.get("faltantes", []) or []
+    esperadas = validacao.get("esperadas", []) or []
+    st.error(
+        f"Processamento inviável: falta pelo menos um mês do intervalo de apuração do índice no {ciclo_label}."
+    )
+    st.warning(
+        "Não foi possível concluir a apuração porque há competência ausente no intervalo do índice. "
+        "Atualize a base de índices ou confira o período de apuração antes de prosseguir."
+    )
+    dados = []
+    if faltantes:
+        dados.append({"Item": "Competências faltantes", "Competências": ", ".join(faltantes)})
+    if esperadas:
+        dados.append({"Item": "Intervalo esperado", "Competências": ", ".join(esperadas)})
+    if dados:
+        st.dataframe(pd.DataFrame(dados), use_container_width=True, hide_index=True)
 
 def get_data_rep(serie, d_ini, d_fim, is_ist):
     try:
@@ -78,6 +258,112 @@ def _render_card_contexto_contrato():
         unsafe_allow_html=True,
     )
 
+
+
+def _ciclo_para_numero(valor):
+    texto = str(valor or "").strip().upper()
+    if texto.startswith("C"):
+        try:
+            return int(texto[1:].split()[0])
+        except Exception:
+            return 0
+    return 0
+
+def _primeiro_ciclo_analise(contexto):
+    return max(_ciclo_para_numero((contexto or {}).get('ultimo_ciclo_concedido', '')) + 1, 1)
+
+def _data_contexto_para_datetime(valor):
+    if not valor:
+        return None
+    try:
+        dt = pd.to_datetime(valor, dayfirst=True, errors='coerce')
+        if pd.notna(dt):
+            return dt.to_pydatetime()
+    except Exception:
+        pass
+    return None
+
+def _data_base_inicial_pelo_contexto(contexto, fallback):
+    contexto = contexto or {}
+    ultimo = _ciclo_para_numero(contexto.get('ultimo_ciclo_concedido', ''))
+    if ultimo > 0:
+        # Regra adotada: no fluxo ordinário, a data do pedido do último ciclo concedido
+        # corresponde ao início dos efeitos financeiros desse reajuste.
+        # Mantém-se fallback legado para arquivos antigos que ainda tenham o campo de efeitos.
+        data_pedido_ultimo = _data_contexto_para_datetime(contexto.get('data_pedido_ultimo_ciclo'))
+        if data_pedido_ultimo:
+            return data_pedido_ultimo
+        data_efeitos_legado = _data_contexto_para_datetime(contexto.get('data_efeitos_ultimo_reajuste'))
+        if data_efeitos_legado:
+            return data_efeitos_legado
+    return fallback
+
+
+def _evento_historico_principal_contexto(contexto):
+    """Monta registro automático do último ciclo formalizado para exportação.
+
+    Esse registro evita que o ciclo histórico pareça ter sumido do XLS quando
+    a aba CICLOS contém apenas o objeto da análise atual.
+    """
+    contexto = contexto or {}
+    ciclo = str(contexto.get('ultimo_ciclo_concedido', '') or '').strip()
+    if not ciclo or ciclo.upper().startswith('C0') or ciclo.lower() in ['nenhum', 'c0 / nenhum']:
+        return None
+    data_base = str(contexto.get('data_base_ultimo_ciclo', '') or '').strip()
+    data_pedido = str(contexto.get('data_pedido_ultimo_ciclo', '') or '').strip()
+    valor_formalizado = contexto.get('valor_formalizado_anterior', '')
+    try:
+        valor_formatado = _formatar_moeda_br(float(valor_formalizado or 0.0)) if float(valor_formalizado or 0.0) > 0 else ''
+    except Exception:
+        valor_formatado = str(contexto.get('valor_formalizado_anterior_texto', '') or '').strip()
+    percentual = contexto.get('percentual_ja_aplicado_pct', 0.0)
+    try:
+        percentual_txt = f"{float(percentual):.2f}%".replace('.', ',')
+    except Exception:
+        percentual_txt = ''
+    ref = str(contexto.get('referencia_documental_historico', '') or '').strip()
+    obs_base = str(contexto.get('observacao_historico', '') or '').strip()
+    obs_partes = []
+    if data_base:
+        obs_partes.append(f"Data-base: {data_base}")
+    if data_pedido:
+        obs_partes.append(f"Data do pedido/efeitos financeiros: {data_pedido}")
+    if percentual_txt and percentual_txt != '0,00%':
+        obs_partes.append(f"Percentual aplicado: {percentual_txt}")
+    if ref:
+        obs_partes.append(f"Referência: {ref}")
+    if obs_base:
+        obs_partes.append(obs_base)
+    obs_partes.append("Registro gerado automaticamente pelo Contexto do Contrato.")
+    return {
+        'Tipo de evento': 'Reajuste',
+        'Ciclo': ciclo,
+        'Data': data_pedido or data_base,
+        'Valor formalizado/impacto': valor_formatado,
+        'Incorporado ao valor formalizado?': 'Sim',
+        'Observação': '; '.join(obs_partes),
+    }
+
+
+def _eventos_historicos_para_exportacao(contexto):
+    """Combina o evento principal do contexto com eventos adicionais informados manualmente."""
+    contexto = contexto or {}
+    eventos = []
+    auto = _evento_historico_principal_contexto(contexto)
+    if auto:
+        eventos.append(auto)
+    for ev in contexto.get('eventos_historicos_anteriores') or []:
+        if not isinstance(ev, dict):
+            continue
+        # Evita duplicação do registro automático em caso de sessões antigas.
+        obs = str(ev.get('Observação', '') or '')
+        if 'Registro gerado automaticamente pelo Contexto do Contrato' in obs:
+            continue
+        possui_conteudo = any(str(ev.get(k, '') or '').strip() for k in ['Tipo de evento', 'Data', 'Valor formalizado/impacto', 'Observação'])
+        if possui_conteudo:
+            eventos.append(ev)
+    return eventos
+
 def _render_contexto_contratual_anterior():
     """Coleta contexto do contrato para uso pelo Valor Global.
 
@@ -115,12 +401,67 @@ def _render_contexto_contratual_anterior():
                 index=indice_ciclo_salvo,
                 key='ctx_ultimo_ciclo_concedido',
             )
+            data_base_ultimo = st.text_input(
+                'Data-base do último ciclo concedido/formalizado',
+                value=contexto_salvo.get('data_base_ultimo_ciclo', ''),
+                placeholder='Ex.: 23/09/2023',
+                key='ctx_data_base_ultimo_ciclo',
+            )
+            data_pedido_ultimo = st.text_input(
+                'Data do pedido do último ciclo concedido/formalizado',
+                value=contexto_salvo.get('data_pedido_ultimo_ciclo', ''),
+                placeholder='Ex.: 23/09/2024',
+                key='ctx_data_pedido_ultimo_ciclo',
+            )
         with col_ctx2:
+            modo_valor_formalizado = st.radio(
+                'Como deseja informar o valor formalizado antes desta análise?',
+                options=['Informar valor diretamente', 'Calcular pelo valor original + percentual já aplicado'],
+                index=1 if contexto_salvo.get('modo_valor_formalizado') == 'Calcular pelo valor original + percentual já aplicado' else 0,
+                key='ctx_modo_valor_formalizado',
+            )
+            percentual_ja_aplicado_pct = st.number_input(
+                'Percentual já aplicado antes desta análise (%)',
+                min_value=0.0,
+                max_value=1000.0,
+                value=float(contexto_salvo.get('percentual_ja_aplicado_pct', 0.0) or 0.0),
+                step=0.01,
+                format='%.2f',
+                key='ctx_percentual_ja_aplicado_pct',
+                disabled=(modo_valor_formalizado == 'Informar valor diretamente'),
+            )
+            valor_original_previo = _parse_moeda_br(valor_original_txt)
+            valor_calculado_formalizado = round(valor_original_previo * (1 + percentual_ja_aplicado_pct / 100), 2) if valor_original_previo > 0 else 0.0
+
+            if modo_valor_formalizado == 'Calcular pelo valor original + percentual já aplicado':
+                fator_aplicado_previo = 1 + percentual_ja_aplicado_pct / 100
+                valor_calculado_txt = _formatar_moeda_br(valor_calculado_formalizado)
+                fator_txt = f"{fator_aplicado_previo:.6f}".replace('.', ',')
+                st.info(
+                    f"Memória do valor formalizado anterior: {_formatar_moeda_br(valor_original_previo)} × {fator_txt} = {valor_calculado_txt}. "
+                    "O campo abaixo permanece editável para ajuste manual, se houver aditivo, supressão, repactuação ou arredondamento formal."
+                )
+
+                chave_calculo_formalizado = f"{valor_original_previo:.2f}|{percentual_ja_aplicado_pct:.6f}|auto"
+                if st.session_state.get('ctx_valor_formalizado_auto_hash') != chave_calculo_formalizado:
+                    st.session_state['ctx_valor_formalizado_anterior'] = valor_calculado_txt
+                    st.session_state['ctx_valor_formalizado_auto_hash'] = chave_calculo_formalizado
+                valor_formalizado_default = st.session_state.get('ctx_valor_formalizado_anterior', valor_calculado_txt)
+            else:
+                valor_formalizado_default = contexto_salvo.get('valor_formalizado_anterior_texto', '')
+
             valor_formalizado_txt = st.text_input(
                 'Valor contratual formalizado antes desta análise',
-                value=contexto_salvo.get('valor_formalizado_anterior_texto', ''),
+                value=valor_formalizado_default,
                 placeholder='Ex.: 22.800.000,00',
                 key='ctx_valor_formalizado_anterior',
+                help='Valor editável. Ajuste manualmente se houver aditivos, supressões, repactuações ou arredondamento formal.',
+            )
+            referencia_documental_historico = st.text_input(
+                'Referência documental do histórico anterior',
+                value=contexto_salvo.get('referencia_documental_historico', ''),
+                placeholder='Ex.: TLB-TDA-2025/00001, Parecer, Despacho ou Ata',
+                key='ctx_referencia_documental_historico',
             )
             observacao = st.text_area(
                 'Observação sobre o histórico anterior',
@@ -130,71 +471,77 @@ def _render_contexto_contratual_anterior():
                 height=82,
             )
 
-        st.markdown("#### Eventos históricos anteriores")
-        st.caption(
-            "Opcional. Registre apenas eventos formalizados relevantes para memória processual. "
-            "Esses registros aparecem em relatórios e linha do tempo, mas não entram automaticamente no cálculo do Valor Total Atualizado."
-        )
-        eventos_salvos = contexto_salvo.get('eventos_historicos_anteriores') or []
-        if not eventos_salvos:
-            eventos_salvos = [
-                {
-                    'Tipo de evento': '',
-                    'Ciclo': 'C0 / Nenhum',
-                    'Data': '',
-                    'Valor formalizado/impacto': '',
-                    'Incorporado ao valor formalizado?': 'Sim',
-                    'Observação': '',
-                }
-            ]
-        df_eventos_ctx = pd.DataFrame(eventos_salvos)
-        if 'Valor formalizado/impacto' not in df_eventos_ctx.columns:
-            if 'Valor atualizado/formalizado' in df_eventos_ctx.columns:
-                df_eventos_ctx['Valor formalizado/impacto'] = df_eventos_ctx['Valor atualizado/formalizado']
-            elif 'Valor original' in df_eventos_ctx.columns:
-                df_eventos_ctx['Valor formalizado/impacto'] = df_eventos_ctx['Valor original']
-            else:
-                df_eventos_ctx['Valor formalizado/impacto'] = ''
-        colunas_eventos = [
-            'Tipo de evento', 'Ciclo', 'Data', 'Valor formalizado/impacto',
-            'Incorporado ao valor formalizado?', 'Observação'
-        ]
-        for col_evento in colunas_eventos:
-            if col_evento not in df_eventos_ctx.columns:
-                df_eventos_ctx[col_evento] = ''
-        df_eventos_ctx = df_eventos_ctx[colunas_eventos]
-        eventos_editados = st.data_editor(
-            df_eventos_ctx,
-            hide_index=True,
-            use_container_width=True,
-            num_rows='dynamic',
-            key='ctx_eventos_historicos_anteriores',
-            column_config={
-                'Tipo de evento': st.column_config.SelectboxColumn(
-                    'Tipo de evento',
-                    options=['', 'Reajuste', 'Repactuação', 'Aditivo', 'Supressão', 'Apostila anterior', 'Acordo negocial', 'Outro'],
-                ),
-                'Ciclo': st.column_config.SelectboxColumn(
-                    'Ciclo',
-                    options=['C0 / Nenhum', 'C1', 'C2', 'C3', 'C4', 'Outro'],
-                ),
-                'Incorporado ao valor formalizado?': st.column_config.SelectboxColumn(
-                    'Incorporado ao valor formalizado?',
-                    options=['Sim', 'Não'],
-                ),
-            },
-        )
         eventos_limpos = []
-        for _, evento_row in eventos_editados.iterrows():
-            evento = {col: str(evento_row.get(col, '') or '').strip() for col in colunas_eventos}
-            possui_conteudo_relevante = any([
-                evento.get('Tipo de evento', ''),
-                evento.get('Data', ''),
-                evento.get('Valor formalizado/impacto', ''),
-                evento.get('Observação', ''),
-            ])
-            if possui_conteudo_relevante:
-                eventos_limpos.append(evento)
+        with st.expander("Eventos históricos adicionais (opcional)", expanded=False):
+            st.caption(
+                "Use apenas para registrar outros eventos formalizados anteriores que não estejam cobertos pelo bloco principal acima, "
+                "como aditivo, supressão, repactuação, apostila anterior ou acordo negocial. "
+                "O último ciclo concedido já é exportado automaticamente pelo Contexto do Contrato."
+            )
+            eventos_salvos = contexto_salvo.get('eventos_historicos_anteriores') or []
+            # Não reapresenta na tabela registros automáticos gerados em versões anteriores.
+            eventos_salvos = [
+                ev for ev in eventos_salvos
+                if not (isinstance(ev, dict) and 'Registro gerado automaticamente pelo Contexto do Contrato' in str(ev.get('Observação', '') or ''))
+            ]
+            if not eventos_salvos:
+                eventos_salvos = [
+                    {
+                        'Tipo de evento': '',
+                        'Ciclo': 'C0 / Nenhum',
+                        'Data': '',
+                        'Valor formalizado/impacto': '',
+                        'Incorporado ao valor formalizado?': 'Sim',
+                        'Observação': '',
+                    }
+                ]
+            df_eventos_ctx = pd.DataFrame(eventos_salvos)
+            if 'Valor formalizado/impacto' not in df_eventos_ctx.columns:
+                if 'Valor atualizado/formalizado' in df_eventos_ctx.columns:
+                    df_eventos_ctx['Valor formalizado/impacto'] = df_eventos_ctx['Valor atualizado/formalizado']
+                elif 'Valor original' in df_eventos_ctx.columns:
+                    df_eventos_ctx['Valor formalizado/impacto'] = df_eventos_ctx['Valor original']
+                else:
+                    df_eventos_ctx['Valor formalizado/impacto'] = ''
+            colunas_eventos = [
+                'Tipo de evento', 'Ciclo', 'Data', 'Valor formalizado/impacto',
+                'Incorporado ao valor formalizado?', 'Observação'
+            ]
+            for col_evento in colunas_eventos:
+                if col_evento not in df_eventos_ctx.columns:
+                    df_eventos_ctx[col_evento] = ''
+            df_eventos_ctx = df_eventos_ctx[colunas_eventos]
+            eventos_editados = st.data_editor(
+                df_eventos_ctx,
+                hide_index=True,
+                use_container_width=True,
+                num_rows='dynamic',
+                key='ctx_eventos_historicos_anteriores',
+                column_config={
+                    'Tipo de evento': st.column_config.SelectboxColumn(
+                        'Tipo de evento',
+                        options=['', 'Reajuste', 'Repactuação', 'Aditivo', 'Supressão', 'Apostila anterior', 'Acordo negocial', 'Outro'],
+                    ),
+                    'Ciclo': st.column_config.SelectboxColumn(
+                        'Ciclo',
+                        options=['C0 / Nenhum', 'C1', 'C2', 'C3', 'C4', 'Outro'],
+                    ),
+                    'Incorporado ao valor formalizado?': st.column_config.SelectboxColumn(
+                        'Incorporado ao valor formalizado?',
+                        options=['Sim', 'Não'],
+                    ),
+                },
+            )
+            for _, evento_row in eventos_editados.iterrows():
+                evento = {col: str(evento_row.get(col, '') or '').strip() for col in colunas_eventos}
+                possui_conteudo_relevante = any([
+                    evento.get('Tipo de evento', ''),
+                    evento.get('Data', ''),
+                    evento.get('Valor formalizado/impacto', ''),
+                    evento.get('Observação', ''),
+                ])
+                if possui_conteudo_relevante:
+                    eventos_limpos.append(evento)
 
         valor_original = _parse_moeda_br(valor_original_txt)
         valor_formalizado = _parse_moeda_br(valor_formalizado_txt)
@@ -203,7 +550,13 @@ def _render_contexto_contratual_anterior():
             'valor_original_contrato_texto': valor_original_txt,
             'valor_formalizado_anterior': valor_formalizado,
             'valor_formalizado_anterior_texto': valor_formalizado_txt,
+            'modo_valor_formalizado': modo_valor_formalizado,
+            'percentual_ja_aplicado_pct': float(percentual_ja_aplicado_pct),
+            'valor_formalizado_calculado': float(valor_calculado_formalizado),
             'ultimo_ciclo_concedido': ultimo_ciclo.strip(),
+            'data_base_ultimo_ciclo': data_base_ultimo.strip(),
+            'data_pedido_ultimo_ciclo': data_pedido_ultimo.strip(),
+            'referencia_documental_historico': referencia_documental_historico.strip(),
             'observacao_historico': observacao.strip(),
             'eventos_historicos_anteriores': eventos_limpos,
         }
@@ -263,6 +616,10 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         fmt_percent_no_border = workbook.add_format({'num_format': '0.00%'})
         fmt_factor_no_border = workbook.add_format({'num_format': '0.0000'})
         fmt_text_left_no_border = workbook.add_format({'align': 'left'})
+        fmt_money_left_no_border = workbook.add_format({'num_format': 'R$ #,##0.00', 'align': 'left'})
+        fmt_text_wrap_no_border = workbook.add_format({'align': 'left', 'valign': 'top', 'text_wrap': True})
+        fmt_header_no_border = workbook.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#1F4E79', 'align': 'center', 'valign': 'vcenter', 'text_wrap': True})
+        fmt_text_wrap = workbook.add_format({'border': 1, 'align': 'left', 'valign': 'top', 'text_wrap': True})
         fmt_int_left_no_border = workbook.add_format({'num_format': '0', 'align': 'left'})
         fmt_percent_left_no_border = workbook.add_format({'num_format': '0.00%', 'align': 'left'})
         fmt_factor_left_no_border = workbook.add_format({'num_format': '0.0000', 'align': 'left'})
@@ -281,6 +638,10 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             ['Valor original do contrato (contexto)', dados_admissibilidade.get('contexto_contratual_anterior', {}).get('valor_original_contrato', '')],
             ['Valor contratual formalizado antes desta análise', dados_admissibilidade.get('contexto_contratual_anterior', {}).get('valor_formalizado_anterior', '')],
             ['Último ciclo já concedido/formalizado', dados_admissibilidade.get('contexto_contratual_anterior', {}).get('ultimo_ciclo_concedido', '')],
+            ['Data-base do último ciclo concedido/formalizado', dados_admissibilidade.get('contexto_contratual_anterior', {}).get('data_base_ultimo_ciclo', '')],
+            ['Data do pedido do último ciclo concedido/formalizado', dados_admissibilidade.get('contexto_contratual_anterior', {}).get('data_pedido_ultimo_ciclo', '')],
+            ['Percentual já aplicado antes desta análise', dados_admissibilidade.get('contexto_contratual_anterior', {}).get('percentual_ja_aplicado_pct', '')],
+            ['Referência documental do histórico anterior', dados_admissibilidade.get('contexto_contratual_anterior', {}).get('referencia_documental_historico', '')],
             ['Observação sobre histórico anterior', dados_admissibilidade.get('contexto_contratual_anterior', {}).get('observacao_historico', '')],
             ['Eventos históricos anteriores', 'Ver aba EVENTOS_HISTORICOS_ANTERIORES' if dados_admissibilidade.get('contexto_contratual_anterior', {}).get('eventos_historicos_anteriores', []) else ''],
             ['Data de geração do arquivo', data_geracao],
@@ -313,30 +674,62 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         else:
             ws.write_blank(8, 1, None, fmt_no_border)
 
+        # Formatação final da aba PARAMETROS_REAJUSTE: coluna B alinhada à esquerda,
+        # com preservação dos formatos numéricos relevantes.
+        for row_idx in range(1, len(parametros) + 1):
+            valor_param = parametros.iloc[row_idx - 1, 1]
+            ws.write(row_idx, 1, valor_param, fmt_text_left_no_border)
+        ws.write_number(4, 1, len(ciclos), fmt_int_left_no_border)
+        ws.write_number(5, 1, float(dados_admissibilidade.get('variacao_acumulada', 0.0)), fmt_percent_left_no_border)
+        ws.write_number(6, 1, float(dados_admissibilidade.get('fator_acumulado', dados_admissibilidade.get('fator', 1.0))), fmt_factor_left_no_border)
+        if valor_original_contexto_txt or valor_original_contexto > 0:
+            ws.write_number(7, 1, valor_original_contexto, fmt_money_left_no_border)
+        else:
+            ws.write_blank(7, 1, None, fmt_text_left_no_border)
+        if valor_formalizado_contexto_txt or valor_formalizado_contexto > 0:
+            ws.write_number(8, 1, valor_formalizado_contexto, fmt_money_left_no_border)
+        else:
+            ws.write_blank(8, 1, None, fmt_text_left_no_border)
+        percentual_contexto = contexto_excel.get('percentual_ja_aplicado_pct', '')
+        try:
+            if str(percentual_contexto).strip() != '':
+                ws.write_number(12, 1, float(percentual_contexto) / 100, fmt_percent_left_no_border)
+        except Exception:
+            ws.write(12, 1, percentual_contexto, fmt_text_left_no_border)
+
+
         # Eventos históricos anteriores em aba própria, para evitar JSON longo em B12.
-        eventos_historicos_excel = contexto_excel.get('eventos_historicos_anteriores') or []
+        eventos_historicos_excel = _eventos_historicos_para_exportacao(contexto_excel)
         if eventos_historicos_excel:
             ws_ev = workbook.add_worksheet('EVENTOS_HISTORICOS_ANTERIORES')
             writer.sheets['EVENTOS_HISTORICOS_ANTERIORES'] = ws_ev
             ev_headers = ['Tipo de evento', 'Ciclo', 'Data', 'Valor formalizado/impacto', 'Incorporado ao valor formalizado?', 'Observação']
             for col, title in enumerate(ev_headers):
-                ws_ev.write(0, col, title, fmt_header)
+                ws_ev.write(0, col, title, fmt_header_no_border)
             for row_idx, evento in enumerate(eventos_historicos_excel, start=1):
                 valor_evento = evento.get('Valor formalizado/impacto', evento.get('Valor atualizado/formalizado', evento.get('Valor original', '')))
-                ws_ev.write(row_idx, 0, evento.get('Tipo de evento', ''), fmt_text)
-                ws_ev.write(row_idx, 1, evento.get('Ciclo', ''), fmt_text)
-                ws_ev.write(row_idx, 2, evento.get('Data', ''), fmt_text)
-                ws_ev.write(row_idx, 3, valor_evento, fmt_text)
-                ws_ev.write(row_idx, 4, evento.get('Incorporado ao valor formalizado?', ''), fmt_text)
-                ws_ev.write(row_idx, 5, evento.get('Observação', ''), fmt_text)
-            ws_ev.set_column('A:F', 28)
+                ws_ev.write(row_idx, 0, evento.get('Tipo de evento', ''), fmt_text_left_no_border)
+                ws_ev.write(row_idx, 1, evento.get('Ciclo', ''), fmt_text_left_no_border)
+                ws_ev.write(row_idx, 2, evento.get('Data', ''), fmt_text_left_no_border)
+                ws_ev.write(row_idx, 3, valor_evento, fmt_text_left_no_border)
+                ws_ev.write(row_idx, 4, evento.get('Incorporado ao valor formalizado?', ''), fmt_text_left_no_border)
+                ws_ev.write(row_idx, 5, evento.get('Observação', ''), fmt_text_wrap_no_border)
+            ws_ev.set_column('A:A', 24, fmt_text_left_no_border)
+            ws_ev.set_column('B:B', 14, fmt_text_left_no_border)
+            ws_ev.set_column('C:C', 18, fmt_text_left_no_border)
+            ws_ev.set_column('D:E', 28, fmt_text_left_no_border)
+            ws_ev.set_column('F:F', 80, fmt_text_wrap_no_border)
             ws_ev.set_tab_color(cor_aba_automatica)
 
         # CICLOS
         ciclos_rows = []
         for ciclo in ciclos:
             situacao = str(ciclo.get('situacao', ''))
-            tratamento = 'Precluso' if 'PRECLUSO' in situacao.upper() else 'A apurar'
+            ciclo_ja_concedido = bool(ciclo.get('ciclo_ja_concedido', False))
+            if ciclo_ja_concedido:
+                tratamento = 'Já concedido/formalizado anteriormente'
+            else:
+                tratamento = 'Precluso' if 'PRECLUSO' in situacao.upper() else 'A apurar'
             ciclos_rows.append({
                 'Ciclo': ciclo.get('ciclo', ''),
                 'Data-base': ciclo.get('data_base', ''),
@@ -350,6 +743,8 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
                 'Fator': ciclo.get('fator', 1.0),
                 'Fator acumulado': ciclo.get('fator_acumulado', 1.0),
                 'Tratamento financeiro do ciclo': tratamento,
+                'Ciclo já concedido/formalizado?': 'Sim' if ciclo_ja_concedido else 'Não',
+                'Objeto da análise atual?': 'Não' if ciclo_ja_concedido else 'Sim',
                 'Situação automática': ciclo.get('situacao_automatica', ciclo.get('situacao', '')),
                 'Acordo negocial': 'Sim' if ciclo.get('superacao_negocial', False) else 'Não',
                 'Situação aplicada': ciclo.get('situacao_aplicada', ciclo.get('situacao', '')),
@@ -366,8 +761,10 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws.set_column('B:H', 24)
         ws.set_column('I:I', 12)
         ws.set_column('J:K', 14)
-        ws.set_column('L:L', 30)
-        ws.set_column('M:S', 26)
+        ws.set_column('L:L', 34)
+        ws.set_column('M:Q', 26)
+        ws.set_column('R:S', 16)
+        ws.set_column('T:U', 42, fmt_text_wrap)
         for col, title in enumerate(df_ciclos.columns):
             ws.write(0, col, title, fmt_header)
         for row in range(1, len(df_ciclos) + 1):
@@ -378,15 +775,25 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             ws.write(row, 9, df_ciclos.iloc[row-1]['Fator'], workbook.add_format({'num_format': '0.0000'}))
             ws.write(row, 10, df_ciclos.iloc[row-1]['Fator acumulado'], workbook.add_format({'num_format': '0.0000'}))
             ws.write(row, 11, df_ciclos.iloc[row-1]['Tratamento financeiro do ciclo'], workbook.add_format({}))
-            fmt_percentual_ciclos = fmt_percent_no_border if row in [1, 2, 3] else fmt_percent
+            fmt_percentual_ciclos = fmt_percent
             if 'Percentual apurado pelo índice' in df_ciclos.columns:
-                ws.write(row, 15, df_ciclos.iloc[row-1]['Percentual apurado pelo índice'], fmt_percentual_ciclos)
+                col_pct_indice = df_ciclos.columns.get_loc('Percentual apurado pelo índice')
+                ws.write(row, col_pct_indice, df_ciclos.iloc[row-1]['Percentual apurado pelo índice'], fmt_percentual_ciclos)
             if 'Percentual aplicado' in df_ciclos.columns:
-                ws.write(row, 16, df_ciclos.iloc[row-1]['Percentual aplicado'], fmt_percentual_ciclos)
+                col_pct_aplicado = df_ciclos.columns.get_loc('Percentual aplicado')
+                ws.write(row, col_pct_aplicado, df_ciclos.iloc[row-1]['Percentual aplicado'], fmt_percentual_ciclos)
+            if 'Justificativa negocial' in df_ciclos.columns:
+                col_justificativa = df_ciclos.columns.get_loc('Justificativa negocial')
+                ws.write(row, col_justificativa, df_ciclos.iloc[row-1]['Justificativa negocial'], fmt_text_wrap)
+            if 'Referência documental' in df_ciclos.columns:
+                col_referencia = df_ciclos.columns.get_loc('Referência documental')
+                ws.write(row, col_referencia, df_ciclos.iloc[row-1]['Referência documental'], fmt_text_wrap)
 
         # FINANCEIRO_MENSAL
         financeiro_rows = []
         for ciclo in ciclos:
+            if bool(ciclo.get('ciclo_ja_concedido', False)):
+                continue
             ciclo_nome = ciclo.get('ciclo', '')
             for competencia in _competencias_mensais(ciclo.get('financeiro_inicio', ''), ciclo.get('financeiro_fim', '')):
                 financeiro_rows.append({'Ciclo': ciclo_nome, 'Competência': competencia, 'Valor pago/faturado': ''})
@@ -413,6 +820,8 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         writer.sheets['ITENS_REMANESCENTES'] = ws_it
         rem_cols = []
         for ciclo in ciclos:
+            if bool(ciclo.get('ciclo_ja_concedido', False)):
+                continue
             rem_cols.append((f"Remanescente início {ciclo.get('ciclo', '')}", ciclo.get('data_base', '')))
         base_headers = ['Item', 'Quantidade contratada', 'Valor unitário original', 'Valor total']
         headers = base_headers + [c[0] for c in rem_cols]
@@ -534,9 +943,21 @@ if not st.session_state.get("_calculadora_reajustes_embedded", False):
 
 contexto_contratual = _render_contexto_contratual_anterior()
 
+primeiro_ciclo_num = _primeiro_ciclo_analise(contexto_contratual)
+default_dt_base_original = _data_base_inicial_pelo_contexto(contexto_contratual, datetime(2022, 10, 10))
+
+if _ciclo_para_numero(contexto_contratual.get('ultimo_ciclo_concedido', '')) > 0 and not contexto_contratual.get('data_pedido_ultimo_ciclo'):
+    st.error(
+        "Processamento inviável: há ciclo anterior concedido/formalizado, mas a data do pedido do último ciclo não foi informada."
+    )
+    st.warning(
+        "Informe a data do pedido do último ciclo no Contexto do Contrato. Esse dado será usado como âncora do próximo ciclo, pois corresponde ao início dos efeitos financeiros do último reajuste concedido/formalizado."
+    )
+    st.stop()
+
 with st.sidebar:
-    dt_base_original = st.date_input("Data-Base Original:", value=datetime(2022, 10, 10), format="DD/MM/YYYY")
-    qtd_ciclos = st.number_input("Ciclos:", min_value=1, max_value=5, value=2)
+    dt_base_original = st.date_input("Data-base/âncora inicial da análise atual:", value=default_dt_base_original, format="DD/MM/YYYY")
+    qtd_ciclos = st.number_input("Ciclos a analisar:", min_value=1, max_value=5, value=2)
     idx_sel = render_indice_contrato_selectbox(key="indice_fluxo_multiplos")
 
 # Primeira etapa: coleta dos dados de cada ciclo, sem processar automaticamente os índices.
@@ -545,7 +966,8 @@ input_ciclos = []
 containers_ciclos = []
 data_atual = dt_base_original
 
-for i in range(1, int(qtd_ciclos) + 1):
+for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
+    i = primeiro_ciclo_num + posicao_ciclo - 1
     st.markdown(f"### Ciclo {i}")
 
     d_fim = data_atual + relativedelta(months=11)
@@ -565,6 +987,20 @@ for i in range(1, int(qtd_ciclos) + 1):
             value=d_aniv,
             key=chave_pedido,
             format="DD/MM/YYYY",
+        )
+
+    ciclo_ja_concedido = st.checkbox(
+        f"Ciclo C{i} já concedido/formalizado anteriormente",
+        value=False,
+        key=f"ciclo_ja_concedido_c{i}_{data_atual.strftime('%Y%m%d')}",
+        help=(
+            "Marque apenas se este ciclo já foi formalizado em instrumento anterior. "
+            "O ciclo será preservado como histórico/âncora, mas não será tratado como objeto novo da análise atual."
+        ),
+    )
+    if ciclo_ja_concedido:
+        st.caption(
+            f"C{i} será mantido como histórico/âncora. Não entrará como ciclo novo no relatório da análise atual nem na aba financeira da coleta."
         )
 
     # Lógica de Admissibilidade preservada.
@@ -661,6 +1097,7 @@ for i in range(1, int(qtd_ciclos) + 1):
         'sit_emoji': sit_emoji,
         'situacao_limpa': situacao_limpa,
         'inicio_efeito_financeiro': inicio_efeito_financeiro,
+        'ciclo_ja_concedido': bool(ciclo_ja_concedido),
         'superacao_negocial': bool(superacao_negocial),
         'percentual_negocial': float(percentual_negocial),
         'justificativa_negocial': justificativa_negocial.strip(),
@@ -672,16 +1109,21 @@ for i in range(1, int(qtd_ciclos) + 1):
     data_atual = data_base_proximo_ciclo
 
 chave_analise_multiplos = (
+    primeiro_ciclo_num,
     dt_base_original.isoformat(),
     int(qtd_ciclos),
     idx_sel,
     tuple(c['dt_ped'].isoformat() for c in input_ciclos),
+    tuple(str(c.get('ciclo_ja_concedido', False)) for c in input_ciclos),
     tuple(str(c.get('superacao_negocial', False)) for c in input_ciclos),
     tuple(str(c.get('percentual_negocial', 0.0)) for c in input_ciclos),
     tuple(str(c.get('justificativa_negocial', '')) for c in input_ciclos),
     str(contexto_contratual.get('valor_original_contrato', 0.0)),
     str(contexto_contratual.get('valor_formalizado_anterior', 0.0)),
     contexto_contratual.get('ultimo_ciclo_concedido', ''),
+    contexto_contratual.get('data_pedido_ultimo_ciclo', ''),
+    contexto_contratual.get('modo_valor_formalizado', ''),
+    str(contexto_contratual.get('percentual_ja_aplicado_pct', 0.0)),
     contexto_contratual.get('observacao_historico', ''),
 )
 
@@ -695,13 +1137,30 @@ if processar_multiplos:
     st.session_state["processar_reajustes_multiplos_key"] = chave_analise_multiplos
 
 if st.session_state.get("processar_reajustes_multiplos_key") != chave_analise_multiplos:
-    st.info(f"Foram configurados **{int(qtd_ciclos)} ciclos** para análise a partir da Data-Base original de **{dt_base_original.strftime('%d/%m/%Y')}**. Confira as datas dos pedidos antes de clicar em **Processar Análise**.")
+    st.info(f"Foram configurados **{int(qtd_ciclos)} ciclo(s)** para análise, iniciando em **C{primeiro_ciclo_num}**, a partir da âncora **{dt_base_original.strftime('%d/%m/%Y')}**. Confira as datas dos pedidos antes de clicar em **Processar Análise**.")
+    st.stop()
+
+data_hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
+pedidos_futuros = []
+for dados_ciclo in input_ciclos:
+    data_pedido_cmp = _data_para_date_segura(dados_ciclo.get("dt_ped"))
+    if data_pedido_cmp and data_pedido_cmp > data_hoje:
+        pedidos_futuros.append({
+            "Ciclo": f"C{dados_ciclo.get('numero')}",
+            "Data do pedido": dados_ciclo.get("dt_ped").strftime("%d/%m/%Y"),
+        })
+
+if pedidos_futuros:
+    st.error("Processamento inviável: há ciclo com data de pedido futura em relação à data atual.")
+    st.warning("A Calculadora processa apenas pedidos já apresentados. Revise as datas dos pedidos antes de prosseguir.")
+    st.dataframe(pd.DataFrame(pedidos_futuros), use_container_width=True, hide_index=True)
     st.stop()
 
 # Segunda etapa: processamento dos ciclos, somente após o comando do usuário.
 fator_acum = 1.0
 historico = []
 historico_coleta = []
+pendencias_indice = []
 
 for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
     i = dados_ciclo['numero']
@@ -713,6 +1172,7 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
     sit_emoji = dados_ciclo['sit_emoji']
     situacao_limpa = dados_ciclo['situacao_limpa']
     inicio_efeito_financeiro = dados_ciclo['inicio_efeito_financeiro']
+    ciclo_ja_concedido = bool(dados_ciclo.get('ciclo_ja_concedido', False))
     superacao_negocial = bool(dados_ciclo.get('superacao_negocial', False))
     percentual_negocial = float(dados_ciclo.get('percentual_negocial', 0.0) or 0.0)
     justificativa_negocial = dados_ciclo.get('justificativa_negocial', '')
@@ -737,12 +1197,23 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
 
         janela_adm = f"{d_aniv.strftime('%d/%m/%Y')} a {d_lim.strftime('%d/%m/%Y')}"
 
+        validacao_indice = _validar_indice_disponivel(res_c, data_atual, d_fim, idx_sel)
+
         st.markdown(f"""
         **Dados do Ciclo {i}:**
         - Intervalo do C{i}: {janela_ciclo}
         - Janela de Admissibilidade: {janela_adm}
         - Situação: {sit_emoji}
         """)
+
+        if not validacao_indice.get("ok", False):
+            _render_alerta_indice_ausente(validacao_indice, f"C{i}")
+            pendencias_indice.append({
+                "Ciclo": f"C{i}",
+                "Intervalo do índice": janela_ciclo,
+                "Competências faltantes": ", ".join(validacao_indice.get("faltantes", []) or []),
+            })
+            continue
 
         v_fmt = "Indisponível"
         v_acum_parcial = f"{(fator_acum - 1) * 100:,.2f}%".replace('.', ',')
@@ -823,8 +1294,9 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
                     st.dataframe(res_c['dados'], use_container_width=True)
                     st.write("Fórmula: Produtório de (1 + taxa_mensal/100) - 1")
 
-            historico.append({
-                "Ciclo": i,
+            if not ciclo_ja_concedido:
+                historico.append({
+                    "Ciclo": i,
                 "Variação": v_fmt,
                 "Percentual aplicado": v_aplicado_fmt,
                 "Acumulada": v_acum_parcial,
@@ -834,9 +1306,14 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
                 "Pedido": dt_ped.strftime('%d/%m/%Y'),
                 "Janela": janela_ciclo,
                 "JanelaAdm": janela_adm,
-                "Início financeiro": inicio_efeito_financeiro.strftime('%d/%m/%Y') if inicio_efeito_financeiro else "",
-                "Ciclo negativo": "Sim" if ciclo_negativo else "Não",
-            })
+                    "Início financeiro": inicio_efeito_financeiro.strftime('%d/%m/%Y') if inicio_efeito_financeiro else "",
+                    "Ciclo negativo": "Sim" if ciclo_negativo else "Não",
+                })
+            else:
+                st.info(
+                    f"C{i} foi marcado como já concedido/formalizado. O percentual foi preservado para memória e sequência lógica, "
+                    "mas o ciclo não será tratado como objeto novo da análise atual."
+                )
         else:
             percentual_indice = 0.0
             percentual_aplicado = 0.0
@@ -855,6 +1332,8 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             'janela_admissibilidade': janela_adm,
             'data_pedido': dt_ped.strftime('%d/%m/%Y'),
             'situacao': situacao_aplicada,
+            'ciclo_ja_concedido': bool(ciclo_ja_concedido),
+            'objeto_analise_atual': not bool(ciclo_ja_concedido),
             'situacao_automatica': sit_emoji,
             'situacao_aplicada': situacao_aplicada,
             'superacao_negocial': bool(superacao_negocial),
@@ -874,6 +1353,11 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             'periodo_inicio': _formatar_data(periodo_inicio),
             'periodo_fim': _formatar_data(periodo_fim),
         })
+
+if pendencias_indice:
+    st.error("Processamento inviável: há competências ausentes em um ou mais ciclos. O cálculo acumulado e o Arquivo de Coleta foram bloqueados.")
+    st.dataframe(pd.DataFrame(pendencias_indice), use_container_width=True, hide_index=True)
+    st.stop()
 
 # Finaliza os períodos financeiros com base no início financeiro do ciclo seguinte.
 # Isso evita gerar 13 competências e separa o período de índice do período financeiro.

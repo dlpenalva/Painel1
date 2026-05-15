@@ -167,33 +167,8 @@ st.markdown(
 )
 
 if not tipo:
-    st.markdown(
-        """
-        <div class="calc-note">
-            <b>Para iniciar:</b> selecione uma das opções acima. A área de cálculo só será carregada após essa escolha.
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
     st.stop()
 
-st.markdown(
-    """
-    <div class="calc-note">
-        <b>Observação:</b> nesta etapa, basta definir se a análise é de ciclo único ou de múltiplos ciclos.
-        As demais variáveis — pedido tardio, acordo negocial, ciclo negativo, preclusão, histórico anterior e aditivos/supressões —
-        devem ser preenchidas ou avaliadas dentro do fluxo correspondente, quando seus dados forem necessários.
-    </div>
-    """,
-    unsafe_allow_html=True,
-)
-
-with st.expander("Como interpretar esta escolha", expanded=False):
-    st.write(
-        "Use **Único ciclo** quando houver apenas um ciclo a calcular. "
-        "Use **Múltiplos ciclos** quando houver dois ou mais ciclos, ciclos acumulados ou necessidade de recompor histórico por ciclo. "
-        "A existência de pedido tardio, acordo negocial, ciclo negativo ou ciclo anterior concedido não obriga, isoladamente, o uso de Múltiplos."
-    )
 
 st.divider()
 st.subheader(f"Área de cálculo — {'Único ciclo' if tipo == 'Ciclo único' else 'Múltiplos ciclos'}")
@@ -202,3 +177,5 @@ if tipo == "Ciclo único":
     executar_motor("01_Calculo_Simples.py")
 else:
     executar_motor("02_Calculo_Represados.py")
+
+
