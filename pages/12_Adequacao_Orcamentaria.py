@@ -231,7 +231,11 @@ def periodo_de_data_final(valor):
 
 def extrair_contexto_valores():
     res = st.session_state.get("resultado_valor_global", {}) or {}
-    valor_represado = parse_moeda_br(res.get("valor_represado_a_pagar", res.get("delta_total", 0)))
+    modo = res.get("modo_apuracao", "Completo") if isinstance(res, dict) else "Completo"
+    if modo == "Reduzido por Itens/Estoque":
+        valor_represado = parse_moeda_br(res.get("valor_retroativo_estimado_itens_estoque", 0))
+    else:
+        valor_represado = parse_moeda_br(res.get("valor_represado_a_pagar", res.get("delta_total", 0)))
     variacao = parse_moeda_br(res.get("variacao_acumulada", res.get("fator_acumulado", 1) - 1 if res.get("fator_acumulado") else 0))
     indice = texto_seguro(res.get("indice", ""), "não informado")
     quantidade_ciclos = texto_seguro(res.get("quantidade_ciclos", ""), "[campo a preencher]")
@@ -239,6 +243,7 @@ def extrair_contexto_valores():
         "disponivel": bool(res),
         "resultado": res,
         "valor_represado": valor_represado,
+        "valor_retroativo_estimado_itens_estoque": parse_moeda_br(res.get("valor_retroativo_estimado_itens_estoque", 0)),
         "variacao": variacao,
         "indice": indice,
         "quantidade_ciclos": quantidade_ciclos,
@@ -673,6 +678,18 @@ st.markdown(
 
 ctx = extrair_contexto_valores()
 resultado = ctx["resultado"]
+modo_apuracao = resultado.get("modo_apuracao", "Completo") if isinstance(resultado, dict) else "Completo"
+modo_reduzido_estoque = modo_apuracao == "Reduzido por Itens/Estoque"
+if modo_reduzido_estoque:
+    st.markdown(
+        """
+        <div style="background:#F3E8FF; border:1px solid #A855F7; border-left:6px solid #7E22CE; border-radius:12px; padding:14px 16px; margin:10px 0 16px 0; color:#581C87;">
+            <div style="font-weight:800; margin-bottom:4px;">Modo Reduzido por Itens/Estoque</div>
+            <div style="font-size:0.95rem; line-height:1.45;">A base mensal por competência não foi informada. A adequação orçamentária será tratada como estimativa por itens/estoque, sujeita à validação antes da formalização.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 mensal, origem_financeira = financeiro_mensal_consolidado(resultado)
 ultimos_6 = ultimos_meses_para_media(mensal, 6)
 media_6 = float(ultimos_6["Valor pago/medido"].mean()) if not ultimos_6.empty else 0.0
@@ -682,11 +699,17 @@ ultima_comp_txt = periodo_para_label(ultima_comp) if ultima_comp is not None els
 st.subheader("Parâmetros principais")
 col1, col2, col3 = st.columns(3)
 with col1:
+    label_retroativo_adequacao = "Retroativo estimado por itens/estoque" if modo_reduzido_estoque else "Retroativo apurado"
+    help_retroativo_adequacao = (
+        "Estimativa calculada por itens/estoque, sem base mensal por competência. Deve ser validada antes da formalização."
+        if modo_reduzido_estoque
+        else "Valor represado/retroativo já apurado no processamento financeiro."
+    )
     retroativo = input_moeda(
-        "Retroativo apurado",
+        label_retroativo_adequacao,
         ctx["valor_represado"],
         "adequacao_v2_retroativo",
-        help="Valor represado/retroativo já apurado no processamento financeiro.",
+        help=help_retroativo_adequacao,
     )
 with col2:
     percentual_txt = st.text_input(
@@ -768,9 +791,24 @@ with st.expander("Ajustar projeção por competência, se necessário", expanded
     )
 
 df_projecao = calcular_projecao(df_editor, media_6, fator_reajuste)
+if modo_reduzido_estoque and ultimos_6.empty:
+    rem_original = parse_moeda_br(resultado.get("remanescente_original", 0)) if isinstance(resultado, dict) else 0.0
+    rem_atualizado = parse_moeda_br(resultado.get("remanescente_reajustado", 0)) if isinstance(resultado, dict) else 0.0
+    diferenca_estoque = round(max(rem_atualizado - rem_original, 0.0), 2)
+    df_projecao = pd.DataFrame([
+        {
+            "Competência": "Estimativa por saldo remanescente",
+            "Origem": "Modo reduzido por itens/estoque",
+            "Premissa usada": "Saldo remanescente informado",
+            "Valor base considerado": round(rem_original, 2),
+            "Valor reajustado estimado": round(rem_atualizado, 2),
+            "Diferença futura a adequar": diferenca_estoque,
+            "Observação": "Estimativa sem base mensal por competência; validar com área financeira antes de formalizar pagamento.",
+        }
+    ])
 diferenca_futura = float(df_projecao["Diferença futura a adequar"].sum()) if not df_projecao.empty else 0.0
 complementacao = round(float(retroativo or 0) + diferenca_futura, 2)
-qtd_meses = len(df_projecao)
+qtd_meses = 0 if modo_reduzido_estoque and ultimos_6.empty else len(df_projecao)
 
 col_p1, col_p2, col_p3 = st.columns(3)
 with col_p1:
@@ -790,13 +828,20 @@ with st.expander("Ver resultado mensal da projeção", expanded=False):
                 df_proj_vis[col] = df_proj_vis[col].apply(moeda)
         st.dataframe(df_proj_vis, use_container_width=True, hide_index=True)
 
-texto_explicativo = (
-    f"A complementação necessária corresponde ao retroativo apurado ({moeda(retroativo)}) "
-    f"somado à diferença futura projetada ({moeda(diferenca_futura)}). "
-    f"A diferença futura foi estimada a partir da média consolidada das últimas 6 competências financeiras ({moeda(media_6)}), "
-    f"com aplicação do reajuste de {pct(percentual_reajuste)}, para o período de {periodo_projecao_txt}. "
-    "Quando houver valor informado pelo fiscal, esse valor substitui a média automática na respectiva competência."
-)
+if modo_reduzido_estoque and ultimos_6.empty:
+    texto_explicativo = (
+        f"A complementação necessária foi estimada em modo reduzido, sem base de execução mensal por competência. "
+        f"O retroativo estimado por itens/estoque ({moeda(retroativo)}) foi considerado como impacto estimativo da execução já apurada por estoque, e a diferença futura projetada ({moeda(diferenca_futura)}) corresponde à diferença entre o saldo remanescente atualizado e o saldo remanescente original informado. "
+        "O resultado é estimativo e deve ser validado antes da formalização de pagamento."
+    )
+else:
+    texto_explicativo = (
+        f"A complementação necessária corresponde ao retroativo apurado ({moeda(retroativo)}) "
+        f"somado à diferença futura projetada ({moeda(diferenca_futura)}). "
+        f"A diferença futura foi estimada a partir da média consolidada das últimas 6 competências financeiras ({moeda(media_6)}), "
+        f"com aplicação do reajuste de {pct(percentual_reajuste)}, para o período de {periodo_projecao_txt}. "
+        "Quando houver valor informado pelo fiscal, esse valor substitui a média automática na respectiva competência."
+    )
 st.markdown(
     f"""
     <div style="background:#FFF7E6; border:1px solid #F6C35B; border-radius:14px; padding:14px 16px; margin:18px 0; color:#334155; line-height:1.45rem;">

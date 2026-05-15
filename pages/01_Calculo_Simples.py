@@ -662,8 +662,8 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
     """Gera o Arquivo de Coleta para as fases de Valor Global e Relatório.
 
     Regras da planilha:
-    - 200 linhas pré-formatadas nas abas de preenchimento.
-    - Linha 201 reservada para somatórios.
+    - A aba ITENS_REMANESCENTES usa linha TOTAL dinâmica por fórmula, sem tabela estruturada.
+    - Ao inserir novas linhas acima da linha TOTAL, as fórmulas devem se ajustar no Excel.
     - Aditivos por item/lançamento, com acréscimo ou supressão.
     """
     output = BytesIO()
@@ -687,6 +687,10 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         fmt_date_no_border = workbook.add_format({'num_format': 'dd/mm/yyyy'})
         fmt_input_num = workbook.add_format({'num_format': '#,##0.00', 'bg_color': '#FFF2CC', 'border': 1})
         fmt_input_money = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#FFF2CC', 'border': 1})
+        fmt_input_no_border = workbook.add_format({'bg_color': '#FFF2CC'})
+        fmt_input_date_no_border = workbook.add_format({'num_format': 'dd/mm/yyyy', 'bg_color': '#FFF2CC'})
+        fmt_input_num_no_border = workbook.add_format({'num_format': '#,##0.00', 'bg_color': '#FFF2CC'})
+        fmt_input_money_no_border = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#FFF2CC'})
         fmt_money = workbook.add_format({'num_format': 'R$ #,##0.00', 'border': 1})
         fmt_money_no_border = workbook.add_format({'num_format': 'R$ #,##0.00'})
         fmt_money_auto = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#EDEDED', 'border': 1})
@@ -712,9 +716,82 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         fmt_int_left_no_border = workbook.add_format({'num_format': '0', 'align': 'left'})
         fmt_percent_left_no_border = workbook.add_format({'num_format': '0.00%', 'align': 'left'})
         fmt_factor_left_no_border = workbook.add_format({'num_format': '0.0000', 'align': 'left'})
+        fmt_gap_date = workbook.add_format({'num_format': 'dd/mm/yyyy', 'border': 1, 'bg_color': '#F4CCCC', 'font_color': '#9C0006'})
+        fmt_gap_text = workbook.add_format({'border': 1, 'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'align': 'center'})
+        fmt_gap_text_wrap = workbook.add_format({'border': 1, 'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'text_wrap': True, 'valign': 'top'})
+        fmt_gap_date_no_border = workbook.add_format({'num_format': 'dd/mm/yyyy', 'bg_color': '#F4CCCC', 'font_color': '#9C0006'})
+        fmt_gap_text_no_border = workbook.add_format({'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'align': 'center'})
+        fmt_gap_text_wrap_no_border = workbook.add_format({'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'text_wrap': True, 'valign': 'top'})
+        fmt_gap_input_money = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'border': 1})
+        fmt_gap_input_money_no_border = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#F4CCCC', 'font_color': '#9C0006'})
+        fmt_total_no_border = workbook.add_format({'bold': True, 'bg_color': '#E2F0D9'})
+        fmt_total_money_no_border = workbook.add_format({'bold': True, 'bg_color': '#E2F0D9', 'num_format': 'R$ #,##0.00'})
+        fmt_total_num_no_border = workbook.add_format({'bold': True, 'bg_color': '#E2F0D9', 'num_format': '#,##0.00'})
         cores_ciclos_col_c = ['#EAF2F8', '#E2F0D9', '#FFF2CC', '#FCE4D6', '#E4DFEC', '#DDEBF7', '#F4CCCC', '#D9EAD3']
         fmt_ciclos_col_c = [workbook.add_format({'bg_color': cor, 'border': 1}) for cor in cores_ciclos_col_c]
         cor_aba_automatica = '#D9EAF7'
+
+        def _periodo_mensal_seguro(valor):
+            try:
+                dt = pd.to_datetime(valor, dayfirst=True, errors='coerce')
+                if pd.notna(dt):
+                    return dt.to_period('M')
+            except Exception:
+                pass
+            try:
+                texto = str(valor or '').strip()
+                m = re.search(r'(\d{1,2})[\/\-](\d{4})', texto)
+                if m:
+                    return pd.Period(f"{int(m.group(2))}-{int(m.group(1)):02d}", freq='M')
+            except Exception:
+                pass
+            return None
+
+        def _fim_intervalo_indice_periodo(intervalo):
+            texto = str(intervalo or '')
+            matches = re.findall(r'(\d{1,2})[\/\-](\d{4})', texto)
+            if len(matches) >= 2:
+                mes, ano = matches[-1]
+                try:
+                    return pd.Period(f"{int(ano)}-{int(mes):02d}", freq='M')
+                except Exception:
+                    return None
+            return None
+
+        def _competencias_sem_efeito_financeiro(ciclo):
+            fim_indice = _fim_intervalo_indice_periodo(ciclo.get('intervalo_indice', ciclo.get('Janela', '')))
+            inicio_fin = _periodo_mensal_seguro(ciclo.get('financeiro_inicio', ''))
+            if fim_indice is None or inicio_fin is None:
+                return []
+            primeira_comp_habilitada = fim_indice + 1
+            ultima_comp_sem_efeito = inicio_fin - 1
+            if ultima_comp_sem_efeito < primeira_comp_habilitada:
+                return []
+            return [p.strftime('%m/%Y') for p in pd.period_range(primeira_comp_habilitada, ultima_comp_sem_efeito, freq='M')]
+
+        def _primeira_competencia_base_execucao(ciclo):
+            """Define a primeira competência da BASE_EXECUCAO_MENSAL.
+
+            Regra contratual consolidada:
+            - se o pedido/efeito financeiro ocorre no próprio mês em que o ciclo se habilita,
+              a base mensal deve começar no mês do início financeiro;
+            - se houver atraso no pedido, a base mensal deve começar na primeira competência
+              habilitada após o intervalo do índice, para evidenciar os meses sem efeito financeiro;
+            - portanto, usa-se a menor competência entre o início financeiro e a primeira
+              competência habilitada. Isso preserva casos antigos, evita deslocamento de 1 mês
+              e permite demonstrar competências sem retroativo quando houver lapso.
+            """
+            fim_indice = _fim_intervalo_indice_periodo(ciclo.get('intervalo_indice', ciclo.get('Janela', '')))
+            inicio_fin = _periodo_mensal_seguro(ciclo.get('financeiro_inicio', ''))
+
+            if fim_indice is not None and inicio_fin is not None:
+                primeira_habilitada = fim_indice + 1
+                return min(inicio_fin, primeira_habilitada).strftime('%d/%m/%Y')
+            if inicio_fin is not None:
+                return inicio_fin.strftime('%d/%m/%Y')
+            if fim_indice is not None:
+                return (fim_indice + 1).strftime('%d/%m/%Y')
+            return ciclo.get('financeiro_inicio', '')
 
         # PARAMETROS_REAJUSTE
         parametros = pd.DataFrame([
@@ -815,6 +892,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         for ciclo in ciclos:
             situacao = str(ciclo.get('situacao', ''))
             tratamento = 'Precluso' if 'PRECLUSO' in situacao.upper() else 'A apurar'
+            competencias_sem_efeito = _competencias_sem_efeito_financeiro(ciclo)
             ciclos_rows.append({
                 'Ciclo': ciclo.get('ciclo', ''),
                 'Data-base': ciclo.get('data_base', ''),
@@ -835,10 +913,13 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
                 'Percentual aplicado': ciclo.get('percentual_aplicado', ciclo.get('variacao', 0.0)),
                 'Justificativa negocial': ciclo.get('justificativa_negocial', ''),
                 'Referência documental': ciclo.get('referencia_documental', ''),
+                'Meses sem efeito financeiro': len(competencias_sem_efeito),
+                'Competências sem efeito financeiro': ', '.join(competencias_sem_efeito),
             })
         df_ciclos = pd.DataFrame(ciclos_rows)
         df_ciclos.to_excel(writer, sheet_name='CICLOS', index=False)
         ws = writer.sheets['CICLOS']
+        ws.hide_gridlines(2)
         ws.set_tab_color(cor_aba_automatica)
         ws.set_column('A:A', 12)
         ws.set_column('B:H', 24)
@@ -847,18 +928,29 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws.set_column('L:L', 34)
         ws.set_column('M:Q', 26)
         ws.set_column('R:S', 16)
-        ws.set_column('T:U', 42, fmt_text_wrap)
+        ws.set_column('T:U', 42, fmt_text_wrap_no_border)
+        ws.set_column('V:V', 18)
+        ws.set_column('W:W', 42, fmt_text_wrap_no_border)
         for col, title in enumerate(df_ciclos.columns):
-            ws.write(0, col, title, fmt_header)
+            ws.write(0, col, title, fmt_header_no_border)
         for row in range(1, len(df_ciclos) + 1):
             data_base_excel = pd.to_datetime(df_ciclos.iloc[row-1]['Data-base'], dayfirst=True, errors='coerce')
             if pd.notna(data_base_excel):
-                ws.write_datetime(row, 1, data_base_excel.to_pydatetime(), fmt_date_no_border if row in [1, 2, 3] else fmt_date)
-            ws.write(row, 8, df_ciclos.iloc[row-1]['Variação'], workbook.add_format({'num_format': '0.00%'}))
-            ws.write(row, 9, df_ciclos.iloc[row-1]['Fator'], workbook.add_format({'num_format': '0.0000'}))
-            ws.write(row, 10, df_ciclos.iloc[row-1]['Fator acumulado'], workbook.add_format({'num_format': '0.0000'}))
-            ws.write(row, 11, df_ciclos.iloc[row-1]['Tratamento financeiro do ciclo'], workbook.add_format({}))
-            fmt_percentual_ciclos = fmt_percent
+                ws.write_datetime(row, 1, data_base_excel.to_pydatetime(), fmt_date_no_border)
+            meses_sem_efeito = int(df_ciclos.iloc[row-1].get('Meses sem efeito financeiro', 0) or 0)
+            inicio_financeiro_excel = pd.to_datetime(df_ciclos.iloc[row-1].get('Início financeiro', ''), dayfirst=True, errors='coerce')
+            if pd.notna(inicio_financeiro_excel):
+                ws.write_datetime(row, 5, inicio_financeiro_excel.to_pydatetime(), fmt_gap_date_no_border if meses_sem_efeito > 0 else fmt_date_no_border)
+            elif meses_sem_efeito > 0:
+                ws.write(row, 5, df_ciclos.iloc[row-1].get('Início financeiro', ''), fmt_gap_text_no_border)
+            if meses_sem_efeito > 0:
+                ws.write(row, df_ciclos.columns.get_loc('Meses sem efeito financeiro'), meses_sem_efeito, fmt_gap_text_no_border)
+                ws.write(row, df_ciclos.columns.get_loc('Competências sem efeito financeiro'), df_ciclos.iloc[row-1].get('Competências sem efeito financeiro', ''), fmt_gap_text_wrap_no_border)
+            ws.write(row, 8, df_ciclos.iloc[row-1]['Variação'], fmt_percent_no_border)
+            ws.write(row, 9, df_ciclos.iloc[row-1]['Fator'], fmt_factor_no_border)
+            ws.write(row, 10, df_ciclos.iloc[row-1]['Fator acumulado'], fmt_factor_no_border)
+            ws.write(row, 11, df_ciclos.iloc[row-1]['Tratamento financeiro do ciclo'], fmt_no_border)
+            fmt_percentual_ciclos = fmt_percent_no_border
             if 'Percentual apurado pelo índice' in df_ciclos.columns:
                 col_pct_indice = df_ciclos.columns.get_loc('Percentual apurado pelo índice')
                 ws.write(row, col_pct_indice, df_ciclos.iloc[row-1]['Percentual apurado pelo índice'], fmt_percentual_ciclos)
@@ -867,38 +959,61 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
                 ws.write(row, col_pct_aplicado, df_ciclos.iloc[row-1]['Percentual aplicado'], fmt_percentual_ciclos)
             if 'Justificativa negocial' in df_ciclos.columns:
                 col_justificativa = df_ciclos.columns.get_loc('Justificativa negocial')
-                ws.write(row, col_justificativa, df_ciclos.iloc[row-1]['Justificativa negocial'], fmt_text_wrap)
+                ws.write(row, col_justificativa, df_ciclos.iloc[row-1]['Justificativa negocial'], fmt_text_wrap_no_border)
             if 'Referência documental' in df_ciclos.columns:
                 col_referencia = df_ciclos.columns.get_loc('Referência documental')
-                ws.write(row, col_referencia, df_ciclos.iloc[row-1]['Referência documental'], fmt_text_wrap)
+                ws.write(row, col_referencia, df_ciclos.iloc[row-1]['Referência documental'], fmt_text_wrap_no_border)
 
         # BASE_EXECUCAO_MENSAL
         financeiro_rows = []
         for ciclo in ciclos:
             ciclo_nome = ciclo.get('ciclo', '')
-            for competencia in _competencias_mensais(ciclo.get('financeiro_inicio', ''), ciclo.get('financeiro_fim', '')):
-                financeiro_rows.append({'Ciclo': ciclo_nome, 'Competência': competencia, 'Valor bruto medido/aprovado por competência': ''})
+            competencias_sem_efeito = set(_competencias_sem_efeito_financeiro(ciclo))
+            inicio_base_execucao = _primeira_competencia_base_execucao(ciclo)
+            for competencia in _competencias_mensais(inicio_base_execucao, ciclo.get('financeiro_fim', '')):
+                financeiro_rows.append({
+                    'Ciclo': ciclo_nome,
+                    'Competência': competencia,
+                    'Valor bruto medido/aprovado por competência': '',
+                    'Competência sem efeito financeiro?': 'Sim' if competencia in competencias_sem_efeito else 'Não',
+                    'Observação sobre efeito financeiro': 'Competência anterior ao início dos efeitos financeiros do pedido; não compõe retroativo a pagar.' if competencia in competencias_sem_efeito else '',
+                })
         if not financeiro_rows:
-            financeiro_rows.append({'Ciclo': '', 'Competência': '', 'Valor bruto medido/aprovado por competência': ''})
+            financeiro_rows.append({'Ciclo': '', 'Competência': '', 'Valor bruto medido/aprovado por competência': '', 'Competência sem efeito financeiro?': '', 'Observação sobre efeito financeiro': ''})
         df_fin = pd.DataFrame(financeiro_rows)
         df_fin.to_excel(writer, sheet_name='BASE_EXECUCAO_MENSAL', index=False)
         ws = writer.sheets['BASE_EXECUCAO_MENSAL']
-        ws.set_column('A:A', 12)
-        ws.set_column('B:B', 18)
-        ws.set_column('C:C', 24)
+        ws.hide_gridlines(2)
+        ws.set_column('A:A', 12, fmt_no_border)
+        ws.set_column('B:B', 18, fmt_no_border)
+        ws.set_column('C:C', 24, fmt_input_money_no_border)
+        ws.set_column('D:D', 22, fmt_no_border)
+        ws.set_column('E:E', 58, fmt_text_wrap_no_border)
         for col, title in enumerate(df_fin.columns):
-            ws.write(0, col, title, fmt_header)
+            ws.write(0, col, title, fmt_header_no_border)
         for row in range(1, len(df_fin) + 1):
-            ws.write(row, 2, '', fmt_input_money)
+            sem_efeito_linha = str(df_fin.iloc[row-1].get('Competência sem efeito financeiro?', '')).strip().upper() == 'SIM'
+            if sem_efeito_linha:
+                ws.write(row, 0, df_fin.iloc[row-1].get('Ciclo', ''), fmt_gap_text_no_border)
+                ws.write(row, 1, df_fin.iloc[row-1].get('Competência', ''), fmt_gap_text_no_border)
+                ws.write(row, 2, '', fmt_gap_input_money_no_border)
+                ws.write(row, 3, 'Sim', fmt_gap_text_no_border)
+                ws.write(row, 4, df_fin.iloc[row-1].get('Observação sobre efeito financeiro', ''), fmt_gap_text_wrap_no_border)
+            else:
+                ws.write(row, 0, df_fin.iloc[row-1].get('Ciclo', ''), fmt_no_border)
+                ws.write(row, 1, df_fin.iloc[row-1].get('Competência', ''), fmt_no_border)
+                ws.write(row, 2, '', fmt_input_money_no_border)
+                ws.write(row, 3, df_fin.iloc[row-1].get('Competência sem efeito financeiro?', ''), fmt_no_border)
+                ws.write(row, 4, df_fin.iloc[row-1].get('Observação sobre efeito financeiro', ''), fmt_text_wrap_no_border)
         total_row_fin = len(df_fin) + 1
         ultima_linha_fin_excel = len(df_fin) + 1
-        ws.write(total_row_fin, 0, 'TOTAL', fmt_total)
-        ws.write(total_row_fin, 1, '', fmt_total)
-        ws.write_formula(total_row_fin, 2, f'=ROUND(SUM(C2:C{ultima_linha_fin_excel}),2)', fmt_total_money)
+        ws.write(total_row_fin, 0, 'TOTAL', fmt_total_no_border)
+        ws.write(total_row_fin, 1, '', fmt_total_no_border)
+        ws.write_formula(total_row_fin, 2, f'=ROUND(SUM(C2:C{ultima_linha_fin_excel}),2)', fmt_total_money_no_border)
         orientacao_row_fin = total_row_fin + 2
-        ws.write(orientacao_row_fin, 0, 'Orientação', fmt_total)
-        ws.merge_range(orientacao_row_fin, 1, orientacao_row_fin, 2, 'Preencha a base mensal por competência com o valor bruto demandado, medido ou aprovado. Se o valor vier de consumo itemizado, informe a competência de execução/faturamento e confirme, na observação do processo, se não houve glosas, descontos, retenções, notas substituídas ou divergências entre consumo, medição e faturamento. A diferença entre estoque inicial e remanescente pode apoiar a apuração física, mas não substitui automaticamente esta base mensal.', fmt_text_wrap)
-        ws.set_row(orientacao_row_fin, 78)
+        ws.write(orientacao_row_fin, 0, 'Orientação', fmt_total_no_border)
+        ws.merge_range(orientacao_row_fin, 1, orientacao_row_fin, 4, 'Preencha a base mensal por competência com o valor bruto demandado, medido ou aprovado. Competências marcadas como sem efeito financeiro devem ser informadas para memória, mas não compõem o retroativo a pagar. Se o valor vier de consumo itemizado, informe a competência de execução/faturamento e confirme, na observação do processo, se não houve glosas, descontos, retenções, notas substituídas ou divergências entre consumo, medição e faturamento.', fmt_text_wrap_no_border)
+        ws.set_row(orientacao_row_fin, 92)
 
         # ITENS_REMANESCENTES
         ws_it = workbook.add_worksheet('ITENS_REMANESCENTES')
@@ -918,20 +1033,31 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws_it.set_column(2, 3, 22)
         if rem_cols:
             ws_it.set_column(4, 4 + len(rem_cols) - 1, 25)
-        for row in range(2, 200):
+        linhas_itens_iniciais = 180
+        primeira_linha_dados = 2
+        ultima_linha_dados = primeira_linha_dados + linhas_itens_iniciais - 1
+        for row in range(primeira_linha_dados, ultima_linha_dados + 1):
             ws_it.write(row, 0, '', fmt_text)       # A sem preenchimento
             ws_it.write(row, 1, '', fmt_number)     # B sem preenchimento
             ws_it.write(row, 2, '', fmt_money)      # C sem preenchimento
             ws_it.write_formula(row, 3, f'=IF(OR(B{row+1}="",C{row+1}=""),"",ROUND(B{row+1}*C{row+1},2))', fmt_money_auto)
             for col in range(4, 4 + len(rem_cols)):
                 ws_it.write(row, col, '', fmt_input_num)
-        ws_it.write(200, 0, 'TOTAL', fmt_total)
-        ws_it.write(200, 1, '', fmt_total)
-        ws_it.write(200, 2, '', fmt_total)
-        ws_it.write_formula(200, 3, '=ROUND(SUM(D3:D200),2)', fmt_total_money)
+
+        total_row_itens = ultima_linha_dados + 1
+        # Não usar tabela estruturada do Excel aqui: em algumas instalações o XML da tabela
+        # foi reparado/removido pelo Excel. A linha TOTAL permanece dinâmica porque as
+        # fórmulas abaixo se ajustam quando novas linhas são inseridas acima dela.
+        ws_it.write(total_row_itens, 0, 'TOTAL', fmt_total)
+        ws_it.write(total_row_itens, 1, '', fmt_total)
+        ws_it.write(total_row_itens, 2, '', fmt_total)
+        ws_it.write_formula(total_row_itens, 3, f'=ROUND(SUM(D3:D{ultima_linha_dados + 1}),2)', fmt_total_money)
         for col in range(4, 4 + len(rem_cols)):
             col_letter = chr(ord('A') + col)
-            ws_it.write_formula(200, col, f'=SUM({col_letter}3:{col_letter}200)', fmt_total_num)
+            ws_it.write_formula(total_row_itens, col, f'=SUM({col_letter}3:{col_letter}{ultima_linha_dados + 1})', fmt_total_num)
+        ws_it.write(total_row_itens + 2, 0, 'Orientação', fmt_total)
+        ws_it.merge_range(total_row_itens + 2, 1, total_row_itens + 2, max(3, len(headers) - 1), 'A linha TOTAL é dinâmica por fórmula. Há 180 linhas disponíveis para preenchimento. Para acrescentar mais itens, insira novas linhas acima da linha TOTAL; as fórmulas de total serão ajustadas pelo Excel. Não utilizar tabela estruturada nesta aba.', fmt_text_wrap)
+        ws_it.set_row(total_row_itens + 2, 58)
 
         # ADITIVOS_QUANTITATIVOS
         ws_ad = workbook.add_worksheet('ADITIVOS_QUANTITATIVOS')

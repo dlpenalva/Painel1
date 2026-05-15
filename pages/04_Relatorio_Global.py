@@ -70,6 +70,87 @@ def fator_fmt(valor):
     return f"{valor:.4f}".replace(".", ",")
 
 
+
+def _normalizar_modo_apuracao(valor):
+    texto = texto_seguro(valor, "")
+    texto = texto.lower()
+    mapa = str.maketrans("áàâãéêíóôõúç", "aaaaeeiooouc")
+    texto = texto.translate(mapa)
+    return re.sub(r"\s+", " ", texto).strip()
+
+
+def eh_modo_reduzido_itens(res):
+    if not isinstance(res, dict):
+        return False
+    modo = _normalizar_modo_apuracao(res.get("modo_apuracao", ""))
+    return "reduzido" in modo and ("item" in modo or "estoque" in modo)
+
+
+def valor_retroativo_estimado_itens(res):
+    if not isinstance(res, dict):
+        return 0.0
+    for chave in [
+        "valor_retroativo_estimado_itens_estoque",
+        "retroativo_estimado_itens_estoque",
+        "valor_retroativo_itens_estoque",
+        "retroativo_itens_estoque",
+    ]:
+        if chave in res:
+            try:
+                return float(res.get(chave) or 0)
+            except Exception:
+                return 0.0
+    return 0.0
+
+
+def df_retroativo_estimado_itens(res):
+    if not isinstance(res, dict):
+        return pd.DataFrame()
+    df = res.get("df_retroativo_estimado_itens_estoque")
+    if isinstance(df, pd.DataFrame):
+        return df
+    return pd.DataFrame()
+
+
+def indicadores_executivos_relatorio(res):
+    if eh_modo_reduzido_itens(res):
+        return [
+            ["Indicador", "Valor"],
+            ["Modo de apuração", texto_seguro(res.get("modo_apuracao"), "Reduzido por Itens/Estoque")],
+            ["Valor original", moeda(res.get("valor_original_contrato", 0))],
+            ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)))],
+            ["Retroativo financeiro definitivo", "Não calculado"],
+            ["Retroativo estimado por itens/estoque", moeda(valor_retroativo_estimado_itens(res))],
+            ["Execução estimada por itens/estoque", moeda(res.get("valor_executado_atualizado", 0))],
+            ["Saldo remanescente atualizado", moeda(res.get("remanescente_reajustado", 0))],
+            ["Aditivos/supressões registrados", moeda(res.get("total_aditivos_atualizados", 0))],
+            ["Base mensal por competência", "Não informada"],
+        ]
+    return [
+        ["Indicador", "Valor"],
+        ["Valor original", moeda(res.get("valor_original_contrato", 0))],
+        ["Valor pago efetivo", moeda(res.get("total_pago_faturado", 0))],
+        ["Valor teórico calculado", moeda(res.get("total_devido_reajustado", 0))],
+        ["Valor represado a pagar", moeda(res.get("valor_represado_a_pagar", 0))],
+        ["Valor executado atualizado por ciclos", moeda(res.get("valor_executado_atualizado", 0))],
+        ["Saldo remanescente atualizado", moeda(res.get("remanescente_reajustado", 0))],
+        ["Valor total de aditivos/supressões", moeda(res.get("total_aditivos_atualizados", 0))],
+        ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)))],
+    ]
+
+
+def aviso_modo_reduzido_html():
+    return """
+    <div class="modo-reduzido-box">
+        <div class="modo-reduzido-titulo">Modo Reduzido por Itens/Estoque</div>
+        <div class="modo-reduzido-texto">
+            A análise foi processada sem base mensal por competência. O retroativo financeiro definitivo não é calculado neste modo.
+            O valor exibido como retroativo estimado por itens/estoque possui natureza estimativa e deve ser validado antes de qualquer formalização de pagamento.
+        </div>
+    </div>
+    """
+
+
 def formatar_data_br(valor):
     data = pd.to_datetime(valor, dayfirst=True, errors="coerce")
     if pd.isna(data):
@@ -240,18 +321,64 @@ def texto_contexto_analise(adm, res):
     resumo_ciclos = "; ".join(classificacoes) if classificacoes else "sem ciclos de reajuste informados"
 
     contexto_txt = texto_contexto_contrato(res)
+    if eh_modo_reduzido_itens(res):
+        modo_txt = (
+            "A análise foi processada em Modo Reduzido por Itens/Estoque, sem base mensal por competência. "
+            "Nesse cenário, o retroativo financeiro definitivo não é calculado; apresenta-se apenas o retroativo estimado por itens/estoque, com natureza estimativa. "
+        )
+    else:
+        modo_txt = "O bloco financeiro serve para apurar o valor represado/retroativo. "
     return (
         "A análise consolida a admissibilidade dos pleitos de reajuste e a quantificação financeira apurada com base no Arquivo de Coleta. "
         "O C0 é tratado como ciclo-base inicial, sem aplicação de reajuste. "
         f"Foram considerados {qtd_ciclos} ciclo(s) de reajuste: {resumo_ciclos}. "
         f"Índice utilizado: {indice}. Fator acumulado considerado: {fator_fmt(fator)}. "
         "O Valor Total Atualizado do Contrato mantém a composição execução atualizada por ciclo + saldo remanescente atualizado. "
-        "O bloco financeiro serve para apurar o valor represado/retroativo. Aditivos e supressões são apresentados como eventos de controle e governança, sem soma autônoma quando seus efeitos já estiverem refletidos na execução ou no saldo remanescente. "
+        f"{modo_txt}"
+        "Aditivos e supressões são apresentados como eventos de controle e governança, sem soma autônoma quando seus efeitos já estiverem refletidos na execução ou no saldo remanescente. "
         f"{contexto_txt}"
     )
 
 
 def gerar_texto_instrucao(adm, res):
+    if eh_modo_reduzido_itens(res):
+        df_ri = df_retroativo_estimado_itens(res)
+        tabela_ri = "Sem tabela detalhada disponível."
+        if isinstance(df_ri, pd.DataFrame) and not df_ri.empty:
+            tabela_ri = df_visual(
+                df_ri,
+                moeda_cols=["Valor executado original", "Valor executado atualizado", "Retroativo estimado por itens/estoque"],
+            ).to_string(index=False)
+
+        return f"""
+RELATÓRIO EXECUTIVO — VALOR ATUALIZADO DO CONTRATO
+
+1. Síntese dos ciclos
+
+{_ciclos_df_para_relatorio(adm, res).to_string(index=False)}
+
+2. Modo de apuração
+
+A análise foi processada em Modo Reduzido por Itens/Estoque, sem base mensal por competência. Por essa razão, o retroativo financeiro definitivo não foi calculado. O valor abaixo possui natureza estimativa e foi apurado a partir das informações de itens/remanescentes disponíveis.
+
+Retroativo financeiro definitivo: Não calculado
+Retroativo estimado por itens/estoque: {moeda(valor_retroativo_estimado_itens(res))}
+Execução estimada por itens/estoque: {moeda(res.get('valor_executado_atualizado', 0))}
+Saldo remanescente atualizado: {moeda(res.get('remanescente_reajustado', 0))}
+
+3. Retroativo estimado por itens/estoque
+
+{tabela_ri}
+
+4. Consolidação contratual
+
+Valor original do contrato: {moeda(res.get('valor_original_contrato', 0))}
+Valor Total Atualizado do Contrato: {moeda(res.get('valor_atualizado_contrato', res.get('valor_global_estoque', 0)))}
+Aditivos/supressões registrados para controle: {moeda(res.get('total_aditivos_atualizados', 0))}
+
+Data/hora de geração: {datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')}
+""".strip()
+
     return f"""
 RELATÓRIO EXECUTIVO — VALOR ATUALIZADO DO CONTRATO
 
@@ -364,17 +491,22 @@ def criar_pdf_relatorio(adm, res):
         story.append(tabela_dataframe_pdf(df_ciclos_rel, max_linhas=20))
 
     story.append(Paragraph("3. Indicadores Executivos", styles["Subtitulo"]))
-    story.append(tabela_pdf([
-        ["Indicador", "Valor"],
-        ["Valor original", moeda(res.get("valor_original_contrato", 0))],
-        ["Valor pago efetivo", moeda(res.get("total_pago_faturado", 0))],
-        ["Valor teórico calculado", moeda(res.get("total_devido_reajustado", 0))],
-        ["Valor represado a pagar", moeda(res.get("valor_represado_a_pagar", 0))],
-        ["Valor executado atualizado por ciclos", moeda(res.get("valor_executado_atualizado", 0))],
-        ["Saldo remanescente atualizado", moeda(res.get("remanescente_reajustado", 0))],
-        ["Valor total de aditivos/supressões", moeda(res.get("total_aditivos_atualizados", 0))],
-        ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)))],
-    ], header=True, col_widths=[8.5 * cm, 8.5 * cm]))
+    story.append(tabela_pdf(indicadores_executivos_relatorio(res), header=True, col_widths=[8.5 * cm, 8.5 * cm]))
+
+    if eh_modo_reduzido_itens(res):
+        story.append(Paragraph("3.1. Modo Reduzido por Itens/Estoque", styles["Subtitulo"]))
+        story.append(Paragraph(
+            "A análise foi processada sem base mensal por competência. O retroativo financeiro definitivo não é calculado neste modo. "
+            "O valor de retroativo estimado por itens/estoque possui natureza estimativa e deve ser validado antes de qualquer formalização de pagamento.",
+            styles["Texto"],
+        ))
+        df_ri_pdf = df_retroativo_estimado_itens(res)
+        if isinstance(df_ri_pdf, pd.DataFrame) and not df_ri_pdf.empty:
+            df_ri_pdf = df_visual(
+                df_ri_pdf,
+                moeda_cols=["Valor executado original", "Valor executado atualizado", "Retroativo estimado por itens/estoque"],
+            )
+            story.append(tabela_dataframe_pdf(df_ri_pdf, max_linhas=20))
 
     story.append(Paragraph("4. Financeiro por Ciclo", styles["Subtitulo"]))
     df_fin = df_visual(
@@ -538,6 +670,45 @@ def aplicar_css_responsivo_relatorio():
                 padding: 8px 10px;
                 min-height: 76px;
             }
+        }
+
+        .modo-reduzido-box {
+            background: #F3E8FF;
+            border: 1px solid #A855F7;
+            border-left: 8px solid #7E22CE;
+            border-radius: 14px;
+            padding: 18px 22px;
+            margin: 12px 0 18px 0;
+        }
+        .modo-reduzido-titulo {
+            color: #581C87;
+            font-weight: 900;
+            font-size: 1.02rem;
+            margin-bottom: 7px;
+        }
+        .modo-reduzido-texto {
+            color: #3B0764;
+            font-size: 0.95rem;
+            line-height: 1.45;
+        }
+        .modo-reduzido-card {
+            background: #F3E8FF;
+            border: 1px solid #A855F7;
+            border-radius: 14px;
+            padding: 16px 18px;
+            margin: 8px 0 16px 0;
+        }
+        .modo-reduzido-card-label {
+            color: #581C87;
+            font-weight: 800;
+            font-size: 0.92rem;
+            margin-bottom: 6px;
+        }
+        .modo-reduzido-card-valor {
+            color: #0F172A;
+            font-size: clamp(1.20rem, 2.10vw, 1.65rem);
+            font-weight: 900;
+            line-height: 1.2;
         }
         </style>
         """,
@@ -893,7 +1064,13 @@ if not res:
 
 aplicar_css_responsivo_relatorio()
 
+modo_reduzido = eh_modo_reduzido_itens(res)
+retroativo_itens_valor = valor_retroativo_estimado_itens(res)
+
 st.subheader("Resumo Executivo")
+if modo_reduzido:
+    st.markdown(aviso_modo_reduzido_html(), unsafe_allow_html=True)
+
 col1, col2 = st.columns(2)
 col1.metric("Índice", res.get("indice", "Não informado"))
 col2.metric("Fator acumulado", fator_fmt(res.get("fator_acumulado", 1.0)))
@@ -908,13 +1085,35 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-col3, col4 = st.columns(2)
-col3.metric("Valor represado a pagar", moeda(res.get("valor_represado_a_pagar", 0)))
-col4.metric("Aditivos/supressões registrados", moeda(res.get("total_aditivos_atualizados", 0)))
+if modo_reduzido:
+    col3, col4 = st.columns(2)
+    col3.metric("Retroativo financeiro definitivo", "Não calculado")
+    with col4:
+        st.markdown(
+            f"""
+            <div class="modo-reduzido-card">
+                <div class="modo-reduzido-card-label">Retroativo estimado por itens/estoque</div>
+                <div class="modo-reduzido-card-valor">{moeda(retroativo_itens_valor)}</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
 
-col5, col6 = st.columns(2)
-col5.metric("Valor pago efetivo", moeda(res.get("total_pago_faturado", 0)))
-col6.metric("Valor teórico calculado", moeda(res.get("total_devido_reajustado", 0)))
+    col5, col6 = st.columns(2)
+    col5.metric("Base mensal por competência", "Não informada")
+    col6.metric("Execução estimada por itens/estoque", moeda(res.get("valor_executado_atualizado", 0)))
+
+    col7, col8 = st.columns(2)
+    col7.metric("Saldo remanescente atualizado", moeda(res.get("remanescente_reajustado", 0)))
+    col8.metric("Aditivos/supressões registrados", moeda(res.get("total_aditivos_atualizados", 0)))
+else:
+    col3, col4 = st.columns(2)
+    col3.metric("Valor represado a pagar", moeda(res.get("valor_represado_a_pagar", 0)))
+    col4.metric("Aditivos/supressões registrados", moeda(res.get("total_aditivos_atualizados", 0)))
+
+    col5, col6 = st.columns(2)
+    col5.metric("Valor pago efetivo", moeda(res.get("total_pago_faturado", 0)))
+    col6.metric("Valor teórico calculado", moeda(res.get("total_devido_reajustado", 0)))
 
 st.divider()
 
@@ -931,6 +1130,23 @@ with tab2:
         use_container_width=True,
         hide_index=True,
     )
+
+    if modo_reduzido:
+        st.markdown("### Retroativo estimado por itens/estoque")
+        st.markdown(aviso_modo_reduzido_html(), unsafe_allow_html=True)
+        st.metric("Retroativo estimado por itens/estoque", moeda(retroativo_itens_valor))
+        df_ri = df_retroativo_estimado_itens(res)
+        if isinstance(df_ri, pd.DataFrame) and not df_ri.empty:
+            st.dataframe(
+                df_visual(
+                    df_ri,
+                    moeda_cols=["Valor executado original", "Valor executado atualizado", "Retroativo estimado por itens/estoque"],
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.info("Tabela detalhada do retroativo estimado por itens/estoque não disponível nesta sessão.")
 
     st.markdown("### Composição do Valor Total Atualizado do Contrato")
     st.caption("Composição considerada: execução atualizada por ciclo + saldo remanescente atualizado. Aditivos/supressões são demonstrados separadamente para controle, sem soma autônoma ao total.")
@@ -985,6 +1201,18 @@ with tab3:
 
 with tab4:
     st.markdown("### Gerar Minuta de Termo de Apostilamento")
+    if modo_reduzido:
+        st.markdown(
+            """
+            <div class="modo-reduzido-box">
+                <div class="modo-reduzido-titulo">Atenção: minuta em Modo Reduzido</div>
+                <div class="modo-reduzido-texto">
+                    A análise foi processada sem base mensal por competência. Recomenda-se validar a base financeira antes de usar a minuta para formalização de pagamento ou apostilamento.
+                </div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     st.info(
         "A minuta é gerada em DOCX editável. Os dados disponíveis no sistema são preenchidos automaticamente; "
         "as informações ainda não cadastradas permanecem como [campo a preencher]."

@@ -127,6 +127,8 @@ def obter_contexto_valor_global(resultado_valor_global):
     remanescente_atualizado = numero_para_input(resultado_valor_global.get("remanescente_reajustado", 0.0))
     variacao_acumulada = numero_para_input(resultado_valor_global.get("variacao_acumulada", 0.0))
     quantidade_aditivos = int(numero_para_input(resultado_valor_global.get("quantidade_aditivos_total", 0)))
+    modo_apuracao = limpar_texto(resultado_valor_global.get("modo_apuracao", ""))
+    retroativo_estimado_itens = numero_para_input(resultado_valor_global.get("valor_retroativo_estimado_itens_estoque", 0.0))
 
     df_aditivos = resultado_valor_global.get("df_aditivos_executivo", pd.DataFrame())
     if not isinstance(df_aditivos, pd.DataFrame):
@@ -144,6 +146,8 @@ def obter_contexto_valor_global(resultado_valor_global):
         "remanescente_atualizado": remanescente_atualizado,
         "variacao_acumulada": variacao_acumulada,
         "quantidade_aditivos": quantidade_aditivos,
+        "modo_apuracao": modo_apuracao,
+        "retroativo_estimado_itens": retroativo_estimado_itens,
         "df_aditivos": df_aditivos,
         "df_ciclos": df_ciclos,
     }
@@ -635,6 +639,7 @@ st.title("Garantia Contratual")
 st.write("Escolha o método de cálculo da garantia. O Método Delta calcula o reforço do evento atual; a Linha do Tempo Completa serve para conferência histórica.")
 
 resultado_valor_global = st.session_state.get("resultado_valor_global", {}) or {}
+modo_apuracao_vg = resultado_valor_global.get("modo_apuracao", "Completo") if isinstance(resultado_valor_global, dict) else "Completo"
 ctx = obter_contexto_valor_global(resultado_valor_global)
 
 valor_original_padrao = ctx["valor_original"]
@@ -642,6 +647,17 @@ valor_total_atualizado_padrao = ctx["valor_total_atualizado"]
 variacao_acumulada_padrao = ctx["variacao_acumulada"]
 df_aditivos_importado = ctx["df_aditivos"]
 df_ciclos_importado = ctx["df_ciclos"]
+modo_reduzido_estoque = ctx.get("modo_apuracao") == "Reduzido por Itens/Estoque"
+if modo_reduzido_estoque:
+    st.markdown(
+        """
+        <div style="background:#F3E8FF; border:1px solid #A855F7; border-left:6px solid #7E22CE; border-radius:12px; padding:14px 16px; margin:10px 0 16px 0; color:#581C87;">
+            <div style="font-weight:800; margin-bottom:4px;">Modo Reduzido por Itens/Estoque</div>
+            <div style="font-size:0.95rem; line-height:1.45;">A base da garantia pode decorrer de estimativa por itens/remanescentes, sem conciliação com a base mensal de execução. Use como apoio operacional e valide a base antes da formalização.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 metodo_garantia = st.radio(
     "Método de cálculo da garantia",
@@ -667,7 +683,11 @@ if metodo_garantia == "Método 1 — Delta da Garantia":
                 st.metric("Valor Total Atualizado do Contrato", moeda(valor_total_atualizado_padrao))
             with col_c:
                 st.metric("Aditivos identificados", int(ctx.get("quantidade_aditivos", 0)))
-            st.caption("Esses dados são apenas referências. O Método Delta usa o valor-base do evento informado abaixo.")
+            if modo_reduzido_estoque:
+                st.metric("Retroativo estimado por itens/estoque", moeda(ctx.get("retroativo_estimado_itens", 0.0)))
+                st.caption("Esses dados são estimativos quando o Valor Global foi processado sem base de execução mensal por competência. O Método Delta usa o valor-base do evento informado abaixo.")
+            else:
+                st.caption("Esses dados são apenas referências. O Método Delta usa o valor-base do evento informado abaixo.")
         else:
             st.info("Não há dados do módulo Valores na sessão atual. Informe os dados manualmente.")
 
@@ -777,6 +797,8 @@ if metodo_garantia == "Método 1 — Delta da Garantia":
 
     st.session_state["resultado_garantia"] = {
         "metodo_garantia": "Delta da Garantia",
+        "modo_apuracao_valor_global": modo_apuracao_vg,
+        "base_estimativa_por_itens_estoque": modo_apuracao_vg == "Reduzido por Itens/Estoque",
         "tipo_evento": tipo_evento,
         "valor_base_evento": valor_base_evento,
         "percentual_garantia": percentual_garantia,

@@ -322,6 +322,8 @@ def montar_saneador_integrado(df_infos, resultado_vg, resultado_garantia, df_che
         adequacao_valor = "[campo a preencher]"
 
     vg_disponivel = isinstance(resultado_vg, dict) and bool(resultado_vg)
+    modo_apuracao = texto_seguro(resultado_vg.get("modo_apuracao") if vg_disponivel else None, "Completo")
+    modo_reduzido_estoque = modo_apuracao == "Reduzido por Itens/Estoque"
 
     indice_resultado = texto_seguro(resultado_vg.get("indice") if vg_disponivel else None, indice_info)
     qtd_ciclos = texto_seguro(resultado_vg.get("quantidade_ciclos") if vg_disponivel else None)
@@ -370,6 +372,8 @@ def montar_saneador_integrado(df_infos, resultado_vg, resultado_garantia, df_che
         (
             f"5. A apuração financeira consolidada indicou valor pago efetivo de {valor_pago} e valor teórico calculado de {valor_teorico}, "
             f"resultando em valor represado a pagar de {valor_represado}.{delta_ciclos}"
+            if not modo_reduzido_estoque else
+            "5. A área gestora encaminhou as informações exclusivamente sob a forma de itens e saldos remanescentes, sem apresentar a base de execução mensal por competência solicitada pela Gerência de Compras e Contratos. Essa base mensal é necessária para conferir o valor bruto medido/aprovado em cada competência e para identificar eventuais glosas, descontos, retenções, notas substituídas ou divergências entre consumo, medição e faturamento. Por essa razão, a presente análise foi processada em modo reduzido, com natureza estimativa, não substituindo a validação financeira prévia à formalização de pagamento."
         ),
         (
             f"6. Para fins de consolidação contratual, o Valor Total Atualizado do Contrato foi apurado em {valor_total}, composto pela "

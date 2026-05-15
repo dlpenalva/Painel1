@@ -120,6 +120,20 @@ def fator_de_valor(valor, variacao=None):
     return 1.0
 
 
+
+def fator_operacional(valor):
+    """Fator financeiro operacional usado no Valor Global.
+
+    Regra de estabilidade: preservar o padrão histórico da ferramenta,
+    usando o fator de cada ciclo com 4 casas decimais. Isso evita divergências
+    entre o XLS de coleta, a planilha executiva e o cálculo do site causadas
+    por casas decimais residuais dos índices.
+    """
+    try:
+        return round(float(valor), 4)
+    except Exception:
+        return 1.0
+
 def localizar_coluna(df, opcoes):
     """Localiza uma coluna com base em alternativas normalizadas."""
     colunas_norm = {normalizar_texto(c): c for c in df.columns}
@@ -544,16 +558,18 @@ def padronizar_ciclos(df):
                 tratamento_negativo = "Ciclo negativo - percentual aplicado 0,00% no acumulado"
             if "ciclo negativo" not in normalizar_texto(str(situacao_aplicada)):
                 situacao_aplicada = f"{situacao_aplicada} | CICLO NEGATIVO (APLICADO 0,00%)"
-        fator = fator_de_valor(row.get(col_fator, None) if col_fator else None, variacao=variacao)
+        fator = fator_operacional(fator_de_valor(row.get(col_fator, None) if col_fator else None, variacao=variacao))
+        # Preserva o padrão histórico da ferramenta: percentuais/fatores operacionais
+        # são calculados com o fator do ciclo em 4 casas decimais.
+        variacao = fator - 1
         if ciclo_negativo and not superacao_negocial:
             fator = 1.0
+            variacao = 0.0
 
-        if col_fator_acum:
-            fator_acum = fator_de_valor(row.get(col_fator_acum, None), variacao=None)
-            if fator_acum <= 0:
-                fator_acum = fator_acumulado_calculado * fator
-        else:
-            fator_acum = fator_acumulado_calculado * fator
+        # Não usar o fator acumulado importado com casas residuais para cálculo financeiro.
+        # A ferramenta deve reproduzir o padrão histórico da Planilha Executiva:
+        # produto dos fatores de ciclo arredondados a 4 casas.
+        fator_acum = fator_acumulado_calculado * fator
 
         # Fator acumulado efetivo para cálculos financeiros: não aplica ciclo precluso/adiantado comum.
         if (not superacao_negocial) and (contem_preclusao_ou_adiantamento(situacao_automatica or situacao) or tratamento_sem_retroativo(tratamento, situacao_automatica or situacao)):
@@ -642,6 +658,73 @@ def parse_intervalo_mensal(intervalo):
     return None, None
 
 
+def normalizar_competencia_periodo(valor):
+    if valor is None:
+        return None
+    try:
+        if pd.isna(valor):
+            return None
+    except Exception:
+        pass
+    if isinstance(valor, pd.Period):
+        return valor.asfreq("M")
+    try:
+        dt = pd.to_datetime(valor, dayfirst=True, errors="coerce")
+        if pd.notna(dt):
+            return dt.to_period("M")
+    except Exception:
+        pass
+    texto = str(valor).strip().lower()
+    if not texto or texto in ["nan", "none", "nat", "total"]:
+        return None
+    texto = texto.replace(".", "/").replace("-", "/")
+    meses = {
+        "jan": 1, "janeiro": 1, "fev": 2, "fevereiro": 2, "mar": 3, "marco": 3, "março": 3,
+        "abr": 4, "abril": 4, "mai": 5, "maio": 5, "jun": 6, "junho": 6,
+        "jul": 7, "julho": 7, "ago": 8, "agosto": 8, "set": 9, "setembro": 9,
+        "out": 10, "outubro": 10, "nov": 11, "novembro": 11, "dez": 12, "dezembro": 12,
+    }
+    m = re.search(r"([a-zçãéíóú]+)\s*/\s*(\d{2,4})", texto, flags=re.IGNORECASE)
+    if m:
+        mes_txt = normalizar_texto(m.group(1))
+        ano = int(m.group(2))
+        if ano < 100:
+            ano += 2000
+        mes = meses.get(mes_txt)
+        if mes:
+            return pd.Period(f"{ano}-{mes:02d}", freq="M")
+    m = re.search(r"(\d{1,2})\s*/\s*(\d{2,4})", texto)
+    if m:
+        mes = int(m.group(1)); ano = int(m.group(2))
+        if 1 <= mes <= 12:
+            if ano < 100:
+                ano += 2000
+            return pd.Period(f"{ano}-{mes:02d}", freq="M")
+    return None
+
+
+def periodo_para_label_br(periodo):
+    if periodo is None:
+        return ""
+    try:
+        p = pd.Period(periodo, freq="M")
+        return f"{p.month:02d}/{p.year}"
+    except Exception:
+        return ""
+
+
+def inicio_financeiro_periodo_por_ciclo(ciclos):
+    mapa = {}
+    if not isinstance(ciclos, pd.DataFrame) or ciclos.empty:
+        return mapa
+    for _, row in ciclos.iterrows():
+        ciclo = normalizar_ciclo(row.get("Ciclo", ""))
+        inicio = normalizar_competencia_periodo(row.get("Início financeiro", ""))
+        if ciclo and inicio is not None:
+            mapa[ciclo] = inicio
+    return mapa
+
+
 def atribuir_ciclo_por_competencia(competencias, ciclos):
     intervalos = []
     for _, row in ciclos.iterrows():
@@ -651,9 +734,8 @@ def atribuir_ciclo_por_competencia(competencias, ciclos):
 
     atribuidos = []
     for comp in competencias:
-        try:
-            periodo = pd.to_datetime(comp).to_period("M")
-        except Exception:
+        periodo = normalizar_competencia_periodo(comp)
+        if periodo is None:
             atribuidos.append("")
             continue
 
@@ -798,34 +880,100 @@ def mapa_fatores(ciclos):
     return mapa
 
 
-def calcular_financeiro_por_ciclo(df_financeiro, ciclos):
-    fatores = mapa_fatores(ciclos)
-    linhas = []
+def financeiro_com_efeito_financeiro(df_financeiro, ciclos):
+    """Aplica a regra pétrea de efeito financeiro por competência.
 
-    for ciclo, grupo in df_financeiro.groupby("Ciclo", dropna=False):
-        ciclo = normalizar_ciclo(ciclo) or "C1"
-        total_pago = float(grupo["Valor pago/faturado"].sum())
+    Competências anteriores ao início financeiro do ciclo são mantidas em memória,
+    mas não geram delta/retroativo a pagar. Isso evita pagar o lapso entre a data
+    em que o reajuste poderia produzir efeitos e a data em que o pedido foi feito.
+    """
+    if df_financeiro is None or not isinstance(df_financeiro, pd.DataFrame) or df_financeiro.empty:
+        return pd.DataFrame(columns=[
+            "Ciclo", "Competência", "Valor pago/faturado", "Competência sem efeito financeiro?",
+            "Fator aplicado", "Valor teórico calculado", "Delta computável", "Delta sem efeito financeiro"
+        ])
+
+    fatores = mapa_fatores(ciclos)
+    inicios_fin = inicio_financeiro_periodo_por_ciclo(ciclos)
+    linhas = []
+    for _, row in df_financeiro.iterrows():
+        ciclo = normalizar_ciclo(row.get("Ciclo", "")) or "C1"
+        comp = row.get("Competência", "")
+        periodo = normalizar_competencia_periodo(comp)
+        valor = numero_seguro(row.get("Valor pago/faturado", 0.0), 0.0)
         info = fatores.get(ciclo, {})
-        fator_retroativo = float(info.get("fator_retroativo", 1.0))
-        situacao = info.get("situacao", "")
-        tratamento = info.get("tratamento", "")
-        devido = total_pago * fator_retroativo
-        delta = devido - total_pago
+        fator_retroativo = float(info.get("fator_retroativo", 1.0) or 1.0)
+        inicio_fin = inicios_fin.get(ciclo)
+        sem_efeito = False
+        if periodo is not None and inicio_fin is not None and periodo < inicio_fin:
+            sem_efeito = True
+        valor_teorico = valor if sem_efeito else valor * fator_retroativo
+        delta_computavel = 0.0 if sem_efeito else (valor_teorico - valor)
+        delta_sem_efeito = (valor * fator_retroativo - valor) if sem_efeito else 0.0
         linhas.append({
             "Ciclo": ciclo,
-            "Situação": situacao,
-            "Tratamento financeiro": tratamento,
-            "Fator aplicado ao retroativo": fator_retroativo,
-            "Valor pago efetivo": total_pago,
-            "Valor teórico calculado": devido,
-            "Delta do ciclo": delta,
+            "Competência": periodo_para_label_br(periodo) or str(comp),
+            "Valor pago/faturado": valor,
+            "Competência sem efeito financeiro?": "Sim" if sem_efeito else "Não",
+            "Fator aplicado": 1.0 if sem_efeito else fator_retroativo,
+            "Valor teórico calculado": valor_teorico,
+            "Delta computável": delta_computavel,
+            "Delta sem efeito financeiro": delta_sem_efeito,
+            "Situação": info.get("situacao", ""),
+            "Tratamento financeiro": info.get("tratamento", ""),
         })
+    return pd.DataFrame(linhas)
 
-    if not linhas:
+
+def meses_sem_efeito_financeiro(df_financeiro, ciclos):
+    """Consolida competências que existem apenas como memória, sem efeito financeiro.
+
+    Regra pétrea: quando o pedido foi apresentado depois do marco em que o ciclo
+    poderia produzir efeitos, as competências do lapso são demonstradas, mas o
+    delta teórico desses meses não compõe o retroativo a pagar.
+    """
+    df = financeiro_com_efeito_financeiro(df_financeiro, ciclos)
+    colunas = [
+        "Ciclo", "Competência", "Valor base", "Fator teórico", "Valor teórico se aplicado",
+        "Delta não devido", "Fundamento"
+    ]
+    if df.empty:
+        return pd.DataFrame(columns=colunas)
+    df = df[df["Competência sem efeito financeiro?"].astype(str).str.upper().eq("SIM")].copy()
+    if df.empty:
+        return pd.DataFrame(columns=colunas)
+    df["Valor base"] = df["Valor pago/faturado"]
+    df["Fator teórico"] = df.apply(lambda r: (r["Valor pago/faturado"] + r["Delta sem efeito financeiro"]) / r["Valor pago/faturado"] if abs(r["Valor pago/faturado"]) > 0.004 else 1.0, axis=1)
+    df["Valor teórico se aplicado"] = (df["Valor pago/faturado"] + df["Delta sem efeito financeiro"]).round(2)
+    df["Delta não devido"] = df["Delta sem efeito financeiro"].round(2)
+    df["Fundamento"] = "Competência anterior ao início dos efeitos financeiros do pedido; demonstrada apenas para memória, sem compor o retroativo a pagar."
+    return df[colunas].reset_index(drop=True)
+
+
+def calcular_financeiro_por_ciclo(df_financeiro, ciclos):
+    df_mensal = financeiro_com_efeito_financeiro(df_financeiro, ciclos)
+    if df_mensal.empty:
         return pd.DataFrame(columns=[
             "Ciclo", "Situação", "Tratamento financeiro", "Fator aplicado ao retroativo",
             "Valor pago efetivo", "Valor teórico calculado", "Delta do ciclo"
         ])
+
+    linhas = []
+    for ciclo, grupo in df_mensal.groupby("Ciclo", dropna=False):
+        ciclo = normalizar_ciclo(ciclo) or "C1"
+        total_pago = float(grupo["Valor pago/faturado"].sum())
+        devido = float(grupo["Valor teórico calculado"].sum())
+        delta = float(grupo["Delta computável"].sum())
+        info = mapa_fatores(ciclos).get(ciclo, {})
+        linhas.append({
+            "Ciclo": ciclo,
+            "Situação": info.get("situacao", grupo["Situação"].iloc[0] if "Situação" in grupo else ""),
+            "Tratamento financeiro": info.get("tratamento", grupo["Tratamento financeiro"].iloc[0] if "Tratamento financeiro" in grupo else ""),
+            "Fator aplicado ao retroativo": float(info.get("fator_retroativo", 1.0) or 1.0),
+            "Valor pago efetivo": total_pago,
+            "Valor teórico calculado": devido,
+            "Delta do ciclo": delta,
+        })
 
     df = pd.DataFrame(linhas).sort_values(by="Ciclo", key=lambda s: s.map(numero_ciclo)).reset_index(drop=True)
     df.loc[len(df)] = {
@@ -1175,6 +1323,54 @@ def gerar_planilha_executiva(resultado):
             return workbook.add_format(base)
 
         # ====================================================
+        # Aba 0 - Conferência Executiva
+        # ====================================================
+        ws_conf = workbook.add_worksheet("CONFERENCIA")
+        writer.sheets["CONFERENCIA"] = ws_conf
+        ws_conf.write(0, 0, "Conferência Executiva", fmt_title)
+        ws_conf.write(1, 0, "Quadro executivo da apuração, com destaque obrigatório para competências sem efeito financeiro.", fmt_note_wrap)
+        conf_linhas = [
+            ("Modo de apuração", resultado.get("modo_apuracao", "Completo"), "text"),
+            ("Valor Total Atualizado do Contrato", resultado.get("valor_atualizado_contrato", 0.0), "money_bold"),
+            ("Valor represado a pagar", resultado.get("valor_represado_a_pagar", 0.0), "money"),
+            ("Meses sem efeitos financeiros", int(resultado.get("quantidade_meses_sem_efeito_financeiro", 0) or 0), "text"),
+            ("Valor total sem efeito financeiro", resultado.get("valor_total_sem_efeito_financeiro", 0.0), "money"),
+            ("Observação", "Competências sem efeito financeiro são demonstradas para memória e transparência, mas o delta teórico não compõe o retroativo a pagar.", "text"),
+        ]
+        ws_conf.write(3, 0, "Indicador", fmt_subtitle)
+        ws_conf.write(3, 1, "Valor", fmt_subtitle)
+        for r, (label, value, tipo) in enumerate(conf_linhas, start=4):
+            ws_conf.write(r, 0, label, fmt_text)
+            if tipo == "money":
+                ws_conf.write_number(r, 1, numero_seguro(value, 0.0), fmt_money)
+            elif tipo == "money_bold":
+                ws_conf.write_number(r, 1, numero_seguro(value, 0.0), fmt_money_bold)
+            else:
+                ws_conf.write(r, 1, str(value), fmt_text_wrap if label == "Observação" else fmt_text)
+        df_ef_conf = limpar_nan_inf_df(resultado.get("df_meses_sem_efeito_financeiro", pd.DataFrame())).copy()
+        start_ef = 12
+        ws_conf.write(start_ef, 0, "Detalhamento dos meses sem efeito financeiro", fmt_section)
+        if not df_ef_conf.empty:
+            for c_idx, col in enumerate(df_ef_conf.columns):
+                ws_conf.write(start_ef + 1, c_idx, col, fmt_subtitle)
+            for r_idx, (_, row) in enumerate(df_ef_conf.iterrows(), start=start_ef + 2):
+                for c_idx, col in enumerate(df_ef_conf.columns):
+                    value = row.get(col, "")
+                    if col in ["Valor base", "Valor teórico se aplicado", "Delta não devido"]:
+                        ws_conf.write_number(r_idx, c_idx, numero_seguro(value, 0.0), fmt_red_money if col == "Delta não devido" else fmt_money)
+                    elif col == "Fator teórico":
+                        ws_conf.write_number(r_idx, c_idx, numero_seguro(value, 1.0), fmt_factor)
+                    else:
+                        ws_conf.write(r_idx, c_idx, texto_seguro(value, ""), fmt_text_wrap)
+        else:
+            ws_conf.write(start_ef + 1, 0, "Não foram identificadas competências sem efeito financeiro.", fmt_text)
+        ws_conf.set_column("A:A", 36)
+        ws_conf.set_column("B:B", 32)
+        ws_conf.set_column("C:F", 24)
+        ws_conf.set_column("G:G", 90)
+        ws_conf.set_row(1, 42)
+
+        # ====================================================
         # Aba 1 - Resumo Financeiro
         # ====================================================
         ws = workbook.add_worksheet("RESUMO_FINANCEIRO")
@@ -1193,6 +1389,8 @@ def gerar_planilha_executiva(resultado):
             ("Valor pago efetivo", resultado.get("valor_pago_efetivo", 0.0), "money"),
             ("Valor teórico calculado", resultado.get("valor_teorico_calculado", 0.0), "money"),
             ("Valor represado a pagar", resultado.get("valor_represado_a_pagar", 0.0), "money"),
+            ("Meses sem efeitos financeiros", resultado.get("quantidade_meses_sem_efeito_financeiro", 0), "text"),
+            ("Valor total sem efeito financeiro", resultado.get("valor_total_sem_efeito_financeiro", 0.0), "money"),
             ("Saldo remanescente atualizado", resultado.get("remanescente_reajustado", 0.0), "money"),
             ("Aditivos/Supressões registrados (informativo)", resultado.get("total_aditivos_atualizados", 0.0), "money"),
             ("Aditivos/Supressões informativos", resultado.get("total_aditivos_informativos", 0.0), "money"),
@@ -1363,6 +1561,36 @@ def gerar_planilha_executiva(resultado):
             ws_c.write(3, 0, "Não há composição disponível.", fmt_text)
 
         # ====================================================
+        # Aba - Retroativo estimado por itens/estoque
+        # ====================================================
+        ws_ri = workbook.add_worksheet("RETROATIVO_ITENS")
+        writer.sheets["RETROATIVO_ITENS"] = ws_ri
+        ws_ri.write(0, 0, "Retroativo estimado por itens/estoque", fmt_title)
+        ws_ri.write(1, 0, "Apuração estimativa usada quando não há base de execução mensal por competência. Não substitui retroativo financeiro definitivo.", fmt_note_wrap)
+        df_ri = limpar_nan_inf_df(resultado.get("df_retroativo_estimado_itens_estoque", pd.DataFrame())).copy()
+        if not df_ri.empty:
+            for c_idx, col in enumerate(df_ri.columns):
+                ws_ri.write(3, c_idx, col, fmt_subtitle)
+            for r_idx, (_, row) in enumerate(df_ri.iterrows(), start=4):
+                for c_idx, col in enumerate(df_ri.columns):
+                    value = row.get(col, "")
+                    if col in ["Valor executado original", "Valor executado atualizado", "Retroativo estimado por itens/estoque"]:
+                        ws_ri.write_number(r_idx, c_idx, numero_seguro(value, 0.0), fmt_money)
+                    else:
+                        ws_ri.write(r_idx, c_idx, texto_seguro(value, ""), fmt_text_wrap)
+            total_row = 4 + len(df_ri)
+            ws_ri.write(total_row, 0, "TOTAL", fmt_subtitle)
+            if "Retroativo estimado por itens/estoque" in df_ri.columns:
+                col_total = list(df_ri.columns).index("Retroativo estimado por itens/estoque")
+                ws_ri.write_number(total_row, col_total, numero_seguro(resultado.get("valor_retroativo_estimado_itens_estoque", 0.0), 0.0), fmt_money_bold)
+        else:
+            ws_ri.write(3, 0, "Não há retroativo estimado por itens/estoque disponível.", fmt_text)
+        ws_ri.set_column("A:A", 18)
+        ws_ri.set_column("B:D", 28)
+        ws_ri.set_column("E:F", 70)
+        ws_ri.set_row(1, 44)
+
+        # ====================================================
         # Aba 5 - Contexto do Contrato
         # ====================================================
         ws_ctx = workbook.add_worksheet("CONTEXTO_CONTRATO")
@@ -1411,7 +1639,44 @@ def gerar_planilha_executiva(resultado):
         ws_ctx.set_row(1, 50)
 
         # ====================================================
-        # Aba 6 - Auditoria de Consistência
+        # Aba 6 - Efeitos Financeiros
+        # ====================================================
+        ws_ef = workbook.add_worksheet("EFEITOS_FINANCEIROS")
+        writer.sheets["EFEITOS_FINANCEIROS"] = ws_ef
+        ws_ef.write(0, 0, "Efeitos Financeiros — Competências sem efeito", fmt_title)
+        ws_ef.write(1, 0, "Regra: competências anteriores ao início dos efeitos financeiros do pedido são demonstradas para memória, mas o delta teórico não compõe o retroativo a pagar.", fmt_note_wrap)
+        df_ef = limpar_nan_inf_df(resultado.get("df_meses_sem_efeito_financeiro", pd.DataFrame())).copy()
+        if not df_ef.empty:
+            for c_idx, col in enumerate(df_ef.columns):
+                ws_ef.write(3, c_idx, col, fmt_subtitle)
+            for r_idx, (_, row) in enumerate(df_ef.iterrows(), start=4):
+                for c_idx, col in enumerate(df_ef.columns):
+                    value = row.get(col, "")
+                    if col in ["Valor base", "Valor teórico se aplicado", "Delta não devido"]:
+                        ws_ef.write_number(r_idx, c_idx, numero_seguro(value, 0.0), fmt_red_money if col == "Delta não devido" else fmt_money)
+                    elif col == "Fator teórico":
+                        ws_ef.write_number(r_idx, c_idx, numero_seguro(value, 1.0), fmt_factor)
+                    else:
+                        ws_ef.write(r_idx, c_idx, texto_seguro(value, ""), fmt_text_wrap)
+            total_row = len(df_ef) + 5
+            ws_ef.write(total_row, 0, "TOTAL SEM EFEITO FINANCEIRO", fmt_subtitle)
+            try:
+                col_delta_total = list(df_ef.columns).index("Delta não devido")
+            except Exception:
+                col_delta_total = 5
+            ws_ef.write_number(total_row, col_delta_total, numero_seguro(resultado.get("valor_total_sem_efeito_financeiro", 0.0), 0.0), fmt_red_money)
+        else:
+            ws_ef.write(3, 0, "Não foram identificadas competências sem efeito financeiro.", fmt_text)
+        ws_ef.set_column("A:A", 12)
+        ws_ef.set_column("B:B", 16)
+        ws_ef.set_column("C:C", 20)
+        ws_ef.set_column("D:D", 18)
+        ws_ef.set_column("E:F", 24)
+        ws_ef.set_column("G:G", 90)
+        ws_ef.set_row(1, 42)
+
+        # ====================================================
+        # Aba 7 - Auditoria de Consistência
         # ====================================================
         ws_aud = workbook.add_worksheet("AUDITORIA_CONSISTENCIA")
         writer.sheets["AUDITORIA_CONSISTENCIA"] = ws_aud
@@ -1499,6 +1764,45 @@ def calcular_execucao_por_diferenca(itens, colunas_remanescentes, ciclos):
         df = df.sort_values(by="Ciclo", key=lambda s: s.map(numero_ciclo)).reset_index(drop=True)
     return df
 
+
+
+def montar_retroativo_estimado_por_itens(df_execucao):
+    """Calcula o Retroativo estimado por itens/estoque no Modo Reduzido.
+
+    Conceito: quando não há base de execução mensal por competência, o sistema
+    não calcula retroativo financeiro definitivo. Ainda assim, é possível
+    demonstrar uma estimativa a partir da execução física apurada por diferença
+    de estoque/remanescentes.
+
+    Retroativo estimado por itens/estoque = valor executado atualizado -
+    valor executado original, por ciclo, excluindo C0/base.
+    """
+    colunas = [
+        "Ciclo", "Valor executado original", "Valor executado atualizado",
+        "Retroativo estimado por itens/estoque", "Natureza da apuração", "Observação"
+    ]
+    if df_execucao is None or not isinstance(df_execucao, pd.DataFrame) or df_execucao.empty:
+        return pd.DataFrame(columns=colunas)
+    df = df_execucao.copy()
+    if "Ciclo" not in df.columns:
+        return pd.DataFrame(columns=colunas)
+    df = df[~df["Ciclo"].astype(str).str.upper().eq("C0")].copy()
+    if df.empty:
+        return pd.DataFrame(columns=colunas)
+    for col in ["Valor executado original", "Valor executado atualizado"]:
+        if col not in df.columns:
+            df[col] = 0.0
+        df[col] = df[col].apply(numero_seguro)
+    df["Retroativo estimado por itens/estoque"] = (
+        df["Valor executado atualizado"] - df["Valor executado original"]
+    ).round(2)
+    df["Natureza da apuração"] = "Estimativa por itens/estoque"
+    df["Observação"] = (
+        "Estimativa calculada pela diferença entre o valor executado atualizado e "
+        "o valor executado original, com base nos itens/remanescentes informados. "
+        "Não substitui a base de execução mensal por competência."
+    )
+    return df[colunas].reset_index(drop=True)
 
 def _marcos_ciclos_para_aditivos(ciclos):
     """Retorna marcos de ciclo com início/fim em datetime para enquadrar aditivos.
@@ -1805,6 +2109,8 @@ def montar_comparativo_executivo(
     total_aditivos,
     total_aditivos_informativos=0.0,
     quantidade_aditivos_total=0,
+    quantidade_meses_sem_efeito=0,
+    valor_total_sem_efeito=0.0,
 ):
     valor_original_num = numero_seguro(valor_original, 0.0)
     valor_formalizado_num = numero_seguro(valor_formalizado_anterior, valor_original_num)
@@ -1821,6 +2127,8 @@ def montar_comparativo_executivo(
         {"Indicador": "Valor pago efetivo", "Valor": total_pago},
         {"Indicador": "Valor teórico calculado", "Valor": total_devido},
         {"Indicador": "Valor represado a pagar", "Valor": delta_total},
+        {"Indicador": "Meses sem efeitos financeiros", "Valor": int(quantidade_meses_sem_efeito or 0)},
+        {"Indicador": "Valor total sem efeito financeiro", "Valor": valor_total_sem_efeito},
         {"Indicador": "Saldo remanescente original", "Valor": rem_original},
         {"Indicador": "Saldo remanescente atualizado", "Valor": rem_atualizado},
         {"Indicador": "Aditivos/Supressões registrados (informativo)", "Valor": total_aditivos},
@@ -2185,8 +2493,36 @@ def processar_arquivo_coleta(bytes_arquivo):
     params = ler_parametros(bytes_arquivo, xls)
     contexto_contratual = contexto_contratual_de_parametros(params, bytes_arquivo, xls)
     ciclos, origem_ciclos = ler_ciclos(bytes_arquivo, xls)
-    financeiro = ler_financeiro(bytes_arquivo, xls, ciclos)
+
+    try:
+        financeiro = ler_financeiro(bytes_arquivo, xls, ciclos)
+        base_execucao_mensal_disponivel = not financeiro.empty
+        aviso_base_execucao = ""
+    except Exception as exc:
+        financeiro = pd.DataFrame(columns=["Ciclo", "Competência", "Valor pago/faturado"])
+        base_execucao_mensal_disponivel = False
+        aviso_base_execucao = str(exc)
+
     itens, colunas_remanescentes = ler_itens(bytes_arquivo, xls)
+    base_itens_disponivel = (not itens.empty) and bool(colunas_remanescentes)
+
+    if not base_execucao_mensal_disponivel and not base_itens_disponivel:
+        raise ValueError("Processamento inviável: não foram localizadas base de execução mensal nem informações suficientes de itens/remanescentes.")
+
+    if base_execucao_mensal_disponivel and base_itens_disponivel:
+        modo_apuracao = "Completo"
+    elif base_execucao_mensal_disponivel:
+        modo_apuracao = "Financeiro/Base de execução mensal"
+    else:
+        modo_apuracao = "Reduzido por Itens/Estoque"
+
+    ressalva_modo_apuracao = ""
+    if modo_apuracao == "Reduzido por Itens/Estoque":
+        ressalva_modo_apuracao = (
+            "A apuração foi realizada sem base de execução mensal por competência. "
+            "Os resultados financeiros possuem natureza estimativa, calculada a partir de itens/remanescentes, "
+            "e devem ser validados antes da formalização de pagamento."
+        )
 
     # Remove linhas de total ou vazias da base de itens.
     if "Item" in itens.columns:
@@ -2213,9 +2549,19 @@ def processar_arquivo_coleta(bytes_arquivo):
             "Fator ciclo efetivo": fator,
         }])
 
+    # Base mensal tratada pela regra pétrea de efeito financeiro.
+    # Competências anteriores ao início financeiro do ciclo permanecem em memória,
+    # mas não compõem o retroativo a pagar.
+    df_financeiro_mensal_tratado = financeiro_com_efeito_financeiro(financeiro, ciclos)
+    df_meses_sem_efeito = meses_sem_efeito_financeiro(financeiro, ciclos)
+    quantidade_meses_sem_efeito = int(len(df_meses_sem_efeito)) if isinstance(df_meses_sem_efeito, pd.DataFrame) else 0
+    valor_total_sem_efeito = float(df_meses_sem_efeito["Delta não devido"].apply(numero_seguro).sum()) if quantidade_meses_sem_efeito and "Delta não devido" in df_meses_sem_efeito.columns else 0.0
+
     df_fin_por_ciclo = calcular_financeiro_por_ciclo(financeiro, ciclos)
     df_rem, ciclo_ultimo_rem = calcular_remanescentes_valor(itens, colunas_remanescentes, ciclos)
     df_execucao = calcular_execucao_por_diferenca(itens, colunas_remanescentes, ciclos)
+    df_retroativo_estimado_itens = montar_retroativo_estimado_por_itens(df_execucao)
+    valor_retroativo_estimado_itens = float(df_retroativo_estimado_itens["Retroativo estimado por itens/estoque"].apply(numero_seguro).sum()) if not df_retroativo_estimado_itens.empty else 0.0
     df_valores_unitarios = construir_valores_unitarios_totais(itens, colunas_remanescentes, ciclos)
     df_aditivos = ler_aditivos(bytes_arquivo, xls, ciclos)
     df_aditivos_executivo = consolidar_aditivos_executivo(df_aditivos)
@@ -2298,6 +2644,8 @@ def processar_arquivo_coleta(bytes_arquivo):
         total_aditivos_atualizados,
         total_aditivos_informativos,
         len(df_aditivos_executivo),
+        quantidade_meses_sem_efeito,
+        valor_total_sem_efeito,
     )
 
     df_delta_por_ciclo = montar_delta_por_ciclo(df_fin_por_ciclo, df_execucao, ciclos)
@@ -2309,6 +2657,11 @@ def processar_arquivo_coleta(bytes_arquivo):
 
     resultado = {
         "data_processamento": agora_brasilia().strftime("%d/%m/%Y %H:%M"),
+        "modo_apuracao": modo_apuracao,
+        "base_execucao_mensal_disponivel": bool(base_execucao_mensal_disponivel),
+        "base_itens_disponivel": bool(base_itens_disponivel),
+        "aviso_base_execucao": aviso_base_execucao,
+        "ressalva_modo_apuracao": ressalva_modo_apuracao,
         "origem_ciclos": origem_ciclos,
         "indice": indice,
         "fator_acumulado": fator_acumulado,
@@ -2325,6 +2678,10 @@ def processar_arquivo_coleta(bytes_arquivo):
         "delta_total": delta_total,
         "delta_acumulado": delta_total,
         "valor_represado_a_pagar": round(valor_represado_a_pagar, 2),
+        "valor_retroativo_estimado_itens_estoque": round(valor_retroativo_estimado_itens, 2),
+        "retroativo_estimado_itens_estoque_disponivel": bool(abs(valor_retroativo_estimado_itens) > 0.004),
+        "quantidade_meses_sem_efeito_financeiro": quantidade_meses_sem_efeito,
+        "valor_total_sem_efeito_financeiro": round(valor_total_sem_efeito, 2),
         "remanescente_original": round(remanescente_original, 2),
         "remanescente_reajustado": round(remanescente_atualizado, 2),
         "fator_remanescente": fator_remanescente,
@@ -2341,9 +2698,12 @@ def processar_arquivo_coleta(bytes_arquivo):
         "ciclo_ultimo_remanescente": ciclo_ultimo_rem,
         "df_ciclos": ciclos,
         "df_financeiro_mensal": financeiro,
+        "df_financeiro_mensal_tratado": df_financeiro_mensal_tratado,
+        "df_meses_sem_efeito_financeiro": df_meses_sem_efeito,
         "df_financeiro_por_ciclo": df_fin_por_ciclo,
         "df_delta_por_ciclo": df_delta_por_ciclo,
         "df_execucao_atualizada": df_execucao,
+        "df_retroativo_estimado_itens_estoque": df_retroativo_estimado_itens,
         "df_composicao_valor_total": df_composicao_valor_total,
         "df_remanescentes": df_rem,
         "df_valores_unitarios_ciclo": df_valores_unitarios,
@@ -2853,6 +3213,7 @@ def gerar_pdf_linha_tempo_contrato(resultado):
         ["Índice", str(resultado.get("indice", "-")), "Ciclos", str(resultado.get("quantidade_ciclos", "-"))],
         ["Reajuste acumulado", percentual(resultado.get("variacao_acumulada", 0.0), 2), "Valor Total Atualizado do Contrato", moeda(resultado.get("valor_atualizado_contrato", 0.0))],
         ["Valor represado a pagar", moeda(resultado.get("valor_represado_a_pagar", 0.0)), "Eventos na timeline", str(len(df_eventos))],
+        ["Meses sem efeito financeiro", str(resultado.get("quantidade_meses_sem_efeito_financeiro", 0)), "Valor total sem efeito financeiro", moeda(resultado.get("valor_total_sem_efeito_financeiro", 0.0))],
     ]
     tabela_resumo = Table(resumo, colWidths=[4.2 * cm, 7.0 * cm, 4.8 * cm, 8.0 * cm], repeatRows=1)
     tabela_resumo.setStyle(TableStyle([
@@ -2888,7 +3249,44 @@ def gerar_pdf_linha_tempo_contrato(resultado):
     elementos.append(tabela_contagem)
     elementos.append(Spacer(1, 8))
 
-    elementos.append(Paragraph("2. Linha do tempo executiva", h2))
+    df_efeitos_pdf = resultado.get("df_meses_sem_efeito_financeiro", pd.DataFrame())
+    if isinstance(df_efeitos_pdf, pd.DataFrame) and not df_efeitos_pdf.empty:
+        elementos.append(Paragraph("2. Efeitos financeiros sem retroativo", h2))
+        elementos.append(Paragraph(
+            "As competências abaixo representam o lapso entre a competência em que o reajuste poderia produzir efeitos e o início financeiro decorrente do pedido. O delta teórico é demonstrado, mas não compõe o retroativo a pagar.",
+            normal,
+        ))
+        dados_ef = [[
+            _paragrafo_pdf("Ciclo", celula_branca),
+            _paragrafo_pdf("Competência", celula_branca),
+            _paragrafo_pdf("Valor base", celula_branca),
+            _paragrafo_pdf("Fator teórico", celula_branca),
+            _paragrafo_pdf("Delta não devido", celula_branca),
+        ]]
+        for _, row in df_efeitos_pdf.iterrows():
+            dados_ef.append([
+                _paragrafo_pdf(row.get("Ciclo", ""), celula),
+                _paragrafo_pdf(row.get("Competência", ""), celula),
+                _paragrafo_pdf(moeda(row.get("Valor base", 0.0)), celula),
+                _paragrafo_pdf(fator_fmt(row.get("Fator teórico", 1.0)), celula),
+                _paragrafo_pdf(moeda(row.get("Delta não devido", 0.0)), celula),
+            ])
+        tabela_ef = Table(dados_ef, colWidths=[2.0 * cm, 3.0 * cm, 4.0 * cm, 3.0 * cm, 4.2 * cm], repeatRows=1, hAlign="LEFT")
+        tabela_ef.setStyle(TableStyle([
+            ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#9C0006")),
+            ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+            ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+            ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#E6B8B7")),
+            ("FONTSIZE", (0, 0), (-1, -1), 7.0),
+            ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#FCE4D6")),
+        ]))
+        elementos.append(tabela_ef)
+        elementos.append(Spacer(1, 8))
+        numero_linha_tempo = "3"
+    else:
+        numero_linha_tempo = "2"
+
+    elementos.append(Paragraph(f"{numero_linha_tempo}. Linha do tempo executiva", h2))
     elementos.append(Paragraph(
         "Os eventos abaixo consolidam os marcos de reajuste, pedidos, efeitos financeiros, aditivos, supressões e acordos negociais identificados no processamento.",
         normal,
@@ -3019,7 +3417,7 @@ def aplicar_css_responsivo_telebras():
         [data-testid="stFileUploaderDropzone"] button {
             background: #FFFFFF !important;
             color: #C56A00 !important;
-            border: 1px solid #F59E0B !important;
+            border: 1px solid #A855F7 !important;
             border-radius: 8px !important;
             font-weight: 600 !important;
         }
@@ -3082,11 +3480,6 @@ with st.expander("Contexto da Admissibilidade", expanded=True):
         )
 
 st.subheader("Carregar Arquivo de Coleta")
-st.info(
-    "Para aditivos e supressões, utilize a aba **ADITIVOS_QUANTITATIVOS** do Arquivo de Coleta. "
-    "Na coluna **Tipo de alteração**, selecione Acréscimo ou Decréscimo/Supressão. "
-    "O sistema consolida automaticamente as linhas por aditivo para exibição executiva."
-)
 arquivo = st.file_uploader("Carregue aqui o Arquivo de Coleta preenchido (.xlsx)", type=["xlsx"])
 
 if arquivo is not None:
@@ -3104,6 +3497,37 @@ if resultado:
     st.divider()
     st.subheader("Painel Executivo")
 
+    modo_apuracao_ui = resultado.get("modo_apuracao", "Completo")
+    base_execucao_ok_ui = bool(resultado.get("base_execucao_mensal_disponivel", True))
+    if modo_apuracao_ui == "Reduzido por Itens/Estoque":
+        st.markdown(
+            """
+            <div style="background:#F3E8FF; border:1px solid #A855F7; border-left:6px solid #7E22CE; border-radius:12px; padding:14px 16px; margin:10px 0 16px 0; color:#581C87;">
+                <div style="font-weight:800; margin-bottom:4px;">Modo Reduzido por Itens/Estoque</div>
+                <div style="font-size:0.95rem; line-height:1.45;">A base mensal por competência não foi informada. Os resultados por itens/estoque são estimativos e não substituem a validação financeira para pagamento.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+    else:
+        st.caption(f"Modo de apuração: {modo_apuracao_ui}.")
+
+    df_sem_efeito_ui = resultado.get("df_meses_sem_efeito_financeiro", pd.DataFrame())
+    if isinstance(df_sem_efeito_ui, pd.DataFrame) and not df_sem_efeito_ui.empty:
+        st.warning(
+            "Foram identificadas competências sem efeito financeiro no retroativo. "
+            "Esses meses permanecem em memória, mas o respectivo delta não compõe o valor a pagar."
+        )
+        ef_col1, ef_col2 = st.columns(2)
+        ef_col1.metric("Meses sem efeitos financeiros", int(resultado.get("quantidade_meses_sem_efeito_financeiro", len(df_sem_efeito_ui))))
+        ef_col2.metric("Valor total sem efeito financeiro", moeda(resultado.get("valor_total_sem_efeito_financeiro", 0.0)))
+        with st.expander("Meses sem efeito financeiro considerados na apuração", expanded=True):
+            st.dataframe(
+                formatar_dataframe_moeda(df_sem_efeito_ui, colunas_moeda=["Valor base", "Delta não devido"]),
+                use_container_width=True,
+                hide_index=True,
+            )
+
     col1, col2 = st.columns(2)
     valor_original_painel = numero_seguro(resultado.get("valor_original_contrato", 0.0), 0.0)
     valor_formalizado_painel = numero_seguro(resultado.get("valor_formalizado_anterior", valor_original_painel), valor_original_painel)
@@ -3113,12 +3537,42 @@ if resultado:
         st.caption("Valor formalizado antes desta análise: " + moeda(valor_formalizado_painel))
 
     colp1, colp2 = st.columns(2)
-    colp1.metric("Valor Pago Efetivo", moeda(resultado["valor_pago_efetivo"]))
-    colp2.metric("Valor Teórico Calculado", moeda(resultado["valor_teorico_calculado"]))
+    if base_execucao_ok_ui:
+        colp1.metric("Valor bruto medido/aprovado", moeda(resultado["valor_pago_efetivo"]))
+        colp2.metric("Valor teórico calculado", moeda(resultado["valor_teorico_calculado"]))
+    else:
+        colp1.metric("Execução estimada por estoque", moeda(resultado.get("valor_executado_atualizado", 0.0)))
+        colp2.metric("Base mensal por competência", "Não informada")
 
     col4, col5 = st.columns(2)
-    col4.metric("Valor Represado a Pagar", moeda(resultado.get("valor_represado_a_pagar", resultado.get("delta_total", 0))))
+    label_represado = "Valor Represado a Pagar" if base_execucao_ok_ui else "Retroativo financeiro definitivo"
+    valor_represado_card = moeda(resultado.get("valor_represado_a_pagar", resultado.get("delta_total", 0))) if base_execucao_ok_ui else "Não calculado"
+    col4.metric(label_represado, valor_represado_card)
     col5.metric("Ciclos", resultado.get("quantidade_ciclos", 0))
+
+    if not base_execucao_ok_ui:
+        retroativo_itens = numero_seguro(resultado.get("valor_retroativo_estimado_itens_estoque", 0.0), 0.0)
+        st.markdown(
+            f"""
+            <div style="background:#F3E8FF; border:1px solid #A855F7; border-left:6px solid #7E22CE; border-radius:14px; padding:16px 18px; margin:10px 0 16px 0;">
+                <div style="color:#581C87; font-weight:800; font-size:0.92rem; margin-bottom:6px;">Retroativo estimado por itens/estoque</div>
+                <div style="color:#0F172A; font-size:1.65rem; font-weight:900; line-height:1.2;">{moeda(retroativo_itens)}</div>
+                <div style="color:#581C87; font-size:0.86rem; margin-top:8px;">Estimativa calculada pela diferença entre a execução atualizada por itens/estoque e a execução original estimada. Não substitui a apuração financeira mensal por competência.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
+        df_retro_itens_ui = resultado.get("df_retroativo_estimado_itens_estoque", pd.DataFrame())
+        if isinstance(df_retro_itens_ui, pd.DataFrame) and not df_retro_itens_ui.empty:
+            with st.expander("Detalhar retroativo estimado por itens/estoque", expanded=False):
+                st.dataframe(
+                    formatar_dataframe_moeda(
+                        df_retro_itens_ui,
+                        colunas_moeda=["Valor executado original", "Valor executado atualizado", "Retroativo estimado por itens/estoque"],
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
 
     st.markdown(
         f"""
@@ -3167,19 +3621,25 @@ if resultado:
 
     with tab1:
         st.markdown("### Painel Financeiro por Ciclo")
-        df_fin = formatar_dataframe_moeda(
-            resultado["df_financeiro_por_ciclo"],
-            colunas_moeda=["Valor pago efetivo", "Valor teórico calculado", "Delta do ciclo"],
-            colunas_fator=["Fator aplicado ao retroativo"],
-        )
-        st.dataframe(df_fin, use_container_width=True, hide_index=True)
-
-        with st.expander("Ver lançamentos mensais importados"):
-            df_mensal = formatar_dataframe_moeda(
-                resultado["df_financeiro_mensal"],
-                colunas_moeda=["Valor pago/faturado"],
+        if not base_execucao_ok_ui:
+            st.warning(
+                "A base de execução mensal por competência não foi informada. "
+                "Por isso, não há cálculo definitivo de retroativo por competência neste processamento."
             )
-            st.dataframe(df_mensal, use_container_width=True, hide_index=True)
+        else:
+            df_fin = formatar_dataframe_moeda(
+                resultado["df_financeiro_por_ciclo"],
+                colunas_moeda=["Valor pago efetivo", "Valor teórico calculado", "Delta do ciclo"],
+                colunas_fator=["Fator aplicado ao retroativo"],
+            )
+            st.dataframe(df_fin, use_container_width=True, hide_index=True)
+
+            with st.expander("Ver lançamentos mensais importados"):
+                df_mensal = formatar_dataframe_moeda(
+                    resultado["df_financeiro_mensal"],
+                    colunas_moeda=["Valor pago/faturado"],
+                )
+                st.dataframe(df_mensal, use_container_width=True, hide_index=True)
 
     with tab2:
         st.markdown("### Valor Total Atualizado do Contrato")
@@ -3254,6 +3714,8 @@ if resultado:
 
     with tab3:
         st.markdown("### Delta por Ciclo")
+        if not base_execucao_ok_ui:
+            st.warning("Sem base mensal por competência, o delta/retroativo por ciclo não é definitivo. A tabela abaixo é apenas controle estimativo/estrutural.")
         df_delta = resultado.get("df_delta_por_ciclo", resultado["df_financeiro_por_ciclo"]).copy()
         if "Ciclo" in df_delta.columns:
             df_delta = df_delta[df_delta["Ciclo"] != "TOTAL"].copy()
@@ -3341,6 +3803,46 @@ if resultado:
         else:
             st.info("Sem contexto contratual anterior informado.")
 
+        if not base_execucao_ok_ui:
+            st.markdown("### Retroativo estimado por itens/estoque")
+            st.markdown(
+                """
+                <div style="background:#F3E8FF; border:1px solid #A855F7; border-left:6px solid #7E22CE; border-radius:12px; padding:12px 14px; margin:8px 0 12px 0; color:#581C87;">
+                    O valor abaixo é estimativo, pois não houve base mensal por competência. Ele deve ser validado antes de qualquer formalização de pagamento.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            df_retro_itens_conf = limpar_nan_inf_df(resultado.get("df_retroativo_estimado_itens_estoque", pd.DataFrame()))
+            st.metric("Retroativo estimado por itens/estoque", moeda(resultado.get("valor_retroativo_estimado_itens_estoque", 0.0)))
+            if not df_retro_itens_conf.empty:
+                st.dataframe(
+                    formatar_dataframe_moeda(
+                        df_retro_itens_conf,
+                        colunas_moeda=["Valor executado original", "Valor executado atualizado", "Retroativo estimado por itens/estoque"],
+                    ),
+                    use_container_width=True,
+                    hide_index=True,
+                )
+
+        st.markdown("### Efeitos financeiros sem retroativo")
+        df_efeitos_conf = limpar_nan_inf_df(resultado.get("df_meses_sem_efeito_financeiro", pd.DataFrame()))
+        cefe1, cefe2 = st.columns(2)
+        cefe1.metric("Meses sem efeitos financeiros", int(resultado.get("quantidade_meses_sem_efeito_financeiro", 0)))
+        cefe2.metric("Valor total sem efeito financeiro", moeda(resultado.get("valor_total_sem_efeito_financeiro", 0.0)))
+        if not df_efeitos_conf.empty:
+            st.dataframe(
+                formatar_dataframe_moeda(
+                    df_efeitos_conf,
+                    colunas_moeda=["Valor base", "Valor teórico se aplicado", "Delta não devido"],
+                    colunas_fator=["Fator teórico"],
+                ),
+                use_container_width=True,
+                hide_index=True,
+            )
+        else:
+            st.caption("Não foram identificadas competências sem efeito financeiro neste processamento.")
+
         st.markdown("### Quadro Executivo")
         st.dataframe(
             formatar_dataframe_moeda(resultado["df_comparativo"], colunas_moeda=["Valor"]),
@@ -3362,4 +3864,4 @@ if resultado:
         )
 
 else:
-    st.info("Carregue e processe o Arquivo de Coleta para visualizar o Valor Global do contrato.")
+    pass
