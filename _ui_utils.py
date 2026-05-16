@@ -119,12 +119,25 @@ def render_aviso_privacidade(tem_upload=False, tem_download=False):
     """Aviso resumido de privacidade para páginas com upload e/ou download."""
     if not tem_upload and not tem_download:
         return
+
     partes = []
+
     if tem_upload:
-        partes.append("Arquivos enviados ficam apenas na memória da sessão — sem gravação em disco ou URL pública.")
+        partes.append(
+            "Os arquivos enviados são usados para processamento na sessão do app e não são enviados ao repositório. "
+            "O upload permanece em memória durante o uso da sessão."
+        )
+
     if tem_download:
-        partes.append("Arquivos gerados são entregues direto ao navegador — sem exposição externa.")
-    partes.append("Ao encerrar a sessão, tudo é removido.")
+        partes.append(
+            "Os documentos gerados são disponibilizados apenas para download pelo navegador."
+        )
+
+    partes.append(
+        "Ao limpar ou substituir o arquivo, ou ao encerrar a aba/sessão, os dados deixam de ser necessários para o processamento. "
+        "Evite carregar dados sigilosos desnecessários e confira os arquivos antes de compartilhar."
+    )
+
     texto = " ".join(partes)
     st.markdown(
         f"""
