@@ -14,8 +14,98 @@ if not st.session_state.get("_calculadora_reajustes_embedded", False):
 
 
 from _ui_utils import render_indice_contrato_selectbox, render_marca_topo
-from _indice_utils import calcular_icti_ipeadata, calcular_ist_numero_indice, coletar_sgs_produtorio
+from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br
+
+# ICTI/IPEADATA_LOCAL_FALLBACK_V1
+ICTI_SERCODIGO_LOCAL = "DIMAC_ICTI2"
+ICTI_API_BASES_LOCAL = [
+    "https://www.ipeadata.gov.br/api/odata4",
+    "http://www.ipeadata.gov.br/api/odata4",
+]
+MESES_PT_ABREV_ICTI = {1:"jan",2:"fev",3:"mar",4:"abr",5:"mai",6:"jun",7:"jul",8:"ago",9:"set",10:"out",11:"nov",12:"dez"}
+
+def _icti_ipeadata_get_json_local(endpoint, timeout=20):
+    ultimo_erro = None
+    headers = {"User-Agent": "Mozilla/5.0 cl8us-icti", "Accept": "application/json"}
+    for base_url in ICTI_API_BASES_LOCAL:
+        try:
+            resposta = requests.get(f"{base_url}/{endpoint}", headers=headers, timeout=timeout)
+            resposta.raise_for_status()
+            return resposta.json()
+        except Exception as exc:
+            ultimo_erro = exc
+    raise RuntimeError(f"Não foi possível consultar o Ipeadata. Último erro: {ultimo_erro}")
+
+@st.cache_data(ttl=60 * 60)
+def _carregar_icti_ipeadata_local(timeout=20):
+    dados = _icti_ipeadata_get_json_local(f"ValoresSerie(SERCODIGO='{ICTI_SERCODIGO_LOCAL}')", timeout=timeout)
+    registros = dados.get("value", []) if isinstance(dados, dict) else []
+    if not registros:
+        raise RuntimeError("A API do Ipeadata retornou a série ICTI vazia.")
+    linhas = []
+    for item in registros:
+        if not isinstance(item, dict):
+            continue
+        data = pd.to_datetime(item.get("VALDATA"), errors="coerce")
+        valor = pd.to_numeric(item.get("VALVALOR"), errors="coerce")
+        if pd.isna(data) or pd.isna(valor):
+            continue
+        data = pd.Timestamp(year=int(data.year), month=int(data.month), day=1).normalize()
+        linhas.append({
+            "data": data,
+            "mes_ano": f"{MESES_PT_ABREV_ICTI[data.month]}/{str(data.year)[-2:]}",
+            "taxa_mensal_percentual": float(valor),
+        })
+    df = pd.DataFrame(linhas)
+    if df.empty:
+        raise RuntimeError("Nenhuma competência válida do ICTI foi identificada no Ipeadata.")
+    df = df.sort_values("data").drop_duplicates(subset=["data"], keep="last").reset_index(drop=True)
+    df["fator_mensal"] = 1 + df["taxa_mensal_percentual"] / 100
+    df["indice_nivel_sintetico"] = 100.0 * df["fator_mensal"].cumprod()
+    return df
+
+def calcular_icti_ipeadata(data_inicio, data_fim=None, timeout=20):
+    if data_inicio is None:
+        return None
+    data_inicio_ts = pd.Timestamp(data_inicio)
+    competencia_proposta = pd.Timestamp(data_inicio_ts.year, data_inicio_ts.month, 1).normalize()
+    competencia_base = (competencia_proposta - relativedelta(months=1)).normalize()
+    data_fim_ts = data_inicio_ts + relativedelta(months=11) if data_fim is None else pd.Timestamp(data_fim)
+    competencia_final = pd.Timestamp(data_fim_ts.year, data_fim_ts.month, 1).normalize()
+    if competencia_final < competencia_proposta:
+        return None
+    df = _carregar_icti_ipeadata_local(timeout=timeout)
+    datas = set(df["data"])
+    if competencia_base not in datas or competencia_final not in datas:
+        return None
+    periodo = df[(df["data"] > competencia_base) & (df["data"] <= competencia_final)].copy()
+    if periodo.empty:
+        return None
+    fator = float(periodo["fator_mensal"].prod())
+    variacao = fator - 1
+    linha_base = df[df["data"] == competencia_base].iloc[0]
+    linha_final = df[df["data"] == competencia_final].iloc[0]
+    periodo["fator_acumulado_progressivo"] = periodo["fator_mensal"].cumprod()
+    dados = periodo[["data", "taxa_mensal_percentual", "fator_mensal", "fator_acumulado_progressivo"]].copy()
+    dados = dados.rename(columns={"taxa_mensal_percentual": "valor"})
+    return {
+        "variacao": variacao,
+        "var": variacao,
+        "i_ini": float(linha_base["indice_nivel_sintetico"]),
+        "i_fim": float(linha_final["indice_nivel_sintetico"]),
+        "d_ini": competencia_base,
+        "d_fim": competencia_final,
+        "p_ini": competencia_base,
+        "p_fim": competencia_final,
+        "competencia_proposta": competencia_proposta,
+        "competencia_indice_base": competencia_base,
+        "competencia_final": competencia_final,
+        "metodo": "ICTI/Ipeadata: produtório das taxas mensais; índice-base = mês anterior à proposta/âncora",
+        "dados": dados,
+        "sercodigo": ICTI_SERCODIGO_LOCAL,
+    }
+
 
 def get_index_data(serie_codigo, data_inicio, data_fim):
     try:
