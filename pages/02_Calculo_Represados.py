@@ -15,7 +15,7 @@ if not st.session_state.get("_calculadora_reajustes_embedded", False):
 
 
 from _ui_utils import render_indice_contrato_selectbox, render_marca_topo
-from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
+from _indice_utils import calcular_icti_ipeadata, calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _data_para_datetime, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br, _percentual_formatado
 
 
@@ -197,7 +197,7 @@ def _render_alerta_indice_ausente(validacao, ciclo_label="C1"):
     if dados:
         st.dataframe(pd.DataFrame(dados), use_container_width=True, hide_index=True)
 
-def get_data_rep(serie, d_ini, d_fim, is_ist):
+def get_data_rep(serie, d_ini, d_fim, is_ist, is_icti=False):
     try:
         if is_ist:
             resultado = calcular_ist_numero_indice(d_ini)
@@ -213,6 +213,22 @@ def get_data_rep(serie, d_ini, d_fim, is_ist):
                 "p_ini": resultado["d_ini"],
                 "p_fim": resultado["d_fim"],
                 "metodo": "Divisão de Número-Índice (IST)",
+                "dados": resultado["dados"],
+            }
+
+        if is_icti:
+            resultado = calcular_icti_ipeadata(d_ini, d_fim, timeout=15)
+            if not resultado:
+                st.error("Dados do ICTI/Ipeadata não encontrados para o intervalo do ciclo.")
+                return None
+            return {
+                "var": resultado["variacao"],
+                "i_ini": resultado["i_ini"],
+                "i_fim": resultado["i_fim"],
+                "p_ini": resultado["d_ini"],
+                "p_fim": resultado["d_fim"],
+                "d_indice_base": resultado.get("d_indice_base"),
+                "metodo": resultado["metodo"],
                 "dados": resultado["dados"],
             }
 
@@ -1854,7 +1870,7 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
     referencia_documental = dados_ciclo.get('referencia_documental', '')
 
     with containers_ciclos[idx_ciclo]:
-        res_c = get_data_rep("433" if "IPCA" in idx_sel else "189", data_atual, d_fim, "IST" in idx_sel)
+        res_c = get_data_rep("433" if "IPCA" in idx_sel else "189", data_atual, d_fim, "IST" in idx_sel, "ICTI" in idx_sel)
 
         # Intervalo exibido independentemente de haver dados disponíveis para o índice.
         if res_c:
@@ -1965,6 +1981,12 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
                         f"**Índice final:** {res_c['i_fim']}"
                     )
                     _render_equacao_ist(res_c)
+                elif "ICTI" in idx_sel:
+                    st.write(f"**Competência da proposta/âncora:** {res_c['p_ini'].strftime('%m/%Y')}")
+                    st.write(f"**Competência do índice-base utilizada:** {pd.to_datetime(res_c.get('d_indice_base')).strftime('%m/%Y')}")
+                    st.write(f"**Competência final:** {res_c['p_fim'].strftime('%m/%Y')}")
+                    st.dataframe(res_c['dados'], use_container_width=True)
+                    st.write("Fórmula: produtório de (1 + taxa_mensal/100), com base no mês anterior à proposta/âncora.")
                 else:
                     st.dataframe(res_c['dados'], use_container_width=True)
                     st.write("Fórmula: Produtório de (1 + taxa_mensal/100) - 1")

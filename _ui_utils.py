@@ -108,10 +108,44 @@ def render_alerta_ist_local():
     )
 
 
+
+
+@st.cache_data(ttl=60 * 60)
+def _obter_ultima_competencia_icti_cache():
+    from _indice_utils import obter_ultima_competencia_icti_ipeadata
+    return obter_ultima_competencia_icti_ipeadata(timeout=15)
+
+
+def render_alerta_icti_ipeadata():
+    """Mostra alerta discreto sobre a última competência ICTI disponível no Ipeadata."""
+    try:
+        ultima = _obter_ultima_competencia_icti_cache()
+        texto = (
+            f"ICTI/Ipeadata: última competência disponível: <strong>{ultima['descricao']}</strong> "
+            f"— série <strong>{ultima['serie']}</strong>. "
+            "O cálculo usa a competência do mês anterior como índice-base e acumula as taxas mensais do período."
+        )
+    except Exception:
+        texto = (
+            "ICTI/Ipeadata: não foi possível consultar a última competência neste momento. "
+            "Verifique a conexão com a internet ou tente novamente."
+        )
+
+    st.markdown(
+        f"""
+        <div style="background:#F8FAFC; border:1px solid #E5EAF0; border-radius:9px;
+                    padding:7px 10px; margin:5px 0 2px 0; color:#475569;
+                    font-size:0.80rem; line-height:1.35;">
+            {texto}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
 def render_indice_contrato_selectbox(key=None, index=0, options=None):
     """Renderiza o campo de índice com destaque visual consistente entre os fluxos."""
     if options is None:
-        options = ["IST (Série Local)", "IPCA (433)", "IGP-M (189)"]
+        options = ["IST (Série Local)", "ICTI (Ipeadata)", "IPCA (433)", "IGP-M (189)"]
 
     with st.container(border=True):
         st.markdown(
@@ -140,8 +174,11 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
         else:
             st.caption(f"Índice selecionado para esta análise: **{selecionado}**.")
 
-        if str(selecionado).strip().upper().startswith("IST"):
+        selecionado_norm = str(selecionado).strip().upper()
+        if selecionado_norm.startswith("IST"):
             render_alerta_ist_local()
+        elif selecionado_norm.startswith("ICTI"):
+            render_alerta_icti_ipeadata()
 
     return selecionado
 

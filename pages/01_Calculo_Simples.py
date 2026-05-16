@@ -14,7 +14,7 @@ if not st.session_state.get("_calculadora_reajustes_embedded", False):
 
 
 from _ui_utils import render_indice_contrato_selectbox, render_marca_topo
-from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
+from _indice_utils import calcular_icti_ipeadata, calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br
 
 def get_index_data(serie_codigo, data_inicio, data_fim):
@@ -27,6 +27,13 @@ def get_index_data(serie_codigo, data_inicio, data_fim):
 def get_ist_local(data_inicio, data_fim):
     try:
         return calcular_ist_numero_indice(data_inicio)
+    except Exception:
+        return None
+
+
+def get_icti_ipeadata(data_inicio, data_fim):
+    try:
+        return calcular_icti_ipeadata(data_inicio, data_fim, timeout=15)
     except Exception:
         return None
 
@@ -1760,7 +1767,12 @@ elif dt_solic <= dt_limite:
 else:
     status_ped = "❌ PRECLUSO"
 
-res = get_ist_local(dt_base, dt_fim_ap) if "IST" in tipo_idx else get_index_data("433" if "IPCA" in tipo_idx else "189", dt_base, dt_fim_ap)
+if "IST" in tipo_idx:
+    res = get_ist_local(dt_base, dt_fim_ap)
+elif "ICTI" in tipo_idx:
+    res = get_icti_ipeadata(dt_base, dt_fim_ap)
+else:
+    res = get_index_data("433" if "IPCA" in tipo_idx else "189", dt_base, dt_fim_ap)
 
 validacao_indice = _validar_indice_disponivel(res, dt_base, dt_fim_ap, tipo_idx)
 if not validacao_indice.get("ok", False):
@@ -1861,6 +1873,12 @@ if res:
         st.write(f"**Metodologia:** {res['metodo']}")
         if "IST" in tipo_idx:
             _render_equacao_ist(float(res['i_ini']), float(res['i_fim']), float(res['variacao']))
+        elif "ICTI" in tipo_idx:
+            st.write(f"**Competência da proposta/âncora:** {pd.to_datetime(res['d_ini']).strftime('%m/%Y')}")
+            st.write(f"**Competência do índice-base utilizada:** {pd.to_datetime(res.get('d_indice_base')).strftime('%m/%Y')}")
+            st.write(f"**Competência final:** {pd.to_datetime(res['d_fim']).strftime('%m/%Y')}")
+            st.dataframe(res['dados'], use_container_width=True)
+            st.write("Fórmula: produtório de (1 + taxa_mensal/100), com base no mês anterior à proposta/âncora.")
         else:
             st.dataframe(res['dados'])
 
