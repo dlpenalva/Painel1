@@ -127,6 +127,41 @@ st.markdown(
     """
 )
 
+
+st.subheader("4.1. ICTI (Ipeadata)")
+
+st.markdown(
+    """
+    O **Índice de Custo da Tecnologia da Informação (ICTI)** foi incluído como índice de reajuste consultado diretamente pela internet, sem criação de arquivo local.
+
+    **Fonte:** Ipeadata/Ipea.  
+    **Série:** `DIMAC_ICTI2`.  
+    **Natureza da série:** taxa mensal de variação, em `% a.m.`.  
+    **Método de cálculo:** produtório das taxas mensais do período.
+
+    Para fins operacionais, o ICTI deve ser tratado de forma semelhante ao IPCA e ao IGP-M: o sistema acumula as taxas mensais, e não divide diretamente números-índice oficiais como ocorre no IST local.
+
+    **Regra de intervalo adotada no cl8us:**
+
+    - usa o mês da data-base/proposta como primeira competência acumulada;
+    - soma mais 11 competências mensais posteriores;
+    - totaliza 12 competências mensais no ciclo;
+    - o mês anterior aparece apenas como índice-base explicativo.
+
+    **Exemplo:**
+
+    ```text
+    Data-base/proposta: agosto/2023
+    Índice-base explicativo: julho/2023
+    Competências acumuladas: agosto/2023 a julho/2024
+    Método: produtório das taxas mensais do ICTI/Ipeadata
+    ```
+
+    **Atenção:** o ICTI depende de consulta online ao Ipeadata. Se a fonte estiver temporariamente indisponível, o cálculo pode não ser processado naquele momento.
+    """
+)
+
+
 st.subheader("5. Regra de cautela documental")
 
 st.markdown(
