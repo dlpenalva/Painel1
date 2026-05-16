@@ -1,4 +1,15 @@
+import csv
+import re
+from pathlib import Path
+
 import streamlit as st
+
+
+MESES_PT_EXTENSO = {
+    "jan": "janeiro", "fev": "fevereiro", "mar": "março", "abr": "abril",
+    "mai": "maio", "jun": "junho", "jul": "julho", "ago": "agosto",
+    "set": "setembro", "out": "outubro", "nov": "novembro", "dez": "dezembro",
+}
 
 
 def render_marca_topo():
@@ -6,53 +17,14 @@ def render_marca_topo():
     st.markdown(
         """
         <style>
-        .tlb-cl8us-brand {
-            display: inline-flex;
-            flex-direction: column;
-            gap: 1px;
-            margin: 0 0 0.70rem 0;
-            padding: 0;
-        }
-        .tlb-cl8us-brand-main {
-            display: flex;
-            align-items: baseline;
-            gap: 0.45rem;
-            line-height: 1.05;
-            letter-spacing: -0.02em;
-        }
+        .tlb-cl8us-brand { display: inline-flex; flex-direction: column; gap: 1px; margin: 0 0 0.70rem 0; padding: 0; }
+        .tlb-cl8us-brand-main { display: flex; align-items: baseline; gap: 0.45rem; line-height: 1.05; letter-spacing: -0.02em; }
         .tlb-cl8us-tlb { color: #123B63; font-size: 1.38rem; font-weight: 750; font-family: "Inter", "Segoe UI", Arial, sans-serif; }
         .tlb-cl8us-dot { color: #C0842B; font-size: 1.18rem; font-weight: 700; }
-        .tlb-cl8us-name {
-            color: #0F172A;
-            font-size: 1.42rem;
-            font-weight: 800;
-            font-family: "Consolas", "SFMono-Regular", "Cascadia Mono", "Courier New", monospace;
-            letter-spacing: -0.04em;
-        }
-        .tlb-cl8us-subtitle {
-            color: #64748B;
-            font-size: 0.74rem;
-            font-weight: 500;
-            font-family: "Inter", "Segoe UI", Arial, sans-serif;
-            margin-top: 0.12rem;
-            letter-spacing: 0.01em;
-        }
-        .tlb-cl8us-separator {
-            width: 172px;
-            border-bottom: 2px solid #1F4E79;
-            opacity: 0.78;
-            margin-top: 0.42rem;
-        }
-        .tlb-cl8us-aviso {
-            display: block;
-            margin-top: 0.42rem;
-            color: #A16207;
-            font-family: "Inter", "Segoe UI", Arial, sans-serif;
-            font-size: 0.74rem;
-            font-style: italic;
-            font-weight: 400;
-            line-height: 1.20;
-        }
+        .tlb-cl8us-name { color: #0F172A; font-size: 1.42rem; font-weight: 800; font-family: "Consolas", "SFMono-Regular", "Cascadia Mono", "Courier New", monospace; letter-spacing: -0.04em; }
+        .tlb-cl8us-subtitle { color: #64748B; font-size: 0.74rem; font-weight: 500; font-family: "Inter", "Segoe UI", Arial, sans-serif; margin-top: 0.12rem; letter-spacing: 0.01em; }
+        .tlb-cl8us-separator { width: 172px; border-bottom: 2px solid #1F4E79; opacity: 0.78; margin-top: 0.42rem; }
+        .tlb-cl8us-aviso { display: block; margin-top: 0.42rem; color: #A16207; font-family: "Inter", "Segoe UI", Arial, sans-serif; font-size: 0.74rem; font-style: italic; font-weight: 400; line-height: 1.20; }
         </style>
         <div class="tlb-cl8us-brand" aria-label="TLB cl8us - apoio à gestão de contratos">
             <div class="tlb-cl8us-brand-main">
@@ -74,6 +46,68 @@ def render_versao_sidebar():
     return None
 
 
+def _normalizar_mes_ano_ist(valor):
+    if valor is None:
+        return None
+    texto = str(valor).strip().lower().replace(".", "").replace("-", "/").replace("_", "/")
+    match = re.match(r"^([a-zç]{3,9})\s*/\s*(\d{2,4})$", texto)
+    if not match:
+        return None
+    mes_raw, ano_raw = match.groups()
+    mes = mes_raw[:3]
+    if mes not in MESES_PT_EXTENSO:
+        return None
+    ano = int(ano_raw)
+    if ano < 100:
+        ano += 2000
+    ordem_mes = list(MESES_PT_EXTENSO.keys()).index(mes) + 1
+    return {"ordem": ano * 100 + ordem_mes, "descricao": f"{MESES_PT_EXTENSO[mes]}/{ano}"}
+
+
+def obter_ultima_competencia_ist(caminho="ist.csv"):
+    caminho_csv = Path(caminho)
+    if not caminho_csv.exists():
+        return None
+
+    melhor = None
+    try:
+        with caminho_csv.open("r", encoding="utf-8-sig", newline="") as arquivo:
+            leitor = csv.DictReader(arquivo, delimiter=";")
+            for linha in leitor:
+                mes_ano = linha.get("MES_ANO") or linha.get("mes_ano")
+                indice = linha.get("INDICE_NIVEL") or linha.get("indice_nivel")
+                info = _normalizar_mes_ano_ist(mes_ano)
+                if not info:
+                    continue
+                if melhor is None or info["ordem"] > melhor["ordem"]:
+                    melhor = {**info, "indice": str(indice).strip() if indice is not None else ""}
+    except Exception:
+        return None
+    return melhor
+
+
+def render_alerta_ist_local():
+    ultima = obter_ultima_competencia_ist()
+    if ultima:
+        texto = f"IST local: última competência constante no sistema: <strong>{ultima['descricao']}</strong>"
+        if ultima.get("indice"):
+            texto += f" — índice em nível: <strong>{ultima['indice']}</strong>"
+        texto += ". Confira se a data-base necessária já está coberta."
+    else:
+        texto = "IST local: não foi possível identificar a última competência no arquivo <code>ist.csv</code>. Confira a base antes de prosseguir."
+
+    st.markdown(
+        f"""
+        <div style="background:#F8FAFC; border:1px solid #E5EAF0; border-radius:9px;
+                    padding:7px 10px; margin:5px 0 2px 0; color:#475569;
+                    font-size:0.80rem; line-height:1.35;">
+            {texto}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_indice_contrato_selectbox(key=None, index=0, options=None):
     """Renderiza o campo de índice com destaque visual consistente entre os fluxos."""
     if options is None:
@@ -82,14 +116,8 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
     with st.container(border=True):
         st.markdown(
             """
-            <div style="
-                background:#F5F3FF;
-                border:1px solid #C4B5FD;
-                border-radius:10px;
-                padding:0.62rem 0.75rem;
-                margin-bottom:0.55rem;
-                color:#4C1D95;
-            ">
+            <div style="background:#F5F3FF; border:1px solid #C4B5FD; border-radius:10px;
+                        padding:0.62rem 0.75rem; margin-bottom:0.55rem; color:#4C1D95;">
                 <div style="font-weight:800; font-size:0.98rem;">Índice do contrato</div>
                 <div style="font-size:0.86rem; line-height:1.25rem;">
                     Revise este campo antes de prosseguir. Ele deve corresponder ao índice previsto no contrato.
@@ -112,6 +140,9 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
         else:
             st.caption(f"Índice selecionado para esta análise: **{selecionado}**.")
 
+        if str(selecionado).strip().upper().startswith("IST"):
+            render_alerta_ist_local()
+
     return selecionado
 
 
@@ -121,22 +152,11 @@ def render_aviso_privacidade(tem_upload=False, tem_download=False):
         return
 
     partes = []
-
     if tem_upload:
-        partes.append(
-            "Os arquivos enviados são usados para processamento na sessão do app e não são enviados ao repositório. "
-            "O upload permanece em memória durante o uso da sessão."
-        )
-
+        partes.append("Os arquivos enviados são usados para processamento na sessão do app e não são enviados ao repositório. O upload permanece em memória durante o uso da sessão.")
     if tem_download:
-        partes.append(
-            "Os documentos gerados são disponibilizados apenas para download pelo navegador."
-        )
-
-    partes.append(
-        "Ao limpar ou substituir o arquivo, ou ao encerrar a aba/sessão, os dados deixam de ser necessários para o processamento. "
-        "Evite carregar dados sigilosos desnecessários e confira os arquivos antes de compartilhar."
-    )
+        partes.append("Os documentos gerados são disponibilizados apenas para download pelo navegador.")
+    partes.append("Ao limpar ou substituir o arquivo, ou ao encerrar a aba/sessão, os dados deixam de ser necessários para o processamento. Evite carregar dados sigilosos desnecessários e confira os arquivos antes de compartilhar.")
 
     texto = " ".join(partes)
     st.markdown(

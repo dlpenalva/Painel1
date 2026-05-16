@@ -5,11 +5,11 @@ from _ui_utils import render_versao_sidebar
 st.set_page_config(page_title="TLB · cl8us - Apoio à Gestão de Contratos", layout="wide")
 
 # App sem barreira de senha interna.
-# Estado de restauração: mantém a navegação natural do Streamlit e evita que a página "app" apareça como item operacional.
 APP_SEM_SENHA_VERSAO = "20260516_RESTORE_SEM_SENHA"
 APP_DOU_13_VERSAO = "20260516_DOU_13_GESTAO"
+APP_ORIENTA_11_VERSAO = "20260516_CL8US_ORIENTA_SOLO_APOIO"
+APP_IST_ALERTA_VERSAO = "20260516_ALERTA_IST_ULTIMA_COMPETENCIA"
 
-# Ajuste visual do menu lateral: títulos em negrito e subitens sem negrito.
 st.markdown(
     """
     <style>
@@ -33,55 +33,48 @@ st.markdown(
 )
 
 pages_dir = Path("pages")
-
 p0 = st.Page("pages/00_Calculadora_Reajustes.py", title="Calculadora de Reajustes", default=True)
 
-nav = {
-    "📌 Admissibilidade e Cálculo": [p0]
-}
+nav = {"📌 Admissibilidade e Cálculo": [p0]}
 
 grupo_valor_global = []
-
 if (pages_dir / "03_Valor_Global.py").exists():
     grupo_valor_global.append(st.Page("pages/03_Valor_Global.py", title="Valores"))
-
 if (pages_dir / "04_Relatorio_Global.py").exists():
     grupo_valor_global.append(st.Page("pages/04_Relatorio_Global.py", title="Relatórios"))
-
 if (pages_dir / "06_Central_Arquivos.py").exists():
     grupo_valor_global.append(st.Page("pages/06_Central_Arquivos.py", title="Central de Arquivos"))
-
 if (pages_dir / "07_Checklist_Processual.py").exists():
     grupo_valor_global.append(st.Page("pages/07_Checklist_Processual.py", title="Checklist Processual"))
-
 if grupo_valor_global:
     nav["🌐 Visão Global e Relatórios"] = grupo_valor_global
 
 grupo_gestao = []
 if (pages_dir / "05_Garantia.py").exists():
     grupo_gestao.append(st.Page("pages/05_Garantia.py", title="Gestão da Garantia"))
-
 if (pages_dir / "12_Adequacao_Orcamentaria.py").exists():
     grupo_gestao.append(st.Page("pages/12_Adequacao_Orcamentaria.py", title="Adequação Orçamentária"))
-
 if (pages_dir / "08_Avaliacao_Aditivos.py").exists():
     grupo_gestao.append(st.Page("pages/08_Avaliacao_Aditivos.py", title="Aditivos: 25%"))
-
 if (pages_dir / "13_DOU.py").exists():
     grupo_gestao.append(st.Page("pages/13_DOU.py", title="DOU"))
-
 if grupo_gestao:
     nav["🛡️ Gestão Contratual"] = grupo_gestao
 
 grupo_instrucao = []
 if (pages_dir / "09_Infos_Previas.py").exists():
     grupo_instrucao.append(st.Page("pages/09_Infos_Previas.py", title="Infos Prévias"))
-
 if (pages_dir / "10_Saneador.py").exists():
     grupo_instrucao.append(st.Page("pages/10_Saneador.py", title="Saneador"))
-
 if grupo_instrucao:
     nav["🧾 Instrução Processual"] = grupo_instrucao
+
+# Último bloco do menu: apoio, com Cl8us Orienta isolado.
+grupo_apoio = []
+if (pages_dir / "11_Cl8us_Orienta.py").exists():
+    grupo_apoio.append(st.Page("pages/11_Cl8us_Orienta.py", title="Cl8us Orienta"))
+if grupo_apoio:
+    nav["🧭 Apoio"] = grupo_apoio
 
 pg = st.navigation(nav)
 render_versao_sidebar()
