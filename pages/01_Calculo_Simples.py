@@ -101,9 +101,13 @@ def calcular_icti_ipeadata(data_inicio, data_fim=None, timeout=20):
         "competencia_proposta": competencia_proposta,
         "competencia_indice_base": competencia_base,
         "competencia_final": competencia_final,
+        "d_proposta_ancora": competencia_proposta,
+        "d_indice_base": competencia_base,
+        "d_final_icti": competencia_final,
         "metodo": "ICTI/Ipeadata: produtório das taxas mensais; índice-base = mês anterior à proposta/âncora",
         "dados": dados,
         "sercodigo": ICTI_SERCODIGO_LOCAL,
+        "serie": ICTI_SERCODIGO_LOCAL,
     }
 
 
@@ -1965,7 +1969,7 @@ if res:
             _render_equacao_ist(float(res['i_ini']), float(res['i_fim']), float(res['variacao']))
         elif "ICTI" in tipo_idx:
             st.write(f"**Competência da proposta/âncora:** {pd.to_datetime(res['d_ini']).strftime('%m/%Y')}")
-            st.write(f"**Competência do índice-base utilizada:** {pd.to_datetime(res.get('d_indice_base')).strftime('%m/%Y')}")
+            st.write(f"**Competência do índice-base utilizada:** {pd.to_datetime(res.get('d_indice_base') or res.get('competencia_indice_base') or res.get('p_ini')).strftime('%m/%Y')}")
             st.write(f"**Competência final:** {pd.to_datetime(res['d_fim']).strftime('%m/%Y')}")
             st.dataframe(res['dados'], use_container_width=True)
             st.write("Fórmula: produtório de (1 + taxa_mensal/100), com base no mês anterior à proposta/âncora.")

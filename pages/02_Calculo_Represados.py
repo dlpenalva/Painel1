@@ -102,9 +102,13 @@ def calcular_icti_ipeadata(data_inicio, data_fim=None, timeout=20):
         "competencia_proposta": competencia_proposta,
         "competencia_indice_base": competencia_base,
         "competencia_final": competencia_final,
+        "d_proposta_ancora": competencia_proposta,
+        "d_indice_base": competencia_base,
+        "d_final_icti": competencia_final,
         "metodo": "ICTI/Ipeadata: produtório das taxas mensais; índice-base = mês anterior à proposta/âncora",
         "dados": dados,
         "sercodigo": ICTI_SERCODIGO_LOCAL,
+        "serie": ICTI_SERCODIGO_LOCAL,
     }
 
 

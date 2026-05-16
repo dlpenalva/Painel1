@@ -122,7 +122,7 @@ def render_alerta_icti_ipeadata():
         ultima = _obter_ultima_competencia_icti_cache()
         texto = (
             f"ICTI/Ipeadata: última competência disponível: <strong>{ultima['descricao']}</strong> "
-            f"— série <strong>{ultima['serie']}</strong>. "
+            f"— série <strong>{ultima.get('serie') or ultima.get('sercodigo') or 'DIMAC_ICTI2'}</strong>. "
             "O cálculo usa a competência do mês anterior como índice-base e acumula as taxas mensais do período."
         )
     except Exception:
