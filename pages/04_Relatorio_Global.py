@@ -11,7 +11,7 @@ import streamlit as st
 st.set_page_config(page_title="Análises de Reajustes - Relatório Global", layout="wide")
 
 
-from _ui_utils import render_marca_topo
+from _ui_utils import render_marca_topo, render_aviso_privacidade
 
 def moeda(valor):
     try:
@@ -86,6 +86,34 @@ def eh_modo_reduzido_itens(res):
     return "reduzido" in modo and ("item" in modo or "estoque" in modo)
 
 
+def eh_modo_consumo_itens_ciclo(res):
+    if not isinstance(res, dict):
+        return False
+    modo = _normalizar_modo_apuracao(res.get("modo_apuracao", ""))
+    return "consumo" in modo and ("item" in modo or "iten" in modo) and "ciclo" in modo
+
+
+def valor_retroativo_consumo_itens_ciclo(res):
+    if not isinstance(res, dict):
+        return 0.0
+    for chave in ["valor_retroativo_consumo_itens_ciclo", "retroativo_consumo_itens_ciclo"]:
+        if chave in res:
+            try:
+                return float(res.get(chave) or 0)
+            except Exception:
+                return 0.0
+    return valor_retroativo_estimado_itens(res)
+
+
+def df_retroativo_consumo_itens_ciclo(res):
+    if not isinstance(res, dict):
+        return pd.DataFrame()
+    df = res.get("df_retroativo_itemizado_por_ciclo")
+    if isinstance(df, pd.DataFrame):
+        return df
+    return pd.DataFrame()
+
+
 def valor_retroativo_estimado_itens(res):
     if not isinstance(res, dict):
         return 0.0
@@ -113,6 +141,18 @@ def df_retroativo_estimado_itens(res):
 
 
 def indicadores_executivos_relatorio(res):
+    if eh_modo_consumo_itens_ciclo(res):
+        return [
+            ["Indicador", "Valor"],
+            ["Modo de apuração", texto_seguro(res.get("modo_apuracao"), "Consumo por Itens/Ciclo")],
+            ["Valor original", moeda(res.get("valor_original_contrato", 0))],
+            ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)))],
+            ["Retroativo financeiro definitivo", "Não calculado"],
+            ["Retroativo (itens consumidos/ciclo)", moeda(valor_retroativo_consumo_itens_ciclo(res))],
+            ["Execução atualizada por itens/ciclo", moeda(res.get("valor_executado_atualizado", 0))],
+            ["Saldo Remanescente Atualizado", moeda(res.get("remanescente_reajustado", 0))],
+            ["Base mensal por competência", "Não informada"],
+        ]
     if eh_modo_reduzido_itens(res):
         return [
             ["Indicador", "Valor"],
@@ -147,6 +187,15 @@ def aviso_modo_reduzido_html():
             A análise foi processada sem base mensal por competência. O retroativo financeiro definitivo não é calculado neste modo.
             O valor exibido como retroativo estimado por itens/estoque possui natureza estimativa e deve ser validado antes de qualquer formalização de pagamento.
         </div>
+    </div>
+    """
+
+
+def aviso_modo_consumo_html():
+    return """
+    <div style="background:#F6F3EE; border:1px solid #7A8F63; border-left:6px solid #4E6E58; border-radius:12px; padding:14px 16px; margin:10px 0 16px 0; color:#2F3E2F;">
+        <div style="font-weight:800; margin-bottom:4px;">Modo Consumo por Itens/Ciclo</div>
+        <div style="font-size:0.95rem; line-height:1.45;">A análise foi processada por consumo itemizado por ciclo, sem base mensal por competência. O retroativo financeiro mensal definitivo não é calculado neste modo.</div>
     </div>
     """
 
@@ -211,11 +260,21 @@ def _ciclos_df_para_relatorio(adm, res):
         "Observação": "Período inicial do contrato, sem aplicação de reajuste.",
     }]
 
+    # Fallback: se o arquivo foi enviado diretamente no módulo Valores e df_ciclos não veio completo,
+    # monta ao menos a síntese dos ciclos a partir do delta/retroativo por ciclo.
+    if (not isinstance(df, pd.DataFrame) or df.empty) and isinstance(res, dict):
+        df_alt = res.get("df_delta_por_ciclo")
+        if isinstance(df_alt, pd.DataFrame) and not df_alt.empty and "Ciclo" in df_alt.columns:
+            df = df_alt.copy()
+
     if isinstance(df, pd.DataFrame) and not df.empty:
+        ciclos_ja = {"C0"}
         for _, row in df.iterrows():
             ciclo = texto_seguro(row.get("Ciclo", row.get("ciclo", "")), "")
-            if not ciclo or str(ciclo).upper() == "C0":
+            ciclo_up = str(ciclo).strip().upper()
+            if not ciclo_up or ciclo_up in ["C0", "TOTAL", "CICLO"] or ciclo_up in ciclos_ja:
                 continue
+            ciclos_ja.add(ciclo_up)
             acordo = texto_seguro(row.get("Acordo negocial", row.get("acordo_negocial", "")), "")
             situacao = row.get("Situação aplicada", row.get("situacao_aplicada", row.get("Situação", row.get("situacao", ""))))
             if str(acordo).strip().lower() in ["sim", "s", "true", "1"]:
@@ -223,7 +282,12 @@ def _ciclos_df_para_relatorio(adm, res):
             else:
                 classificacao = _status_relatorio(situacao)
 
-            percentual_val = row.get("Percentual aplicado", row.get("percentual_aplicado", row.get("Variação", row.get("variacao", 0))))
+            percentual_val = row.get("Percentual aplicado", row.get("percentual_aplicado", row.get("Variação", row.get("variacao", None))))
+            if (percentual_val is None or str(percentual_val).strip() == "") and "Fator" in row.index:
+                try:
+                    percentual_val = float(row.get("Fator") or 1.0) - 1
+                except Exception:
+                    percentual_val = 0
             try:
                 percentual_txt = percentual(float(percentual_val), 2)
             except Exception:
@@ -235,9 +299,12 @@ def _ciclos_df_para_relatorio(adm, res):
             justificativa = texto_seguro(row.get("Justificativa negocial", row.get("justificativa_negocial", "")), "")
             if justificativa:
                 obs.append(justificativa)
+            obs_extra = texto_seguro(row.get("Observação", row.get("Observacao", "")), "")
+            if obs_extra and obs_extra not in obs:
+                obs.append(obs_extra)
 
             linhas.append({
-                "Ciclo": ciclo,
+                "Ciclo": ciclo_up,
                 "Data-base": formatar_data_br(row.get("Data-base", row.get("data_base", ""))),
                 "Data do pedido": formatar_data_br(row.get("Data do pedido", row.get("data_pedido", ""))),
                 "Classificação": classificacao,
@@ -321,7 +388,12 @@ def texto_contexto_analise(adm, res):
     resumo_ciclos = "; ".join(classificacoes) if classificacoes else "sem ciclos de reajuste informados"
 
     contexto_txt = texto_contexto_contrato(res)
-    if eh_modo_reduzido_itens(res):
+    if eh_modo_consumo_itens_ciclo(res):
+        modo_txt = (
+            "A análise foi processada em Modo Consumo por Itens/Ciclo, sem base mensal por competência. "
+            "Nesse cenário, o retroativo financeiro mensal definitivo não é calculado; apresenta-se o Retroativo (itens consumidos/ciclo), com base nos quantitativos consumidos informados pela fiscalização. "
+        )
+    elif eh_modo_reduzido_itens(res):
         modo_txt = (
             "A análise foi processada em Modo Reduzido por Itens/Estoque, sem base mensal por competência. "
             "Nesse cenário, o retroativo financeiro definitivo não é calculado; apresenta-se apenas o retroativo estimado por itens/estoque, com natureza estimativa. "
@@ -341,6 +413,45 @@ def texto_contexto_analise(adm, res):
 
 
 def gerar_texto_instrucao(adm, res):
+    if eh_modo_consumo_itens_ciclo(res):
+        df_ri = df_retroativo_consumo_itens_ciclo(res)
+        tabela_ri = "Sem tabela detalhada disponível."
+        if isinstance(df_ri, pd.DataFrame) and not df_ri.empty:
+            tabela_ri = df_visual(
+                df_ri,
+                moeda_cols=["Valor original consumido", "Valor atualizado consumido", "Retroativo"],
+                fator_cols=["Fator acumulado"],
+            ).to_string(index=False)
+
+        return f"""
+RELATÓRIO EXECUTIVO — VALOR ATUALIZADO DO CONTRATO
+
+1. Síntese dos ciclos
+
+{_ciclos_df_para_relatorio(adm, res).to_string(index=False)}
+
+2. Modo de apuração
+
+A análise foi processada em Modo Consumo por Itens/Ciclo, sem base mensal por competência. A fiscalização informou os quantitativos consumidos por item e por ciclo, com premissa de equivalência entre consumo, medição/aprovação e faturamento devido.
+
+Retroativo financeiro definitivo: Não calculado
+Retroativo (itens consumidos/ciclo): {moeda(valor_retroativo_consumo_itens_ciclo(res))}
+Execução atualizada por itens/ciclo: {moeda(res.get('valor_executado_atualizado', 0))}
+Saldo Remanescente Atualizado: {moeda(res.get('remanescente_reajustado', 0))}
+
+3. Retroativo por itens consumidos/ciclo
+
+{tabela_ri}
+
+4. Consolidação contratual
+
+Valor original do contrato: {moeda(res.get('valor_original_contrato', 0))}
+Valor Total Atualizado do Contrato: {moeda(res.get('valor_atualizado_contrato', res.get('valor_global_estoque', 0)))}
+Aditivos/supressões registrados para controle: {moeda(res.get('total_aditivos_atualizados', 0))}
+
+Data/hora de geração: {datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')}
+""".strip()
+
     if eh_modo_reduzido_itens(res):
         df_ri = df_retroativo_estimado_itens(res)
         tabela_ri = "Sem tabela detalhada disponível."
@@ -493,7 +604,22 @@ def criar_pdf_relatorio(adm, res):
     story.append(Paragraph("3. Indicadores Executivos", styles["Subtitulo"]))
     story.append(tabela_pdf(indicadores_executivos_relatorio(res), header=True, col_widths=[8.5 * cm, 8.5 * cm]))
 
-    if eh_modo_reduzido_itens(res):
+    if eh_modo_consumo_itens_ciclo(res):
+        story.append(Paragraph("3.1. Modo Consumo por Itens/Ciclo", styles["Subtitulo"]))
+        story.append(Paragraph(
+            "A análise foi processada sem base mensal por competência. O retroativo financeiro definitivo por competência não é calculado neste modo. "
+            "O Retroativo (itens consumidos/ciclo) foi apurado com base nos quantitativos consumidos por item e por ciclo informados pela fiscalização.",
+            styles["Texto"],
+        ))
+        df_ri_pdf = df_retroativo_consumo_itens_ciclo(res)
+        if isinstance(df_ri_pdf, pd.DataFrame) and not df_ri_pdf.empty:
+            df_ri_pdf = df_visual(
+                df_ri_pdf,
+                moeda_cols=["Valor original consumido", "Valor atualizado consumido", "Retroativo"],
+                fator_cols=["Fator acumulado"],
+            )
+            story.append(tabela_dataframe_pdf(df_ri_pdf, max_linhas=20))
+    elif eh_modo_reduzido_itens(res):
         story.append(Paragraph("3.1. Modo Reduzido por Itens/Estoque", styles["Subtitulo"]))
         story.append(Paragraph(
             "A análise foi processada sem base mensal por competência. O retroativo financeiro definitivo não é calculado neste modo. "
@@ -792,8 +918,10 @@ def _ciclos_para_minuta(adm, res):
     ciclos = []
     if adm:
         ciclos = adm.get("ciclos") or adm.get("detalhamento_ciclos") or []
-    if not ciclos and isinstance(res.get("df_ciclos"), pd.DataFrame):
+    if not ciclos and isinstance(res.get("df_ciclos"), pd.DataFrame) and not res.get("df_ciclos").empty:
         ciclos = res.get("df_ciclos").to_dict("records")
+    if not ciclos and isinstance(res.get("df_delta_por_ciclo"), pd.DataFrame) and not res.get("df_delta_por_ciclo").empty:
+        ciclos = res.get("df_delta_por_ciclo").to_dict("records")
     return ciclos or []
 
 
@@ -940,7 +1068,14 @@ def gerar_minuta_apostilamento_docx(adm, res):
         document.add_paragraph(_limpar_texto_formal(item), style="List Bullet")
 
     ciclos = _ciclos_para_minuta(adm or {}, res or {})
-    ciclos_validos = [c for c in ciclos if str(c.get("ciclo") or c.get("Ciclo") or "").strip()]
+    ciclos_validos = []
+    ciclos_minuta_ja = set()
+    for c in ciclos:
+        nome_c = str(c.get("ciclo") or c.get("Ciclo") or "").strip().upper()
+        if not nome_c or nome_c in ["C0", "TOTAL", "CICLO"] or nome_c in ciclos_minuta_ja:
+            continue
+        ciclos_minuta_ja.add(nome_c)
+        ciclos_validos.append(c)
 
     _adicionar_item_numerado(
         document,
@@ -973,30 +1108,52 @@ def gerar_minuta_apostilamento_docx(adm, res):
     else:
         _adicionar_subitem(document, "(i)", "[campo a preencher: informar ciclos, percentuais e efeitos financeiros].")
 
-    _adicionar_item_numerado(document, 2, "Para fins de apuração financeira e cálculo do retroativo a pagar, foram consolidados os seguintes valores:")
-    df_fin = res.get("df_financeiro_por_ciclo")
+    if eh_modo_consumo_itens_ciclo(res):
+        _adicionar_item_numerado(document, 2, "Para fins de apuração por itens consumidos/ciclo, foram consolidados os seguintes valores:")
+        df_fin = res.get("df_delta_por_ciclo")
+        if not isinstance(df_fin, pd.DataFrame) or df_fin.empty:
+            df_fin = res.get("df_retroativo_itemizado_por_ciclo")
+    else:
+        _adicionar_item_numerado(document, 2, "Para fins de apuração financeira e cálculo do retroativo a pagar, foram consolidados os seguintes valores:")
+        df_fin = res.get("df_financeiro_por_ciclo")
     subitem_idx = 1
     if isinstance(df_fin, pd.DataFrame) and not df_fin.empty:
         for _, row in df_fin.iterrows():
             ciclo = str(row.get("Ciclo", "")).strip()
-            if ciclo.upper() == "TOTAL" or not ciclo:
+            if ciclo.upper() in ["TOTAL", "C0", "CICLO"] or not ciclo:
                 continue
             pago = row.get("Valor pago efetivo", row.get("Valor pago/faturado", row.get("Valor nominal pago", 0)))
             devido = row.get("Valor teórico calculado", row.get("Valor devido reajustado", row.get("Valor devido", 0)))
             delta = row.get("Delta do ciclo", row.get("Delta acumulado", 0))
+            if eh_modo_consumo_itens_ciclo(res):
+                texto_subitem = f"{ciclo}: execução original por itens de {moeda(pago)}, execução atualizada por itens de {moeda(devido)} e Retroativo (itens consumidos/ciclo) de {moeda(delta)};"
+            else:
+                texto_subitem = f"{ciclo}: valor nominal pago de {moeda(pago)}, valor devido de {moeda(devido)} e saldo retroativo a pagar de {moeda(delta)};"
             _adicionar_subitem(
                 document,
                 f"({_romano(subitem_idx)})",
-                f"{ciclo}: valor nominal pago de {moeda(pago)}, valor devido de {moeda(devido)} e saldo retroativo a pagar de {moeda(delta)};"
+                texto_subitem
             )
             subitem_idx += 1
     else:
         _adicionar_subitem(document, f"({_romano(subitem_idx)})", "[campo a preencher: valores nominais pagos, valores devidos e saldo retroativo por ciclo].")
         subitem_idx += 1
+    if eh_modo_consumo_itens_ciclo(res):
+        total_txt = (
+            f"Total consolidado: execução original por itens de {moeda(res.get('valor_executado_original', 0))}, "
+            f"execução atualizada por itens de {moeda(res.get('valor_executado_atualizado', 0))} e "
+            f"Retroativo (itens consumidos/ciclo) de {moeda(valor_retroativo_consumo_itens_ciclo(res))}."
+        )
+    else:
+        total_txt = (
+            f"Total consolidado: valor pago efetivo de {moeda(res.get('total_pago_faturado', res.get('valor_pago_efetivo', 0)))}, "
+            f"valor teórico calculado de {moeda(res.get('total_devido_reajustado', res.get('valor_teorico_calculado', 0)))} e "
+            f"saldo retroativo total a pagar de {moeda(res.get('valor_represado_a_pagar', res.get('delta_acumulado', 0)))}."
+        )
     _adicionar_subitem(
         document,
         f"({_romano(subitem_idx)})",
-        f"Total consolidado: valor pago efetivo de {moeda(res.get('total_pago_faturado', res.get('valor_pago_efetivo', 0)))}, valor teórico calculado de {moeda(res.get('total_devido_reajustado', res.get('valor_teorico_calculado', 0)))} e saldo retroativo total a pagar de {moeda(res.get('valor_represado_a_pagar', res.get('delta_acumulado', 0)))}."
+        total_txt
     )
 
     _adicionar_item_numerado(document, 3, "Registra-se, ainda, que a memória de cálculo consignou os saldos remanescentes do contrato nos marcos de início dos ciclos de reajuste:")
@@ -1052,6 +1209,7 @@ def gerar_minuta_apostilamento_docx(adm, res):
 render_marca_topo()
 st.title("Relatório Global")
 
+render_aviso_privacidade(tem_download=True)
 adm = st.session_state.get("dados_admissibilidade")
 res = st.session_state.get("resultado_valor_global")
 
@@ -1065,14 +1223,17 @@ if not res:
 aplicar_css_responsivo_relatorio()
 
 modo_reduzido = eh_modo_reduzido_itens(res)
+modo_consumo = eh_modo_consumo_itens_ciclo(res)
 retroativo_itens_valor = valor_retroativo_estimado_itens(res)
 
 st.subheader("Resumo Executivo")
-if modo_reduzido:
+if modo_consumo:
+    st.markdown(aviso_modo_consumo_html(), unsafe_allow_html=True)
+elif modo_reduzido:
     st.markdown(aviso_modo_reduzido_html(), unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
-col1.metric("Índice", res.get("indice", "Não informado"))
+col1.metric("Índice", res.get("indice") or "Não informado no modelo")
 col2.metric("Fator acumulado", fator_fmt(res.get("fator_acumulado", 1.0)))
 
 st.markdown(
@@ -1085,7 +1246,11 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-if modo_reduzido:
+if modo_consumo:
+    col3, col4 = st.columns(2)
+    col3.metric("Retroativo financeiro definitivo", "Não calculado")
+    col4.metric("Retroativo (itens consumidos/ciclo)", moeda(valor_retroativo_consumo_itens_ciclo(res)))
+elif modo_reduzido:
     col3, col4 = st.columns(2)
     col3.metric("Retroativo financeiro definitivo", "Não calculado")
     with col4:

@@ -9,6 +9,8 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+LEITOR_CONSUMO_ITENS_CICLO_VERSAO = "20260516_0207"
+
 try:
     from reportlab.lib import colors
     from reportlab.lib.enums import TA_CENTER, TA_LEFT
@@ -24,7 +26,7 @@ except Exception:
 st.set_page_config(page_title="Análises de Reajustes - Valor Global", layout="wide")
 
 
-from _ui_utils import render_marca_topo
+from _ui_utils import render_marca_topo, render_aviso_privacidade
 
 def agora_brasilia():
     return datetime.now(ZoneInfo("America/Sao_Paulo"))
@@ -282,7 +284,10 @@ def ler_parametros(bytes_arquivo, xls):
     if not aba:
         return {}
 
-    df = ler_aba_com_cabecalho(bytes_arquivo, aba)
+    # As planilhas-modelo do modo Consumo por Itens/Ciclo possuem linhas de título
+    # antes da tabela Campo/Valor. Exigir esses termos evita interpretar o título
+    # da aba como cabeçalho e perder parâmetros como índice e premissas fiscais.
+    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Campo", "Valor"])
     if df.empty or len(df.columns) < 2:
         return {}
 
@@ -497,9 +502,10 @@ def ler_ciclos(bytes_arquivo, xls):
     if not df_session.empty:
         return padronizar_ciclos(df_session), "session_state"
 
-    # Para evitar confusão com ITENS_CICLOS, aceitar apenas aba CICLOS/CICLO por correspondência exata.
+    # Para evitar confusão com ITENS_CICLOS, aceitar apenas abas de ciclos por correspondência exata.
+    # O modelo Consumo por Itens/Ciclo usa CICLOS_APURADOS.
     mapa_exato = {normalizar_texto(s): s for s in xls.sheet_names}
-    aba = mapa_exato.get("ciclos") or mapa_exato.get("ciclo")
+    aba = mapa_exato.get("ciclos") or mapa_exato.get("ciclo") or mapa_exato.get("ciclos_apurados")
     if not aba:
         return pd.DataFrame(), "indisponível"
 
@@ -1140,11 +1146,23 @@ def gerar_excel_valores_unitarios_por_ciclo(df_valores, ciclos):
 
 
         df_export = df_valores.copy()
+        # No Modo Consumo por Itens/Ciclo, a conferência fica mais legível por blocos:
+        # primeiro todos os itens do C0, depois todos do C1, C2 etc.
+        if not df_export.empty and "Ciclo" in df_export.columns:
+            colunas_ordenacao = ["Ciclo"] + (["Item"] if "Item" in df_export.columns else [])
+            df_export = df_export.sort_values(
+                by=colunas_ordenacao,
+                key=lambda col: col.map(numero_ciclo) if col.name == "Ciclo" else col.astype(str),
+                kind="stable",
+            ).reset_index(drop=True)
         df_export.to_excel(writer, sheet_name="VALORES_POR_CICLO", index=False)
         ws = writer.sheets["VALORES_POR_CICLO"]
 
         for col_idx, title in enumerate(df_export.columns):
             ws.write(0, col_idx, title, fmt_header)
+        if not df_export.empty:
+            ws.autofilter(0, 0, len(df_export), max(0, len(df_export.columns) - 1))
+        ws.freeze_panes(1, 0)
 
         colunas = {col: idx for idx, col in enumerate(df_export.columns)}
         ws.set_column("A:A", 16)
@@ -1236,12 +1254,25 @@ def gerar_excel_valores_unitarios_por_ciclo(df_valores, ciclos):
             col_atual += 3
 
         df_ciclos = ciclos.copy() if isinstance(ciclos, pd.DataFrame) else pd.DataFrame()
+        if (not isinstance(df_ciclos, pd.DataFrame)) or df_ciclos.empty or "Ciclo" not in df_ciclos.columns:
+            if not df_export.empty and "Ciclo" in df_export.columns:
+                ciclos_derivados = sorted(df_export["Ciclo"].dropna().astype(str).unique(), key=numero_ciclo)
+                df_ciclos = pd.DataFrame({
+                    "Ciclo": ciclos_derivados,
+                    "Observação": ["Ciclo derivado da aba VALORES_POR_CICLO para conferência do remanescente." for _ in ciclos_derivados],
+                })
+            else:
+                df_ciclos = pd.DataFrame(columns=["Ciclo"])
+        df_ciclos = df_ciclos[df_ciclos["Ciclo"].astype(str).str.strip().ne("")].copy()
+        df_ciclos = df_ciclos[~df_ciclos["Ciclo"].astype(str).str.upper().isin(["TOTAL", "CICLO"])].copy()
+        df_ciclos = df_ciclos.drop_duplicates(subset=["Ciclo"], keep="first").reset_index(drop=True)
         df_ciclos.to_excel(writer, sheet_name="CICLOS_CONSIDERADOS", index=False)
         ws2 = writer.sheets["CICLOS_CONSIDERADOS"]
         for col_idx, title in enumerate(df_ciclos.columns):
             ws2.write(0, col_idx, title, fmt_header)
         for idx, col in enumerate(df_ciclos.columns):
-            ws2.set_column(idx, idx, max(14, min(32, len(str(col)) + 4)))
+            largura = 24 if str(col).lower() in ["janela de admissibilidade", "referência para preenchimento", "observação"] else max(14, min(38, len(str(col)) + 4))
+            ws2.set_column(idx, idx, largura)
         for row_idx in range(1, len(df_ciclos) + 1):
             for col_idx, col in enumerate(df_ciclos.columns):
                 valor = df_ciclos.iloc[row_idx - 1, col_idx]
@@ -1252,7 +1283,7 @@ def gerar_excel_valores_unitarios_por_ciclo(df_valores, ciclos):
                     except Exception:
                         ciclo_linha = df_ciclos.iloc[row_idx - 1].get("Ciclo", "") if "Ciclo" in df_ciclos.columns else ""
                         ws2.write(row_idx, col_idx, valor, fmt_ciclo(ciclo_linha, "text", False))
-                elif col == "Variação":
+                elif col in ["Variação", "Percentual aplicado", "Percentual apurado pelo índice"]:
                     try:
                         ciclo_linha = df_ciclos.iloc[row_idx - 1].get("Ciclo", "")
                         ws2.write_number(row_idx, col_idx, float(valor), fmt_ciclo(ciclo_linha, "pct", False))
@@ -1329,10 +1360,17 @@ def gerar_planilha_executiva(resultado):
         writer.sheets["CONFERENCIA"] = ws_conf
         ws_conf.write(0, 0, "Conferência Executiva", fmt_title)
         ws_conf.write(1, 0, "Quadro executivo da apuração, com destaque obrigatório para competências sem efeito financeiro.", fmt_note_wrap)
+        modo_consumo_conferencia = resultado.get("modo_apuracao") == "Consumo por Itens/Ciclo"
+        label_retroativo_conferencia = "Retroativo (itens consumidos/ciclo)" if modo_consumo_conferencia else "Valor represado a pagar"
+        valor_retroativo_conferencia = (
+            resultado.get("valor_retroativo_consumo_itens_ciclo", 0.0)
+            if modo_consumo_conferencia
+            else resultado.get("valor_represado_a_pagar", 0.0)
+        )
         conf_linhas = [
             ("Modo de apuração", resultado.get("modo_apuracao", "Completo"), "text"),
             ("Valor Total Atualizado do Contrato", resultado.get("valor_atualizado_contrato", 0.0), "money_bold"),
-            ("Valor represado a pagar", resultado.get("valor_represado_a_pagar", 0.0), "money"),
+            (label_retroativo_conferencia, valor_retroativo_conferencia, "money"),
             ("Meses sem efeitos financeiros", int(resultado.get("quantidade_meses_sem_efeito_financeiro", 0) or 0), "text"),
             ("Valor total sem efeito financeiro", resultado.get("valor_total_sem_efeito_financeiro", 0.0), "money"),
             ("Observação", "Competências sem efeito financeiro são demonstradas para memória e transparência, mas o delta teórico não compõe o retroativo a pagar.", "text"),
@@ -1561,33 +1599,43 @@ def gerar_planilha_executiva(resultado):
             ws_c.write(3, 0, "Não há composição disponível.", fmt_text)
 
         # ====================================================
-        # Aba - Retroativo estimado por itens/estoque
+        # Aba - Retroativo por itens
         # ====================================================
         ws_ri = workbook.add_worksheet("RETROATIVO_ITENS")
         writer.sheets["RETROATIVO_ITENS"] = ws_ri
-        ws_ri.write(0, 0, "Retroativo estimado por itens/estoque", fmt_title)
-        ws_ri.write(1, 0, "Apuração estimativa usada quando não há base de execução mensal por competência. Não substitui retroativo financeiro definitivo.", fmt_note_wrap)
-        df_ri = limpar_nan_inf_df(resultado.get("df_retroativo_estimado_itens_estoque", pd.DataFrame())).copy()
+        modo_consumo_xls = resultado.get("modo_apuracao") == "Consumo por Itens/Ciclo"
+        titulo_retro_xls = "Retroativo (itens consumidos/ciclo)" if modo_consumo_xls else "Retroativo estimado por itens/estoque"
+        nota_retro_xls = "Apuração por consumo itemizado por ciclo, baseada nas quantidades consumidas informadas pela fiscalização." if modo_consumo_xls else "Apuração estimativa usada quando não há base de execução mensal por competência. Não substitui retroativo financeiro definitivo."
+        ws_ri.write(0, 0, titulo_retro_xls, fmt_title)
+        ws_ri.write(1, 0, nota_retro_xls, fmt_note_wrap)
+        df_ri = limpar_nan_inf_df(resultado.get("df_retroativo_itemizado_por_ciclo", pd.DataFrame()) if modo_consumo_xls else resultado.get("df_retroativo_estimado_itens_estoque", pd.DataFrame())).copy()
         if not df_ri.empty:
             for c_idx, col in enumerate(df_ri.columns):
                 ws_ri.write(3, c_idx, col, fmt_subtitle)
             for r_idx, (_, row) in enumerate(df_ri.iterrows(), start=4):
                 for c_idx, col in enumerate(df_ri.columns):
                     value = row.get(col, "")
-                    if col in ["Valor executado original", "Valor executado atualizado", "Retroativo estimado por itens/estoque"]:
+                    if col in ["Valor executado original", "Valor executado atualizado", "Retroativo estimado por itens/estoque", "Valor original consumido", "Valor atualizado consumido", "Retroativo"]:
                         ws_ri.write_number(r_idx, c_idx, numero_seguro(value, 0.0), fmt_money)
+                    elif col in ["Fator acumulado", "Fator aplicado"]:
+                        ws_ri.write_number(r_idx, c_idx, numero_seguro(value, 1.0), fmt_factor)
                     else:
                         ws_ri.write(r_idx, c_idx, texto_seguro(value, ""), fmt_text_wrap)
             total_row = 4 + len(df_ri)
             ws_ri.write(total_row, 0, "TOTAL", fmt_subtitle)
-            if "Retroativo estimado por itens/estoque" in df_ri.columns:
+            if modo_consumo_xls and "Retroativo" in df_ri.columns:
+                col_total = list(df_ri.columns).index("Retroativo")
+                ws_ri.write_number(total_row, col_total, numero_seguro(resultado.get("valor_retroativo_consumo_itens_ciclo", 0.0), 0.0), fmt_money_bold)
+            elif "Retroativo estimado por itens/estoque" in df_ri.columns:
                 col_total = list(df_ri.columns).index("Retroativo estimado por itens/estoque")
                 ws_ri.write_number(total_row, col_total, numero_seguro(resultado.get("valor_retroativo_estimado_itens_estoque", 0.0), 0.0), fmt_money_bold)
         else:
             ws_ri.write(3, 0, "Não há retroativo estimado por itens/estoque disponível.", fmt_text)
         ws_ri.set_column("A:A", 18)
         ws_ri.set_column("B:D", 28)
-        ws_ri.set_column("E:F", 70)
+        ws_ri.set_column("E:F", 34)
+        ws_ri.set_column("G:G", 38)
+        ws_ri.set_column("H:H", 44)
         ws_ri.set_row(1, 44)
 
         # ====================================================
@@ -2488,6 +2536,479 @@ def montar_auditoria_consistencia(resultado):
 
     return pd.DataFrame(linhas)
 
+
+def _aba_exata(xls, nome):
+    """Localiza aba por correspondência normalizada exata."""
+    alvo = normalizar_texto(nome)
+    for sheet in xls.sheet_names:
+        if normalizar_texto(sheet) == alvo:
+            return sheet
+    return None
+
+
+def _ler_ciclos_apurados_consumo(bytes_arquivo, xls):
+    """Lê CICLOS_APURADOS preservando o fator acumulado informado no modelo.
+
+    Este leitor é exclusivo do Modo Consumo por Itens/Ciclo. A planilha gerada
+    para esse modo usa o fator acumulado da Etapa 1 para calcular os valores
+    unitários atualizados; por isso, aqui não se recalcula nem arredonda o fator.
+    """
+    aba = _aba_exata(xls, "CICLOS_APURADOS") or _aba_exata(xls, "CICLOS") or _aba_exata(xls, "CICLO")
+    if not aba:
+        return pd.DataFrame(), {"C0": 1.0}
+
+    bruto = pd.read_excel(BytesIO(bytes_arquivo), sheet_name=aba, header=None)
+    linha_cabecalho = None
+    for idx, row in bruto.iterrows():
+        valores = [normalizar_texto(v) for v in row.tolist()]
+        if any(v == "ciclo" for v in valores) and any(v == "fator_acumulado" for v in valores):
+            linha_cabecalho = idx
+            break
+    if linha_cabecalho is None:
+        return pd.DataFrame(), {"C0": 1.0}
+
+    df = pd.read_excel(BytesIO(bytes_arquivo), sheet_name=aba, header=linha_cabecalho)
+    df = df.dropna(how="all").copy()
+    df.columns = [str(c).strip() for c in df.columns]
+    df = df.loc[:, ~pd.Series(df.columns).astype(str).str.startswith("Unnamed").values]
+    if df.empty:
+        return pd.DataFrame(), {"C0": 1.0}
+
+    col_ciclo = localizar_coluna(df, ["Ciclo"])
+    col_base = localizar_coluna(df, ["Data-base", "Base"])
+    col_janela = localizar_coluna(df, ["Janela de admissibilidade", "Janela"])
+    col_pedido = localizar_coluna(df, ["Data do pedido", "Pedido"])
+    col_inicio = localizar_coluna(df, ["Início financeiro", "Inicio financeiro"])
+    col_percentual = localizar_coluna(df, ["Percentual aplicado", "Percentual", "Variação"])
+    col_fator_acum = localizar_coluna(df, ["Fator acumulado", "Fator acumulado final", "Fator Acumulado"])
+    col_fator = localizar_coluna(df, ["Fator do ciclo", "Fator", "Fator ciclo"])
+    col_situacao = localizar_coluna(df, ["Situação", "Situacao", "Resultado"])
+    col_ref = localizar_coluna(df, ["Referência para preenchimento", "Referencia para preenchimento", "Referência"])
+    col_obs = localizar_coluna(df, ["Observação", "Observacao", "Obs"])
+    if col_ciclo is None:
+        return pd.DataFrame(), {"C0": 1.0}
+
+    linhas = []
+    fatores = {}
+    fator_corrente = 1.0
+    for _, row in df.iterrows():
+        ciclo = normalizar_ciclo(row.get(col_ciclo, ""))
+        if not ciclo or ciclo.upper() == "TOTAL":
+            continue
+        fator_acum = numero_br(row.get(col_fator_acum, "")) if col_fator_acum else 0.0
+        if not fator_acum:
+            fator_ciclo = numero_br(row.get(col_fator, "")) if col_fator else 1.0
+            fator_acum = fator_corrente * (fator_ciclo if fator_ciclo else 1.0)
+        if not fator_acum:
+            fator_acum = 1.0
+        fator_corrente = fator_acum
+        fatores[ciclo] = float(fator_acum)
+        linhas.append({
+            "Ciclo": ciclo,
+            "Data-base": row.get(col_base, "") if col_base else "",
+            "Janela de admissibilidade": row.get(col_janela, "") if col_janela else "",
+            "Data do pedido": row.get(col_pedido, "") if col_pedido else "",
+            "Início financeiro": row.get(col_inicio, "") if col_inicio else "",
+            "Percentual aplicado": row.get(col_percentual, "") if col_percentual else "",
+            "Fator acumulado": float(fator_acum),
+            "Situação": row.get(col_situacao, "") if col_situacao else "",
+            "Referência para preenchimento": row.get(col_ref, "") if col_ref else "",
+            "Observação": row.get(col_obs, "") if col_obs else "",
+        })
+    fatores.setdefault("C0", 1.0)
+    return pd.DataFrame(linhas), fatores
+
+
+def _localizar_colunas_consumo_por_ciclo(df):
+    """Retorna mapa {C0: coluna, C1: coluna...} para CONSUMO_ITENS."""
+    mapa = {}
+    for col in df.columns:
+        original = str(col).strip()
+        n = normalizar_texto(original)
+        if not n or "total" in n or "saldo" in n or "check" in n:
+            continue
+        m = re.search(r"(?:^|_)(c\d+)(?:$|_)", n)
+        if not m:
+            # Também aceita cabeçalho simples C0, C1, C2 etc.
+            m = re.fullmatch(r"c\d+", n)
+            ciclo = n.upper() if m else ""
+        else:
+            ciclo = m.group(1).upper()
+        if not ciclo:
+            continue
+        if any(p in n for p in ["consum", "execut", "qtd", "quantidade"]) or re.fullmatch(r"c\d+", n):
+            mapa[ciclo] = col
+    return dict(sorted(mapa.items(), key=lambda kv: numero_ciclo(kv[0])))
+
+
+def _ler_consumo_itens_matriz(bytes_arquivo, xls):
+    """Lê o modelo estruturado do Modo Consumo por Itens/Ciclo.
+
+    Formato esperado: aba CONSUMO_ITENS com uma matriz simples por item:
+    Item | Quantidade contratada | Valor unitário original/base | Consumido C0 | Consumido C1...
+    """
+    aba = _aba_exata(xls, "CONSUMO_ITENS")
+    if not aba:
+        raise ValueError("Aba CONSUMO_ITENS não encontrada.")
+
+    # A aba tem título e orientação nas primeiras linhas; localizar a linha real do cabeçalho
+    # por correspondência forte, para não confundir o texto de orientação com cabeçalho.
+    bruto = pd.read_excel(BytesIO(bytes_arquivo), sheet_name=aba, header=None)
+    linha_cabecalho = None
+    for idx, row in bruto.iterrows():
+        valores = [normalizar_texto(v) for v in row.tolist()]
+        tem_item = any(v == "item" for v in valores)
+        tem_qtd = any(v in ["quantidade_contratada", "qtd_contratada"] for v in valores)
+        tem_vu = any(v in ["valor_unitario_original_base", "valor_unitario_original", "vu_original", "vu_c0"] for v in valores)
+        tem_consumo = any(re.search(r"(?:^|_)c\d+(?:$|_)", v) and ("consum" in v or "qtd" in v or "quantidade" in v or "execut" in v or re.fullmatch(r"c\d+", v)) for v in valores)
+        if tem_item and tem_qtd and tem_vu and tem_consumo:
+            linha_cabecalho = idx
+            break
+    if linha_cabecalho is None:
+        df_tmp = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item", "Quantidade contratada", "Valor unitário original"])
+        colunas_tmp = ", ".join([str(c) for c in df_tmp.columns]) if not df_tmp.empty else "nenhuma coluna identificada"
+        raise ValueError(
+            "Leitor Consumo por Itens/Ciclo " + LEITOR_CONSUMO_ITENS_CICLO_VERSAO +
+            ": não foi possível localizar a linha de cabeçalho da aba CONSUMO_ITENS. " +
+            "Colunas detectadas pela leitura preliminar: " + colunas_tmp
+        )
+    df = pd.read_excel(BytesIO(bytes_arquivo), sheet_name=aba, header=linha_cabecalho)
+    df = df.dropna(how="all").copy()
+    df.columns = [str(c).strip() for c in df.columns]
+    df = df.loc[:, ~pd.Series(df.columns).astype(str).str.startswith("Unnamed").values]
+
+    col_item = localizar_coluna(df, ["Item"])
+    col_qtd = localizar_coluna(df, ["Quantidade contratada", "Qtd contratada", "Quantidade", "Qtd"])
+    col_vu = localizar_coluna(df, ["Valor unitário original/base", "Valor unitário original", "VU original", "VU C0", "Valor unitario original"])
+    col_saldo = localizar_coluna(df, ["Saldo a faturar", "Saldo atual", "Quantidade saldo a faturar", "Saldo"])
+    colunas_consumo = _localizar_colunas_consumo_por_ciclo(df)
+
+    if col_item is None or col_qtd is None or col_vu is None:
+        raise ValueError(
+            "Leitor Consumo por Itens/Ciclo " + LEITOR_CONSUMO_ITENS_CICLO_VERSAO +
+            ": a aba CONSUMO_ITENS não possui Item, Quantidade contratada e Valor unitário original/base. " +
+            "Colunas encontradas: " + ", ".join([str(c) for c in df.columns])
+        )
+    if not colunas_consumo:
+        raise ValueError(
+            "Leitor Consumo por Itens/Ciclo " + LEITOR_CONSUMO_ITENS_CICLO_VERSAO +
+            ": a aba CONSUMO_ITENS não possui colunas de consumo por ciclo. " +
+            "Aceito: Consumido C0, Consumido C1, Consumo C1, Qtd consumida C1, Executado C1 ou C1. " +
+            "Colunas encontradas: " + ", ".join([str(c) for c in df.columns])
+        )
+
+    linhas = []
+    for _, row in df.iterrows():
+        item = row.get(col_item, "")
+        item_txt = str(item).strip()
+        if not item_txt or item_txt.upper() == "TOTAL" or item_txt.lower() in ["nan", "none"]:
+            continue
+        qtd_contratada = numero_br(row.get(col_qtd, 0))
+        vu_original = numero_br(row.get(col_vu, 0))
+        if qtd_contratada == 0 and vu_original == 0:
+            continue
+        consumos = {ciclo: numero_br(row.get(col, 0)) for ciclo, col in colunas_consumo.items()}
+        saldo_informado = numero_br(row.get(col_saldo, "")) if col_saldo else None
+        linhas.append({
+            "Item": item_txt,
+            "Quantidade contratada": qtd_contratada,
+            "Valor unitário original/base": vu_original,
+            "Consumos": consumos,
+            "Saldo a faturar informado": saldo_informado,
+        })
+    if not linhas:
+        raise ValueError("A aba CONSUMO_ITENS não contém linhas de itens preenchidas.")
+    return linhas, list(colunas_consumo.keys())
+
+
+
+def construir_valores_unitarios_consumo_ciclo(itens_consumo, fatores, ciclos_consumo):
+    """Monta a fotografia de remanescente por início de ciclo no Modo Consumo por Itens/Ciclo.
+
+    A aba/tabela de Valores Unitários e Totais, neste modo, não representa o consumo do ciclo,
+    mas sim o saldo remanescente existente no início de cada ciclo, calculado a partir das
+    quantidades consumidas informadas pela fiscalização.
+    """
+    if not itens_consumo:
+        return pd.DataFrame(columns=["Item", "Ciclo", "Quantidade", "Valor unitário", "Total R$", "Situação", "Observação"])
+
+    ciclos_base = set(ciclos_consumo or []) | set(fatores.keys())
+    ciclos_base.add("C0")
+    ciclos_ordenados = sorted([c for c in ciclos_base if c], key=numero_ciclo)
+    linhas = []
+
+    for item in itens_consumo:
+        item_id = item.get("Item", "")
+        qtd_contratada = numero_seguro(item.get("Quantidade contratada", 0.0), 0.0)
+        vu_original = numero_seguro(item.get("Valor unitário original/base", 0.0), 0.0)
+        consumos = item.get("Consumos", {}) or {}
+
+        for ciclo in ciclos_ordenados:
+            n_ciclo = numero_ciclo(ciclo)
+            if ciclo == "C0":
+                qtd_inicio = qtd_contratada
+                observacao = "Quantidade contratada original no ciclo-base."
+            else:
+                consumido_antes = 0.0
+                for c_consumo, qtd in consumos.items():
+                    if numero_ciclo(c_consumo) < n_ciclo:
+                        consumido_antes += numero_seguro(qtd, 0.0)
+                qtd_inicio = qtd_contratada - consumido_antes
+                observacao = "Remanescente no início do ciclo, antes do consumo informado para o próprio ciclo."
+
+            fator = numero_seguro(fatores.get(ciclo, 1.0), 1.0)
+            vu_atualizado = round(vu_original * fator, 2)
+            total = round(qtd_inicio * vu_atualizado, 2)
+            situacao = "Remanescente por início de ciclo"
+            if qtd_inicio < -0.000001:
+                situacao = "DIVERGÊNCIA: consumo anterior maior que contratado"
+
+            linhas.append({
+                "Item": item_id,
+                "Ciclo": ciclo,
+                "Quantidade": round(qtd_inicio, 6),
+                "Valor unitário": vu_atualizado,
+                "Total R$": total,
+                "Situação": situacao,
+                "Observação": observacao,
+            })
+
+    return pd.DataFrame(linhas)
+
+def processar_consumo_itens_ciclo(bytes_arquivo, xls, params, contexto_contratual, ciclos_padronizados, origem_ciclos, aviso_base_execucao=""):
+    """Processa exclusivamente o Modo Consumo por Itens/Ciclo.
+
+    Este modo é diferente do Modo Reduzido por Itens/Estoque. Aqui a base é a
+    quantidade consumida/executada por item e por ciclo, validada pela fiscalização.
+    """
+    ciclos_apurados, fatores = _ler_ciclos_apurados_consumo(bytes_arquivo, xls)
+    if ciclos_apurados.empty:
+        ciclos_apurados = ciclos_padronizados.copy() if isinstance(ciclos_padronizados, pd.DataFrame) else pd.DataFrame()
+        if isinstance(ciclos_apurados, pd.DataFrame) and not ciclos_apurados.empty and "Fator acumulado" in ciclos_apurados.columns:
+            fatores = {normalizar_ciclo(r.get("Ciclo", "")): numero_seguro(r.get("Fator acumulado", 1.0), 1.0) for _, r in ciclos_apurados.iterrows()}
+            fatores.setdefault("C0", 1.0)
+    itens_consumo, ciclos_consumo = _ler_consumo_itens_matriz(bytes_arquivo, xls)
+
+    ciclos_validos = [c for c in ciclos_consumo if c in fatores]
+    if not ciclos_validos:
+        ciclos_validos = ciclos_consumo
+    ultimo_ciclo = sorted([c for c in fatores if c and c != "C0"], key=numero_ciclo)[-1] if any(c != "C0" for c in fatores) else "C0"
+    fator_saldo = numero_seguro(fatores.get(ultimo_ciclo, 1.0), 1.0)
+
+    linhas_consumo = []
+    linhas_saldo = []
+    for item in itens_consumo:
+        item_id = item["Item"]
+        qtd_contratada = numero_seguro(item["Quantidade contratada"], 0.0)
+        vu_original = numero_seguro(item["Valor unitário original/base"], 0.0)
+        consumos = item["Consumos"]
+        total_consumido = sum(numero_seguro(v, 0.0) for v in consumos.values())
+        saldo_qtd = item.get("Saldo a faturar informado")
+        if saldo_qtd is None or str(saldo_qtd).strip() == "":
+            saldo_qtd = qtd_contratada - total_consumido
+        saldo_qtd = numero_seguro(saldo_qtd, 0.0)
+
+        for ciclo in ciclos_consumo:
+            qtd_consumida = numero_seguro(consumos.get(ciclo, 0.0), 0.0)
+            fator = numero_seguro(fatores.get(ciclo, 1.0), 1.0)
+            vu_atualizado = round(vu_original * fator, 2)
+            valor_original = round(qtd_consumida * vu_original, 2)
+            valor_atualizado = round(qtd_consumida * vu_atualizado, 2)
+            retroativo = round(valor_atualizado - valor_original, 2)
+            linhas_consumo.append({
+                "Item": item_id,
+                "Ciclo": ciclo,
+                "Quantidade consumida": round(qtd_consumida, 6),
+                "Valor unitário original/base": round(vu_original, 2),
+                "Fator acumulado": fator,
+                "Valor unitário atualizado": vu_atualizado,
+                "Valor original consumido": valor_original,
+                "Valor atualizado consumido": valor_atualizado,
+                "Retroativo": retroativo,
+            })
+
+        vu_saldo_atualizado = round(vu_original * fator_saldo, 2)
+        saldo_original = round(saldo_qtd * vu_original, 2)
+        saldo_atualizado = round(saldo_qtd * vu_saldo_atualizado, 2)
+        linhas_saldo.append({
+            "Item": item_id,
+            "Quantidade contratada": round(qtd_contratada, 6),
+            "Quantidade consumida total": round(total_consumido, 6),
+            "Quantidade saldo a faturar": round(saldo_qtd, 6),
+            "Valor unitário original/base": round(vu_original, 2),
+            "Fator saldo atual": fator_saldo,
+            "Valor unitário atualizado saldo": vu_saldo_atualizado,
+            "Saldo original": saldo_original,
+            "Saldo a faturar atualizado": saldo_atualizado,
+        })
+
+    df_consumo_itemizado = pd.DataFrame(linhas_consumo)
+    df_saldo_itemizado = pd.DataFrame(linhas_saldo)
+    df_valores_unitarios_consumo = construir_valores_unitarios_consumo_ciclo(itens_consumo, fatores, ciclos_consumo)
+
+    df_retroativo_por_ciclo = (
+        df_consumo_itemizado.groupby("Ciclo", as_index=False)
+        .agg({
+            "Quantidade consumida": "sum",
+            "Valor original consumido": "sum",
+            "Valor atualizado consumido": "sum",
+            "Retroativo": "sum",
+        })
+        .sort_values(by="Ciclo", key=lambda s: s.map(numero_ciclo))
+        .reset_index(drop=True)
+    )
+    df_retroativo_por_ciclo["Fator acumulado"] = df_retroativo_por_ciclo["Ciclo"].map(lambda c: fatores.get(c, 1.0))
+    df_execucao = df_retroativo_por_ciclo.rename(columns={
+        "Valor original consumido": "Valor executado original",
+        "Valor atualizado consumido": "Valor executado atualizado",
+        "Retroativo": "Delta da execução",
+    })[["Ciclo", "Valor executado original", "Valor executado atualizado", "Delta da execução"]]
+
+    valor_original_contrato = round(sum(numero_seguro(i["Quantidade contratada"], 0.0) * numero_seguro(i["Valor unitário original/base"], 0.0) for i in itens_consumo), 2)
+    execucao_original = round(df_consumo_itemizado["Valor original consumido"].sum(), 2)
+    execucao_atualizada = round(df_consumo_itemizado["Valor atualizado consumido"].sum(), 2)
+    retroativo_total = round(df_consumo_itemizado["Retroativo"].sum(), 2)
+    saldo_original = round(df_saldo_itemizado["Saldo original"].sum(), 2)
+    saldo_atualizado = round(df_saldo_itemizado["Saldo a faturar atualizado"].sum(), 2)
+    valor_atualizado_contrato = round(execucao_atualizada + saldo_atualizado, 2)
+
+    df_delta_por_ciclo = df_retroativo_por_ciclo.rename(columns={
+        "Valor original consumido": "Valor pago efetivo",
+        "Valor atualizado consumido": "Valor teórico calculado",
+        "Retroativo": "Delta do ciclo",
+    })[["Ciclo", "Valor pago efetivo", "Valor teórico calculado", "Delta do ciclo", "Fator acumulado"]]
+
+    df_retro_compat = df_execucao.copy()
+    df_retro_compat["Retroativo estimado por itens/estoque"] = df_retro_compat["Delta da execução"]
+    df_retro_compat["Natureza da apuração"] = "Consumo por Itens/Ciclo"
+    df_retro_compat["Observação"] = "Apuração itemizada por quantidade consumida/executada por ciclo."
+
+    if isinstance(df_valores_unitarios_consumo, pd.DataFrame) and not df_valores_unitarios_consumo.empty:
+        df_remanescentes = (
+            df_valores_unitarios_consumo.groupby("Ciclo", as_index=False)
+            .agg({"Total R$": "sum"})
+            .rename(columns={"Total R$": "Remanescente atualizado"})
+            .sort_values(by="Ciclo", key=lambda s: s.map(numero_ciclo))
+            .reset_index(drop=True)
+        )
+        df_remanescentes["Remanescente original"] = pd.NA
+        df_remanescentes["Fator aplicado"] = df_remanescentes["Ciclo"].map(lambda c: fatores.get(c, 1.0))
+        df_remanescentes["Observação"] = "Remanescente estimado no início do ciclo, calculado a partir das quantidades consumidas informadas."
+        df_remanescentes = df_remanescentes[["Ciclo", "Remanescente original", "Remanescente atualizado", "Fator aplicado", "Observação"]]
+    else:
+        df_remanescentes = pd.DataFrame([{
+            "Ciclo": ultimo_ciclo,
+            "Remanescente original": saldo_original,
+            "Remanescente atualizado": saldo_atualizado,
+            "Fator aplicado": fator_saldo,
+        }])
+
+    df_composicao_valor_total = montar_composicao_valor_total(
+        df_execucao,
+        saldo_atualizado,
+        ultimo_ciclo,
+        valor_atualizado_contrato,
+    )
+
+    fator_acumulado = fator_saldo
+    indice = (
+        st.session_state.get("dados_admissibilidade", {}).get("indice")
+        or params.get("indice_utilizado")
+        or params.get("indice")
+        or params.get("indice_apurado_na_etapa_1")
+        or params.get("indice_contratual")
+        or params.get("indice_aplicado")
+        or "Não informado no modelo"
+    )
+
+    df_comparativo = montar_comparativo_executivo(
+        valor_original_contrato,
+        valor_original_contrato,
+        valor_atualizado_contrato - valor_original_contrato,
+        0.0,
+        0.0,
+        0.0,
+        saldo_original,
+        saldo_atualizado,
+        valor_atualizado_contrato,
+        0.0,
+        0.0,
+        0,
+        0,
+        0.0,
+    )
+
+    resultado = {
+        "data_processamento": agora_brasilia().strftime("%d/%m/%Y %H:%M"),
+        "modo_apuracao": "Consumo por Itens/Ciclo",
+        "base_execucao_mensal_disponivel": False,
+        "base_itens_disponivel": True,
+        "base_consumo_itens_ciclo_disponivel": True,
+        "aviso_base_execucao": aviso_base_execucao,
+        "ressalva_modo_apuracao": "Apuração por consumo itemizado por ciclo, sem base mensal financeira por competência. A força da apuração depende da premissa fiscal de equivalência entre consumo, medição/aprovação e faturamento devido.",
+        "origem_ciclos": origem_ciclos,
+        "indice": indice,
+        "fator_acumulado": fator_acumulado,
+        "variacao_acumulada": fator_acumulado - 1,
+        "quantidade_ciclos": int(len([c for c in fatores if c != "C0"])),
+        "valor_original_contrato": valor_original_contrato,
+        "contexto_contratual_anterior": contexto_contratual,
+        "valor_formalizado_anterior": valor_original_contrato,
+        "impacto_analise_atual": valor_atualizado_contrato - valor_original_contrato,
+        "valor_pago_efetivo": 0.0,
+        "total_pago_faturado": 0.0,
+        "valor_teorico_calculado": 0.0,
+        "total_devido_reajustado": 0.0,
+        "delta_total": 0.0,
+        "delta_acumulado": 0.0,
+        "valor_represado_a_pagar": 0.0,
+        "valor_retroativo_estimado_itens_estoque": retroativo_total,
+        "valor_retroativo_consumo_itens_ciclo": retroativo_total,
+        "retroativo_estimado_itens_estoque_disponivel": True,
+        "quantidade_meses_sem_efeito_financeiro": 0,
+        "valor_total_sem_efeito_financeiro": 0.0,
+        "remanescente_original": saldo_original,
+        "remanescente_reajustado": saldo_atualizado,
+        "saldo_a_faturar_atualizado": saldo_atualizado,
+        "fator_remanescente": fator_saldo,
+        "valor_executado_original": execucao_original,
+        "valor_executado_atualizado": execucao_atualizada,
+        "valor_calculado_sem_aditivos": valor_atualizado_contrato,
+        "valor_atualizado_contrato": valor_atualizado_contrato,
+        "valor_global_financeiro": valor_atualizado_contrato,
+        "total_aditivos_atualizados": 0.0,
+        "total_aditivos_informativos": 0.0,
+        "aditivos_somados_ao_valor_total": False,
+        "formula_valor_total_atualizado": "execucao_atualizada_por_ciclo + saldo_a_faturar_atualizado",
+        "quantidade_aditivos_total": 0,
+        "quantidade_aditivos_marcados_computaveis": 0,
+        "ciclo_ultimo_remanescente": ultimo_ciclo,
+        # No Modo Consumo por Itens/Ciclo, a fonte correta é a aba CICLOS_APURADOS.
+        # O leitor genérico pode captar linhas de orientação como ciclos vazios.
+        "df_ciclos": ciclos_apurados if isinstance(ciclos_apurados, pd.DataFrame) and not ciclos_apurados.empty else ciclos_padronizados,
+        "df_financeiro_mensal": pd.DataFrame(columns=["Ciclo", "Competência", "Valor pago/faturado"]),
+        "df_financeiro_mensal_tratado": pd.DataFrame(),
+        "df_meses_sem_efeito_financeiro": pd.DataFrame(),
+        "df_financeiro_por_ciclo": pd.DataFrame(),
+        "df_delta_por_ciclo": df_delta_por_ciclo,
+        "df_execucao_atualizada": df_execucao,
+        "df_consumo_itemizado_ciclo": df_consumo_itemizado,
+        "df_retroativo_itemizado_por_ciclo": df_retroativo_por_ciclo,
+        "df_saldo_itemizado": df_saldo_itemizado,
+        "df_retroativo_estimado_itens_estoque": df_retro_compat,
+        "df_composicao_valor_total": df_composicao_valor_total,
+        "df_remanescentes": df_remanescentes,
+        "df_valores_unitarios_ciclo": df_valores_unitarios_consumo,
+        "df_aditivos": pd.DataFrame(),
+        "df_aditivos_executivo": pd.DataFrame(),
+        "df_aditivos_computaveis": pd.DataFrame(),
+        "df_aditivos_informativos": pd.DataFrame(),
+        "df_comparativo": df_comparativo,
+    }
+    resultado = arredondar_resultado_financeiro(resultado)
+    resultado["df_auditoria_consistencia"] = montar_auditoria_consistencia(resultado)
+    return resultado
+
 def processar_arquivo_coleta(bytes_arquivo):
     xls = pd.ExcelFile(BytesIO(bytes_arquivo))
     params = ler_parametros(bytes_arquivo, xls)
@@ -2502,6 +3023,14 @@ def processar_arquivo_coleta(bytes_arquivo):
         financeiro = pd.DataFrame(columns=["Ciclo", "Competência", "Valor pago/faturado"])
         base_execucao_mensal_disponivel = False
         aviso_base_execucao = str(exc)
+
+    # Modo Consumo por Itens/Ciclo: terceiro modo, distinto do modo reduzido por remanescentes.
+    # Deve ser priorizado antes de ler ITENS_REMANESCENTES, porque CONSUMO_ITENS também contém
+    # dados de itens e não deve ser interpretada como estoque/remanescente.
+    if (not base_execucao_mensal_disponivel) and _aba_exata(xls, "CONSUMO_ITENS"):
+        return processar_consumo_itens_ciclo(
+            bytes_arquivo, xls, params, contexto_contratual, ciclos, origem_ciclos, aviso_base_execucao
+        )
 
     itens, colunas_remanescentes = ler_itens(bytes_arquivo, xls)
     base_itens_disponivel = (not itens.empty) and bool(colunas_remanescentes)
@@ -3464,6 +3993,7 @@ st.markdown(
     """
 )
 
+render_aviso_privacidade(tem_upload=True, tem_download=True)
 adm = st.session_state.get("dados_admissibilidade")
 
 with st.expander("Contexto da Admissibilidade", expanded=True):
@@ -3509,6 +4039,16 @@ if resultado:
             """,
             unsafe_allow_html=True,
         )
+    elif modo_apuracao_ui == "Consumo por Itens/Ciclo":
+        st.markdown(
+            """
+            <div style="background:#F6F3EE; border:1px solid #7A8F63; border-left:6px solid #4E6E58; border-radius:12px; padding:14px 16px; margin:10px 0 16px 0; color:#2F3E2F;">
+                <div style="font-weight:800; margin-bottom:4px;">Modo Consumo por Itens/Ciclo</div>
+                <div style="font-size:0.95rem; line-height:1.45;">Apuração itemizada baseada nos quantitativos consumidos/executados por item e por ciclo, sem base financeira mensal por competência. Use quando a fiscalização confirmar equivalência entre consumo, medição/aprovação e faturamento devido.</div>
+            </div>
+            """,
+            unsafe_allow_html=True,
+        )
     else:
         st.caption(f"Modo de apuração: {modo_apuracao_ui}.")
 
@@ -3541,7 +4081,10 @@ if resultado:
         colp1.metric("Valor bruto medido/aprovado", moeda(resultado["valor_pago_efetivo"]))
         colp2.metric("Valor teórico calculado", moeda(resultado["valor_teorico_calculado"]))
     else:
-        colp1.metric("Execução estimada por estoque", moeda(resultado.get("valor_executado_atualizado", 0.0)))
+        if modo_apuracao_ui == "Consumo por Itens/Ciclo":
+            colp1.metric("Execução atualizada por itens/ciclo", moeda(resultado.get("valor_executado_atualizado", 0.0)))
+        else:
+            colp1.metric("Execução estimada por estoque", moeda(resultado.get("valor_executado_atualizado", 0.0)))
         colp2.metric("Base mensal por competência", "Não informada")
 
     col4, col5 = st.columns(2)
@@ -3551,28 +4094,53 @@ if resultado:
     col5.metric("Ciclos", resultado.get("quantidade_ciclos", 0))
 
     if not base_execucao_ok_ui:
-        retroativo_itens = numero_seguro(resultado.get("valor_retroativo_estimado_itens_estoque", 0.0), 0.0)
-        st.markdown(
-            f"""
-            <div style="background:#F3E8FF; border:1px solid #A855F7; border-left:6px solid #7E22CE; border-radius:14px; padding:16px 18px; margin:10px 0 16px 0;">
-                <div style="color:#581C87; font-weight:800; font-size:0.92rem; margin-bottom:6px;">Retroativo estimado por itens/estoque</div>
-                <div style="color:#0F172A; font-size:1.65rem; font-weight:900; line-height:1.2;">{moeda(retroativo_itens)}</div>
-                <div style="color:#581C87; font-size:0.86rem; margin-top:8px;">Estimativa calculada pela diferença entre a execução atualizada por itens/estoque e a execução original estimada. Não substitui a apuração financeira mensal por competência.</div>
-            </div>
-            """,
-            unsafe_allow_html=True,
-        )
-        df_retro_itens_ui = resultado.get("df_retroativo_estimado_itens_estoque", pd.DataFrame())
-        if isinstance(df_retro_itens_ui, pd.DataFrame) and not df_retro_itens_ui.empty:
-            with st.expander("Detalhar retroativo estimado por itens/estoque", expanded=False):
-                st.dataframe(
-                    formatar_dataframe_moeda(
-                        df_retro_itens_ui,
-                        colunas_moeda=["Valor executado original", "Valor executado atualizado", "Retroativo estimado por itens/estoque"],
-                    ),
-                    use_container_width=True,
-                    hide_index=True,
-                )
+        if modo_apuracao_ui == "Consumo por Itens/Ciclo":
+            retroativo_itens = numero_seguro(resultado.get("valor_retroativo_consumo_itens_ciclo", resultado.get("valor_retroativo_estimado_itens_estoque", 0.0)), 0.0)
+            st.markdown(
+                f"""
+                <div style="background:#F6F3EE; border:1px solid #7A8F63; border-left:6px solid #4E6E58; border-radius:14px; padding:16px 18px; margin:10px 0 16px 0;">
+                    <div style="color:#2F3E2F; font-weight:800; font-size:0.92rem; margin-bottom:6px;">Retroativo (itens consumidos/ciclo)</div>
+                    <div style="color:#0F172A; font-size:1.65rem; font-weight:900; line-height:1.2;">{moeda(retroativo_itens)}</div>
+                    <div style="color:#4E6E58; font-size:0.86rem; margin-top:8px;">Apuração calculada a partir das quantidades consumidas por item e por ciclo, com aplicação dos fatores acumulados informados em CICLOS_APURADOS.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            df_retro_itens_ui = resultado.get("df_retroativo_itemizado_por_ciclo", pd.DataFrame())
+            if isinstance(df_retro_itens_ui, pd.DataFrame) and not df_retro_itens_ui.empty:
+                with st.expander("Detalhar retroativo itemizado por consumo/ciclo", expanded=False):
+                    st.dataframe(
+                        formatar_dataframe_moeda(
+                            df_retro_itens_ui,
+                            colunas_moeda=["Valor original consumido", "Valor atualizado consumido", "Retroativo"],
+                            colunas_fator=["Fator acumulado"],
+                        ),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+        else:
+            retroativo_itens = numero_seguro(resultado.get("valor_retroativo_estimado_itens_estoque", 0.0), 0.0)
+            st.markdown(
+                f"""
+                <div style="background:#F3E8FF; border:1px solid #A855F7; border-left:6px solid #7E22CE; border-radius:14px; padding:16px 18px; margin:10px 0 16px 0;">
+                    <div style="color:#581C87; font-weight:800; font-size:0.92rem; margin-bottom:6px;">Retroativo estimado por itens/estoque</div>
+                    <div style="color:#0F172A; font-size:1.65rem; font-weight:900; line-height:1.2;">{moeda(retroativo_itens)}</div>
+                    <div style="color:#581C87; font-size:0.86rem; margin-top:8px;">Estimativa calculada pela diferença entre a execução atualizada por itens/estoque e a execução original estimada. Não substitui a apuração financeira mensal por competência.</div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            df_retro_itens_ui = resultado.get("df_retroativo_estimado_itens_estoque", pd.DataFrame())
+            if isinstance(df_retro_itens_ui, pd.DataFrame) and not df_retro_itens_ui.empty:
+                with st.expander("Detalhar retroativo estimado por itens/estoque", expanded=False):
+                    st.dataframe(
+                        formatar_dataframe_moeda(
+                            df_retro_itens_ui,
+                            colunas_moeda=["Valor executado original", "Valor executado atualizado", "Retroativo estimado por itens/estoque"],
+                        ),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
 
     st.markdown(
         f"""
@@ -3622,10 +4190,20 @@ if resultado:
     with tab1:
         st.markdown("### Painel Financeiro por Ciclo")
         if not base_execucao_ok_ui:
-            st.warning(
-                "A base de execução mensal por competência não foi informada. "
-                "Por isso, não há cálculo definitivo de retroativo por competência neste processamento."
-            )
+            if modo_apuracao_ui == "Consumo por Itens/Ciclo":
+                st.markdown(
+                    """
+                    <div style="background:#F6F3EE; border:1px solid #7A8F63; border-left:6px solid #4E6E58; border-radius:12px; padding:13px 15px; margin:8px 0 14px 0; color:#2F3E2F;">
+                        Não há base mensal por competência. Neste modo, a apuração utiliza consumo por item/ciclo validado pela fiscalização; o retroativo financeiro mensal definitivo não é calculado.
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.warning(
+                    "A base de execução mensal por competência não foi informada. "
+                    "Por isso, não há cálculo definitivo de retroativo por competência neste processamento."
+                )
         else:
             df_fin = formatar_dataframe_moeda(
                 resultado["df_financeiro_por_ciclo"],
@@ -3713,25 +4291,50 @@ if resultado:
             st.info("Não há aditivos ou supressões informados no arquivo processado.")
 
     with tab3:
-        st.markdown("### Delta por Ciclo")
+        titulo_delta = "Retroativo por Ciclo" if modo_apuracao_ui == "Consumo por Itens/Ciclo" else "Delta por Ciclo"
+        st.markdown(f"### {titulo_delta}")
         if not base_execucao_ok_ui:
-            st.warning("Sem base mensal por competência, o delta/retroativo por ciclo não é definitivo. A tabela abaixo é apenas controle estimativo/estrutural.")
+            if modo_apuracao_ui == "Consumo por Itens/Ciclo":
+                st.markdown(
+                    """
+                    <div style="background:#F6F3EE; border:1px solid #7A8F63; border-left:6px solid #4E6E58; border-radius:12px; padding:13px 15px; margin:8px 0 14px 0; color:#2F3E2F;">
+                        Apuração por consumo itemizado. A tabela abaixo demonstra o retroativo por ciclo com base nas quantidades consumidas informadas pela fiscalização.
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+            else:
+                st.warning("Sem base mensal por competência, o delta/retroativo por ciclo não é definitivo. A tabela abaixo é apenas controle estimativo/estrutural.")
         df_delta = resultado.get("df_delta_por_ciclo", resultado["df_financeiro_por_ciclo"]).copy()
         if "Ciclo" in df_delta.columns:
             df_delta = df_delta[df_delta["Ciclo"] != "TOTAL"].copy()
+        if modo_apuracao_ui == "Consumo por Itens/Ciclo" and "Delta do ciclo" in df_delta.columns:
+            df_delta = df_delta.rename(columns={"Delta do ciclo": "Retroativo do ciclo"})
+            moedas_delta = ["Valor pago efetivo", "Valor teórico calculado", "Retroativo do ciclo"]
+        else:
+            moedas_delta = ["Valor pago efetivo", "Valor teórico calculado", "Delta do ciclo"]
         st.dataframe(
             formatar_dataframe_moeda(
                 df_delta,
-                colunas_moeda=["Valor pago efetivo", "Valor teórico calculado", "Delta do ciclo"],
-                colunas_fator=["Fator aplicado ao retroativo"],
+                colunas_moeda=moedas_delta,
+                colunas_fator=["Fator aplicado ao retroativo", "Fator acumulado"],
             ),
             use_container_width=True,
             hide_index=True,
         )
-        st.caption("O C0 foi incluído como base de referência, com delta igual a R$ 0,00.")
+        st.caption("O C0 foi incluído como base de referência, com retroativo igual a R$ 0,00." if modo_apuracao_ui == "Consumo por Itens/Ciclo" else "O C0 foi incluído como base de referência, com delta igual a R$ 0,00.")
 
     with tab4:
         st.markdown("### Valores Unitários e Totais por Ciclo")
+        if modo_apuracao_ui == "Consumo por Itens/Ciclo":
+            st.markdown(
+                """
+                <div style="background:#F6F3EE; border:1px solid #7A8F63; border-left:6px solid #4E6E58; border-radius:12px; padding:12px 14px; margin:8px 0 12px 0; color:#2F3E2F;">
+                    Neste modo, a tabela representa o <strong>remanescente no início de cada ciclo</strong>, calculado a partir da quantidade contratada e das quantidades consumidas já informadas.
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
         df_vu = limpar_nan_inf_df(resultado.get("df_valores_unitarios_ciclo", pd.DataFrame()))
         if df_vu.empty:
             st.info("Não há dados suficientes para montar os valores unitários por ciclo.")
@@ -3804,44 +4407,74 @@ if resultado:
             st.info("Sem contexto contratual anterior informado.")
 
         if not base_execucao_ok_ui:
-            st.markdown("### Retroativo estimado por itens/estoque")
-            st.markdown(
-                """
-                <div style="background:#F3E8FF; border:1px solid #A855F7; border-left:6px solid #7E22CE; border-radius:12px; padding:12px 14px; margin:8px 0 12px 0; color:#581C87;">
-                    O valor abaixo é estimativo, pois não houve base mensal por competência. Ele deve ser validado antes de qualquer formalização de pagamento.
-                </div>
-                """,
-                unsafe_allow_html=True,
+            if modo_apuracao_ui == "Consumo por Itens/Ciclo":
+                st.markdown("### Retroativo (itens consumidos/ciclo)")
+                st.markdown(
+                    """
+                    <div style="background:#F6F3EE; border:1px solid #7A8F63; border-left:6px solid #4E6E58; border-radius:12px; padding:12px 14px; margin:8px 0 12px 0; color:#2F3E2F;">
+                        O valor abaixo é apurado por consumo itemizado por ciclo. A força da apuração depende da premissa fiscal de equivalência entre consumo, medição/aprovação e faturamento devido.
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                df_retro_itens_conf = limpar_nan_inf_df(resultado.get("df_retroativo_itemizado_por_ciclo", pd.DataFrame()))
+                st.metric("Retroativo (itens consumidos/ciclo)", moeda(resultado.get("valor_retroativo_consumo_itens_ciclo", 0.0)))
+                if not df_retro_itens_conf.empty:
+                    st.dataframe(
+                        formatar_dataframe_moeda(
+                            df_retro_itens_conf,
+                            colunas_moeda=["Valor original consumido", "Valor atualizado consumido", "Retroativo"],
+                            colunas_fator=["Fator acumulado"],
+                        ),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+            else:
+                st.markdown("### Retroativo estimado por itens/estoque")
+                st.markdown(
+                    """
+                    <div style="background:#F3E8FF; border:1px solid #A855F7; border-left:6px solid #7E22CE; border-radius:12px; padding:12px 14px; margin:8px 0 12px 0; color:#581C87;">
+                        O valor abaixo é estimativo, pois não houve base mensal por competência. Ele deve ser validado antes de qualquer formalização de pagamento.
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
+                )
+                df_retro_itens_conf = limpar_nan_inf_df(resultado.get("df_retroativo_estimado_itens_estoque", pd.DataFrame()))
+                st.metric("Retroativo estimado por itens/estoque", moeda(resultado.get("valor_retroativo_estimado_itens_estoque", 0.0)))
+                if not df_retro_itens_conf.empty:
+                    st.dataframe(
+                        formatar_dataframe_moeda(
+                            df_retro_itens_conf,
+                            colunas_moeda=["Valor executado original", "Valor executado atualizado", "Retroativo estimado por itens/estoque"],
+                        ),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+        st.markdown("### Efeitos financeiros sem retroativo")
+        df_efeitos_conf = limpar_nan_inf_df(resultado.get("df_meses_sem_efeito_financeiro", pd.DataFrame()))
+        if modo_apuracao_ui == "Consumo por Itens/Ciclo":
+            st.info(
+                "Não aplicável ao Modo Consumo por Itens/Ciclo. Neste modo, os efeitos financeiros são usados "
+                "para orientar a distribuição das quantidades consumidas entre C0, C1, C2 etc., conforme a aba "
+                "CICLOS_APURADOS. Não há apuração mensal por competência para separar meses sem retroativo."
             )
-            df_retro_itens_conf = limpar_nan_inf_df(resultado.get("df_retroativo_estimado_itens_estoque", pd.DataFrame()))
-            st.metric("Retroativo estimado por itens/estoque", moeda(resultado.get("valor_retroativo_estimado_itens_estoque", 0.0)))
-            if not df_retro_itens_conf.empty:
+        else:
+            cefe1, cefe2 = st.columns(2)
+            cefe1.metric("Meses sem efeitos financeiros", int(resultado.get("quantidade_meses_sem_efeito_financeiro", 0)))
+            cefe2.metric("Valor total sem efeito financeiro", moeda(resultado.get("valor_total_sem_efeito_financeiro", 0.0)))
+            if not df_efeitos_conf.empty:
                 st.dataframe(
                     formatar_dataframe_moeda(
-                        df_retro_itens_conf,
-                        colunas_moeda=["Valor executado original", "Valor executado atualizado", "Retroativo estimado por itens/estoque"],
+                        df_efeitos_conf,
+                        colunas_moeda=["Valor base", "Valor teórico se aplicado", "Delta não devido"],
+                        colunas_fator=["Fator teórico"],
                     ),
                     use_container_width=True,
                     hide_index=True,
                 )
-
-        st.markdown("### Efeitos financeiros sem retroativo")
-        df_efeitos_conf = limpar_nan_inf_df(resultado.get("df_meses_sem_efeito_financeiro", pd.DataFrame()))
-        cefe1, cefe2 = st.columns(2)
-        cefe1.metric("Meses sem efeitos financeiros", int(resultado.get("quantidade_meses_sem_efeito_financeiro", 0)))
-        cefe2.metric("Valor total sem efeito financeiro", moeda(resultado.get("valor_total_sem_efeito_financeiro", 0.0)))
-        if not df_efeitos_conf.empty:
-            st.dataframe(
-                formatar_dataframe_moeda(
-                    df_efeitos_conf,
-                    colunas_moeda=["Valor base", "Valor teórico se aplicado", "Delta não devido"],
-                    colunas_fator=["Fator teórico"],
-                ),
-                use_container_width=True,
-                hide_index=True,
-            )
-        else:
-            st.caption("Não foram identificadas competências sem efeito financeiro neste processamento.")
+            else:
+                st.caption("Não foram identificadas competências sem efeito financeiro neste processamento.")
 
         st.markdown("### Quadro Executivo")
         st.dataframe(

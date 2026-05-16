@@ -113,3 +113,26 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
             st.caption(f"Índice selecionado para esta análise: **{selecionado}**.")
 
     return selecionado
+
+
+def render_aviso_privacidade(tem_upload=False, tem_download=False):
+    """Aviso resumido de privacidade para páginas com upload e/ou download."""
+    if not tem_upload and not tem_download:
+        return
+    partes = []
+    if tem_upload:
+        partes.append("Arquivos enviados ficam apenas na memória da sessão — sem gravação em disco ou URL pública.")
+    if tem_download:
+        partes.append("Arquivos gerados são entregues direto ao navegador — sem exposição externa.")
+    partes.append("Ao encerrar a sessão, tudo é removido.")
+    texto = " ".join(partes)
+    st.markdown(
+        f"""
+        <div style="background:#F0F9FF; border:1px solid #BAE6FD; border-radius:10px;
+                    padding:9px 13px; margin:8px 0 14px 0; color:#0C4A6E;
+                    font-size:0.84rem; line-height:1.45;">
+            🔒 <strong>Privacidade:</strong> {texto}
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )

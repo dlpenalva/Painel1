@@ -19,4 +19,4 @@ __pycache__/
 *_BACKUP*
 *_backup*
 *_restore*
-08.clausula_BACKUPS/
+08.clausula_BACKUPS/.streamlit\secrets.toml

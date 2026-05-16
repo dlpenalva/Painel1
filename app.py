@@ -2,7 +2,29 @@ import streamlit as st
 from pathlib import Path
 from _ui_utils import render_versao_sidebar
 
+APP_SENHA_PUBLICO_VERSAO = "20260516_apos_nav"
+
 st.set_page_config(page_title="TLB · cl8us - Apoio à Gestão de Contratos", layout="wide")
+
+
+# ── Proteção por senha ──────────────────────────────────────────────────────
+def _verificar_acesso():
+    if st.session_state.get("_acesso_liberado"):
+        return
+    st.markdown("### TLB · cl8us")
+    st.caption("apoio à gestão de contratos")
+    senha = st.text_input("Senha de acesso", type="password", key="_senha_input")
+    if st.button("Entrar", type="primary"):
+        import hmac
+        senha_correta = st.secrets.get("SENHA_APP", "")
+        if hmac.compare_digest(senha.encode(), senha_correta.encode()):
+            st.session_state["_acesso_liberado"] = True
+            st.rerun()
+        else:
+            st.error("Senha incorreta.")
+    st.stop()
+
+# ── Fim da proteção ─────────────────────────────────────────────────────────
 
 
 # Ajuste visual do menu lateral: títulos em negrito e subitens sem negrito.
@@ -32,8 +54,6 @@ pages_dir = Path("pages")
 
 p0 = st.Page("pages/00_Calculadora_Reajustes.py", title="Calculadora de Reajustes", default=True)
 
-# S5.2: a Calculadora passa a ser a entrada única visível.
-# Os motores anteriores continuam preservados nos arquivos 01 e 02, executados internamente pela Calculadora.
 nav = {
     "📌 Admissibilidade e Cálculo": [p0]
 }
@@ -97,5 +117,10 @@ if grupo_instrucao:
     nav["🧾 Instrução Processual"] = grupo_instrucao
 
 pg = st.navigation(nav)
+
+# A navegação é criada antes da autenticação para evitar que o Streamlit exiba a página "app" no menu lateral.
+# O conteúdo das páginas só é executado depois da liberação da sessão.
+_verificar_acesso()
+
 render_versao_sidebar()
 pg.run()

@@ -1,4 +1,5 @@
 import streamlit as st
+import base64
 import json
 import re
 import pandas as pd
@@ -658,6 +659,516 @@ def _aplicar_estilos_coleta(writer, ciclos):
             ws.cell(row=row, column=4).fill = input_fill
 
 
+
+def render_botao_download_modelo_consumo(data, file_name="Modelo_Consumo_por_Itens_Ciclo.xlsx"):
+    """Renderiza botão HTML em paleta verde/terra para download do modelo Consumo por Itens/Ciclo."""
+    try:
+        encoded = base64.b64encode(data).decode("utf-8")
+    except Exception:
+        st.error("Não foi possível preparar o modelo de Consumo por Itens/Ciclo para download.")
+        return
+
+    st.markdown(
+        f"""
+        <a href="data:application/vnd.openxmlformats-officedocument.spreadsheetml.sheet;base64,{encoded}"
+           download="{file_name}"
+           style="
+                display:inline-flex;
+                align-items:center;
+                gap:0.45rem;
+                background:#4E6E58;
+                color:#FFFFFF;
+                padding:0.56rem 0.82rem;
+                border-radius:0.55rem;
+                border:1px solid #3F5A48;
+                font-weight:700;
+                font-size:0.92rem;
+                text-decoration:none;
+                box-shadow:0 1px 2px rgba(15, 23, 42, 0.12);
+                margin-top:0.10rem;
+           ">
+           🌿 Baixar modelo — Consumo por Itens/Ciclo
+        </a>
+        <div style="font-size:0.78rem;color:#6B7280;margin-top:0.35rem;margin-bottom:0.45rem;">
+            Modelo alternativo em tons de verde/terra para apuração itemizada por consumo executado em cada ciclo.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+def gerar_modelo_consumo_itens_ciclo_excel(dados_admissibilidade):
+    """Gera modelo enxuto para o Modo Consumo por Itens/Ciclo.
+
+    Uso previsto: após a Etapa 1 da análise, com ciclos, percentuais e fatores
+    já apurados pelo cl8us. O fiscal preenche apenas dados originais dos itens
+    e quantidades consumidas por ciclo. O restante é calculado automaticamente.
+    """
+    from xlsxwriter.utility import xl_col_to_name
+
+    output = BytesIO()
+    dados_admissibilidade = dados_admissibilidade or {}
+    ciclos_origem = dados_admissibilidade.get('ciclos', []) or []
+    data_geracao = datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')
+    indice_etapa_1 = (
+        dados_admissibilidade.get('indice')
+        or dados_admissibilidade.get('indice_utilizado')
+        or dados_admissibilidade.get('indice_contratual')
+        or 'Não informado'
+    )
+
+    def _limpar_status(valor):
+        texto = '' if valor is None else str(valor)
+        for ch in ['✅', '❌', '⚠️', '⚠', '🟡', '🔴', '🟢', '🔵', '🟣', '🔻', '▲', '■', '●', '•']:
+            texto = texto.replace(ch, '')
+        return re.sub(r'\s+', ' ', texto).strip()
+
+    def _valor_ciclo(ciclo, *chaves, padrao=''):
+        for chave in chaves:
+            valor = ciclo.get(chave) if isinstance(ciclo, dict) else None
+            if valor not in [None, '']:
+                return valor
+        return padrao
+
+    def _numero_seguro(valor, padrao=0.0):
+        try:
+            if valor is None or valor == '':
+                return padrao
+            return float(valor)
+        except Exception:
+            try:
+                texto = str(valor).replace('%', '').replace('.', '').replace(',', '.').strip()
+                return float(texto)
+            except Exception:
+                return padrao
+
+    linhas_ciclos = []
+    linhas_ciclos.append({
+        'Ciclo': 'C0',
+        'Data-base': dados_admissibilidade.get('data_base_original', ''),
+        'Janela de admissibilidade': 'Ciclo-base inicial, sem reajuste',
+        'Data do pedido': 'Não se aplica',
+        'Início financeiro': 'Não se aplica',
+        'Percentual aplicado': 0.0,
+        'Fator do ciclo': 1.0,
+        'Fator acumulado': 1.0,
+        'Situação': 'Base sem reajuste',
+        'Referência para preenchimento': 'Use C0 para consumo anterior ao início financeiro do C1.',
+        'Observação': 'Consumo em C0 não gera retroativo de reajuste.',
+    })
+
+    for ciclo in ciclos_origem:
+        if not isinstance(ciclo, dict):
+            continue
+        ciclo_nome = str(_valor_ciclo(ciclo, 'ciclo', 'Ciclo', 'nome', padrao='')).strip()
+        if not ciclo_nome:
+            continue
+        if not ciclo_nome.upper().startswith('C'):
+            ciclo_nome = f'C{ciclo_nome}'
+        percentual = _valor_ciclo(ciclo, 'percentual_aplicado', 'Percentual aplicado', 'variacao', 'Variação', padrao=0.0)
+        percentual_num = _numero_seguro(percentual, 0.0)
+        if abs(percentual_num) > 1:
+            percentual_num = percentual_num / 100.0
+        fator = _valor_ciclo(ciclo, 'fator', 'Fator', padrao=1.0)
+        fator_num = _numero_seguro(fator, 1.0)
+        fator_acum = _valor_ciclo(ciclo, 'fator_acumulado', 'Fator acumulado', padrao=fator_num)
+        fator_acum_num = _numero_seguro(fator_acum, fator_num)
+        situacao = _limpar_status(_valor_ciclo(ciclo, 'situacao_aplicada', 'Situação aplicada', 'situacao', 'Situação', padrao=''))
+        inicio_fin = _valor_ciclo(ciclo, 'financeiro_inicio', 'Início financeiro', 'Inicio financeiro', padrao='')
+        ref_preenchimento = (
+            f'Use {ciclo_nome} para quantitativos consumidos/executados a partir do início financeiro do ciclo ({inicio_fin}).'
+            if inicio_fin else
+            f'Use {ciclo_nome} para quantitativos consumidos/executados no período do ciclo, conforme validação fiscal.'
+        )
+        obs_partes = []
+        if _valor_ciclo(ciclo, 'ciclo_ja_concedido', padrao=False):
+            obs_partes.append('Ciclo já concedido/formalizado anteriormente.')
+        if _valor_ciclo(ciclo, 'superacao_negocial', padrao=False):
+            obs_partes.append('Tratamento negocial registrado na Etapa 1.')
+        justificativa = str(_valor_ciclo(ciclo, 'justificativa_negocial', 'Justificativa negocial', padrao='') or '').strip()
+        if justificativa:
+            obs_partes.append(justificativa)
+        linhas_ciclos.append({
+            'Ciclo': ciclo_nome,
+            'Data-base': _valor_ciclo(ciclo, 'data_base', 'Data-base', padrao=''),
+            'Janela de admissibilidade': _valor_ciclo(ciclo, 'janela_admissibilidade', 'JanelaAdm', 'Janela de admissibilidade', padrao=''),
+            'Data do pedido': _valor_ciclo(ciclo, 'data_pedido', 'Pedido', 'Data do pedido', padrao=''),
+            'Início financeiro': inicio_fin,
+            'Percentual aplicado': percentual_num,
+            'Fator do ciclo': fator_num,
+            'Fator acumulado': fator_acum_num,
+            'Situação': situacao,
+            'Referência para preenchimento': ref_preenchimento,
+            'Observação': ' '.join(obs_partes),
+        })
+
+    qtd_linhas_itens = 240
+    ciclos_modelo = [linha['Ciclo'] for linha in linhas_ciclos if linha.get('Ciclo')]
+    if not ciclos_modelo:
+        ciclos_modelo = ['C0', 'C1']
+    ultimo_ciclo = ciclos_modelo[-1]
+    ultima_linha_ciclos = len(linhas_ciclos) + 4  # cabeçalho em linha 4; dados a partir da linha 5
+
+    with pd.ExcelWriter(output, engine='xlsxwriter') as writer:
+        workbook = writer.book
+
+        # Paleta verde/terra do novo modo.
+        cor_verde_escuro = '#4E6E58'
+        cor_verde_medio = '#7A8F63'
+        cor_terra = '#8D6E63'
+        cor_areia = '#F6F3EE'
+        cor_areia_2 = '#EFE6D8'
+        cor_input = '#FFF2CC'
+        cor_auto = '#EDEDED'
+        cor_alerta = '#EAF4EA'
+        cor_alerta_terra = '#F4E7D3'
+        cor_total = '#D9EAD3'
+
+        fmt_title = workbook.add_format({'bold': True, 'font_size': 15, 'font_color': '#FFFFFF', 'bg_color': cor_verde_escuro, 'align': 'left', 'valign': 'vcenter'})
+        fmt_subtitle = workbook.add_format({'font_color': '#3F3F3F', 'bg_color': cor_areia, 'text_wrap': True, 'valign': 'top'})
+        fmt_section = workbook.add_format({'bold': True, 'font_color': '#FFFFFF', 'bg_color': cor_terra, 'align': 'center', 'valign': 'vcenter', 'border': 1})
+        fmt_header = workbook.add_format({'bold': True, 'font_color': '#FFFFFF', 'bg_color': cor_verde_escuro, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'text_wrap': True})
+        fmt_header_terra = workbook.add_format({'bold': True, 'font_color': '#FFFFFF', 'bg_color': cor_terra, 'align': 'center', 'valign': 'vcenter', 'border': 1, 'text_wrap': True})
+        fmt_text = workbook.add_format({'border': 1, 'valign': 'top', 'text_wrap': True})
+        fmt_input = workbook.add_format({'border': 1, 'bg_color': cor_input, 'valign': 'top', 'text_wrap': True})
+        fmt_input_num = workbook.add_format({'border': 1, 'bg_color': cor_input, 'num_format': '#,##0.00'})
+        fmt_input_money = workbook.add_format({'border': 1, 'bg_color': cor_input, 'num_format': 'R$ #,##0.00'})
+        fmt_auto = workbook.add_format({'border': 1, 'bg_color': cor_auto, 'num_format': '#,##0.00'})
+        fmt_auto_text = workbook.add_format({'border': 1, 'bg_color': cor_auto, 'text_wrap': True})
+        fmt_auto_money = workbook.add_format({'border': 1, 'bg_color': cor_auto, 'num_format': 'R$ #,##0.00'})
+        fmt_ciclo_a = workbook.add_format({'border': 1, 'bg_color': '#EEF6ED', 'num_format': '#,##0.00'})
+        fmt_ciclo_b = workbook.add_format({'border': 1, 'bg_color': '#F4E7D3', 'num_format': '#,##0.00'})
+        fmt_ciclo_money_a = workbook.add_format({'border': 1, 'bg_color': '#EEF6ED', 'num_format': 'R$ #,##0.00'})
+        fmt_ciclo_money_b = workbook.add_format({'border': 1, 'bg_color': '#F4E7D3', 'num_format': 'R$ #,##0.00'})
+        fmt_money = workbook.add_format({'border': 1, 'num_format': 'R$ #,##0.00'})
+        fmt_percent = workbook.add_format({'border': 1, 'num_format': '0.00%'})
+        fmt_factor = workbook.add_format({'border': 1, 'num_format': '0.0000'})
+        fmt_total = workbook.add_format({'bold': True, 'bg_color': cor_total, 'border': 1})
+        fmt_total_num = workbook.add_format({'bold': True, 'bg_color': cor_total, 'border': 1, 'num_format': '#,##0.00'})
+        fmt_total_money = workbook.add_format({'bold': True, 'bg_color': cor_total, 'border': 1, 'num_format': 'R$ #,##0.00'})
+        fmt_note = workbook.add_format({'bg_color': cor_alerta, 'font_color': '#274E13', 'text_wrap': True, 'valign': 'top', 'border': 1})
+        fmt_note_terra = workbook.add_format({'bg_color': cor_alerta_terra, 'font_color': '#5F3B1B', 'text_wrap': True, 'valign': 'top', 'border': 1})
+        fmt_kpi_label = workbook.add_format({'bold': True, 'bg_color': cor_areia_2, 'border': 1, 'text_wrap': True})
+        fmt_kpi_value = workbook.add_format({'bold': True, 'bg_color': '#FFFFFF', 'border': 1, 'num_format': 'R$ #,##0.00'})
+        fmt_plain = workbook.add_format({'valign': 'top', 'text_wrap': True})
+        fmt_check_ok = workbook.add_format({'bg_color': '#E2F0D9', 'font_color': '#274E13'})
+        fmt_check_bad = workbook.add_format({'bg_color': '#FCE4D6', 'font_color': '#9C0006'})
+
+        # INICIO
+        ws = workbook.add_worksheet('INICIO')
+        writer.sheets['INICIO'] = ws
+        ws.hide_gridlines(2)
+        ws.set_column('A:A', 3)
+        ws.set_column('B:B', 34)
+        ws.set_column('C:C', 76)
+        ws.set_row(1, 30)
+        ws.merge_range('B2:C2', 'Modelo — Consumo por Itens/Ciclo', fmt_title)
+        ws.merge_range('B3:C5', 'Use este modelo quando não houver base financeira mensal, mas a fiscalização puder informar, por item, as quantidades efetivamente consumidas/executadas em cada ciclo. O cl8us já preenche os ciclos e fatores apurados na Etapa 1. O fiscal preenche apenas os dados originais dos itens e as quantidades consumidas.', fmt_subtitle)
+        orientacoes = [
+            ('1. Confira os ciclos', 'A aba CICLOS_APURADOS é gerada pelo cl8us e destaca o início dos efeitos financeiros de cada ciclo.'),
+            ('2. Preencha somente o essencial', 'Na aba CONSUMO_ITENS, informe item, quantidade contratada, valor unitário original e as quantidades consumidas em C0, C1, C2 etc.'),
+            ('3. Não preencha cálculos', 'Valores unitários atualizados, retroativos, saldo a faturar e Valor Total Atualizado são calculados automaticamente.'),
+            ('4. Valide o resumo', 'A aba RESUMO consolida execução original, execução atualizada, retroativo itemizado e saldo a faturar atualizado.'),
+        ]
+        row = 7
+        for titulo, texto in orientacoes:
+            ws.write(row, 1, titulo, fmt_section)
+            ws.write(row, 2, texto, fmt_text)
+            ws.set_row(row, 38)
+            row += 1
+        ws.write('B13', 'Data de geração', fmt_kpi_label)
+        ws.write('C13', data_geracao, fmt_text)
+
+        # PARAMETROS
+        ws = workbook.add_worksheet('PARAMETROS')
+        writer.sheets['PARAMETROS'] = ws
+        ws.hide_gridlines(2)
+        ws.set_column('A:A', 34)
+        ws.set_column('B:B', 88)
+        ws.set_row(0, 30)
+        ws.merge_range('A1:B1', 'Parâmetros declaratórios do modo Consumo por Itens/Ciclo', fmt_title)
+        ws.merge_range('A2:B3', 'Esta aba não deve repetir dados já apurados na Etapa 1. O objetivo é registrar apenas a premissa fiscal que autoriza usar consumo por item/ciclo como base da apuração.', fmt_note)
+        parametros = [
+            ('Método de apuração', 'Consumo por Itens/Ciclo'),
+            ('Índice apurado na Etapa 1', indice_etapa_1),
+            ('Premissa de equivalência fiscal', 'Confirmada pela fiscalização: o consumo por item/ciclo corresponde à execução demandada, medida/aprovada e faturável.'),
+            ('Ressalvas sobre divergências financeiras', 'Sem ressalvas informadas quanto a glosas, multas, descontos, retenções, notas substituídas ou divergências entre consumo, medição, faturamento e pagamento.'),
+            ('Observação do cl8us', 'Planilha destinada à apuração itemizada por consumo/ciclo, sem base financeira mensal por competência. Os efeitos financeiros constam de forma destacada na aba CICLOS_APURADOS.'),
+        ]
+        ws.write(4, 0, 'Campo', fmt_header)
+        ws.write(4, 1, 'Valor', fmt_header)
+        for idx, (campo, valor) in enumerate(parametros, start=5):
+            ws.write(idx, 0, campo, fmt_kpi_label)
+            fmt = fmt_input if campo in ['Premissa de equivalência fiscal', 'Ressalvas sobre divergências financeiras'] else fmt_text
+            ws.write(idx, 1, valor, fmt)
+            ws.set_row(idx, 42 if len(str(valor)) > 80 else 26)
+
+        # CICLOS_APURADOS
+        ws = workbook.add_worksheet('CICLOS_APURADOS')
+        writer.sheets['CICLOS_APURADOS'] = ws
+        ws.hide_gridlines(2)
+        headers_ciclos = ['Ciclo', 'Data-base', 'Janela de admissibilidade', 'Data do pedido', 'Início financeiro', 'Percentual aplicado', 'Fator do ciclo', 'Fator acumulado', 'Situação', 'Referência para preenchimento', 'Observação']
+        ws.merge_range(0, 0, 0, len(headers_ciclos)-1, 'Ciclos apurados na Etapa 1 do cl8us', fmt_title)
+        ws.merge_range(1, 0, 2, len(headers_ciclos)-1, 'Efeitos financeiros: a aba CONSUMO_ITENS deve distribuir o consumo nas colunas C0, C1, C2 etc. conforme o ciclo em que a execução/consumo produziu efeito financeiro. O campo "Início financeiro" abaixo é a referência principal para esse enquadramento. C0 deve ser usado para consumo anterior ao início financeiro do C1.', fmt_note_terra)
+        for col, title in enumerate(headers_ciclos):
+            ws.write(3, col, title, fmt_header)
+        for row_idx, linha in enumerate(linhas_ciclos, start=4):
+            ws.write(row_idx, 0, linha['Ciclo'], fmt_text)
+            ws.write(row_idx, 1, linha['Data-base'], fmt_text)
+            ws.write(row_idx, 2, linha['Janela de admissibilidade'], fmt_text)
+            ws.write(row_idx, 3, linha['Data do pedido'], fmt_text)
+            ws.write(row_idx, 4, linha['Início financeiro'], fmt_text)
+            ws.write_number(row_idx, 5, float(linha['Percentual aplicado'] or 0), fmt_percent)
+            ws.write_number(row_idx, 6, float(linha['Fator do ciclo'] or 1), fmt_factor)
+            ws.write_number(row_idx, 7, float(linha['Fator acumulado'] or 1), fmt_factor)
+            ws.write(row_idx, 8, linha['Situação'], fmt_text)
+            ws.write(row_idx, 9, linha['Referência para preenchimento'], fmt_text)
+            ws.write(row_idx, 10, linha['Observação'], fmt_text)
+        ws.set_column('A:A', 10)
+        ws.set_column('B:E', 20)
+        ws.set_column('F:H', 16)
+        ws.set_column('I:I', 34)
+        ws.set_column('J:K', 54)
+        ws.freeze_panes(4, 0)
+
+        # CONSUMO_ITENS — preenchimento em matriz simples.
+        ws = workbook.add_worksheet('CONSUMO_ITENS')
+        writer.sheets['CONSUMO_ITENS'] = ws
+        ws.hide_gridlines(2)
+        n_ciclos = len(ciclos_modelo)
+        col_item = 0
+        col_qtd = 1
+        col_vu = 2
+        col_primeiro_ciclo = 3
+        col_ultimo_ciclo = col_primeiro_ciclo + n_ciclos - 1
+        col_consumido_total = col_ultimo_ciclo + 1
+        col_saldo = col_consumido_total + 1
+        col_check = col_saldo + 1
+        headers_consumo = ['Item', 'Quantidade contratada', 'Valor unitário original/base'] + [f'Consumido {c}' for c in ciclos_modelo] + ['Consumido total', 'Saldo a faturar', 'Check quantidade']
+        ws.merge_range(0, 0, 0, col_check, 'Preenchimento fiscal — dados originais e consumo por ciclo', fmt_title)
+        ws.merge_range(1, 0, 2, col_check, 'Preencha apenas as células amarelas: Item, Quantidade contratada, Valor unitário original/base e quantidades consumidas por ciclo. As colunas cinzas são automáticas. Não informe descrição, período, fator ou valor atualizado nesta aba.', fmt_note)
+        for col, title in enumerate(headers_consumo):
+            fmt = fmt_header_terra if col >= col_primeiro_ciclo and col <= col_ultimo_ciclo else fmt_header
+            ws.write(3, col, title, fmt)
+        for row in range(4, 4 + qtd_linhas_itens):
+            excel_row = row + 1
+            ws.write(row, col_item, '', fmt_input)
+            ws.write(row, col_qtd, '', fmt_input_num)
+            ws.write(row, col_vu, '', fmt_input_money)
+            for col in range(col_primeiro_ciclo, col_ultimo_ciclo + 1):
+                ws.write(row, col, '', fmt_input_num)
+            first_cycle_letter = xl_col_to_name(col_primeiro_ciclo)
+            last_cycle_letter = xl_col_to_name(col_ultimo_ciclo)
+            qtd_letter = xl_col_to_name(col_qtd)
+            total_letter = xl_col_to_name(col_consumido_total)
+            saldo_letter = xl_col_to_name(col_saldo)
+            ws.write_formula(row, col_consumido_total, f'=IF(A{excel_row}="","",ROUND(SUM({first_cycle_letter}{excel_row}:{last_cycle_letter}{excel_row}),2))', fmt_auto)
+            ws.write_formula(row, col_saldo, f'=IF(A{excel_row}="","",ROUND({qtd_letter}{excel_row}-{total_letter}{excel_row},2))', fmt_auto)
+            ws.write_formula(row, col_check, f'=IF(A{excel_row}="","",IF({saldo_letter}{excel_row}<-0.004,"DIVERGÊNCIA: consumo maior que contratado","OK"))', fmt_auto_text)
+        total_row = 4 + qtd_linhas_itens
+        ws.write(total_row, col_item, 'TOTAL', fmt_total)
+        ws.write_formula(total_row, col_qtd, f'=ROUND(SUM({xl_col_to_name(col_qtd)}5:{xl_col_to_name(col_qtd)}{total_row}),2)', fmt_total_num)
+        ws.write(total_row, col_vu, '', fmt_total)
+        for col in range(col_primeiro_ciclo, col_ultimo_ciclo + 1):
+            col_l = xl_col_to_name(col)
+            ws.write_formula(total_row, col, f'=ROUND(SUM({col_l}5:{col_l}{total_row}),2)', fmt_total_num)
+        ws.write_formula(total_row, col_consumido_total, f'=ROUND(SUM({xl_col_to_name(col_consumido_total)}5:{xl_col_to_name(col_consumido_total)}{total_row}),2)', fmt_total_num)
+        ws.write_formula(total_row, col_saldo, f'=ROUND(SUM({xl_col_to_name(col_saldo)}5:{xl_col_to_name(col_saldo)}{total_row}),2)', fmt_total_num)
+        ws.write(total_row, col_check, '', fmt_total)
+        ws.set_column(col_item, col_item, 12)
+        ws.set_column(col_qtd, col_qtd, 20)
+        ws.set_column(col_vu, col_vu, 24)
+        ws.set_column(col_primeiro_ciclo, col_ultimo_ciclo, 16)
+        ws.set_column(col_consumido_total, col_saldo, 18)
+        ws.set_column(col_check, col_check, 34)
+        ws.freeze_panes(4, 0)
+        ws.conditional_format(4, col_check, total_row-1, col_check, {'type': 'text', 'criteria': 'containing', 'value': 'OK', 'format': fmt_check_ok})
+        ws.conditional_format(4, col_check, total_row-1, col_check, {'type': 'text', 'criteria': 'containing', 'value': 'DIVERGÊNCIA', 'format': fmt_check_bad})
+
+        # CICLO_EM_EXECUCAO — controle declaratório da data de corte informada.
+        ws = workbook.add_worksheet('CICLO_EM_EXECUCAO')
+        writer.sheets['CICLO_EM_EXECUCAO'] = ws
+        ws.hide_gridlines(2)
+        ws.set_column('A:A', 38)
+        ws.set_column('B:B', 44)
+        ws.set_row(0, 30)
+        ws.merge_range('A1:B1', 'Ciclo em execução e data de corte', fmt_title)
+        ws.merge_range('A2:B3', 'Use esta aba para registrar até qual competência/mês a execução por itens foi informada. Este controle não substitui a distribuição das quantidades na aba CONSUMO_ITENS; ele documenta a data de corte usada para o cálculo do saldo a faturar.', fmt_note_terra)
+        dados_corte = [
+            ('Ciclo em execução na data de corte', ultimo_ciclo),
+            ('Competência final da execução informada (mm/aaaa)', ''),
+            ('Início financeiro do ciclo em execução', f'=IFERROR(VLOOKUP(B5,CICLOS_APURADOS!$A$5:$E${ultima_linha_ciclos},5,FALSE),"")'),
+            ('Orientação', 'Informe a competência final até a qual o consumo foi lançado na aba CONSUMO_ITENS. O saldo a faturar será calculado como quantidade contratada menos consumo total informado.'),
+        ]
+        ws.write(4, 0, 'Campo', fmt_header)
+        ws.write(4, 1, 'Valor', fmt_header)
+        for idx, (campo, valor) in enumerate(dados_corte, start=5):
+            ws.write(idx, 0, campo, fmt_kpi_label)
+            if isinstance(valor, str) and valor.startswith('='):
+                ws.write_formula(idx, 1, valor, fmt_text)
+            else:
+                ws.write(idx, 1, valor, fmt_input if idx == 6 else fmt_text)
+            ws.set_row(idx, 34 if idx == 8 else 24)
+
+        # CALCULO_AUTOMATICO — derivado da matriz simples.
+        ws = workbook.add_worksheet('CALCULO_AUTOMATICO')
+        writer.sheets['CALCULO_AUTOMATICO'] = ws
+        ws.hide_gridlines(2)
+        col = 0
+        base_headers = ['Item', 'Quantidade contratada', 'Valor unitário original/base', 'Consumido total', 'Saldo a faturar']
+        headers_calc = base_headers[:]
+        cycle_blocks = []
+        for ciclo in ciclos_modelo:
+            cycle_blocks.append({
+                'ciclo': ciclo,
+                'qtd_col': len(headers_calc),
+                'fator_col': len(headers_calc) + 1,
+                'vu_atu_col': len(headers_calc) + 2,
+                'orig_col': len(headers_calc) + 3,
+                'atu_col': len(headers_calc) + 4,
+                'retroativo_col': len(headers_calc) + 5,
+            })
+            headers_calc.extend([
+                f'Qtd {ciclo}', f'Fator {ciclo}', f'VU atualizado {ciclo}',
+                f'Valor original {ciclo}', f'Valor atualizado {ciclo}', f'Retroativo {ciclo}'
+            ])
+        col_saldo_fator = len(headers_calc)
+        headers_calc.extend(['Fator saldo atual', 'Valor saldo original', 'Valor saldo atualizado'])
+        ws.merge_range(0, 0, 0, len(headers_calc)-1, 'Cálculo automático — não preencher', fmt_title)
+        ws.merge_range(1, 0, 2, len(headers_calc)-1, 'Esta aba é calculada automaticamente a partir da aba CONSUMO_ITENS e dos fatores da aba CICLOS_APURADOS. Serve de memória de cálculo para importação futura pelo cl8us.', fmt_note_terra)
+        for col, title in enumerate(headers_calc):
+            header_fmt = fmt_header if col < 5 else fmt_header_terra
+            for bloco_idx, bloco in enumerate(cycle_blocks):
+                if bloco['qtd_col'] <= col <= bloco['retroativo_col']:
+                    header_fmt = fmt_header_terra if bloco_idx % 2 == 0 else fmt_header
+                    break
+            ws.write(3, col, title, header_fmt)
+        for row in range(4, 4 + qtd_linhas_itens):
+            excel_row = row + 1
+            consumo_row = excel_row
+            ws.write_formula(row, 0, f'=CONSUMO_ITENS!A{consumo_row}', fmt_auto_text)
+            ws.write_formula(row, 1, f'=N(CONSUMO_ITENS!B{consumo_row})', fmt_auto)
+            ws.write_formula(row, 2, f'=N(CONSUMO_ITENS!C{consumo_row})', fmt_auto_money)
+            ws.write_formula(row, 3, f'=N(CONSUMO_ITENS!{xl_col_to_name(col_consumido_total)}{consumo_row})', fmt_auto)
+            ws.write_formula(row, 4, f'=N(CONSUMO_ITENS!{xl_col_to_name(col_saldo)}{consumo_row})', fmt_auto)
+            for bloco_idx, bloco in enumerate(cycle_blocks):
+                ciclo = bloco['ciclo']
+                consumo_col = col_primeiro_ciclo + bloco_idx
+                consumo_col_l = xl_col_to_name(consumo_col)
+                qtd_col_l = xl_col_to_name(bloco['qtd_col'])
+                fator_col_l = xl_col_to_name(bloco['fator_col'])
+                vu_atu_col_l = xl_col_to_name(bloco['vu_atu_col'])
+                orig_col_l = xl_col_to_name(bloco['orig_col'])
+                atu_col_l = xl_col_to_name(bloco['atu_col'])
+                fmt_num_ciclo = fmt_ciclo_a if bloco_idx % 2 == 0 else fmt_ciclo_b
+                fmt_money_ciclo = fmt_ciclo_money_a if bloco_idx % 2 == 0 else fmt_ciclo_money_b
+                ws.write_formula(row, bloco['qtd_col'], f'=CONSUMO_ITENS!{consumo_col_l}{consumo_row}', fmt_num_ciclo)
+                ws.write_formula(row, bloco['fator_col'], f'=IFERROR(VLOOKUP("{ciclo}",CICLOS_APURADOS!$A$5:$H${ultima_linha_ciclos},8,FALSE),1)', fmt_num_ciclo)
+                ws.write_formula(row, bloco['vu_atu_col'], f'=IF(A{excel_row}="","",IFERROR(ROUND(N($C{excel_row})*N({fator_col_l}{excel_row}),2),0))', fmt_money_ciclo)
+                ws.write_formula(row, bloco['orig_col'], f'=IF(A{excel_row}="","",IFERROR(ROUND(N({qtd_col_l}{excel_row})*N($C{excel_row}),2),0))', fmt_money_ciclo)
+                ws.write_formula(row, bloco['atu_col'], f'=IF(A{excel_row}="","",IFERROR(ROUND(N({qtd_col_l}{excel_row})*N({vu_atu_col_l}{excel_row}),2),0))', fmt_money_ciclo)
+                ws.write_formula(row, bloco['retroativo_col'], f'=IF(A{excel_row}="","",IFERROR(ROUND(N({atu_col_l}{excel_row})-N({orig_col_l}{excel_row}),2),0))', fmt_money_ciclo)
+            saldo_fator_l = xl_col_to_name(col_saldo_fator)
+            saldo_orig_l = xl_col_to_name(col_saldo_fator + 1)
+            ws.write_formula(row, col_saldo_fator, f'=IFERROR(VLOOKUP("{ultimo_ciclo}",CICLOS_APURADOS!$A$5:$H${ultima_linha_ciclos},8,FALSE),1)', fmt_auto)
+            ws.write_formula(row, col_saldo_fator + 1, f'=IF(A{excel_row}="","",IFERROR(ROUND(N(E{excel_row})*N($C{excel_row}),2),0))', fmt_auto_money)
+            ws.write_formula(row, col_saldo_fator + 2, f'=IF(A{excel_row}="","",IFERROR(ROUND(N(E{excel_row})*ROUND(N($C{excel_row})*N({saldo_fator_l}{excel_row}),2),2),0))', fmt_auto_money)
+        total_calc_row = 4 + qtd_linhas_itens
+        ws.write(total_calc_row, 0, 'TOTAL', fmt_total)
+        for col in range(1, len(headers_calc)):
+            col_l = xl_col_to_name(col)
+            fmt = fmt_total_money if 'Valor' in headers_calc[col] or 'Retroativo' in headers_calc[col] or 'VU atualizado' in headers_calc[col] else fmt_total_num
+            if headers_calc[col].startswith('Fator'):
+                ws.write(total_calc_row, col, '', fmt_total)
+            else:
+                ws.write_formula(total_calc_row, col, f'=IFERROR(ROUND(SUM({col_l}5:{col_l}{total_calc_row}),2),0)', fmt)
+        ws.set_column(0, 0, 12)
+        ws.set_column(1, 4, 18)
+        ws.set_column(5, len(headers_calc)-1, 18)
+        ws.freeze_panes(4, 0)
+
+        # RESUMO
+        ws = workbook.add_worksheet('RESUMO')
+        writer.sheets['RESUMO'] = ws
+        ws.hide_gridlines(2)
+        ws.set_column('A:A', 42)
+        ws.set_column('B:B', 26)
+        ws.set_column('D:I', 22)
+        ws.merge_range('A1:I1', 'Resumo — Modo Consumo por Itens/Ciclo', fmt_title)
+        ws.merge_range('A2:I3', 'Resumo calculado automaticamente a partir da matriz de consumo. O Valor Total Atualizado do Contrato segue a lógica: execução atualizada por ciclo + saldo a faturar atualizado.', fmt_note)
+        ws.write('A5', 'Indicador', fmt_header)
+        ws.write('B5', 'Valor', fmt_header)
+        orig_cols = [xl_col_to_name(b['orig_col']) for b in cycle_blocks]
+        atu_cols = [xl_col_to_name(b['atu_col']) for b in cycle_blocks]
+        retroativo_cols = [xl_col_to_name(b['retroativo_col']) for b in cycle_blocks]
+        total_calc_excel_row = total_calc_row + 1
+        exec_orig_formula = '=IFERROR(ROUND(' + '+'.join([f'CALCULO_AUTOMATICO!{c}{total_calc_excel_row}' for c in orig_cols]) + ',2),0)'
+        exec_atu_formula = '=IFERROR(ROUND(' + '+'.join([f'CALCULO_AUTOMATICO!{c}{total_calc_excel_row}' for c in atu_cols]) + ',2),0)'
+        retroativo_formula = '=ROUND(' + '+'.join([f'CALCULO_AUTOMATICO!{c}{total_calc_excel_row}' for c in retroativo_cols]) + ',2)'
+        saldo_atu_formula = f'=IFERROR(ROUND(CALCULO_AUTOMATICO!{xl_col_to_name(col_saldo_fator + 2)}{total_calc_excel_row},2),0)'
+        indicadores = [
+            ('Valor original do contrato', f'=ROUND(SUMPRODUCT(CONSUMO_ITENS!B5:B{total_row},CONSUMO_ITENS!C5:C{total_row}),2)'),
+            ('Execução original por itens', exec_orig_formula),
+            ('Execução atualizada por itens', exec_atu_formula),
+            ('Retroativo (itens consumidos/ciclo)', retroativo_formula),
+            ('Saldo Remanescente Atualizado', saldo_atu_formula),
+            ('Valor Total Atualizado do Contrato', '=IFERROR(ROUND(B8+B10,2),0)'),
+        ]
+        for idx, (label, formula) in enumerate(indicadores, start=5):
+            ws.write(idx, 0, label, fmt_kpi_label)
+            ws.write_formula(idx, 1, formula, fmt_kpi_value)
+        ws.write('A13', 'Premissa de equivalência fiscal', fmt_kpi_label)
+        ws.write_formula('B13', '=PARAMETROS!B8', fmt_text)
+        ws.write('A14', 'Ressalvas financeiras', fmt_kpi_label)
+        ws.write_formula('B14', '=PARAMETROS!B9', fmt_text)
+        ws.write('A15', 'Efeitos financeiros', fmt_kpi_label)
+        ws.write('B15', 'Consultar aba CICLOS_APURADOS. O consumo deve ser distribuído por ciclo conforme o início financeiro de cada ciclo.', fmt_text)
+        ws.write('A16', 'Ciclo em execução/data de corte', fmt_kpi_label)
+        ws.write_formula('B16', '=CICLO_EM_EXECUCAO!B5&" — execução informada até: "&IF(CICLO_EM_EXECUCAO!B6="","[informar mm/aaaa]",CICLO_EM_EXECUCAO!B6)', fmt_text)
+
+        ws.write('D5', 'Resumo por ciclo', fmt_header)
+        ws.write('D6', 'Ciclo', fmt_header)
+        ws.write('E6', 'Qtd consumida', fmt_header)
+        ws.write('F6', 'Fator acumulado', fmt_header)
+        ws.write('G6', 'Execução original', fmt_header)
+        ws.write('H6', 'Execução atualizada', fmt_header)
+        ws.write('I6', 'Retroativo', fmt_header)
+        for idx, bloco in enumerate(cycle_blocks, start=6):
+            ciclo = bloco['ciclo']
+            excel_row = idx + 1
+            ws.write(idx, 3, ciclo, fmt_text)
+            ws.write_formula(idx, 4, f'=IFERROR(ROUND(CALCULO_AUTOMATICO!{xl_col_to_name(bloco["qtd_col"])}{total_calc_excel_row},2),0)', fmt_money)
+            ws.write_formula(idx, 5, f'=IFERROR(VLOOKUP(D{excel_row},CICLOS_APURADOS!$A$5:$H${ultima_linha_ciclos},8,FALSE),1)', fmt_factor)
+            ws.write_formula(idx, 6, f'=IFERROR(ROUND(CALCULO_AUTOMATICO!{xl_col_to_name(bloco["orig_col"])}{total_calc_excel_row},2),0)', fmt_money)
+            ws.write_formula(idx, 7, f'=IFERROR(ROUND(CALCULO_AUTOMATICO!{xl_col_to_name(bloco["atu_col"])}{total_calc_excel_row},2),0)', fmt_money)
+            ws.write_formula(idx, 8, f'=IFERROR(ROUND(CALCULO_AUTOMATICO!{xl_col_to_name(bloco["retroativo_col"])}{total_calc_excel_row},2),0)', fmt_money)
+
+        total_resumo_row = 6 + len(cycle_blocks)
+        excel_total_resumo = total_resumo_row + 1
+        ws.write(total_resumo_row, 3, 'TOTAL', fmt_total)
+        ws.write_formula(total_resumo_row, 4, f'=IFERROR(ROUND(SUM(E7:E{excel_total_resumo-1}),2),0)', fmt_total_num)
+        ws.write(total_resumo_row, 5, '', fmt_total)
+        ws.write_formula(total_resumo_row, 6, f'=IFERROR(ROUND(SUM(G7:G{excel_total_resumo-1}),2),0)', fmt_total_money)
+        ws.write_formula(total_resumo_row, 7, f'=IFERROR(ROUND(SUM(H7:H{excel_total_resumo-1}),2),0)', fmt_total_money)
+        ws.write_formula(total_resumo_row, 8, f'=IFERROR(ROUND(SUM(I7:I{excel_total_resumo-1}),2),0)', fmt_total_money)
+
+        ws.write('A20', 'Checklist automático', fmt_header)
+        checklist = [
+            ('Há itens informados?', f'=IF(COUNTA(CONSUMO_ITENS!A5:A{total_row})>0,"OK","Pendente")'),
+            ('Há consumo informado?', f'=IF(SUM(CONSUMO_ITENS!{xl_col_to_name(col_consumido_total)}5:{xl_col_to_name(col_consumido_total)}{total_row})>0,"OK","Pendente")'),
+            ('Há saldo negativo?', f'=IF(COUNTIF(CONSUMO_ITENS!{xl_col_to_name(col_check)}5:{xl_col_to_name(col_check)}{total_row},"*DIVERGÊNCIA*")>0,"Revisar","OK")'),
+            ('Premissa fiscal preenchida?', '=IF(PARAMETROS!B8<>"","OK","Pendente")'),
+        ]
+        for idx, (label, formula) in enumerate(checklist, start=20):
+            ws.write(idx, 0, label, fmt_kpi_label)
+            ws.write_formula(idx, 1, formula, fmt_text)
+
+        # Abas com cores distintas.
+        for sheet_name in ['INICIO', 'PARAMETROS', 'CICLOS_APURADOS', 'CONSUMO_ITENS', 'CICLO_EM_EXECUCAO', 'CALCULO_AUTOMATICO', 'RESUMO']:
+            writer.sheets[sheet_name].set_tab_color(cor_verde_medio if sheet_name not in ['CICLOS_APURADOS', 'CICLO_EM_EXECUCAO', 'CALCULO_AUTOMATICO'] else cor_terra)
+
+    output.seek(0)
+    return output.getvalue()
+
 def gerar_arquivo_coleta_excel(dados_admissibilidade):
     """Gera o Arquivo de Coleta para as fases de Valor Global e Relatório.
 
@@ -792,6 +1303,28 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             if fim_indice is not None:
                 return (fim_indice + 1).strftime('%d/%m/%Y')
             return ciclo.get('financeiro_inicio', '')
+
+
+        def _data_inicio_teorico_ciclo_para_itens(ciclo):
+            """Data da fotografia de itens/remanescentes: início teórico do ciclo.
+
+            A aba ITENS_REMANESCENTES não deve usar a data-base do índice nem o início
+            financeiro do pedido. Regra: usa o primeiro dia da janela de admissibilidade;
+            se ausente, usa data_base + 12 meses.
+            """
+            ciclo = ciclo or {}
+            for chave in ['janela_admissibilidade', 'Janela de admissibilidade', 'JanelaAdm']:
+                texto = str(ciclo.get(chave, '') or '').strip()
+                if not texto:
+                    continue
+                m = re.search(r'(\d{1,2}/\d{1,2}/\d{4})', texto)
+                if m:
+                    return m.group(1)
+            data_base = ciclo.get('data_base', '') or ciclo.get('Data-base', '')
+            dt = pd.to_datetime(data_base, dayfirst=True, errors='coerce')
+            if pd.notna(dt):
+                return (dt + relativedelta(years=1)).strftime('%d/%m/%Y')
+            return str(data_base or '').strip()
 
         # PARAMETROS_REAJUSTE
         parametros = pd.DataFrame([
@@ -1010,17 +1543,28 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws.write(total_row_fin, 0, 'TOTAL', fmt_total_no_border)
         ws.write(total_row_fin, 1, '', fmt_total_no_border)
         ws.write_formula(total_row_fin, 2, f'=ROUND(SUM(C2:C{ultima_linha_fin_excel}),2)', fmt_total_money_no_border)
-        orientacao_row_fin = total_row_fin + 2
-        ws.write(orientacao_row_fin, 0, 'Orientação', fmt_total_no_border)
-        ws.merge_range(orientacao_row_fin, 1, orientacao_row_fin, 4, 'Preencha a base mensal por competência com o valor bruto demandado, medido ou aprovado. Competências marcadas como sem efeito financeiro devem ser informadas para memória, mas não compõem o retroativo a pagar. Se o valor vier de consumo itemizado, informe a competência de execução/faturamento e confirme, na observação do processo, se não houve glosas, descontos, retenções, notas substituídas ou divergências entre consumo, medição e faturamento.', fmt_text_wrap_no_border)
-        ws.set_row(orientacao_row_fin, 92)
+        ws.insert_textbox('G2',
+            'Orientação de preenchimento\n\n'
+            '• Preencha a coluna C com o valor bruto demandado, medido ou aprovado por competência.\n'
+            '• Competências marcadas como sem efeito financeiro ficam para memória e não compõem o retroativo a pagar.\n'
+            '• Se a base vier de consumo itemizado, use o novo modelo Consumo por Itens/Ciclo e registre a premissa fiscal de equivalência.',
+            {
+                'width': 420,
+                'height': 150,
+                'fill': {'color': '#F6F3EE'},
+                'line': {'color': '#8D6E63', 'width': 1.25},
+                'font': {'name': 'Segoe UI', 'size': 9, 'color': '#274E13'},
+                'align': {'vertical': 'top'},
+                'margin': 8,
+            }
+        )
 
         # ITENS_REMANESCENTES
         ws_it = workbook.add_worksheet('ITENS_REMANESCENTES')
         writer.sheets['ITENS_REMANESCENTES'] = ws_it
         rem_cols = []
         for ciclo in ciclos:
-            rem_cols.append((f"Remanescente início {ciclo.get('ciclo', '')}", ciclo.get('data_base', '')))
+            rem_cols.append((f"Remanescente início {ciclo.get('ciclo', '')}", _data_inicio_teorico_ciclo_para_itens(ciclo)))
         base_headers = ['Item', 'Quantidade contratada', 'Valor unitário original', 'Valor total']
         headers = base_headers + [c[0] for c in rem_cols]
         ws_it.merge_range(0, 0, 0, 3, 'Dados do item e valor original', fmt_subheader)
@@ -1404,3 +1948,6 @@ if res:
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=False,
     )
+
+    modelo_consumo = gerar_modelo_consumo_itens_ciclo_excel(st.session_state['dados_admissibilidade'])
+    render_botao_download_modelo_consumo(modelo_consumo)

@@ -18,7 +18,7 @@ try:
 except Exception:
     REPORTLAB_OK = False
 
-from _ui_utils import render_marca_topo
+from _ui_utils import render_marca_topo, render_aviso_privacidade
 
 st.set_page_config(page_title="Análises de Reajustes - Garantia", layout="wide")
 
@@ -638,6 +638,7 @@ render_marca_topo()
 st.title("Garantia Contratual")
 st.write("Escolha o método de cálculo da garantia. O Método Delta calcula o reforço do evento atual; a Linha do Tempo Completa serve para conferência histórica.")
 
+render_aviso_privacidade(tem_download=True)
 resultado_valor_global = st.session_state.get("resultado_valor_global", {}) or {}
 modo_apuracao_vg = resultado_valor_global.get("modo_apuracao", "Completo") if isinstance(resultado_valor_global, dict) else "Completo"
 ctx = obter_contexto_valor_global(resultado_valor_global)
@@ -648,7 +649,18 @@ variacao_acumulada_padrao = ctx["variacao_acumulada"]
 df_aditivos_importado = ctx["df_aditivos"]
 df_ciclos_importado = ctx["df_ciclos"]
 modo_reduzido_estoque = ctx.get("modo_apuracao") == "Reduzido por Itens/Estoque"
-if modo_reduzido_estoque:
+modo_consumo_itens_ciclo = ctx.get("modo_apuracao") == "Consumo por Itens/Ciclo"
+if modo_consumo_itens_ciclo:
+    st.markdown(
+        """
+        <div style="background:#F6F3EE; border:1px solid #7A8F63; border-left:6px solid #4E6E58; border-radius:12px; padding:14px 16px; margin:10px 0 16px 0; color:#2F3E2F;">
+            <div style="font-weight:800; margin-bottom:4px;">Modo Consumo por Itens/Ciclo</div>
+            <div style="font-size:0.95rem; line-height:1.45;">A base da garantia decorre do Valor Total Atualizado do Contrato apurado por consumo itemizado e saldo remanescente atualizado. Use a base importada como referência operacional, mantendo a validação fiscal da equivalência consumo/execução/faturamento.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+elif modo_reduzido_estoque:
     st.markdown(
         """
         <div style="background:#F3E8FF; border:1px solid #A855F7; border-left:6px solid #7E22CE; border-radius:12px; padding:14px 16px; margin:10px 0 16px 0; color:#581C87;">
@@ -683,7 +695,10 @@ if metodo_garantia == "Método 1 — Delta da Garantia":
                 st.metric("Valor Total Atualizado do Contrato", moeda(valor_total_atualizado_padrao))
             with col_c:
                 st.metric("Aditivos identificados", int(ctx.get("quantidade_aditivos", 0)))
-            if modo_reduzido_estoque:
+            if modo_consumo_itens_ciclo:
+                st.metric("Retroativo (itens consumidos/ciclo)", moeda(ctx.get("retroativo_estimado_itens", 0.0)))
+                st.caption("Esses dados decorrem de consumo itemizado por ciclo. O Método Delta usa o valor-base do evento informado abaixo.")
+            elif modo_reduzido_estoque:
                 st.metric("Retroativo estimado por itens/estoque", moeda(ctx.get("retroativo_estimado_itens", 0.0)))
                 st.caption("Esses dados são estimativos quando o Valor Global foi processado sem base de execução mensal por competência. O Método Delta usa o valor-base do evento informado abaixo.")
             else:
