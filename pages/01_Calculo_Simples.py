@@ -1736,13 +1736,14 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             ws_ad.write(row, 0, '', fmt_text)
             ws_ad.write(row, 1, '', fmt_input_date)
             # Coluna C: identifica automaticamente o ciclo pela data do aditivo.
-            # Regra: último ciclo cuja Data-base seja menor ou igual à Data do Aditivo.
+            # Regra: data do aditivo dentro do período financeiro do ciclo.
+            # Período financeiro: Início financeiro <= Data do Aditivo <= Fim financeiro.
             if len(ciclos) > 0:
                 formula_ciclo = (
                     f'=IF(B{excel_row}="","",'
-                    f'IF(B{excel_row}<MIN(CICLOS!$B$2:$B${len(ciclos)+1}),"C0",'
-                    f'IFERROR(LOOKUP(2,1/(CICLOS!$B$2:$B${len(ciclos)+1}<=B{excel_row}),'
-                    f'CICLOS!$A$2:$A${len(ciclos)+1}),"Fora de Ciclo")))'
+                    f'IFERROR(LOOKUP(2,1/((CICLOS!$F$2:$F${len(ciclos)+1}<=B{excel_row})*'
+                    f'(CICLOS!$G$2:$G${len(ciclos)+1}>=B{excel_row})),CICLOS!$A$2:$A${len(ciclos)+1}),'
+                    f'IF(B{excel_row}<MIN(CICLOS!$F$2:$F${len(ciclos)+1}),"C0","Verificar ciclo")))'
                 )
                 ws_ad.write_formula(row, 2, formula_ciclo, fmt_auto)
             else:
