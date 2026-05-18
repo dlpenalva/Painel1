@@ -1727,7 +1727,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws_ad.set_column('J:J', 26)
         ws_ad.set_column('K:K', 42)
         ws_ad.write(202, 0, "Orientação", fmt_total)
-        ws_ad.write(202, 1, "Use 'Computar nesta análise' para aditivos/supressões que devem impactar o Valor Global atual. Use 'Informativo - já incluído no valor formalizado' quando o lançamento já estiver contemplado no campo Valor contratual formalizado antes desta análise.", fmt_text)
+        ws_ad.write(202, 1, "Use 'Computar nesta análise' para aditivos/supressões que devem impactar o Valor Global atual. Use 'Informativo - já incluído no valor formalizado' quando o lançamento já estiver contemplado no campo Valor contratual formalizado antes desta análise. A coluna F (Valor unitário original) é automática: busca o item informado na coluna A na aba ITENS_REMANESCENTES e retorna o valor unitário original da coluna C.", fmt_text)
         ciclo_range = f'CICLOS!$A$2:$K${len(ciclos)+1}' if ciclos else 'CICLOS!$A$2:$K$2'
         data_range = f'CICLOS!$B$2:$B${len(ciclos)+1}' if ciclos else 'CICLOS!$B$2:$B$2'
         ciclo_nome_range = f'CICLOS!$A$2:$A${len(ciclos)+1}' if ciclos else 'CICLOS!$A$2:$A$2'
@@ -1749,7 +1749,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
                 ws_ad.write(row, 2, '', fmt_auto)
             ws_ad.write(row, 3, 'Acréscimo', fmt_input)
             ws_ad.write(row, 4, '', fmt_input_num)
-            ws_ad.write(row, 5, '', fmt_input_money)
+            ws_ad.write_formula(row, 5, f'=IF(A{excel_row}="","",IFERROR(VLOOKUP(A{excel_row},ITENS_REMANESCENTES!$A:$C,3,FALSE),""))', fmt_money_auto)
             ws_ad.write_formula(row, 6, f'=IF(OR(E{excel_row}="",F{excel_row}=""),"",ROUND(E{excel_row}*F{excel_row},2))', fmt_money_auto)
             ws_ad.write(row, 7, 'Sim', fmt_input)
             ws_ad.write_formula(row, 8, f'=IF(C{excel_row}="","",IFERROR(VLOOKUP(C{excel_row},{ciclo_range},11,FALSE),1))', fmt_factor_auto)

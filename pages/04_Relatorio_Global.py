@@ -1087,13 +1087,14 @@ def gerar_minuta_apostilamento_docx(adm, res):
             nome = _limpar_texto_formal(_nome_ciclo_minuta(ciclo, idx))
             pct = _limpar_texto_formal(_percentual_ciclo_minuta(ciclo))
             efeito = _limpar_texto_formal(_efeito_ciclo_minuta(ciclo))
-            situacao = _limpar_texto_formal(
+            situacao_bruta = (
                 ciclo.get("situacao_aplicada")
                 or ciclo.get("Situação aplicada")
                 or ciclo.get("situacao")
                 or ciclo.get("Situação")
                 or ""
             )
+            situacao = _limpar_texto_formal(_status_relatorio(situacao_bruta))
             complemento = f", com tratamento aplicado: {situacao}" if situacao else ""
             _adicionar_subitem(
                 document,
@@ -1183,11 +1184,6 @@ def gerar_minuta_apostilamento_docx(adm, res):
         document,
         "c)",
         f"Saldo remanescente atualizado considerado na consolidação: {moeda(res.get('remanescente_reajustado', 0))}."
-    )
-    _adicionar_subitem(
-        document,
-        "d)",
-        f"Valor total de aditivos/supressões registrados para controle: {moeda(res.get('total_aditivos_atualizados', 0))}. Esses valores não são somados como parcela autônoma ao Valor Total Atualizado do Contrato quando já estiverem refletidos na execução ou no saldo remanescente."
     )
 
     _adicionar_item_numerado(document, 5, "Permanecem inalteradas e em pleno vigor as demais cláusulas e condições do Contrato e de seus instrumentos posteriores não modificadas por este Termo de Apostila.")
@@ -1282,11 +1278,7 @@ else:
 
 st.divider()
 
-tab1, tab2, tab3, tab4 = st.tabs(["Relatório Executivo", "Tabelas", "PDF", "Minuta de Apostilamento"])
-
-with tab1:
-    texto = gerar_texto_instrucao(adm, res)
-    st.text_area("Copie para o processo:", texto, height=420)
+tab2, tab3, tab4 = st.tabs(["Tabelas", "PDF", "Minuta de Apostilamento"])
 
 with tab2:
     st.markdown("### Quadro Executivo")
