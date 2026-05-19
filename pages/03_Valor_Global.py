@@ -4179,6 +4179,113 @@ def aplicar_css_responsivo_telebras():
     )
 
 
+def render_metodologia_corte_operacional_v3(resultado):
+    # Aviso visual da metodologia usada no Valor Global.
+    config = resultado.get('config_ciclo_em_execucao', {}) or {}
+    solicitado = bool(resultado.get('corte_operacional_solicitado', False) or resultado.get('corte_operacional_aplicado', False))
+
+    if not solicitado:
+        st.markdown(
+            '<div style="background:#EAF2F8; border:1px solid #93C5FD; border-left:6px solid #2563EB; '
+            'border-radius:12px; padding:12px 14px; margin:8px 0 16px 0; color:#1E3A8A;">'
+            '<div style="font-weight:800; margin-bottom:3px;">Metodologia aplicada: corte padrão no início dos ciclos</div>'
+            '<div style="font-size:0.92rem; line-height:1.42;">'
+            'A aba CICLO_EM_EXECUCAO está ausente, vazia ou marcada como Não. '
+            'O Valor Total Atualizado permanece calculado pela metodologia padrão.'
+            '</div></div>',
+            unsafe_allow_html=True,
+        )
+        return
+
+    ciclo = str(config.get('ciclo', '') or 'Não informado')
+    data_corte = str(config.get('data_corte', '') or 'Não informada')
+    fonte = str(config.get('fonte', '') or 'Não informada')
+    usar_c0 = str(config.get('usar_c0_manual', '') or 'Não')
+    valor_c0 = config.get('valor_c0_manual', '')
+    rem_original = config.get('remanescente_original_corte', config.get('valor_remanescente_original_corte_operacional', ''))
+    rem_atualizado = config.get('remanescente_atualizado_corte', config.get('valor_remanescente_atualizado_corte_operacional', ''))
+
+    def _fmt_moeda_seguro(valor):
+        try:
+            if str(valor).strip() == '':
+                return 'Não informado'
+            return moeda(numero_br(valor))
+        except Exception:
+            return str(valor or 'Não informado')
+
+    st.markdown(
+        '<div style="background:#CCFBF1; border:1px solid #14B8A6; border-left:6px solid #0F766E; '
+        'border-radius:12px; padding:12px 14px; margin:8px 0 16px 0; color:#134E4A;">'
+        '<div style="font-weight:900; margin-bottom:4px;">Metodologia aplicada: corte operacional no ciclo em execução</div>'
+        '<div style="font-size:0.92rem; line-height:1.45;">'
+        f'<b>Ciclo em execução:</b> {ciclo}<br>'
+        f'<b>Data de corte:</b> {data_corte}<br>'
+        f'<b>Fonte da execução realizada:</b> {fonte}<br>'
+        f'<b>Remanescente original informado no corte:</b> {_fmt_moeda_seguro(rem_original)}<br>'
+        f'<b>Remanescente atualizado informado no corte:</b> {_fmt_moeda_seguro(rem_atualizado)}<br>'
+        f'<b>C0 financeiro manual:</b> {usar_c0} — {_fmt_moeda_seguro(valor_c0)}'
+        '</div></div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_metodologia_corte_operacional_v4(resultado, modo_apuracao_ui="Completo"):
+    """Renderiza box metodológico no Painel Executivo, sem alterar cálculo."""
+    try:
+        aplicado = bool(resultado.get("corte_operacional_aplicado", False))
+        config = resultado.get("config_ciclo_em_execucao", {}) or {}
+        existe_config = bool(config.get("existe", False))
+
+        def _valor_config(*chaves):
+            for chave in chaves:
+                valor = config.get(chave)
+                if valor is not None and str(valor).strip() not in ["", "nan", "None"]:
+                    return valor
+            return ""
+
+        def _moeda_config(valor):
+            try:
+                return moeda(numero_br(valor)) if str(valor).strip() else "Não informado"
+            except Exception:
+                return str(valor or "Não informado")
+
+        if aplicado:
+            ciclo = _valor_config("ciclo", "ciclo_em_execucao") or "Não informado"
+            data_corte = _valor_config("data_corte", "data_de_corte_operacional", "data_corte_operacional") or "Não informada"
+            fonte = _valor_config("fonte", "fonte_preferencial_da_execucao_realizada") or "Não informada"
+            rem_original = _valor_config("valor_remanescente_original_corte", "remanescente_original_corte", "valor_remanescente_original_no_corte_operacional")
+            rem_atualizado = _valor_config("valor_remanescente_atualizado_corte", "remanescente_atualizado_corte", "valor_remanescente_atualizado_no_corte_operacional")
+            c0_manual = _valor_config("usar_c0_manual", "usar_c0_financeiro_manual") or "Não"
+            valor_c0 = _valor_config("valor_c0_manual", "valor_financeiro_c0_manual_override", "valor_financeiro_c0_manual")
+
+            html = (
+                '<div style="background:#CCFBF1; border:1px solid #14B8A6; border-left:7px solid #0F766E; border-radius:12px; padding:14px 16px; margin:8px 0 16px 0; color:#134E4A;">'
+                '<div style="font-weight:900; font-size:0.98rem; margin-bottom:6px;">Metodologia aplicada: corte operacional no ciclo em execução</div>'
+                '<div style="font-size:0.92rem; line-height:1.45;">'
+                f'<b>Ciclo em execução:</b> {ciclo}<br>'
+                f'<b>Data de corte:</b> {data_corte}<br>'
+                f'<b>Fonte da execução realizada:</b> {fonte}<br>'
+                f'<b>Remanescente original no corte:</b> {_moeda_config(rem_original)}<br>'
+                f'<b>Remanescente atualizado no corte:</b> {_moeda_config(rem_atualizado)}<br>'
+                f'<b>C0 financeiro manual:</b> {c0_manual} — {_moeda_config(valor_c0)}'
+                '</div>'
+                '<div style="font-size:0.86rem; margin-top:8px; color:#0F766E;">Composição: execução atualizada até o corte + saldo remanescente informado no corte operacional.</div>'
+                '</div>'
+            )
+            st.markdown(html, unsafe_allow_html=True)
+        else:
+            complemento = "A aba CICLO_EM_EXECUCAO foi detectada, mas o campo principal está como Não/vazio." if existe_config else "A aba CICLO_EM_EXECUCAO não foi utilizada nesta apuração."
+            html = (
+                '<div style="background:#EFF6FF; border:1px solid #93C5FD; border-left:7px solid #2563EB; border-radius:12px; padding:13px 16px; margin:8px 0 16px 0; color:#1E3A8A;">'
+                '<div style="font-weight:900; font-size:0.98rem; margin-bottom:5px;">Metodologia aplicada: corte padrão no início dos ciclos</div>'
+                f'<div style="font-size:0.92rem; line-height:1.45;">Modo de apuração: {modo_apuracao_ui}. {complemento} O Valor Total Atualizado permanece calculado por execução atualizada por ciclo + saldo remanescente atualizado.</div>'
+                '</div>'
+            )
+            st.markdown(html, unsafe_allow_html=True)
+    except Exception:
+        render_metodologia_corte_operacional_v4(resultado, modo_apuracao_ui)
+
+
 # ============================================================
 # Interface
 # ============================================================
@@ -4251,7 +4358,53 @@ if resultado:
             unsafe_allow_html=True,
         )
     else:
-        st.caption(f"Modo de apuração: {modo_apuracao_ui}.")
+        config_ce_ui = resultado.get("config_ciclo_em_execucao", {}) or {}
+        corte_operacional_ui = bool(
+            resultado.get("corte_operacional_aplicado", False)
+            or resultado.get("corte_operacional_solicitado", False)
+        )
+
+        if corte_operacional_ui:
+            ciclo_ui = config_ce_ui.get("ciclo") or "Não informado"
+            data_corte_ui = config_ce_ui.get("data_corte") or "Não informada"
+            fonte_ui = config_ce_ui.get("fonte") or "Não informada"
+
+            rem_orig_num = numero_br(config_ce_ui.get("valor_remanescente_original_corte", 0))
+            rem_atual_num = numero_br(config_ce_ui.get("valor_remanescente_atualizado_corte", 0))
+            c0_num = numero_br(config_ce_ui.get("valor_c0_manual", 0))
+
+            rem_orig_ui = moeda(rem_orig_num) if abs(rem_orig_num) > 0.004 else "Não informado"
+            rem_atual_ui = moeda(rem_atual_num) if abs(rem_atual_num) > 0.004 else "Não informado"
+            c0_ui = moeda(c0_num) if abs(c0_num) > 0.004 else "Não aplicado"
+
+            st.markdown(
+                f"""
+                <div style="background:#CCFBF1; border:1px solid #14B8A6; border-left:6px solid #0F766E; border-radius:12px; padding:14px 16px; margin:10px 0 16px 0; color:#134E4A;">
+                    <div style="font-weight:800; margin-bottom:4px;">Metodologia aplicada: corte operacional no ciclo em execução</div>
+                    <div style="font-size:0.95rem; line-height:1.45;">
+                        <b>Ciclo em execução:</b> {ciclo_ui}<br>
+                        <b>Data de corte:</b> {data_corte_ui}<br>
+                        <b>Fonte da execução realizada:</b> {fonte_ui}<br>
+                        <b>Remanescente original no corte:</b> {rem_orig_ui}<br>
+                        <b>Remanescente atualizado no corte:</b> {rem_atual_ui}<br>
+                        <b>C0 financeiro manual:</b> {c0_ui}
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+        else:
+            st.markdown(
+                f"""
+                <div style="background:#EAF2F8; border:1px solid #7FB3D5; border-left:6px solid #1F4E79; border-radius:12px; padding:14px 16px; margin:10px 0 16px 0; color:#12355B;">
+                    <div style="font-weight:800; margin-bottom:4px;">Metodologia aplicada: corte padrão no início dos ciclos</div>
+                    <div style="font-size:0.95rem; line-height:1.45;">
+                        Modo de apuração: {modo_apuracao_ui}. O saldo remanescente segue a fotografia padrão do início dos ciclos.
+                    </div>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
 
     df_sem_efeito_ui = resultado.get("df_meses_sem_efeito_financeiro", pd.DataFrame())
     if isinstance(df_sem_efeito_ui, pd.DataFrame) and not df_sem_efeito_ui.empty:
