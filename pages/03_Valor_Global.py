@@ -3009,11 +3009,186 @@ def processar_consumo_itens_ciclo(bytes_arquivo, xls, params, contexto_contratua
     resultado["df_auditoria_consistencia"] = montar_auditoria_consistencia(resultado)
     return resultado
 
+
+def ler_ciclo_em_execucao_config_segura(bytes_arquivo):
+    # Leitura interna e segura da aba opcional CICLO_EM_EXECUCAO.
+    # Esta função não altera cálculo nem interface.
+    try:
+        xls_local = pd.ExcelFile(BytesIO(bytes_arquivo))
+        aba = localizar_aba(xls_local, ["CICLO_EM_EXECUCAO", "CICLO EM EXECUCAO", "CICLO_EM_EXECUÇÃO"])
+        if not aba:
+            return {"existe": False, "aplicar": False}
+
+        df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Campo", "Valor"])
+        if df.empty or len(df.columns) < 2:
+            return {"existe": True, "aplicar": False}
+
+        col_campo = localizar_coluna(df, ["Campo", "Parâmetro", "Parametro"])
+        col_valor = localizar_coluna(df, ["Valor"])
+        if col_campo is None or col_valor is None:
+            col_campo, col_valor = df.columns[0], df.columns[1]
+
+        dados = {}
+        for _, row in df.iterrows():
+            campo = str(row.get(col_campo, "")).strip()
+            chave = normalizar_texto(campo)
+            if chave:
+                dados[chave] = row.get(col_valor, "")
+
+        aplicar_txt = (
+            dados.get("aplicar_corte_operacional")
+            or dados.get("aplicar_corte_operacional_sim_nao")
+            or dados.get("aplicar_corte_operacional_no_ciclo_em_execucao")
+            or ""
+        )
+        aplicar = normalizar_texto(aplicar_txt) in ["sim", "s", "true", "1", "yes"]
+
+        return {
+            "existe": True,
+            "aplicar": aplicar,
+            "ciclo": texto_seguro(dados.get("ciclo_em_execucao", ""), ""),
+            "data_corte": texto_seguro(dados.get("data_de_corte_operacional", dados.get("data_corte_operacional", "")), ""),
+            "fonte": texto_seguro(dados.get("fonte_preferencial_da_execucao_realizada", ""), ""),
+            "usar_c0_manual": texto_seguro(dados.get("usar_c0_financeiro_manual", ""), ""),
+            "valor_c0_manual": dados.get("valor_financeiro_c0_manual_override", dados.get("valor_financeiro_c0_manual", "")),
+            "valor_remanescente_original_corte": dados.get("valor_remanescente_original_no_corte_operacional", dados.get("remanescente_original_no_corte_operacional", "")),
+            "valor_remanescente_atualizado_corte": dados.get("valor_remanescente_atualizado_no_corte_operacional", dados.get("remanescente_atualizado_no_corte_operacional", "")),
+            "observacao": texto_seguro(dados.get("observacao_fiscal", ""), ""),
+        }
+    except Exception as exc:
+        return {"existe": False, "aplicar": False, "erro": str(exc)}
+
+def _corte_operacional_ativo_seguro(config):
+    return bool(config and isinstance(config, dict) and config.get("aplicar"))
+
+
+def filtrar_financeiro_por_corte_operacional(financeiro, config):
+    # Corte financeiro: quando houver data de corte, considera a base mensal até a competência do corte.
+    if financeiro is None or not isinstance(financeiro, pd.DataFrame) or financeiro.empty:
+        return financeiro
+    if not _corte_operacional_ativo_seguro(config):
+        return financeiro
+
+    data_corte = config.get("data_corte", "")
+    periodo_corte = normalizar_competencia_periodo(data_corte)
+    if periodo_corte is None or "Competência" not in financeiro.columns:
+        return financeiro
+
+    periodos = financeiro["Competência"].apply(normalizar_competencia_periodo)
+    filtrado = financeiro[(periodos.notna()) & (periodos <= periodo_corte)].copy()
+    if filtrado.empty:
+        return financeiro
+    return filtrado.reset_index(drop=True)
+
+
+def aplicar_corte_operacional_execucao_v1(df_execucao, df_fin_por_ciclo, config, base_execucao_mensal_disponivel):
+    # Regra v1:
+    # - corte desativado: não altera a execução;
+    # - corte ativado com base financeira: execução realizada vem da base financeira;
+    # - corte ativado sem base financeira: preserva reconstrução por itens/remanescentes;
+    # - C0 manual, quando marcado, substitui/inclui C0 na execução.
+    if not _corte_operacional_ativo_seguro(config):
+        return df_execucao
+
+    df_base = df_execucao.copy() if isinstance(df_execucao, pd.DataFrame) else pd.DataFrame()
+
+    if base_execucao_mensal_disponivel and isinstance(df_fin_por_ciclo, pd.DataFrame) and not df_fin_por_ciclo.empty:
+        linhas = []
+        for _, row in df_fin_por_ciclo.iterrows():
+            ciclo = normalizar_ciclo(row.get("Ciclo", ""))
+            if not ciclo or ciclo.upper() == "TOTAL":
+                continue
+            pago = numero_seguro(row.get("Valor pago efetivo", 0.0), 0.0)
+            teorico = numero_seguro(row.get("Valor teórico calculado", pago), pago)
+            pct = ((teorico / pago) - 1) if abs(pago) > 0.004 else 0.0
+            linhas.append({
+                "Ciclo": ciclo,
+                "Status financeiro": "Corte operacional — execução realizada pela base financeira",
+                "Valor executado original": float(pago),
+                "Percentual acumulado aplicado": float(pct),
+                "Valor executado atualizado": float(teorico),
+            })
+        if linhas:
+            df_base = pd.DataFrame(linhas)
+
+    usar_c0 = normalizar_texto(config.get("usar_c0_manual", "")) in ["sim", "s", "true", "1", "yes"]
+    valor_c0 = numero_br(config.get("valor_c0_manual", 0))
+    if usar_c0 and abs(valor_c0) > 0.004:
+        if df_base.empty:
+            df_base = pd.DataFrame(columns=[
+                "Ciclo", "Status financeiro", "Valor executado original",
+                "Percentual acumulado aplicado", "Valor executado atualizado"
+            ])
+        if "Ciclo" in df_base.columns:
+            mask_c0 = df_base["Ciclo"].astype(str).str.upper().eq("C0")
+        else:
+            mask_c0 = pd.Series([False] * len(df_base))
+        linha_c0 = {
+            "Ciclo": "C0",
+            "Status financeiro": "C0 financeiro manual/override",
+            "Valor executado original": float(valor_c0),
+            "Percentual acumulado aplicado": 0.0,
+            "Valor executado atualizado": float(valor_c0),
+        }
+        if mask_c0.any():
+            for col, val in linha_c0.items():
+                df_base.loc[mask_c0, col] = val
+        else:
+            df_base = pd.concat([pd.DataFrame([linha_c0]), df_base], ignore_index=True)
+
+    if not df_base.empty and "Ciclo" in df_base.columns:
+        df_base = df_base.sort_values(by="Ciclo", key=lambda s: s.map(numero_ciclo)).reset_index(drop=True)
+    return df_base
+
+
+def ajustar_remanescente_por_corte_operacional(df_rem, df_execucao, valor_original_contrato, fator_remanescente, ciclo_ultimo_rem, config, base_execucao_mensal_disponivel):
+    # Ajusta o saldo remanescente no corte operacional somente quando houver informação expressa.
+    # Não deduz automaticamente a execução financeira do saldo, pois a base financeira pode ter natureza diferente
+    # da fotografia física/operacional do estoque.
+    if not _corte_operacional_ativo_seguro(config):
+        return df_rem, ciclo_ultimo_rem, None, None
+
+    valor_original_informado = numero_br(config.get("valor_remanescente_original_corte", 0))
+    valor_atualizado_informado = numero_br(config.get("valor_remanescente_atualizado_corte", 0))
+
+    if abs(valor_original_informado) <= 0.004 and abs(valor_atualizado_informado) <= 0.004:
+        return df_rem, ciclo_ultimo_rem, None, None
+
+    fator = float(fator_remanescente or 1.0)
+    if abs(valor_atualizado_informado) > 0.004:
+        remanescente_atualizado_operacional = float(valor_atualizado_informado)
+        if abs(valor_original_informado) > 0.004:
+            remanescente_original_operacional = float(valor_original_informado)
+        else:
+            remanescente_original_operacional = float(valor_atualizado_informado) / fator if abs(fator) > 0.004 else float(valor_atualizado_informado)
+    else:
+        remanescente_original_operacional = float(valor_original_informado)
+        remanescente_atualizado_operacional = remanescente_original_operacional * fator
+
+    ciclo_corte = normalizar_ciclo(config.get("ciclo", "")) or ciclo_ultimo_rem or "Ciclo em execução"
+    ciclo_label = f"{ciclo_corte} (corte operacional)"
+    linha = {
+        "Ciclo": ciclo_label,
+        "Remanescente original": float(remanescente_original_operacional),
+        "Fator aplicado": fator,
+        "Remanescente atualizado": float(remanescente_atualizado_operacional),
+        "Observação": "Saldo informado expressamente na aba CICLO_EM_EXECUCAO para o corte operacional.",
+    }
+
+    if isinstance(df_rem, pd.DataFrame) and not df_rem.empty:
+        df_rem_ajustado = pd.concat([df_rem.copy(), pd.DataFrame([linha])], ignore_index=True)
+    else:
+        df_rem_ajustado = pd.DataFrame([linha])
+
+    return df_rem_ajustado, ciclo_label, remanescente_original_operacional, remanescente_atualizado_operacional
+
 def processar_arquivo_coleta(bytes_arquivo):
     xls = pd.ExcelFile(BytesIO(bytes_arquivo))
     params = ler_parametros(bytes_arquivo, xls)
     contexto_contratual = contexto_contratual_de_parametros(params, bytes_arquivo, xls)
     ciclos, origem_ciclos = ler_ciclos(bytes_arquivo, xls)
+    config_ciclo_em_execucao = ler_ciclo_em_execucao_config_segura(bytes_arquivo)
+    corte_operacional_solicitado = bool(config_ciclo_em_execucao.get('aplicar', False))
 
     try:
         financeiro = ler_financeiro(bytes_arquivo, xls, ciclos)
@@ -3081,14 +3256,21 @@ def processar_arquivo_coleta(bytes_arquivo):
     # Base mensal tratada pela regra pétrea de efeito financeiro.
     # Competências anteriores ao início financeiro do ciclo permanecem em memória,
     # mas não compõem o retroativo a pagar.
-    df_financeiro_mensal_tratado = financeiro_com_efeito_financeiro(financeiro, ciclos)
-    df_meses_sem_efeito = meses_sem_efeito_financeiro(financeiro, ciclos)
+    financeiro_para_calculo = filtrar_financeiro_por_corte_operacional(financeiro, config_ciclo_em_execucao)
+    df_financeiro_mensal_tratado = financeiro_com_efeito_financeiro(financeiro_para_calculo, ciclos)
+    df_meses_sem_efeito = meses_sem_efeito_financeiro(financeiro_para_calculo, ciclos)
     quantidade_meses_sem_efeito = int(len(df_meses_sem_efeito)) if isinstance(df_meses_sem_efeito, pd.DataFrame) else 0
     valor_total_sem_efeito = float(df_meses_sem_efeito["Delta não devido"].apply(numero_seguro).sum()) if quantidade_meses_sem_efeito and "Delta não devido" in df_meses_sem_efeito.columns else 0.0
 
-    df_fin_por_ciclo = calcular_financeiro_por_ciclo(financeiro, ciclos)
+    df_fin_por_ciclo = calcular_financeiro_por_ciclo(financeiro_para_calculo, ciclos)
     df_rem, ciclo_ultimo_rem = calcular_remanescentes_valor(itens, colunas_remanescentes, ciclos)
     df_execucao = calcular_execucao_por_diferenca(itens, colunas_remanescentes, ciclos)
+    df_execucao = aplicar_corte_operacional_execucao_v1(
+        df_execucao,
+        df_fin_por_ciclo,
+        config_ciclo_em_execucao,
+        base_execucao_mensal_disponivel,
+    )
     df_retroativo_estimado_itens = montar_retroativo_estimado_por_itens(df_execucao)
     valor_retroativo_estimado_itens = float(df_retroativo_estimado_itens["Retroativo estimado por itens/estoque"].apply(numero_seguro).sum()) if not df_retroativo_estimado_itens.empty else 0.0
     df_valores_unitarios = construir_valores_unitarios_totais(itens, colunas_remanescentes, ciclos)
@@ -3120,6 +3302,19 @@ def processar_arquivo_coleta(bytes_arquivo):
         remanescente_original = 0.0
         remanescente_atualizado = 0.0
         fator_remanescente = 1.0
+
+    df_rem, ciclo_ultimo_rem, remanescente_original_corte, remanescente_atualizado_corte = ajustar_remanescente_por_corte_operacional(
+        df_rem,
+        df_execucao,
+        valor_original_contrato,
+        fator_remanescente,
+        ciclo_ultimo_rem,
+        config_ciclo_em_execucao,
+        base_execucao_mensal_disponivel,
+    )
+    if remanescente_original_corte is not None:
+        remanescente_original = float(remanescente_original_corte)
+        remanescente_atualizado = float(remanescente_atualizado_corte)
 
     total_execucao_atualizada = float(df_execucao["Valor executado atualizado"].sum()) if not df_execucao.empty else max(valor_original_contrato - remanescente_original, 0.0)
     valor_calculado_sem_aditivos = total_execucao_atualizada + remanescente_atualizado
@@ -3191,6 +3386,10 @@ def processar_arquivo_coleta(bytes_arquivo):
         "base_itens_disponivel": bool(base_itens_disponivel),
         "aviso_base_execucao": aviso_base_execucao,
         "ressalva_modo_apuracao": ressalva_modo_apuracao,
+        "config_ciclo_em_execucao": config_ciclo_em_execucao,
+        "corte_operacional_solicitado": bool(corte_operacional_solicitado),
+        "corte_operacional_aplicado": bool(corte_operacional_solicitado),
+        "metodologia_corte_operacional": "financeiro_preferencial_ate_corte_e_c0_manual_quando_informado" if corte_operacional_solicitado else "",
         "origem_ciclos": origem_ciclos,
         "indice": indice,
         "fator_acumulado": fator_acumulado,
@@ -3213,6 +3412,7 @@ def processar_arquivo_coleta(bytes_arquivo):
         "valor_total_sem_efeito_financeiro": round(valor_total_sem_efeito, 2),
         "remanescente_original": round(remanescente_original, 2),
         "remanescente_reajustado": round(remanescente_atualizado, 2),
+        "remanescente_recalculado_por_corte_operacional": bool(remanescente_original_corte is not None),
         "fator_remanescente": fator_remanescente,
         "valor_executado_atualizado": round(total_execucao_atualizada, 2),
         "valor_calculado_sem_aditivos": round(valor_calculado_sem_aditivos, 2),
@@ -3227,6 +3427,7 @@ def processar_arquivo_coleta(bytes_arquivo):
         "ciclo_ultimo_remanescente": ciclo_ultimo_rem,
         "df_ciclos": ciclos,
         "df_financeiro_mensal": financeiro,
+        "df_financeiro_mensal_corte_operacional": financeiro_para_calculo,
         "df_financeiro_mensal_tratado": df_financeiro_mensal_tratado,
         "df_meses_sem_efeito_financeiro": df_meses_sem_efeito,
         "df_financeiro_por_ciclo": df_fin_por_ciclo,

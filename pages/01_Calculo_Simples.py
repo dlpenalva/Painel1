@@ -1342,6 +1342,13 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         cores_ciclos_col_c = ['#EAF2F8', '#E2F0D9', '#FFF2CC', '#FCE4D6', '#E4DFEC', '#DDEBF7', '#F4CCCC', '#D9EAD3']
         fmt_ciclos_col_c = [workbook.add_format({'bg_color': cor, 'border': 1}) for cor in cores_ciclos_col_c]
         cor_aba_automatica = '#D9EAF7'
+        cor_corte_teal = '#0F766E'
+        fmt_teal_title = workbook.add_format({'bold': True, 'font_color': 'white', 'bg_color': cor_corte_teal, 'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True})
+        fmt_teal_header = workbook.add_format({'bold': True, 'font_color': 'white', 'bg_color': '#115E59', 'border': 1, 'align': 'center', 'valign': 'vcenter', 'text_wrap': True})
+        fmt_teal_note = workbook.add_format({'bg_color': '#CCFBF1', 'font_color': '#134E4A', 'border': 1, 'text_wrap': True, 'valign': 'top'})
+        fmt_teal_input = workbook.add_format({'bg_color': '#D9EDEB', 'border': 1, 'text_wrap': True})
+        fmt_teal_input_date = workbook.add_format({'num_format': 'dd/mm/yyyy', 'bg_color': '#D9EDEB', 'border': 1})
+        fmt_teal_input_money = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#D9EDEB', 'border': 1})
 
         def _periodo_mensal_seguro(valor):
             try:
@@ -1703,6 +1710,94 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws_it.write(total_row_itens + 2, 0, 'Orientação', fmt_total)
         ws_it.merge_range(total_row_itens + 2, 1, total_row_itens + 2, max(3, len(headers) - 1), 'A linha TOTAL é dinâmica por fórmula. Há 180 linhas disponíveis para preenchimento. Para acrescentar mais itens, insira novas linhas acima da linha TOTAL; as fórmulas de total serão ajustadas pelo Excel. Não utilizar tabela estruturada nesta aba.', fmt_text_wrap)
         ws_it.set_row(total_row_itens + 2, 58)
+
+
+
+        # >>> CICLO_EM_EXECUCAO_CORRIGIDO
+        # CICLO_EM_EXECUCAO
+        ws_ce = workbook.add_worksheet('CICLO_EM_EXECUCAO')
+        writer.sheets['CICLO_EM_EXECUCAO'] = ws_ce
+
+        fmt_teal_title = workbook.add_format({
+            'bold': True,
+            'font_color': 'white',
+            'bg_color': '#0F766E',
+            'border': 1,
+            'align': 'center',
+            'valign': 'vcenter',
+            'text_wrap': True,
+        })
+        fmt_teal_header = workbook.add_format({
+            'bold': True,
+            'font_color': 'white',
+            'bg_color': '#14B8A6',
+            'border': 1,
+            'align': 'center',
+            'valign': 'vcenter',
+            'text_wrap': True,
+        })
+        fmt_teal_note = workbook.add_format({
+            'bg_color': '#CCFBF1',
+            'font_color': '#134E4A',
+            'border': 1,
+            'text_wrap': True,
+            'valign': 'top',
+        })
+        fmt_teal_input = workbook.add_format({'bg_color': '#FFF2CC', 'border': 1})
+        fmt_teal_input_date = workbook.add_format({'num_format': 'dd/mm/yyyy', 'bg_color': '#FFF2CC', 'border': 1})
+        fmt_teal_input_money = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#FFF2CC', 'border': 1})
+        fmt_teal_text = workbook.add_format({'border': 1, 'text_wrap': True, 'valign': 'top'})
+
+        ciclo_padrao_execucao = ''
+        try:
+            if ciclos:
+                ciclo_padrao_execucao = ciclos[-1].get('ciclo', ciclos[-1].get('Ciclo', ''))
+        except Exception:
+            ciclo_padrao_execucao = ''
+
+        ws_ce.merge_range(0, 0, 0, 3, 'Corte operacional no ciclo em execução', fmt_teal_title)
+        ws_ce.merge_range(
+            1, 0, 1, 3,
+            'Use esta aba somente quando houver execução parcial dentro do ciclo em andamento. Se o campo principal ficar como Não ou vazio, o cl8us deve manter o corte padrão no início dos ciclos. Para alterar o saldo futuro, informe explicitamente o remanescente no corte operacional.',
+            fmt_teal_note,
+        )
+
+        headers_ce = ['Campo', 'Valor', 'Orientação', 'Uso pelo cl8us']
+        for col, title in enumerate(headers_ce):
+            ws_ce.write(2, col, title, fmt_teal_header)
+
+        linhas_ce = [
+            ('Aplicar corte operacional?', 'Não', 'Preencha Sim apenas quando quiser partir o ciclo em execução entre histórico executado e saldo futuro.', 'Chave principal'),
+            ('Ciclo em execução', ciclo_padrao_execucao, 'Informe o ciclo que está em execução. Ex.: C3.', 'Identifica o ciclo de corte'),
+            ('Data de corte operacional', '', 'Data da fotografia operacional. Ex.: data-base da conferência fiscal ou data da planilha de consumo.', 'Marco temporal do corte'),
+            ('Fonte preferencial da execução realizada', 'Financeiro/Base de execução mensal', 'Use Financeiro/Base de execução mensal quando houver base confiável; use Itens/Remanescentes apenas quando não houver financeiro.', 'Define prioridade da fonte'),
+            ('Usar C0 financeiro manual?', 'Não', 'Use Sim apenas quando o C0 reconstruído por itens divergir do valor financeiro/glosado validado.', 'Override excepcional'),
+            ('Valor financeiro C0 manual/override', '', 'Valor financeiro validado para C0, quando aplicável.', 'Substitui o C0 reconstruído se autorizado'),
+            ('Valor remanescente original no corte operacional', '', 'Opcional. Informe o saldo remanescente original apurado na data de corte, quando houver conferência operacional/fiscal.', 'Substitui o saldo original de início do ciclo'),
+            ('Valor remanescente atualizado no corte operacional', '', 'Opcional. Informe o saldo remanescente já atualizado na data de corte. Se preenchido, prevalece sobre o saldo de início do ciclo.', 'Substitui o saldo atualizado de início do ciclo'),
+            ('Observação fiscal', '', 'Registro livre da premissa fiscal adotada.', 'Memória da apuração'),
+        ]
+
+        for row_idx, (campo, valor, orientacao, uso) in enumerate(linhas_ce, start=3):
+            ws_ce.write(row_idx, 0, campo, fmt_teal_text)
+            if campo == 'Data de corte operacional':
+                ws_ce.write(row_idx, 1, valor, fmt_teal_input_date)
+            elif campo in ['Valor financeiro C0 manual/override', 'Valor remanescente original no corte operacional', 'Valor remanescente atualizado no corte operacional']:
+                ws_ce.write(row_idx, 1, valor, fmt_teal_input_money)
+            else:
+                ws_ce.write(row_idx, 1, valor, fmt_teal_input)
+            ws_ce.write(row_idx, 2, orientacao, fmt_teal_text)
+            ws_ce.write(row_idx, 3, uso, fmt_teal_text)
+
+        ws_ce.data_validation('B4', {'validate': 'list', 'source': ['Não', 'Sim']})
+        ws_ce.data_validation('B8', {'validate': 'list', 'source': ['Não', 'Sim']})
+        ws_ce.set_column('A:A', 42)
+        ws_ce.set_column('B:B', 30)
+        ws_ce.set_column('C:C', 90)
+        ws_ce.set_column('D:D', 34)
+        ws_ce.set_row(1, 60)
+        ws_ce.set_tab_color('#0F766E')
+        # <<< CICLO_EM_EXECUCAO_CORRIGIDO
 
         # ADITIVOS_QUANTITATIVOS
         ws_ad = workbook.add_worksheet('ADITIVOS_QUANTITATIVOS')
