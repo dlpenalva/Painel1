@@ -14,6 +14,38 @@ if not st.session_state.get("_calculadora_reajustes_embedded", False):
     st.set_page_config(page_title="Análises de Reajustes - Reajustes Múltiplos", layout="wide")
 
 
+
+
+# >>> UX_ADITIVOS_25_COMPACTO
+def aplicar_css_aditivos25_compacto():
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stMetric"] {
+            min-height: 72px;
+            padding: 8px 10px;
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: clamp(0.95rem, 1.55vw, 1.28rem) !important;
+            line-height: 1.12 !important;
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+            word-break: normal !important;
+        }
+        div[data-testid="stMetricLabel"] p {
+            font-size: clamp(0.70rem, 1.00vw, 0.86rem) !important;
+            line-height: 1.15 !important;
+            white-space: normal !important;
+        }
+        .aditivos25-ux-note {
+            font-size: 0.86rem;
+            color: #475569;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+# <<< UX_ADITIVOS_25_COMPACTO
 from _ui_utils import render_indice_contrato_selectbox, render_marca_topo
 from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _data_para_datetime, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br, _percentual_formatado

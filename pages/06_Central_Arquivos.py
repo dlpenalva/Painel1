@@ -4,6 +4,38 @@ from io import BytesIO
 
 st.set_page_config(page_title="TLB · cl8us - Central de Arquivos", layout="wide")
 
+
+
+# >>> UX_ADITIVOS_25_COMPACTO
+def aplicar_css_aditivos25_compacto():
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stMetric"] {
+            min-height: 72px;
+            padding: 8px 10px;
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: clamp(0.95rem, 1.55vw, 1.28rem) !important;
+            line-height: 1.12 !important;
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+            word-break: normal !important;
+        }
+        div[data-testid="stMetricLabel"] p {
+            font-size: clamp(0.70rem, 1.00vw, 0.86rem) !important;
+            line-height: 1.15 !important;
+            white-space: normal !important;
+        }
+        .aditivos25-ux-note {
+            font-size: 0.86rem;
+            color: #475569;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+# <<< UX_ADITIVOS_25_COMPACTO
 from _ui_utils import render_marca_topo, render_aviso_privacidade
 
 def gerar_excel_catalogo(df_catalogo, df_checklist=None):

@@ -11,6 +11,38 @@ import streamlit as st
 st.set_page_config(page_title="Análises de Reajustes - Relatório Global", layout="wide")
 
 
+
+
+# >>> UX_ADITIVOS_25_COMPACTO
+def aplicar_css_aditivos25_compacto():
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stMetric"] {
+            min-height: 72px;
+            padding: 8px 10px;
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: clamp(0.95rem, 1.55vw, 1.28rem) !important;
+            line-height: 1.12 !important;
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+            word-break: normal !important;
+        }
+        div[data-testid="stMetricLabel"] p {
+            font-size: clamp(0.70rem, 1.00vw, 0.86rem) !important;
+            line-height: 1.15 !important;
+            white-space: normal !important;
+        }
+        .aditivos25-ux-note {
+            font-size: 0.86rem;
+            color: #475569;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+# <<< UX_ADITIVOS_25_COMPACTO
 from _ui_utils import render_marca_topo, render_aviso_privacidade
 
 def moeda(valor):
@@ -176,8 +208,75 @@ def indicadores_executivos_relatorio(res):
         ["Saldo remanescente atualizado", moeda(res.get("remanescente_reajustado", 0))],
         ["Valor total de aditivos/supressões", moeda(res.get("total_aditivos_atualizados", 0))],
         ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)))],
+        ["Metodologia de corte", metodologia_corte_operacional_info(res)["titulo"].replace("Metodologia aplicada: ", "")],
     ]
 
+
+
+def _formatar_data_corte_relatorio(valor):
+    try:
+        if valor is None:
+            return "Não informada"
+        texto = str(valor).strip()
+        if texto == "" or texto.lower() in ["nan", "none", "nat"]:
+            return "Não informada"
+        data = pd.to_datetime(valor, dayfirst=True, errors="coerce")
+        if pd.isna(data):
+            return texto
+        return data.strftime("%d/%m/%Y")
+    except Exception:
+        return str(valor or "Não informada")
+
+
+def _config_corte_relatorio(res):
+    if not isinstance(res, dict):
+        return {}, False
+    config = res.get("config_ciclo_em_execucao", {}) or {}
+    aplicado = bool(res.get("corte_operacional_solicitado", False) or res.get("corte_operacional_aplicado", False))
+    return config, aplicado
+
+
+def texto_metodologia_corte_relatorio(res):
+    config, aplicado = _config_corte_relatorio(res)
+    if not aplicado:
+        return (
+            "Metodologia aplicada: corte padrão no início dos ciclos",
+            "A aba CICLO_EM_EXECUCAO está ausente, vazia ou marcada como Não. "
+            "O Valor Total Atualizado permanece calculado pela metodologia padrão: execução atualizada por ciclo + saldo remanescente atualizado."
+        )
+
+    ciclo = texto_seguro(config.get("ciclo", ""), "Não informado")
+    data_corte = _formatar_data_corte_relatorio(config.get("data_corte", ""))
+    fonte = texto_seguro(config.get("fonte", ""), "Não informada")
+    rem_atualizado = config.get("valor_remanescente_atualizado_corte", config.get("remanescente_atualizado_corte", ""))
+    rem_txt = moeda_ou_texto(rem_atualizado) if str(rem_atualizado).strip() else "Não informado"
+
+    return (
+        "Metodologia aplicada: corte operacional no ciclo em execução",
+        f"Foi aplicado corte operacional no {ciclo}, com data de corte em {data_corte}. "
+        f"A execução realizada foi apurada pela fonte preferencial: {fonte}. "
+        f"O saldo remanescente atualizado considerado no corte foi: {rem_txt}."
+    )
+
+
+def render_metodologia_corte_relatorio(res):
+    titulo, texto = texto_metodologia_corte_relatorio(res)
+    _, aplicado = _config_corte_relatorio(res)
+    if aplicado:
+        html = (
+            '<div style="background:#CCFBF1; border:1px solid #14B8A6; border-left:7px solid #0F766E; border-radius:12px; padding:14px 16px; margin:10px 0 16px 0; color:#134E4A;">'
+            f'<div style="font-weight:900; margin-bottom:5px;">{titulo}</div>'
+            f'<div style="font-size:0.94rem; line-height:1.45;">{texto}</div>'
+            '</div>'
+        )
+    else:
+        html = (
+            '<div style="background:#EFF6FF; border:1px solid #93C5FD; border-left:7px solid #2563EB; border-radius:12px; padding:14px 16px; margin:10px 0 16px 0; color:#1E3A8A;">'
+            f'<div style="font-weight:900; margin-bottom:5px;">{titulo}</div>'
+            f'<div style="font-size:0.94rem; line-height:1.45;">{texto}</div>'
+            '</div>'
+        )
+    st.markdown(html, unsafe_allow_html=True)
 
 def aviso_modo_reduzido_html():
     return """
@@ -199,6 +298,274 @@ def aviso_modo_consumo_html():
     </div>
     """
 
+
+
+def metodologia_corte_operacional_info(res):
+    """Retorna dados de metodologia do corte operacional para o Relatório Global."""
+    if not isinstance(res, dict):
+        return {
+            "aplicado": False,
+            "titulo": "Metodologia aplicada: corte padrão no início dos ciclos",
+            "texto": "A aba CICLO_EM_EXECUCAO está ausente, vazia ou marcada como Não. O Valor Total Atualizado permanece calculado pela metodologia padrão.",
+            "cor": "azul",
+        }
+
+    config = res.get("config_ciclo_em_execucao", {}) or {}
+    solicitado = bool(res.get("corte_operacional_solicitado", False) or res.get("corte_operacional_aplicado", False) or config.get("aplicar", False))
+
+    if not solicitado:
+        return {
+            "aplicado": False,
+            "titulo": "Metodologia aplicada: corte padrão no início dos ciclos",
+            "texto": "A aba CICLO_EM_EXECUCAO está ausente, vazia ou marcada como Não. O Valor Total Atualizado permanece calculado pela metodologia padrão: execução atualizada por ciclo + saldo remanescente atualizado.",
+            "cor": "azul",
+        }
+
+    ciclo = texto_seguro(config.get("ciclo"), "não informado")
+    data_corte = texto_seguro(config.get("data_corte"), "não informada")
+    fonte = texto_seguro(config.get("fonte"), "não informada")
+    rem_atualizado = config.get("valor_remanescente_atualizado_corte", "")
+    rem_original = config.get("valor_remanescente_original_corte", "")
+
+    detalhes = [
+        f"Ciclo em execução: {ciclo}.",
+        f"Data de corte operacional: {data_corte}.",
+        f"Fonte preferencial da execução realizada: {fonte}.",
+    ]
+
+    if str(rem_original).strip():
+        detalhes.append(f"Remanescente original informado no corte: {moeda_ou_texto(rem_original)}.")
+    if str(rem_atualizado).strip():
+        detalhes.append(f"Remanescente atualizado informado no corte: {moeda_ou_texto(rem_atualizado)}.")
+
+    detalhes.append("Metodologia: execução realizada priorizando a base financeira até o corte + saldo remanescente informado no corte operacional.")
+
+    return {
+        "aplicado": True,
+        "titulo": "Metodologia aplicada: corte operacional no ciclo em execução",
+        "texto": " ".join(detalhes),
+        "cor": "teal",
+    }
+
+
+def aviso_metodologia_corte_operacional_html(res):
+    info = metodologia_corte_operacional_info(res)
+    if info.get("aplicado"):
+        return f"""
+        <div style="background:#CCFBF1; border:1px solid #14B8A6; border-left:8px solid #0F766E; border-radius:14px; padding:16px 20px; margin:10px 0 16px 0; color:#134E4A;">
+            <div style="font-weight:900; font-size:1.00rem; margin-bottom:6px;">{info["titulo"]}</div>
+            <div style="font-size:0.94rem; line-height:1.45;">{info["texto"]}</div>
+        </div>
+        """
+
+    return f"""
+    <div style="background:#EAF2F8; border:1px solid #93C5FD; border-left:8px solid #2563EB; border-radius:14px; padding:16px 20px; margin:10px 0 16px 0; color:#1E3A8A;">
+        <div style="font-weight:900; font-size:1.00rem; margin-bottom:6px;">{info["titulo"]}</div>
+        <div style="font-size:0.94rem; line-height:1.45;">{info["texto"]}</div>
+    </div>
+    """
+
+
+def formatar_data_corte_br_relatorio(valor):
+    if valor is None:
+        return "Não informada"
+    texto = str(valor).strip()
+    if texto.lower() in ["", "nan", "none", "nat", "<na>"]:
+        return "Não informada"
+    try:
+        data = pd.to_datetime(valor, dayfirst=True, errors="coerce")
+        if not pd.isna(data):
+            return data.strftime("%d/%m/%Y")
+    except Exception:
+        pass
+    return texto
+
+
+def _config_corte_relatorio(res):
+    if not isinstance(res, dict):
+        return {}
+    return res.get("config_ciclo_em_execucao", {}) or {}
+
+
+def _corte_operacional_aplicado_relatorio(res):
+    if not isinstance(res, dict):
+        return False
+    return bool(res.get("corte_operacional_aplicado", False) or res.get("corte_operacional_solicitado", False))
+
+
+def metodologia_corte_operacional_texto(res):
+    config = _config_corte_relatorio(res)
+    if _corte_operacional_aplicado_relatorio(res):
+        ciclo = texto_seguro(config.get("ciclo", ""), "Não informado")
+        data_corte = formatar_data_corte_br_relatorio(config.get("data_corte", ""))
+        fonte = texto_seguro(config.get("fonte", ""), "Não informada")
+        rem_atualizado = config.get("valor_remanescente_atualizado_corte", config.get("remanescente_atualizado_corte", ""))
+        rem_txt = moeda_ou_texto(rem_atualizado) if str(rem_atualizado).strip() else "não informado"
+        return (
+            "Metodologia aplicada: corte operacional no ciclo em execução. "
+            f"Ciclo em execução: {ciclo}. Data de corte: {data_corte}. "
+            f"Fonte da execução realizada: {fonte}. "
+            f"Saldo remanescente atualizado informado no corte: {rem_txt}. "
+            "Composição: execução atualizada até o corte + saldo remanescente informado no corte operacional."
+        )
+    return (
+        "Metodologia aplicada: corte padrão no início dos ciclos. "
+        "A aba CICLO_EM_EXECUCAO está ausente, vazia ou marcada como Não. "
+        "O Valor Total Atualizado permanece calculado pela metodologia padrão: execução atualizada por ciclo + saldo remanescente atualizado."
+    )
+
+
+def aviso_metodologia_corte_relatorio_html(res):
+    config = _config_corte_relatorio(res)
+    if _corte_operacional_aplicado_relatorio(res):
+        ciclo = texto_seguro(config.get("ciclo", ""), "Não informado")
+        data_corte = formatar_data_corte_br_relatorio(config.get("data_corte", ""))
+        fonte = texto_seguro(config.get("fonte", ""), "Não informada")
+        rem_original = config.get("valor_remanescente_original_corte", config.get("remanescente_original_corte", ""))
+        rem_atualizado = config.get("valor_remanescente_atualizado_corte", config.get("remanescente_atualizado_corte", ""))
+        return (
+            '<div style="background:#CCFBF1; border:1px solid #14B8A6; border-left:7px solid #0F766E; border-radius:12px; padding:14px 16px; margin:8px 0 16px 0; color:#134E4A;">'
+            '<div style="font-weight:900; font-size:0.98rem; margin-bottom:6px;">Metodologia aplicada: corte operacional no ciclo em execução</div>'
+            '<div style="font-size:0.92rem; line-height:1.45;">'
+            f'<b>Ciclo em execução:</b> {ciclo}<br>'
+            f'<b>Data de corte:</b> {data_corte}<br>'
+            f'<b>Fonte da execução realizada:</b> {fonte}<br>'
+            f'<b>Remanescente original no corte:</b> {moeda_ou_texto(rem_original) if str(rem_original).strip() else "Não informado"}<br>'
+            f'<b>Remanescente atualizado no corte:</b> {moeda_ou_texto(rem_atualizado) if str(rem_atualizado).strip() else "Não informado"}'
+            '</div>'
+            '<div style="font-size:0.86rem; margin-top:8px; color:#0F766E;">Composição: execução atualizada até o corte + saldo remanescente informado no corte operacional.</div>'
+            '</div>'
+        )
+
+    return (
+        '<div style="background:#EFF6FF; border:1px solid #93C5FD; border-left:7px solid #2563EB; border-radius:12px; padding:13px 16px; margin:8px 0 16px 0; color:#1E3A8A;">'
+        '<div style="font-weight:900; font-size:0.98rem; margin-bottom:5px;">Metodologia aplicada: corte padrão no início dos ciclos</div>'
+        '<div style="font-size:0.92rem; line-height:1.45;">A aba CICLO_EM_EXECUCAO está ausente, vazia ou marcada como Não. O Valor Total Atualizado permanece calculado pela metodologia padrão.</div>'
+        '</div>'
+    )
+
+
+# ============================================================
+# Metodologia do corte operacional - relatório/PDF/apostila
+# ============================================================
+def _numero_br_relatorio(valor, padrao=0.0):
+    try:
+        if valor is None:
+            return padrao
+        if isinstance(valor, str):
+            txt = valor.strip().replace("R$", "").replace(" ", "")
+            if not txt:
+                return padrao
+            if "," in txt:
+                txt = txt.replace(".", "").replace(",", ".")
+            return float(txt)
+        return float(valor)
+    except Exception:
+        return padrao
+
+
+def _info_corte_operacional_relatorio(res):
+    if not isinstance(res, dict):
+        return {"ativo": False}
+    cfg = res.get("config_ciclo_em_execucao") or {}
+    ativo = bool(res.get("corte_operacional_aplicado") or res.get("corte_operacional_solicitado") or cfg.get("aplicar"))
+    ciclo = texto_seguro(cfg.get("ciclo", ""), "Não informado")
+    competencia = texto_seguro(cfg.get("competencia_corte") or cfg.get("data_corte") or "", "Não informada")
+    fonte = texto_seguro(cfg.get("fonte", ""), "Não informada")
+    c0_val = _numero_br_relatorio(cfg.get("valor_c0_manual", 0), 0.0)
+    rem_atual = _numero_br_relatorio(cfg.get("valor_remanescente_atualizado_corte", 0), 0.0)
+    rem_orig = _numero_br_relatorio(cfg.get("valor_remanescente_original_corte", 0), 0.0)
+    rem_final = rem_atual if abs(rem_atual) > 0.004 else _numero_br_relatorio(res.get("remanescente_reajustado", 0), 0.0)
+
+    exec_corte = 0.0
+    df_exec = res.get("df_execucao_atualizada")
+    if isinstance(df_exec, pd.DataFrame) and not df_exec.empty and "Ciclo" in df_exec.columns:
+        ciclo_alvo = str(ciclo or "").upper().strip()
+        if ciclo_alvo and ciclo_alvo != "NÃO INFORMADO":
+            mask = df_exec["Ciclo"].astype(str).str.upper().str.strip().eq(ciclo_alvo)
+            if mask.any() and "Valor executado atualizado" in df_exec.columns:
+                exec_corte = df_exec.loc[mask, "Valor executado atualizado"].apply(_numero_br_relatorio).sum()
+        if abs(exec_corte) <= 0.004 and "Valor executado atualizado" in df_exec.columns:
+            exec_corte = df_exec["Valor executado atualizado"].apply(_numero_br_relatorio).sum()
+
+    return {
+        "ativo": ativo,
+        "ciclo": ciclo,
+        "competencia": competencia,
+        "fonte": fonte,
+        "c0_val": c0_val,
+        "tem_c0": abs(c0_val) > 0.004,
+        "remanescente_atualizado": rem_final,
+        "remanescente_original": rem_orig,
+        "execucao_corte": exec_corte,
+        "valor_total": _numero_br_relatorio(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)), 0.0),
+    }
+
+
+def aviso_metodologia_corte_html(res):
+    info = _info_corte_operacional_relatorio(res)
+    if not info.get("ativo"):
+        return """
+        <div style="background:#EAF2F8; border:1px solid #93C5FD; border-left:6px solid #2563EB; border-radius:12px; padding:14px 16px; margin:10px 0 16px 0; color:#0B1F3A;">
+            <div style="font-weight:800; margin-bottom:4px;">Metodologia aplicada: corte padrão no início dos ciclos</div>
+            <div style="font-size:0.93rem; line-height:1.45;">O Valor Total Atualizado do Contrato foi composto pela execução atualizada por ciclo somada ao saldo remanescente atualizado do ciclo de referência.</div>
+        </div>
+        """
+    c0 = f"<br><strong>C0 financeiro manual:</strong> {moeda(info['c0_val'])}" if info.get("tem_c0") else ""
+    return f"""
+    <div style="background:#CCFBF1; border:1px solid #14B8A6; border-left:6px solid #0F766E; border-radius:12px; padding:14px 16px; margin:10px 0 16px 0; color:#134E4A;">
+        <div style="font-weight:800; margin-bottom:4px;">Metodologia aplicada: corte operacional no ciclo em execução</div>
+        <div style="font-size:0.93rem; line-height:1.45;">
+            <strong>Ciclo em execução:</strong> {info['ciclo']}<br>
+            <strong>Competência de corte:</strong> {info['competencia']}<br>
+            <strong>Fonte da execução realizada:</strong> {info['fonte']}{c0}<br>
+            <strong>Execução atualizada do ciclo até o corte:</strong> {moeda(info['execucao_corte'])}<br>
+            <strong>Remanescente atualizado informado:</strong> {moeda(info['remanescente_atualizado'])}<br>
+            <strong>Valor Total Atualizado:</strong> {moeda(info['valor_total'])}
+        </div>
+    </div>
+    """
+
+
+def dados_metodologia_corte_tabela(res):
+    info = _info_corte_operacional_relatorio(res)
+    if not info.get("ativo"):
+        return [
+            ["Item", "Informação"],
+            ["Metodologia aplicada", "Corte padrão no início dos ciclos"],
+            ["Composição", "Execução atualizada por ciclo + saldo remanescente atualizado"],
+            ["Valor Total Atualizado", moeda(info.get("valor_total", 0))],
+        ]
+    linhas = [
+        ["Item", "Informação"],
+        ["Metodologia aplicada", "Corte operacional no ciclo em execução"],
+        ["Ciclo em execução", info.get("ciclo", "Não informado")],
+        ["Competência de corte", info.get("competencia", "Não informada")],
+        ["Fonte da execução realizada", info.get("fonte", "Não informada")],
+        ["Execução atualizada do ciclo até o corte", moeda(info.get("execucao_corte", 0))],
+        ["Remanescente atualizado informado", moeda(info.get("remanescente_atualizado", 0))],
+        ["Valor Total Atualizado", moeda(info.get("valor_total", 0))],
+    ]
+    if info.get("tem_c0"):
+        linhas.insert(5, ["C0 financeiro manual", moeda(info.get("c0_val", 0))])
+    return linhas
+
+
+def texto_metodologia_corte_minuta(res):
+    info = _info_corte_operacional_relatorio(res)
+    if not info.get("ativo"):
+        return (
+            "Metodologia de consolidação: foi adotado o corte padrão no início dos ciclos, "
+            "com composição do Valor Total Atualizado pela execução atualizada por ciclo somada ao saldo remanescente atualizado."
+        )
+    partes = [
+        f"Metodologia de consolidação: foi adotado corte operacional no ciclo em execução {info.get('ciclo', 'não informado')}, com competência de corte {info.get('competencia', 'não informada')}.",
+        f"A execução atualizada do ciclo até o corte corresponde a {moeda(info.get('execucao_corte', 0))}.",
+        f"O remanescente atualizado informado para a consolidação corresponde a {moeda(info.get('remanescente_atualizado', 0))}.",
+    ]
+    if info.get("tem_c0"):
+        partes.insert(1, f"Foi utilizado C0 financeiro manual no valor de {moeda(info.get('c0_val', 0))}.")
+    return " ".join(partes)
 
 def formatar_data_br(valor):
     data = pd.to_datetime(valor, dayfirst=True, errors="coerce")
@@ -604,8 +971,12 @@ def criar_pdf_relatorio(adm, res):
     story.append(Paragraph("3. Indicadores Executivos", styles["Subtitulo"]))
     story.append(tabela_pdf(indicadores_executivos_relatorio(res), header=True, col_widths=[8.5 * cm, 8.5 * cm]))
 
+    info_metodologia = metodologia_corte_operacional_info(res)
+    story.append(Paragraph("3.1. Metodologia de corte da apuração", styles["Subtitulo"]))
+    story.append(Paragraph(f"{info_metodologia['titulo']}. {info_metodologia['texto']}", styles["Texto"]))
+
     if eh_modo_consumo_itens_ciclo(res):
-        story.append(Paragraph("3.1. Modo Consumo por Itens/Ciclo", styles["Subtitulo"]))
+        story.append(Paragraph("3.2. Modo Consumo por Itens/Ciclo", styles["Subtitulo"]))
         story.append(Paragraph(
             "A análise foi processada sem base mensal por competência. O retroativo financeiro definitivo por competência não é calculado neste modo. "
             "O Retroativo (itens consumidos/ciclo) foi apurado com base nos quantitativos consumidos por item e por ciclo informados pela fiscalização.",
@@ -620,7 +991,7 @@ def criar_pdf_relatorio(adm, res):
             )
             story.append(tabela_dataframe_pdf(df_ri_pdf, max_linhas=20))
     elif eh_modo_reduzido_itens(res):
-        story.append(Paragraph("3.1. Modo Reduzido por Itens/Estoque", styles["Subtitulo"]))
+        story.append(Paragraph("3.2. Modo Reduzido por Itens/Estoque", styles["Subtitulo"]))
         story.append(Paragraph(
             "A análise foi processada sem base mensal por competência. O retroativo financeiro definitivo não é calculado neste modo. "
             "O valor de retroativo estimado por itens/estoque possui natureza estimativa e deve ser validado antes de qualquer formalização de pagamento.",
@@ -1281,6 +1652,9 @@ st.divider()
 tab2, tab3, tab4 = st.tabs(["Tabelas", "PDF", "Minuta de Apostilamento"])
 
 with tab2:
+    st.markdown("### Metodologia de corte da apuração")
+    st.markdown(aviso_metodologia_corte_html(res), unsafe_allow_html=True)
+
     st.markdown("### Quadro Executivo")
     st.dataframe(
         df_visual(res.get("df_comparativo"), moeda_cols=["Valor", "Antes do Reajuste", "Após Reajuste", "Diferença"]),
