@@ -457,6 +457,79 @@ def gerar_docx_memorando(dados):
     return buffer.getvalue()
 
 
+
+
+# >>> METODOLOGIA_VALOR_IMPORTADO_CORTE_OPERACIONAL
+def _metodologia_valor_importado_html(resultado_valor_global):
+    """Box informativo sobre a metodologia do Valor Total Atualizado importado do módulo Valores.
+    Não altera cálculo. Apenas documenta a origem/metodologia usada.
+    """
+    if not isinstance(resultado_valor_global, dict) or not resultado_valor_global:
+        return """
+        <div style="background:#F8FAFC; border:1px solid #CBD5E1; border-left:6px solid #64748B; border-radius:12px; padding:13px 15px; margin:10px 0 16px 0; color:#334155;">
+            <div style="font-weight:800; margin-bottom:5px;">Metodologia do Valor Total Atualizado importado</div>
+            <div style="font-size:0.92rem; line-height:1.45;">Não há resultado do módulo Valores carregado nesta sessão. Os campos desta página devem ser conferidos/preenchidos manualmente.</div>
+        </div>
+        """
+
+    cfg = resultado_valor_global.get("config_ciclo_em_execucao", {}) or {}
+    corte = bool(resultado_valor_global.get("corte_operacional_aplicado") or resultado_valor_global.get("corte_operacional_solicitado") or cfg.get("aplicar"))
+
+    try:
+        valor_total = moeda(resultado_valor_global.get("valor_atualizado_contrato", resultado_valor_global.get("valor_global_estoque", 0)))
+    except Exception:
+        valor_total = str(resultado_valor_global.get("valor_atualizado_contrato", "Não informado"))
+    try:
+        execucao = moeda(resultado_valor_global.get("valor_executado_atualizado", 0))
+    except Exception:
+        execucao = str(resultado_valor_global.get("valor_executado_atualizado", "Não informado"))
+    try:
+        remanescente = moeda(resultado_valor_global.get("remanescente_reajustado", 0))
+    except Exception:
+        remanescente = str(resultado_valor_global.get("remanescente_reajustado", "Não informado"))
+
+    valor_c0 = cfg.get("valor_c0_manual", 0)
+    try:
+        c0_manual = moeda(valor_c0) if parse_moeda_br(valor_c0) > 0 else "Não informado"
+    except Exception:
+        c0_manual = "Não informado"
+
+    ciclo = str(cfg.get("ciclo") or resultado_valor_global.get("ciclo_ultimo_remanescente") or "Não informado")
+    competencia = str(cfg.get("competencia_corte") or cfg.get("data_corte") or "Não informado")
+    fonte = str(cfg.get("fonte") or "Base financeira preferencial, quando disponível")
+
+    if corte:
+        linhas = [
+            "<b>Metodologia:</b> corte operacional no ciclo em execução.",
+            f"<b>Ciclo em execução:</b> {ciclo}.",
+            f"<b>Competência de corte:</b> {competencia}.",
+            f"<b>Fonte da execução:</b> {fonte}.",
+            f"<b>C0 financeiro manual:</b> {c0_manual}.",
+            f"<b>Execução atualizada considerada:</b> {execucao}.",
+            f"<b>Saldo remanescente atualizado considerado:</b> {remanescente}.",
+            f"<b>Valor Total Atualizado importado:</b> {valor_total}.",
+        ]
+        return f"""
+        <div style="background:#ECFEFF; border:1px solid #14B8A6; border-left:6px solid #0F766E; border-radius:12px; padding:13px 15px; margin:10px 0 16px 0; color:#134E4A;">
+            <div style="font-weight:900; margin-bottom:6px;">Metodologia do Valor Total Atualizado importado</div>
+            <div style="font-size:0.92rem; line-height:1.48;">{'<br>'.join(linhas)}</div>
+        </div>
+        """
+
+    return f"""
+    <div style="background:#F8FAFC; border:1px solid #CBD5E1; border-left:6px solid #64748B; border-radius:12px; padding:13px 15px; margin:10px 0 16px 0; color:#334155;">
+        <div style="font-weight:900; margin-bottom:6px;">Metodologia do Valor Total Atualizado importado</div>
+        <div style="font-size:0.92rem; line-height:1.48;">
+            <b>Metodologia:</b> corte padrão, sem corte operacional específico no ciclo em execução.<br>
+            <b>Composição:</b> execução atualizada por ciclo + saldo remanescente atualizado.<br>
+            <b>Execução atualizada considerada:</b> {execucao}.<br>
+            <b>Saldo remanescente atualizado considerado:</b> {remanescente}.<br>
+            <b>Valor Total Atualizado importado:</b> {valor_total}.
+        </div>
+    </div>
+    """
+# <<< METODOLOGIA_VALOR_IMPORTADO_CORTE_OPERACIONAL
+
 render_marca_topo()
 st.title("Adequação Orçamentária")
 st.caption("Estimativa simplificada do delta orçamentário do reajuste: retroativo apurado + diferença futura projetada.")
@@ -464,6 +537,7 @@ render_aviso_privacidade(tem_download=True)
 
 ctx = extrair_contexto_valores()
 resultado = ctx["resultado"]
+st.markdown(_metodologia_valor_importado_html(resultado), unsafe_allow_html=True)
 modo_apuracao = resultado.get("modo_apuracao", "Completo") if isinstance(resultado, dict) else "Completo"
 modo_reduzido_estoque = modo_apuracao == "Reduzido por Itens/Estoque"
 modo_consumo_itens_ciclo = modo_apuracao == "Consumo por Itens/Ciclo"
