@@ -2012,6 +2012,21 @@ if not st.session_state.get("_calculadora_reajustes_embedded", False):
 
 contexto_contratual = _render_contexto_contratual_anterior()
 
+# >>> AJUSTE_CICLO_MAXIMO_C4_V1
+st.markdown(
+    """
+    <div style="background:#FFF7ED; border:1px solid #FDBA74; border-left:6px solid #EA580C; border-radius:12px; padding:12px 14px; margin:8px 0 14px 0; color:#7C2D12;">
+        <div style="font-weight:850; margin-bottom:3px;">Atenção à contagem dos ciclos</div>
+        <div style="font-size:0.94rem; line-height:1.42;">
+            C0 é o ciclo-base inicial e não recebe reajuste. Os ciclos de reajuste começam em C1. 
+            Informe o último ciclo contratual de reajuste que deve ser considerado, limitado a C4 neste fluxo.
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+# <<< AJUSTE_CICLO_MAXIMO_C4_V1
+
 primeiro_ciclo_num = _primeiro_ciclo_analise(contexto_contratual)
 default_dt_base_original = _data_base_inicial_pelo_contexto(contexto_contratual, datetime(2022, 10, 10))
 
@@ -2026,7 +2041,36 @@ if _ciclo_para_numero(contexto_contratual.get('ultimo_ciclo_concedido', '')) > 0
 
 with st.sidebar:
     dt_base_original = st.date_input("Data-base/âncora inicial da análise atual:", value=default_dt_base_original, format="DD/MM/YYYY")
-    qtd_ciclos = st.number_input("Ciclos a analisar:", min_value=1, max_value=5, value=2)
+
+    st.markdown(
+        """
+        <div style="background:#FFF7ED; border:1px solid #FDBA74; border-left:5px solid #EA580C; border-radius:10px; padding:10px 11px; margin:8px 0 10px 0; color:#7C2D12; font-size:0.88rem; line-height:1.35;">
+            <strong>Lembrete:</strong> C0 não reajusta. C0 é apenas a base inicial do contrato; o primeiro reajuste é C1.
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+    if int(primeiro_ciclo_num) > 4:
+        st.warning(
+            "O contexto informado indica que o próximo ciclo seria superior a C4. "
+            "Neste fluxo, o último ciclo contratual de reajuste está limitado a C4."
+        )
+        st.stop()
+
+    ultimo_ciclo_contratual = st.number_input(
+        "Último ciclo contratual de reajuste:",
+        min_value=int(primeiro_ciclo_num),
+        max_value=4,
+        value=4,
+        step=1,
+        help=(
+            "Informe o último ciclo de reajuste do contrato. "
+            "C0 é base sem reajuste. Se C1 já estiver formalizado em contexto, "
+            "a análise atual começará em C2 e seguirá somente até o ciclo final informado."
+        ),
+    )
+    qtd_ciclos = int(ultimo_ciclo_contratual) - int(primeiro_ciclo_num) + 1
     idx_sel = render_indice_contrato_selectbox(key="indice_fluxo_multiplos")
 
 # Primeira etapa: coleta dos dados de cada ciclo, sem processar automaticamente os índices.
@@ -2206,7 +2250,12 @@ if processar_multiplos:
     st.session_state["processar_reajustes_multiplos_key"] = chave_analise_multiplos
 
 if st.session_state.get("processar_reajustes_multiplos_key") != chave_analise_multiplos:
-    st.info(f"Foram configurados **{int(qtd_ciclos)} ciclo(s)** para análise, iniciando em **C{primeiro_ciclo_num}**, a partir da âncora **{dt_base_original.strftime('%d/%m/%Y')}**. Confira as datas dos pedidos antes de clicar em **Processar Análise**.")
+    st.info(
+        f"Foram configurados os ciclos **C{primeiro_ciclo_num} a C{int(ultimo_ciclo_contratual)}** para análise, "
+        f"a partir da âncora **{dt_base_original.strftime('%d/%m/%Y')}**. "
+        "C0 é apenas o ciclo-base inicial e não recebe reajuste. "
+        "Confira as datas dos pedidos antes de clicar em **Processar Análise**."
+    )
     st.stop()
 
 data_hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
