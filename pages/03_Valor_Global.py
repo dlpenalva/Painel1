@@ -1354,6 +1354,9 @@ def gerar_planilha_executiva(resultado):
     output = BytesIO()
     with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
         workbook = writer.book
+        # >>> XLS_EXECUTIVO_VISUAL_V2
+        fonte_executiva_xls = "Aptos"
+        # <<< XLS_EXECUTIVO_VISUAL_V2
 
         fmt_title = workbook.add_format({
             "bold": True, "font_size": 14, "font_color": "#0B1F3A",
@@ -1378,6 +1381,77 @@ def gerar_planilha_executiva(resultado):
         fmt_note = workbook.add_format({"italic": True, "font_color": "#64748B"})
         fmt_note_wrap = workbook.add_format({"italic": True, "font_color": "#64748B", "text_wrap": True, "valign": "top"})
         fmt_text_wrap = workbook.add_format({"border": 1, "valign": "top", "text_wrap": True})
+
+        # >>> XLS_EXECUTIVO_VISUAL_V2_HELPER
+        # Padronização visual leve da Planilha Executiva.
+        # Não altera cálculo, fórmulas, dados, nomes de abas ou validações.
+        formatos_base_executivos = [
+            fmt_title, fmt_subtitle, fmt_section, fmt_text, fmt_text_center,
+            fmt_money, fmt_money_bold, fmt_pct, fmt_factor, fmt_red_money,
+            fmt_red_text, fmt_note, fmt_note_wrap, fmt_text_wrap
+        ]
+        for _fmt in formatos_base_executivos:
+            try:
+                _fmt.set_font_name(fonte_executiva_xls)
+                _fmt.set_font_size(11)
+            except Exception:
+                pass
+
+        def _aplicar_visual_executivo_ws(ws, nome_aba):
+            try:
+                ws.hide_gridlines(2)
+                ws.set_zoom(90)
+            except Exception:
+                pass
+
+            try:
+                if nome_aba == "CONFERENCIA":
+                    ws.freeze_panes(4, 0)
+                elif nome_aba in [
+                    "RESUMO_FINANCEIRO", "VALOR_ATUALIZADO", "COMPOSICAO_VALOR_TOTAL",
+                    "CICLOS", "FINANCEIRO_MENSAL", "FINANCEIRO_POR_CICLO",
+                    "EXECUCAO_ATUALIZADA", "REMANESCENTES", "ADITIVOS",
+                    "AUDITORIA", "VALORES_UNITARIOS_CICLO", "DELTA_POR_CICLO",
+                    "MESES_SEM_EFEITO", "VALORES_POR_CICLO"
+                ]:
+                    ws.freeze_panes(1, 0)
+            except Exception:
+                pass
+
+            try:
+                if nome_aba == "VALOR_ATUALIZADO":
+                    ws.set_column("A:A", 36)
+                    ws.set_column("B:B", 24)
+                    ws.set_column("C:C", 22)
+                    ws.set_column("D:D", 88)
+                elif nome_aba == "COMPOSICAO_VALOR_TOTAL":
+                    ws.set_column("A:A", 44)
+                    ws.set_column("B:B", 24)
+                    ws.set_column("C:C", 22)
+                    ws.set_column("D:D", 96)
+                elif nome_aba == "CONFERENCIA":
+                    ws.set_column("A:A", 38)
+                    ws.set_column("B:B", 30)
+                    ws.set_column("C:F", 24)
+                    ws.set_column("G:G", 90)
+                elif nome_aba == "RESUMO_FINANCEIRO":
+                    ws.set_column("A:A", 42)
+                    ws.set_column("B:B", 28)
+                    ws.set_column("C:H", 24)
+                elif nome_aba == "AUDITORIA":
+                    ws.set_column("A:A", 40)
+                    ws.set_column("B:B", 18)
+                    ws.set_column("C:C", 24)
+                    ws.set_column("D:D", 96)
+                elif nome_aba in ["CICLOS", "FINANCEIRO_MENSAL", "FINANCEIRO_POR_CICLO", "EXECUCAO_ATUALIZADA"]:
+                    ws.set_column("A:A", 18)
+                    ws.set_column("B:Z", 24)
+                elif nome_aba in ["REMANESCENTES", "ADITIVOS", "VALORES_UNITARIOS_CICLO", "VALORES_POR_CICLO"]:
+                    ws.set_column("A:A", 24)
+                    ws.set_column("B:Z", 24)
+            except Exception:
+                pass
+        # <<< XLS_EXECUTIVO_VISUAL_V2_HELPER
 
         ciclo_fills = ["#FFFFFF", "#DDEBF7", "#E2F0D9", "#FFF2CC", "#EADCF8", "#E7E6E6", "#DDEBF7", "#E2F0D9"]
         def fmt_ciclo(ciclo, tipo="text", precluso=False, header=False):
@@ -1925,6 +1999,12 @@ def gerar_planilha_executiva(resultado):
                 ws_aud.set_column(idx, idx, largura)
         else:
             ws_aud.write(3, 0, "Auditoria não disponível.", fmt_text)
+
+        # >>> XLS_EXECUTIVO_VISUAL_V2_APLICAR
+        # Aplicação final nas abas geradas pela Planilha Executiva.
+        for _nome_ws, _ws in writer.sheets.items():
+            _aplicar_visual_executivo_ws(_ws, _nome_ws)
+        # <<< XLS_EXECUTIVO_VISUAL_V2_APLICAR
 
     output.seek(0)
     return output.getvalue()
