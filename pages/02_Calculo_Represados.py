@@ -1905,6 +1905,72 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws_ad.write_formula(200, 9, '=ROUND(SUM(J2:J200),2)', fmt_total_money)
         ws_ad.write(200, 10, '', fmt_total)
 
+        # >>> COLETA_EXECUTIVA_VISUAL_V2
+        # Padronização visual leve da Coleta: não altera cálculo, fórmulas ou validações.
+        try:
+            # Padrão geral de leitura para todas as abas geradas.
+            for _nome_ws, _ws_visual in writer.sheets.items():
+                try:
+                    _ws_visual.hide_gridlines(2)
+                except Exception:
+                    pass
+                try:
+                    _ws_visual.set_zoom(90)
+                except Exception:
+                    pass
+
+            # Ajustes específicos por aba. Mantém as cores funcionais já definidas em cada seção.
+            _ajustes_visuais = {
+                'PARAMETROS_REAJUSTE': {
+                    'freeze': (1, 0),
+                    'cols': [('A:A', 42), ('B:B', 34), ('C:C', 90), ('D:D', 32)],
+                },
+                'EVENTOS_HISTORICOS_ANTERIORES': {
+                    'freeze': (1, 0),
+                    'cols': [('A:A', 26), ('B:B', 14), ('C:C', 16), ('D:E', 30), ('F:F', 90)],
+                },
+                'CICLOS': {
+                    'freeze': (1, 0),
+                    'cols': [('A:A', 12), ('B:H', 24), ('I:I', 14), ('J:K', 16), ('L:L', 34), ('M:Q', 28), ('R:S', 18), ('T:U', 44), ('V:V', 20), ('W:W', 44)],
+                },
+                'BASE_EXECUCAO_MENSAL': {
+                    'freeze': (1, 0),
+                    'cols': [('A:A', 12), ('B:B', 16), ('C:C', 32), ('D:D', 28), ('E:E', 42), ('F:F', 32)],
+                },
+                'FINANCEIRO_MENSAL': {
+                    'freeze': (1, 0),
+                    'cols': [('A:A', 12), ('B:B', 16), ('C:C', 32), ('D:D', 28), ('E:E', 42), ('F:F', 32)],
+                },
+                'ITENS_REMANESCENTES': {
+                    'freeze': (2, 1),
+                    'cols': [('A:A', 18), ('B:B', 24), ('C:D', 24), ('E:Z', 22)],
+                },
+                'CICLO_EM_EXECUCAO': {
+                    'freeze': (3, 0),
+                    'cols': [('A:A', 46), ('B:B', 34), ('C:C', 92), ('D:D', 42)],
+                },
+                'ADITIVOS_QUANTITATIVOS': {
+                    'freeze': (1, 2),
+                    'cols': [('A:A', 14), ('B:B', 18), ('C:C', 16), ('D:D', 22), ('E:E', 30), ('F:G', 25), ('H:H', 34), ('I:I', 24), ('J:J', 28), ('K:K', 46)],
+                },
+            }
+            for _nome, _cfg in _ajustes_visuais.items():
+                _ws = writer.sheets.get(_nome)
+                if _ws is None:
+                    continue
+                try:
+                    _ws.freeze_panes(*_cfg.get('freeze', (1, 0)))
+                except Exception:
+                    pass
+                for _intervalo, _largura in _cfg.get('cols', []):
+                    try:
+                        _ws.set_column(_intervalo, _largura)
+                    except Exception:
+                        pass
+        except Exception:
+            pass
+        # <<< COLETA_EXECUTIVA_VISUAL_V2
+
     output.seek(0)
     return output.getvalue()
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
