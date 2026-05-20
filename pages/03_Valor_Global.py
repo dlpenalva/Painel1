@@ -3238,9 +3238,12 @@ def ler_ciclo_em_execucao_config_segura(bytes_arquivo):
         periodo_corte = normalizar_competencia_periodo(valor_corte)
         competencia_corte_label = periodo_para_label_br(periodo_corte) if periodo_corte is not None else texto_seguro(valor_corte, "")
 
-        rem_original = dados.get(
-            "valor_remanescente_original_no_corte_operacional",
-            dados.get("valor_remanescente_original_corte_operacional", dados.get("remanescente_original_no_corte_operacional", ""))
+        rem_original = (
+            dados.get("valor_remanescente_original_no_corte_operacional")
+            or dados.get("valor_remanescente_original_nominal_no_corte_operacional")
+            or dados.get("valor_remanescente_original_corte_operacional")
+            or dados.get("remanescente_original_no_corte_operacional")
+            or ""
         )
         rem_atualizado = dados.get(
             "valor_remanescente_atualizado_no_corte_operacional",
@@ -3254,7 +3257,7 @@ def ler_ciclo_em_execucao_config_segura(bytes_arquivo):
             "competencia_corte": competencia_corte_label,
             "data_corte": competencia_corte_label,
             "periodo_corte": periodo_corte,
-            "fonte": texto_seguro(dados.get("fonte_preferencial_da_execucao_realizada", ""), ""),
+            "fonte": texto_seguro(dados.get("fonte_da_execucao_realizada", dados.get("fonte_preferencial_da_execucao_realizada", "")), ""),
             "usar_c0_manual": "Sim" if usa_c0_manual else "Não",
             "valor_c0_manual": valor_c0_manual,
             "valor_remanescente_original_corte": rem_original,

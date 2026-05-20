@@ -1649,7 +1649,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         ws_ce = workbook.add_worksheet('CICLO_EM_EXECUCAO')
         writer.sheets['CICLO_EM_EXECUCAO'] = ws_ce
 
-        fmt_ce_title = workbook.add_format({
+        fmt_teal_title = workbook.add_format({
             'bold': True,
             'font_color': 'white',
             'bg_color': '#0F766E',
@@ -1658,7 +1658,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             'valign': 'vcenter',
             'text_wrap': True,
         })
-        fmt_ce_header = workbook.add_format({
+        fmt_teal_header = workbook.add_format({
             'bold': True,
             'font_color': 'white',
             'bg_color': '#14B8A6',
@@ -1667,93 +1667,81 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             'valign': 'vcenter',
             'text_wrap': True,
         })
-        fmt_ce_intro = workbook.add_format({
+        fmt_teal_note = workbook.add_format({
             'bg_color': '#CCFBF1',
             'font_color': '#134E4A',
             'border': 1,
             'text_wrap': True,
             'valign': 'top',
         })
-        fmt_ce_required = workbook.add_format({
+        fmt_label = workbook.add_format({
+            'border': 1,
+            'text_wrap': True,
+            'valign': 'top',
+            'font_color': '#111827',
+        })
+        fmt_uso = workbook.add_format({
+            'border': 1,
+            'text_wrap': True,
+            'valign': 'top',
+            'font_color': '#374151',
+        })
+        fmt_input_green = workbook.add_format({
             'bg_color': '#CCFBF1',
-            'font_color': '#134E4A',
             'border': 1,
-            'text_wrap': True,
-            'valign': 'top',
+            'font_color': '#134E4A',
+            'valign': 'vcenter',
         })
-        fmt_ce_required_input = workbook.add_format({
+        fmt_input_green_date = workbook.add_format({
+            'num_format': 'mm/yyyy',
             'bg_color': '#CCFBF1',
+            'border': 1,
             'font_color': '#134E4A',
-            'border': 1,
-            'text_wrap': True,
-            'valign': 'top',
+            'valign': 'vcenter',
         })
-        fmt_ce_period_input = workbook.add_format({
-            'num_format': '@',
-            'bg_color': '#CCFBF1',
-            'font_color': '#134E4A',
-            'border': 1,
-            'text_wrap': True,
-            'valign': 'top',
-        })
-        fmt_ce_optional = workbook.add_format({
-            'bg_color': '#FFF2CC',
-            'font_color': '#7A4F00',
-            'border': 1,
-            'text_wrap': True,
-            'valign': 'top',
-        })
-        fmt_ce_optional_money = workbook.add_format({
+        fmt_input_green_money = workbook.add_format({
             'num_format': 'R$ #,##0.00',
-            'bg_color': '#FFF2CC',
-            'font_color': '#7A4F00',
+            'bg_color': '#CCFBF1',
             'border': 1,
-            'text_wrap': True,
-            'valign': 'top',
+            'font_color': '#134E4A',
+            'valign': 'vcenter',
         })
-        fmt_ce_original_money = workbook.add_format({
+        fmt_input_original = workbook.add_format({
             'num_format': 'R$ #,##0.00',
             'bg_color': '#FCE4D6',
-            'font_color': '#7F3F00',
             'border': 1,
-            'text_wrap': True,
-            'valign': 'top',
+            'font_color': '#7C2D12',
+            'valign': 'vcenter',
         })
-        fmt_ce_atualizado_money = workbook.add_format({
+        fmt_input_atualizado = workbook.add_format({
             'num_format': 'R$ #,##0.00',
             'bg_color': '#DDEBF7',
-            'font_color': '#1F4E79',
             'border': 1,
-            'text_wrap': True,
-            'valign': 'top',
-        })
-        fmt_ce_observacao = workbook.add_format({
-            'bg_color': '#E7E6E6',
-            'font_color': '#404040',
-            'border': 1,
-            'text_wrap': True,
-            'valign': 'top',
-        })
-        fmt_ce_info_header = workbook.add_format({
-            'bold': True,
-            'font_color': 'white',
-            'bg_color': '#5B2C6F',
-            'border': 1,
-            'align': 'left',
+            'font_color': '#1E3A8A',
             'valign': 'vcenter',
-            'text_wrap': True,
         })
-        fmt_ce_info_body = workbook.add_format({
-            'bg_color': '#EADCF8',
-            'font_color': '#3B1F4A',
+        fmt_obs = workbook.add_format({
+            'bg_color': '#F2F2F2',
             'border': 1,
             'text_wrap': True,
             'valign': 'top',
+            'font_color': '#374151',
         })
-        fmt_ce_plain = workbook.add_format({
+        fmt_orientacao = workbook.add_format({
             'border': 1,
+            'border_color': '#8064A2',
             'text_wrap': True,
             'valign': 'top',
+            'font_color': '#4C1D95',
+            'italic': True,
+        })
+        fmt_orientacao_titulo = workbook.add_format({
+            'bold': True,
+            'border': 1,
+            'border_color': '#8064A2',
+            'text_wrap': True,
+            'valign': 'top',
+            'font_color': '#4C1D95',
         })
 
         ciclo_padrao_execucao = ''
@@ -1763,122 +1751,72 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         except Exception:
             ciclo_padrao_execucao = ''
 
-        ws_ce.merge_range(0, 0, 0, 3, 'Corte operacional no ciclo em execução', fmt_ce_title)
+        ws_ce.merge_range(0, 0, 0, 3, 'Corte operacional no ciclo em execução', fmt_teal_title)
         ws_ce.merge_range(
             1, 0, 1, 3,
-            'Use esta aba somente quando houver execução parcial dentro do ciclo em andamento. Se o campo principal ficar como Não ou vazio, o cl8us mantém o corte padrão no início dos ciclos. No corte operacional, a execução realizada vem da base financeira até a competência de corte e o saldo futuro deve ser informado expressamente.',
-            fmt_ce_intro,
+            'Use esta aba somente quando houver uma fotografia intermediária do ciclo em execução. '
+            'Se o campo principal ficar como Não ou vazio, o cl8us mantém o corte padrão no início dos ciclos. '
+            'Quando usar Sim, informe a competência de corte e o saldo remanescente futuro conforme a orientação das linhas laranja e azul.',
+            fmt_teal_note,
         )
 
         headers_ce = ['Campo', 'Valor', 'Orientação', 'Uso pelo cl8us']
         for col, title in enumerate(headers_ce):
-            ws_ce.write(2, col, title, fmt_ce_header)
+            ws_ce.write(2, col, title, fmt_teal_header)
 
         linhas_ce = [
-            {
-                'campo': 'Aplicar corte operacional?',
-                'valor': 'Não',
-                'orientacao': 'Campo principal. Preencha Sim apenas quando quiser partir o ciclo em execução entre histórico executado e saldo futuro.',
-                'uso': 'Chave principal do modo de corte',
-                'tipo': 'required',
-            },
-            {
-                'campo': 'Ciclo em execução',
-                'valor': ciclo_padrao_execucao,
-                'orientacao': 'Informe o ciclo que está em execução. Ex.: C3.',
-                'uso': 'Identifica o ciclo do corte operacional',
-                'tipo': 'required',
-            },
-            {
-                'campo': 'Competência de corte operacional',
-                'valor': '',
-                'orientacao': 'Competência em que a fotografia do ciclo será interrompida. Pode preencher como 04/2026, 01/04/2026 ou 30/04/2026. Todas representam abril/2026.',
-                'uso': 'Marco mensal do corte. Considera a execução até esta competência, inclusive.',
-                'tipo': 'periodo',
-            },
-            {
-                'campo': 'Fonte preferencial da execução realizada',
-                'valor': 'Financeiro/Base de execução mensal',
-                'orientacao': 'Use Financeiro/Base de execução mensal quando houver base confiável. Use Itens/Remanescentes apenas quando não houver financeiro.',
-                'uso': 'Define a fonte da execução já realizada até o corte',
-                'tipo': 'required',
-            },
-            {
-                'campo': 'Valor financeiro C0 manual',
-                'valor': '',
-                'orientacao': 'Opcional/condicional. Preencha somente se houver valor financeiro validado para C0. Se preenchido com valor maior que zero, o cl8us usa automaticamente.',
-                'uso': 'Inclui C0 manual na composição do Valor Total Atualizado',
-                'tipo': 'optional_money',
-            },
-            {
-                'campo': 'Valor remanescente original/nominal no corte operacional',
-                'valor': '',
-                'orientacao': 'Use este campo somente se o saldo remanescente informado ainda NÃO estiver atualizado/reajustado. O cl8us aplicará o fator do ciclo.',
-                'uso': 'Calcula o saldo futuro atualizado a partir de valor nominal/original',
-                'tipo': 'original_money',
-            },
-            {
-                'campo': 'Valor remanescente atualizado no corte operacional',
-                'valor': '',
-                'orientacao': 'Use este campo quando a fiscalização já tiver informado o saldo remanescente atualizado/reajustado. Nesse caso, o cl8us NÃO atualiza novamente.',
-                'uso': 'Usa diretamente o saldo futuro já atualizado',
-                'tipo': 'atualizado_money',
-            },
-            {
-                'campo': 'Observação fiscal',
-                'valor': '',
-                'orientacao': 'Registro livre da premissa fiscal adotada, origem da planilha, data da conferência ou ressalva relevante.',
-                'uso': 'Memória da apuração',
-                'tipo': 'observacao',
-            },
+            ('Aplicar corte operacional?', 'Não', 'Preencha Sim apenas quando quiser dividir o ciclo em execução entre execução já realizada e saldo futuro.', 'Chave principal. Se for Não, a aba é ignorada.'),
+            ('Ciclo em execução', ciclo_padrao_execucao, 'Informe o ciclo que está em execução. Ex.: C3.', 'Identifica o ciclo de corte.'),
+            ('Competência de corte operacional', '', 'Informe a competência da fotografia. Exemplos: 04/2026, 01/04/2026 ou 30/04/2026.', 'A base financeira será considerada até esta competência, inclusive.'),
+            ('Fonte da execução realizada', 'Financeiro/Base de execução mensal', 'Use a base financeira quando houver medição/faturamento confiável até a competência de corte.', 'Define a origem da execução já realizada.'),
+            ('Valor financeiro C0 manual', '', 'Opcional. Preencha apenas quando houver valor financeiro validado para C0. Se preenchido, será usado automaticamente.', 'Inclui C0 como execução financeira manual.'),
+            ('Valor remanescente original no corte operacional', '', 'Use somente se o saldo remanescente ainda estiver em valor original/nominal, sem o reajuste do ciclo.', 'O cl8us aplicará o fator do ciclo.'),
+            ('Valor remanescente atualizado no corte operacional', '', 'Use quando a fiscalização já informou o saldo remanescente atualizado. Não será aplicado novo reajuste sobre este valor.', 'O cl8us usa o valor diretamente.'),
+            ('Observação fiscal', '', 'Registre a origem da informação. Ex.: saldo atualizado informado pela fiscalização na planilha de consumo até 04/2026.', 'Memória da apuração.'),
         ]
 
-        fmt_por_tipo = {
-            'required': fmt_ce_required_input,
-            'periodo': fmt_ce_period_input,
-            'optional_money': fmt_ce_optional_money,
-            'original_money': fmt_ce_original_money,
-            'atualizado_money': fmt_ce_atualizado_money,
-            'observacao': fmt_ce_observacao,
-        }
-        fmt_label_por_tipo = {
-            'required': fmt_ce_required,
-            'periodo': fmt_ce_required,
-            'optional_money': fmt_ce_optional,
-            'original_money': fmt_ce_original_money,
-            'atualizado_money': fmt_ce_atualizado_money,
-            'observacao': fmt_ce_observacao,
-        }
+        for row_idx, (campo, valor, orientacao, uso) in enumerate(linhas_ce, start=3):
+            ws_ce.write(row_idx, 0, campo, fmt_label)
+            if campo == 'Competência de corte operacional':
+                ws_ce.write(row_idx, 1, valor, fmt_input_green_date)
+            elif campo == 'Valor remanescente original no corte operacional':
+                ws_ce.write(row_idx, 1, valor, fmt_input_original)
+            elif campo == 'Valor remanescente atualizado no corte operacional':
+                ws_ce.write(row_idx, 1, valor, fmt_input_atualizado)
+            elif campo in ['Valor financeiro C0 manual']:
+                ws_ce.write(row_idx, 1, valor, fmt_input_green_money)
+            elif campo == 'Observação fiscal':
+                ws_ce.write(row_idx, 1, valor, fmt_obs)
+            else:
+                ws_ce.write(row_idx, 1, valor, fmt_input_green)
+            ws_ce.write(row_idx, 2, orientacao, fmt_label)
+            ws_ce.write(row_idx, 3, uso, fmt_uso)
 
-        for row_idx, linha in enumerate(linhas_ce, start=3):
-            tipo = linha.get('tipo', 'required')
-            fmt_label = fmt_label_por_tipo.get(tipo, fmt_ce_plain)
-            fmt_valor = fmt_por_tipo.get(tipo, fmt_ce_plain)
-            ws_ce.write(row_idx, 0, linha['campo'], fmt_label)
-            ws_ce.write(row_idx, 1, linha['valor'], fmt_valor)
-            ws_ce.write(row_idx, 2, linha['orientacao'], fmt_label)
-            ws_ce.write(row_idx, 3, linha['uso'], fmt_label)
-
-        ws_ce.data_validation('B4', {'validate': 'list', 'source': ['Não', 'Sim']})
-
-        # Linhas orientadoras destacadas: não são campos de preenchimento.
-        ws_ce.merge_range(12, 0, 12, 3, 'Guia rápido para escolher o campo de remanescente', fmt_ce_info_header)
+        # Linhas orientadoras. Não são campos de preenchimento.
+        linha_orientacao_1 = 12
+        linha_orientacao_2 = 13
+        ws_ce.write(linha_orientacao_1, 0, 'Atenção', fmt_orientacao_titulo)
         ws_ce.merge_range(
-            13, 0, 13, 3,
-            'Preencha apenas UM dos campos de remanescente: use o campo LARANJA quando o valor ainda for original/nominal; use o campo AZUL quando o valor já estiver atualizado/reajustado pela fiscalização. Se preencher os dois, o valor atualizado prevalece.',
-            fmt_ce_info_body,
+            linha_orientacao_1, 1, linha_orientacao_1, 3,
+            'Preencha apenas UMA das duas linhas de remanescente: original/nominal OU atualizado. '
+            'Não preencha as duas sem necessidade de memória comparativa.',
+            fmt_orientacao,
+        )
+        ws_ce.write(linha_orientacao_2, 0, 'Regra prática', fmt_orientacao_titulo)
+        ws_ce.merge_range(
+            linha_orientacao_2, 1, linha_orientacao_2, 3,
+            'Laranja = saldo original/nominal, o cl8us reajusta. Azul = saldo já atualizado pela fiscalização, o cl8us usa direto.',
+            fmt_orientacao,
         )
 
-        ws_ce.set_column('A:A', 48)
+        ws_ce.data_validation('B4', {'validate': 'list', 'source': ['Não', 'Sim']})
+        ws_ce.set_column('A:A', 46)
         ws_ce.set_column('B:B', 34)
-        ws_ce.set_column('C:C', 96)
+        ws_ce.set_column('C:C', 90)
         ws_ce.set_column('D:D', 42)
-        ws_ce.set_row(1, 66)
-        ws_ce.set_row(5, 42)
-        ws_ce.set_row(8, 48)
-        ws_ce.set_row(9, 48)
-        ws_ce.set_row(13, 54)
-        ws_ce.freeze_panes(3, 0)
+        ws_ce.set_row(1, 64)
+        ws_ce.set_row(linha_orientacao_1, 42)
+        ws_ce.set_row(linha_orientacao_2, 42)
         ws_ce.set_tab_color('#0F766E')
         # <<< CICLO_EM_EXECUCAO_CORRIGIDO
 
