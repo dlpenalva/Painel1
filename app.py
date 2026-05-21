@@ -4,6 +4,38 @@ from _ui_utils import render_versao_sidebar
 
 st.set_page_config(page_title="TLB · cl8us - Apoio à Gestão de Contratos", layout="wide")
 
+
+
+# >>> UX_ADITIVOS_25_COMPACTO
+def aplicar_css_aditivos25_compacto():
+    st.markdown(
+        """
+        <style>
+        div[data-testid="stMetric"] {
+            min-height: 72px;
+            padding: 8px 10px;
+        }
+        div[data-testid="stMetricValue"] {
+            font-size: clamp(0.95rem, 1.55vw, 1.28rem) !important;
+            line-height: 1.12 !important;
+            white-space: normal !important;
+            overflow-wrap: anywhere !important;
+            word-break: normal !important;
+        }
+        div[data-testid="stMetricLabel"] p {
+            font-size: clamp(0.70rem, 1.00vw, 0.86rem) !important;
+            line-height: 1.15 !important;
+            white-space: normal !important;
+        }
+        .aditivos25-ux-note {
+            font-size: 0.86rem;
+            color: #475569;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+# <<< UX_ADITIVOS_25_COMPACTO
 # App sem barreira de senha interna.
 APP_SEM_SENHA_VERSAO = "20260516_RESTORE_SEM_SENHA"
 APP_DOU_13_VERSAO = "20260516_DOU_13_GESTAO"
@@ -38,6 +70,8 @@ p0 = st.Page("pages/00_Calculadora_Reajustes.py", title="Calculadora de Reajuste
 nav = {"📌 Admissibilidade e Cálculo": [p0]}
 
 grupo_valor_global = []
+if (pages_dir / "14_Coleta_Unica.py").exists():
+    grupo_valor_global.append(st.Page("pages/14_Coleta_Unica.py", title="Coleta Única"))
 if (pages_dir / "03_Valor_Global.py").exists():
     grupo_valor_global.append(st.Page("pages/03_Valor_Global.py", title="Valores"))
 if (pages_dir / "04_Relatorio_Global.py").exists():
