@@ -2240,6 +2240,39 @@ chave_analise_multiplos = (
     contexto_contratual.get('observacao_historico', ''),
 )
 
+# >>> RESUMO_PRE_PROCESSAMENTO_GUIADO_V1
+resumo_pre_processamento = []
+for dados_ciclo in input_ciclos:
+    try:
+        numero_ciclo = int(dados_ciclo.get('numero'))
+    except Exception:
+        numero_ciclo = dados_ciclo.get('numero', '')
+
+    data_base_ciclo = dados_ciclo.get('data_atual')
+    data_pedido_ciclo = dados_ciclo.get('dt_ped')
+    inicio_financeiro_ciclo = dados_ciclo.get('inicio_efeito_financeiro')
+
+    resumo_pre_processamento.append({
+        'Ciclo': f"C{numero_ciclo}",
+        'Data-base': data_base_ciclo.strftime('%d/%m/%Y') if hasattr(data_base_ciclo, 'strftime') else '',
+        'Data do pedido': data_pedido_ciclo.strftime('%d/%m/%Y') if hasattr(data_pedido_ciclo, 'strftime') else '',
+        'Início financeiro': inicio_financeiro_ciclo.strftime('%d/%m/%Y') if hasattr(inicio_financeiro_ciclo, 'strftime') else 'Sem efeitos financeiros automáticos',
+        'Situação preliminar': dados_ciclo.get('sit_emoji', ''),
+        'Objeto da análise atual': 'Não — histórico/formalizado' if bool(dados_ciclo.get('ciclo_ja_concedido', False)) else 'Sim',
+    })
+
+if resumo_pre_processamento:
+    st.subheader('Resumo antes de processar')
+    st.caption(
+        'Conferência preliminar dos ciclos configurados. Esta tabela é apenas orientativa e não altera índice, percentual, datas, cálculo, PDF, DOCX ou XLSX.'
+    )
+    st.dataframe(
+        pd.DataFrame(resumo_pre_processamento),
+        use_container_width=True,
+        hide_index=True,
+    )
+# <<< RESUMO_PRE_PROCESSAMENTO_GUIADO_V1
+
 processar_multiplos = st.button(
     "Processar Análise",
     type="primary",
