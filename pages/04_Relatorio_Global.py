@@ -1396,6 +1396,9 @@ def gerar_minuta_apostilamento_docx(adm, res):
     except Exception as exc:
         raise RuntimeError("A biblioteca python-docx não está instalada. Inclua 'python-docx' no requirements.txt.") from exc
 
+    adm = adm or {}
+    res = res or {}
+
     document = Document()
     _aplicar_estilo_docx(document)
 
@@ -1405,59 +1408,136 @@ def gerar_minuta_apostilamento_docx(adm, res):
     run.bold = True
     run.font.size = Pt(13)
 
-    contrato = _placeholder((adm or {}).get("contrato") or (adm or {}).get("numero_contrato"))
+    contrato = _placeholder(adm.get("contrato") or adm.get("numero_contrato") or res.get("contrato") or res.get("numero_contrato"))
     p = document.add_paragraph(f"Contrato nº {contrato}")
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
 
+    document.add_paragraph("")
+
     _adicionar_paragrafo_justificado(
         document,
-        "A TELECOMUNICAÇÕES BRASILEIRAS S.A. - TELEBRAS, sociedade de economia mista, vinculada ao Ministério das Comunicações, com sede no SIG, Quadra 04, Bloco A, Salas 201 a 224, Edifício Capital Financial Center, CEP nº 70.610-440, inscrita no CNPJ sob o n.º 00.336.701/0001-04, com seus atos constitutivos devidamente arquivados na Junta Comercial do Distrito Federal, sob o nº 7.665, em 20/02/1978, publicada no Diário Oficial da União de 13/03/1978, doravante denominada TELEBRAS, neste ato representada por [campo a preencher], Matrícula [campo a preencher], e por seu [campo a preencher], Matrícula [campo a preencher], nos termos da Diretriz nº 229/2018, apostilam o Contrato nº [campo a preencher], celebrado com a empresa [campo a preencher], doravante denominada CONTRATADA, nos termos do parágrafo 7º, art. 81, da Lei nº 13.303, de 30 de junho de 2016, legislação complementar, e:"
+        "A TELECOMUNICAÇÕES BRASILEIRAS S.A. - TELEBRAS, sociedade de economia mista, vinculada ao Ministério das Comunicações, "
+        "com sede no SIG, Quadra 04, Bloco A, Salas 201 a 224, Edifício Capital Financial Center, CEP nº 70.610-440, inscrita no CNPJ sob o "
+        "n.º 00.336.701/0001-04, doravante denominada TELEBRAS, neste ato representada por [campo a preencher], Matrícula [campo a preencher], "
+        "e por seu [campo a preencher], Matrícula [campo a preencher], nos termos da Diretriz nº 229/2018, apostila o Contrato nº [campo a preencher], "
+        "celebrado com a empresa [campo a preencher], doravante denominada CONTRATADA, com fundamento no parágrafo 7º do art. 81 da Lei nº 13.303, "
+        "de 30 de junho de 2016, na legislação aplicável, no Regulamento de Licitações e Contratos da Telebras e nos documentos constantes do processo."
     )
 
+    document.add_paragraph("")
     document.add_paragraph("CONSIDERANDO:")
+
+    indice = res.get("indice", adm.get("indice", "[campo a preencher]"))
+    fator_acumulado = res.get("fator_acumulado", adm.get("fator_acumulado", adm.get("fator", 1.0)))
+    variacao_acumulada = res.get("variacao_acumulada", None)
+    if variacao_acumulada is None:
+        try:
+            variacao_acumulada = float(fator_acumulado) - 1
+        except Exception:
+            variacao_acumulada = 0.0
+
     considerandos = [
-        "A Cláusula Oitava do Contrato nº [campo a preencher], que prevê o reajuste contratual e disciplina o marco para concessão, os efeitos financeiros, os reajustes subsequentes e a regra de preclusão;",
-        "A deliberação da Diretoria Executiva da Telebras, consignada na Ata da 1869ª Reunião Ordinária, de 13 de janeiro de 2026, que revogou a suspensão anteriormente imposta à tramitação dos reajustes contratuais e restabeleceu a normalidade do respectivo processamento;",
-        "O Despacho Saneador [campo a preencher], por meio do qual a Gerência de Compras e Contratos consolidou o histórico do pleito, a admissibilidade, a apuração dos índices, os efeitos financeiros e os documentos de suporte necessários à formalização do presente apostilamento;",
-        f"A memória de cálculo constante em [campo a preencher], que apurou o reajuste acumulado de {percentual(res.get('variacao_acumulada', res.get('fator_acumulado', 1.0) - 1), 2)};",
-        "A memória financeira disponível em [campo a preencher], que detalha os valores nominais pagos, os valores devidos e o saldo retroativo a pagar por ciclo, bem como os saldos remanescentes considerados no início de cada ciclo;",
-        "As informações prestadas pela área gestora do contrato em [campo a preencher], quanto aos itens/unidades remanescentes, e em [campo a preencher], quanto aos valores financeiros utilizados na apuração;",
-        "A manifestação da CONTRATADA constante de [campo a preencher], pela qual anuiu com os cálculos apresentados pela TELEBRAS;",
-        "As certidões de regularidade da CONTRATADA juntadas em [campo a preencher] e a adequação orçamentária registrada em [campo a preencher].",
+        "A Cláusula Oitava do Contrato nº [campo a preencher], que disciplina o reajuste contratual, os ciclos de apuração, a admissibilidade dos pedidos e os respectivos efeitos financeiros;",
+        "A necessidade de distinguir o histórico já formalizado anteriormente do objeto da presente análise, evitando duplicidade de contagem ou sobreposição de efeitos financeiros;",
+        "A memória de cálculo constante em [campo a preencher], que apurou os ciclos de reajuste, os percentuais aplicáveis e os efeitos financeiros correspondentes;",
+        f"O índice contratual utilizado na análise, qual seja {indice}, e o percentual acumulado apurado de {percentual(variacao_acumulada, 2)};",
+        "As informações encaminhadas pela área gestora/fiscal do contrato quanto à execução, ao saldo remanescente, aos itens contratuais e aos documentos de suporte da apuração;",
+        "A adequação orçamentária constante em [campo a preencher], sem prejuízo das validações orçamentárias e financeiras cabíveis antes da execução da despesa;",
+        "A necessidade de atualização da garantia contratual, quando aplicável, em razão da alteração do valor contratual atualizado;",
+        "A manifestação de concordância da CONTRATADA constante em [campo a preencher], quando aplicável.",
     ]
-    df_ad_docx = res.get("df_aditivos_executivo", res.get("df_aditivos", pd.DataFrame())) if isinstance(res, dict) else pd.DataFrame()
-    if isinstance(df_ad_docx, pd.DataFrame) and not df_ad_docx.empty:
-        for _, ad in df_ad_docx.iterrows():
-            identificacao = texto_seguro(ad.get("Aditivo", ad.get("Identificação", "Termo Aditivo")), "Termo Aditivo")
-            data_ad = formatar_data_br(ad.get("Data do aditivo", ""))
-            valor_ad = moeda(ad.get("Valor do aditivo na assinatura", ad.get("Valor original da alteração", 0)))
-            considerandos.append(
-                f"O {identificacao}, de {data_ad if data_ad else '[campo a preencher]'}, com valor de {valor_ad} na data de assinatura;"
-            )
 
     for item in considerandos:
         document.add_paragraph(_limpar_texto_formal(item), style="List Bullet")
 
-    ciclos = _ciclos_para_minuta(adm or {}, res or {})
+    contexto = res.get("contexto_contratual_anterior", {}) or adm.get("contexto_contratual_anterior", {}) or {}
+    ciclos = _ciclos_para_minuta(adm, res)
+
     ciclos_validos = []
-    ciclos_minuta_ja = set()
-    for c in ciclos:
-        nome_c = str(c.get("ciclo") or c.get("Ciclo") or "").strip().upper()
-        if not nome_c or nome_c in ["C0", "TOTAL", "CICLO"] or nome_c in ciclos_minuta_ja:
+    ciclos_historicos = []
+    ciclos_ja = set()
+
+    for idx, ciclo in enumerate(ciclos, start=1):
+        if not isinstance(ciclo, dict):
             continue
-        ciclos_minuta_ja.add(nome_c)
-        ciclos_validos.append(c)
+        nome = str(ciclo.get("ciclo") or ciclo.get("Ciclo") or f"C{idx}").strip().upper()
+        if not nome or nome in ["C0", "TOTAL", "CICLO"] or nome in ciclos_ja:
+            continue
+        ciclos_ja.add(nome)
+        if bool(ciclo.get("ciclo_ja_concedido", False)) or str(ciclo.get("Objeto da análise atual", "")).strip().lower() in ["não", "nao", "false"]:
+            ciclos_historicos.append(ciclo)
+        else:
+            ciclos_validos.append(ciclo)
 
     _adicionar_item_numerado(
         document,
         1,
-        "Procede-se ao apostilamento do Contrato nº [campo a preencher] para formalizar a concessão dos reajustes contratuais apurados, nos seguintes termos:"
+        "O presente Termo de Apostilamento tem por objeto formalizar o reajuste contratual apurado no âmbito da análise atual, observada a separação entre histórico formalizado anteriormente e ciclos que compõem o objeto deste apostilamento."
     )
+
+    _adicionar_subitem(
+        document,
+        "1.1.",
+        "O C0 corresponde ao ciclo-base inicial do contrato e não recebe reajuste, servindo apenas como referência de partida para a apuração dos ciclos subsequentes."
+    )
+
+    _adicionar_subitem(
+        document,
+        "1.2.",
+        "Os ciclos C1, C2, C3 e seguintes devem ser lidos como ciclos contratuais de reajuste, conforme a linha temporal de admissibilidade e efeitos financeiros prevista no contrato."
+    )
+
+    _adicionar_item_numerado(
+        document,
+        2,
+        "Histórico formalizado anterior."
+    )
+
+    valor_formalizado = contexto.get("valor_formalizado_anterior", "")
+    ultimo_ciclo = contexto.get("ultimo_ciclo_concedido", "")
+    data_pedido_ultimo = contexto.get("data_pedido_ultimo_ciclo", "")
+    obs_historico = contexto.get("observacao_historico", "")
+
+    if valor_formalizado or ultimo_ciclo or data_pedido_ultimo or obs_historico or ciclos_historicos:
+        if valor_formalizado:
+            _adicionar_subitem(document, "2.1.", f"Valor contratual formalizado antes desta análise: {moeda(valor_formalizado)}.")
+        if ultimo_ciclo and str(ultimo_ciclo).strip().upper() not in ["C0 / NENHUM", "C0/NENHUM", "C0", "NENHUM", ""]:
+            _adicionar_subitem(document, "2.2.", f"Último ciclo já concedido/formalizado antes desta análise: {ultimo_ciclo}.")
+        if data_pedido_ultimo:
+            _adicionar_subitem(document, "2.3.", f"Data do pedido do último ciclo concedido/formalizado: {formatar_data_br(data_pedido_ultimo)}.")
+        if obs_historico:
+            _adicionar_subitem(document, "2.4.", f"Observação do histórico anterior: {obs_historico}.")
+        if ciclos_historicos:
+            for idx, ciclo in enumerate(ciclos_historicos, start=1):
+                nome = _nome_ciclo_minuta(ciclo, idx)
+                pct = _percentual_ciclo_minuta(ciclo)
+                efeito = _efeito_ciclo_minuta(ciclo)
+                _adicionar_subitem(
+                    document,
+                    f"2.{idx + 4}.",
+                    f"{nome} consta como ciclo já concedido/formalizado anteriormente, preservado como histórico/âncora, com percentual de {pct} e efeitos financeiros a partir de {efeito}, sem compor o objeto novo desta análise."
+                )
+    else:
+        _adicionar_subitem(
+            document,
+            "2.1.",
+            "Não foi informado histórico formalizado anterior específico para esta análise, sem prejuízo da conferência dos instrumentos já constantes do processo."
+        )
+
+    _adicionar_item_numerado(
+        document,
+        3,
+        "Objeto da análise atual: ciclos, admissibilidade, percentuais e efeitos financeiros."
+    )
+
+    subitem_3 = 1
     if ciclos_validos:
         for idx, ciclo in enumerate(ciclos_validos, start=1):
-            nome = _limpar_texto_formal(_nome_ciclo_minuta(ciclo, idx))
-            pct = _limpar_texto_formal(_percentual_ciclo_minuta(ciclo))
-            efeito = _limpar_texto_formal(_efeito_ciclo_minuta(ciclo))
+            nome = _nome_ciclo_minuta(ciclo, idx)
+            data_base = formatar_data_br(ciclo.get("data_base", ciclo.get("Data-base", "")))
+            data_pedido = formatar_data_br(ciclo.get("data_pedido", ciclo.get("Data do pedido", "")))
+            efeito = _efeito_ciclo_minuta(ciclo)
+            pct = _percentual_ciclo_minuta(ciclo)
             situacao_bruta = (
                 ciclo.get("situacao_aplicada")
                 or ciclo.get("Situação aplicada")
@@ -1465,106 +1545,154 @@ def gerar_minuta_apostilamento_docx(adm, res):
                 or ciclo.get("Situação")
                 or ""
             )
-            situacao = _limpar_texto_formal(_status_relatorio(situacao_bruta))
-            complemento = f", com tratamento aplicado: {situacao}" if situacao else ""
+            situacao = _status_relatorio(situacao_bruta)
             _adicionar_subitem(
                 document,
-                f"({_romano(idx)})",
-                f"{nome}, no percentual de {pct}, com efeitos financeiros a partir de {efeito}{complemento};"
+                f"3.{subitem_3}.",
+                f"{nome}: data-base {data_base or '[campo a preencher]'}, pedido em {data_pedido or '[campo a preencher]'}, classificação {situacao}, percentual aplicado {pct} e efeitos financeiros a partir de {efeito}."
             )
+            subitem_3 += 1
+    else:
         _adicionar_subitem(
             document,
-            f"({_romano(len(ciclos_validos) + 1)})",
-            f"O percentual acumulado apurado corresponde a {percentual(res.get('variacao_acumulada', res.get('fator_acumulado', 1.0) - 1), 2)}."
+            f"3.{subitem_3}.",
+            "[campo a preencher: informar os ciclos que compõem o objeto da análise atual, com data-base, data do pedido, classificação, percentual aplicado e início dos efeitos financeiros]."
         )
-    else:
-        _adicionar_subitem(document, "(i)", "[campo a preencher: informar ciclos, percentuais e efeitos financeiros].")
+        subitem_3 += 1
 
-    if eh_modo_consumo_itens_ciclo(res):
-        _adicionar_item_numerado(document, 2, "Para fins de apuração por itens consumidos/ciclo, foram consolidados os seguintes valores:")
-        df_fin = res.get("df_delta_por_ciclo")
-        if not isinstance(df_fin, pd.DataFrame) or df_fin.empty:
-            df_fin = res.get("df_retroativo_itemizado_por_ciclo")
-    else:
-        _adicionar_item_numerado(document, 2, "Para fins de apuração financeira e cálculo do retroativo a pagar, foram consolidados os seguintes valores:")
-        df_fin = res.get("df_financeiro_por_ciclo")
-    subitem_idx = 1
-    if isinstance(df_fin, pd.DataFrame) and not df_fin.empty:
-        for _, row in df_fin.iterrows():
-            ciclo = str(row.get("Ciclo", "")).strip()
-            if ciclo.upper() in ["TOTAL", "C0", "CICLO"] or not ciclo:
-                continue
-            pago = row.get("Valor pago efetivo", row.get("Valor pago/faturado", row.get("Valor nominal pago", 0)))
-            devido = row.get("Valor teórico calculado", row.get("Valor devido reajustado", row.get("Valor devido", 0)))
-            delta = row.get("Delta do ciclo", row.get("Delta acumulado", 0))
-            if eh_modo_consumo_itens_ciclo(res):
-                texto_subitem = f"{ciclo}: execução original por itens de {moeda(pago)}, execução atualizada por itens de {moeda(devido)} e Retroativo (itens consumidos/ciclo) de {moeda(delta)};"
-            else:
-                texto_subitem = f"{ciclo}: valor nominal pago de {moeda(pago)}, valor devido de {moeda(devido)} e saldo retroativo a pagar de {moeda(delta)};"
+    _adicionar_subitem(
+        document,
+        f"3.{subitem_3}.",
+        f"O percentual acumulado considerado na presente análise corresponde a {percentual(variacao_acumulada, 2)}."
+    )
+    subitem_3 += 1
+
+    if not (eh_modo_consumo_itens_ciclo(res) or eh_modo_reduzido_itens(res)):
+        _adicionar_subitem(
+            document,
+            f"3.{subitem_3}.",
+            f"O valor represado a pagar apurado corresponde a {moeda(res.get('valor_represado_a_pagar', res.get('delta_acumulado', 0)))}."
+        )
+        subitem_3 += 1
+
+
+    _adicionar_item_numerado(
+        document,
+        4,
+        "Consolidação do Valor Total Atualizado do Contrato."
+    )
+
+    _adicionar_subitem(
+        document,
+        "4.1.",
+        "O Valor Total Atualizado do Contrato foi composto pela execução atualizada por ciclo somada ao saldo remanescente atualizado, preservada a metodologia de consolidação adotada na memória de cálculo."
+    )
+
+    _adicionar_subitem(
+        document,
+        "4.2.",
+        f"Valor original do contrato: {moeda(res.get('valor_original_contrato', 0))}."
+    )
+
+    _adicionar_subitem(
+        document,
+        "4.3.",
+        f"Execução atualizada por ciclo: {moeda(res.get('valor_executado_atualizado', res.get('total_devido_reajustado', 0)))}."
+    )
+
+    _adicionar_subitem(
+        document,
+        "4.4.",
+        f"Saldo remanescente atualizado: {moeda(res.get('remanescente_reajustado', 0))}."
+    )
+
+    _adicionar_subitem(
+        document,
+        "4.5.",
+        f"Valor Total Atualizado do Contrato: {moeda(res.get('valor_atualizado_contrato', res.get('valor_global_estoque', 0)))}."
+    )
+
+    _adicionar_item_numerado(
+        document,
+        5,
+        "Aditivos e supressões."
+    )
+
+    df_ad = res.get("df_aditivos_executivo", res.get("df_aditivos", pd.DataFrame())) if isinstance(res, dict) else pd.DataFrame()
+    proximo_subitem_aditivos = 2
+
+    if isinstance(df_ad, pd.DataFrame) and not df_ad.empty:
+        _adicionar_subitem(
+            document,
+            "5.1.",
+            "Os aditivos e supressões registrados na análise foram considerados para fins de controle formal e governança do valor contratual, observada a classificação por ciclo/marco financeiro."
+        )
+        limite = min(len(df_ad), 10)
+        for idx, (_, ad) in enumerate(df_ad.head(limite).iterrows(), start=2):
+            identificacao = texto_seguro(ad.get("Aditivo", ad.get("Identificação", "Aditivo/Supressão")), "Aditivo/Supressão")
+            ciclo = texto_seguro(ad.get("Ciclo/Marco", ""), "[campo a preencher]")
+            tratamento = texto_seguro(ad.get("Tratamento do aditivo", ""), "[campo a preencher]")
+            valor = ad.get("Valor do aditivo reajustado", ad.get("Valor atualizado da alteração", ad.get("Valor original da alteração", 0)))
             _adicionar_subitem(
                 document,
-                f"({_romano(subitem_idx)})",
-                texto_subitem
+                f"5.{idx}.",
+                f"{identificacao}: ciclo/marco {ciclo}, tratamento {tratamento}, valor de referência {moeda(valor)}."
             )
-            subitem_idx += 1
+            proximo_subitem_aditivos = idx + 1
     else:
-        _adicionar_subitem(document, f"({_romano(subitem_idx)})", "[campo a preencher: valores nominais pagos, valores devidos e saldo retroativo por ciclo].")
-        subitem_idx += 1
-    if eh_modo_consumo_itens_ciclo(res):
-        total_txt = (
-            f"Total consolidado: execução original por itens de {moeda(res.get('valor_executado_original', 0))}, "
-            f"execução atualizada por itens de {moeda(res.get('valor_executado_atualizado', 0))} e "
-            f"Retroativo (itens consumidos/ciclo) de {moeda(valor_retroativo_consumo_itens_ciclo(res))}."
+        _adicionar_subitem(
+            document,
+            "5.1.",
+            "Não foram identificados aditivos ou supressões específicos na base processada, sem prejuízo da conferência dos instrumentos já formalizados no processo."
         )
-    else:
-        total_txt = (
-            f"Total consolidado: valor pago efetivo de {moeda(res.get('total_pago_faturado', res.get('valor_pago_efetivo', 0)))}, "
-            f"valor teórico calculado de {moeda(res.get('total_devido_reajustado', res.get('valor_teorico_calculado', 0)))} e "
-            f"saldo retroativo total a pagar de {moeda(res.get('valor_represado_a_pagar', res.get('delta_acumulado', 0)))}."
-        )
+        proximo_subitem_aditivos = 2
+
     _adicionar_subitem(
         document,
-        f"({_romano(subitem_idx)})",
-        total_txt
+        f"5.{proximo_subitem_aditivos}.",
+        "Os aditivos e supressões não devem ser somados de forma autônoma ao Valor Total Atualizado quando seus efeitos já estiverem refletidos na execução atualizada ou no saldo remanescente."
     )
 
-    _adicionar_item_numerado(document, 3, "Registra-se, ainda, que a memória de cálculo consignou os saldos remanescentes do contrato nos marcos de início dos ciclos de reajuste:")
-    df_rem = res.get("df_remanescentes")
-    if isinstance(df_rem, pd.DataFrame) and not df_rem.empty:
-        subitem_idx = 1
-        for _, row in df_rem.iterrows():
-            ciclo = str(row.get("Ciclo", "")).strip() or "[ciclo]"
-            rem = row.get("Remanescente atualizado", row.get("Remanescente original", 0))
-            _adicionar_subitem(document, f"({_romano(subitem_idx)})", f"{ciclo}: saldo remanescente de {moeda(rem)} no marco de referência do ciclo;")
-            subitem_idx += 1
-    else:
-        _adicionar_subitem(document, "(i)", "[campo a preencher: saldos remanescentes por ciclo].")
 
-    _adicionar_item_numerado(document, 4, "Para fins de consolidação do Valor Total Atualizado do Contrato, registra-se que o total decorre da execução atualizada por ciclo somada ao saldo remanescente atualizado do ciclo mais recente, sem soma autônoma de aditivos ou supressões já incorporados à execução ou ao saldo:")
+    _adicionar_item_numerado(
+        document,
+        6,
+        "Garantia contratual."
+    )
+
     _adicionar_subitem(
         document,
-        "a)",
-        f"Valor total atualizado do contrato: de {moeda(res.get('valor_original_contrato', 0))} para {moeda(res.get('valor_atualizado_contrato', res.get('valor_global_estoque', 0)))}."
-    )
-    _adicionar_subitem(
-        document,
-        "b)",
-        f"Valor consolidado da execução atualizada por ciclos: {moeda(res.get('valor_executado_atualizado', res.get('total_devido_reajustado', 0)))}."
-    )
-    _adicionar_subitem(
-        document,
-        "c)",
-        f"Saldo remanescente atualizado considerado na consolidação: {moeda(res.get('remanescente_reajustado', 0))}."
+        "6.1.",
+        "A CONTRATADA deverá atualizar a garantia contratual, quando exigida pelo contrato, de modo compatível com o Valor Total Atualizado do Contrato e com os instrumentos já formalizados."
     )
 
-    _adicionar_item_numerado(document, 5, "Permanecem inalteradas e em pleno vigor as demais cláusulas e condições do Contrato e de seus instrumentos posteriores não modificadas por este Termo de Apostila.")
-    _adicionar_item_numerado(document, 6, "A CONTRATADA deverá atualizar a garantia contratual, prevista na Cláusula Décima do Contrato, no prazo contratualmente estabelecido, observado o novo valor após a formalização deste Termo de Apostila.")
-    _adicionar_item_numerado(document, 7, "O presente apostilamento vincula-se, para todos os fins, aos documentos [campo a preencher] instruídos no Processo [campo a preencher].")
 
+    _adicionar_item_numerado(
+        document,
+        7,
+        "Ratificação."
+    )
+
+    _adicionar_subitem(
+        document,
+        "7.1.",
+        "Permanecem inalteradas e em pleno vigor as demais cláusulas e condições do Contrato e de seus instrumentos posteriores não modificadas por este Termo de Apostilamento."
+    )
+
+    _adicionar_subitem(
+        document,
+        "7.2.",
+        "O presente apostilamento vincula-se, para todos os fins, aos documentos [campo a preencher] instruídos no Processo [campo a preencher]."
+    )
+
+
+    document.add_paragraph("")
     document.add_paragraph("Brasília/DF, [Data].")
-    document.add_paragraph("\nTELECOMUNICAÇÕES BRASILEIRAS S.A. - TELEBRAS")
+    document.add_paragraph("")
+    document.add_paragraph("TELECOMUNICAÇÕES BRASILEIRAS S.A. - TELEBRAS")
     document.add_paragraph("Representante Legal 1")
-    document.add_paragraph("\nTELECOMUNICAÇÕES BRASILEIRAS S.A. - TELEBRAS")
+    document.add_paragraph("")
+    document.add_paragraph("TELECOMUNICAÇÕES BRASILEIRAS S.A. - TELEBRAS")
     document.add_paragraph("Representante Legal 2")
 
     _destacar_campos_preencher(document)
@@ -1573,6 +1701,7 @@ def gerar_minuta_apostilamento_docx(adm, res):
     document.save(buffer)
     buffer.seek(0)
     return buffer.getvalue()
+
 render_marca_topo()
 st.title("Relatório Global")
 
