@@ -1861,7 +1861,7 @@ def gerar_planilha_executiva(resultado):
         ws_c = workbook.add_worksheet("COMPOSICAO_VALOR_TOTAL")
         writer.sheets["COMPOSICAO_VALOR_TOTAL"] = ws_c
         ws_c.write(0, 0, "Composição do Valor Total Atualizado do Contrato", fmt_title)
-        ws_c.write(1, 0, "Execução atualizada por ciclo + saldo remanescente atualizado. Aditivos/supressões são exibidos para controle e não são somados como parcela autônoma.", fmt_note_wrap)
+        ws_c.write(1, 0, "Execução atualizada por ciclo + saldo remanescente atualizado + aditivos/supressões computáveis quando indicados como parcela da análise atual.", fmt_note_wrap)
         df_comp = limpar_nan_inf_df(resultado.get("df_composicao_valor_total", pd.DataFrame())).copy()
         if not df_comp.empty:
             for c_idx, col in enumerate(df_comp.columns):
@@ -2228,9 +2228,22 @@ def ler_aditivos(bytes_arquivo, xls, ciclos):
             valor_assinatura = abs(valor_assinatura)
 
         aplicar_txt = str(aplicar or "Sim").strip().upper()
-        fator_final = numero_br(fator)
-        if fator_final <= 0 or fator_final > 10:
-            fator_final = fatores.get(ciclo, {}).get("fator_acumulado_efetivo", 1.0)
+
+        # PATCH_VERTIV_FATOR_ADITIVOS_V3
+        # Regra: para aditivos computáveis, priorizar o fator acumulado efetivo
+        # calculado pelo motor de ciclos do cl8us. Esse fator já segue o critério
+        # operacional da ferramenta, com fatores de ciclo saneados/arredondados,
+        # evitando divergência por casas residuais vindas da planilha.
+        fator_planilha = numero_br(fator)
+        fator_mapa = fatores.get(ciclo, {}).get("fator_acumulado_efetivo", 0.0)
+
+        if fator_mapa and fator_mapa > 0:
+            fator_final = fator_mapa
+        elif fator_planilha > 0 and fator_planilha <= 10:
+            fator_final = fator_planilha
+        else:
+            fator_final = 1.0
+
         valor_reajustado = valor_assinatura if aplicar_txt in ["NAO", "NÃO", "N"] else valor_assinatura * fator_final
         tratamento_txt = str(tratamento or "Computar nesta análise").strip() or "Computar nesta análise"
         identificacao = str(identificacao or "").strip()
@@ -2589,12 +2602,19 @@ def arredondar_resultado_financeiro(resultado):
     return resultado
 
 
-def montar_composicao_valor_total(df_execucao, remanescente_atualizado, ciclo_ultimo_rem, valor_total_atualizado):
+def montar_composicao_valor_total(
+    df_execucao,
+    remanescente_atualizado,
+    ciclo_ultimo_rem,
+    valor_total_atualizado,
+    df_aditivos_computaveis=None,
+    total_aditivos_atualizados=0.0,
+):
     """Monta quadro executivo da composição do Valor Total Atualizado do Contrato.
 
-    Regra adotada: Valor Total Atualizado = execução atualizada por ciclo + saldo remanescente atualizado.
-    Aditivos/supressões permanecem rastreáveis, mas não entram como parcela autônoma nesta composição
-    quando seus efeitos já estiverem refletidos na execução, no estoque ou no saldo remanescente.
+    Regra adotada: Valor Total Atualizado = execução atualizada por ciclo + saldo remanescente atualizado
+    + aditivos/supressões computáveis quando indicados como parcela da análise atual.
+    Aditivos informativos ou já incorporados permanecem rastreáveis, mas não entram como parcela autônoma.
     """
     linhas = []
     soma_componentes = 0.0
@@ -2626,6 +2646,17 @@ def montar_composicao_valor_total(df_execucao, remanescente_atualizado, ciclo_ul
         soma_componentes += valor
 
     valor_total = numero_seguro(valor_total_atualizado, soma_componentes)
+
+    total_aditivos_comp = numero_seguro(total_aditivos_atualizados, 0.0)
+    if abs(total_aditivos_comp) > 0.004:
+        linhas.append({
+            "Componente": "Aditivos/supressões computáveis atualizados",
+            "Ciclo/Referência": "ADITIVOS_QUANTITATIVOS",
+            "Valor": round(total_aditivos_comp, 2),
+            "Observação": "Aditivos/supressões marcados como computáveis nesta análise e não incorporados ao saldo remanescente informado no corte.",
+        })
+        soma_componentes += total_aditivos_comp
+
     linhas.append({
         "Componente": "Valor Total Atualizado do Contrato",
         "Ciclo/Referência": "Total",
@@ -2673,7 +2704,7 @@ def montar_auditoria_consistencia(resultado):
         add_check(
             "Composição do Valor Total Atualizado",
             "OK" if abs(diferenca) <= 0.01 else "ATENÇÃO",
-            "Compara o Valor Total Atualizado do Contrato com a soma dos componentes: execução atualizada por ciclo + saldo remanescente atualizado. Aditivos/supressões não são somados como parcela autônoma.",
+            "Compara o Valor Total Atualizado do Contrato com a soma dos componentes: execução atualizada por ciclo + saldo remanescente atualizado + aditivos/supressões computáveis.",
             diferenca,
         )
     else:
@@ -2695,7 +2726,7 @@ def montar_auditoria_consistencia(resultado):
         add_check(
             "Aditivos registrados",
             "OK" if abs(diferenca_ad) <= 0.01 else "ATENÇÃO",
-            "Confere o total de aditivos/supressões registrados no consolidado executivo. Esses valores são informativos e não entram como parcela autônoma no Valor Total Atualizado.",
+            "Confere o total de aditivos/supressões registrados no consolidado executivo. Valores computáveis entram no Valor Total Atualizado; valores informativos permanecem apenas como memória.",
             diferenca_ad,
         )
     else:
@@ -3269,7 +3300,7 @@ def processar_consumo_itens_ciclo(bytes_arquivo, xls, params, contexto_contratua
         "valor_global_financeiro": valor_atualizado_contrato,
         "total_aditivos_atualizados": 0.0,
         "total_aditivos_informativos": 0.0,
-        "aditivos_somados_ao_valor_total": False,
+        "aditivos_somados_ao_valor_total": bool(aditivos_somados_ao_valor_total),
         "formula_valor_total_atualizado": "execucao_atualizada_por_ciclo + saldo_a_faturar_atualizado",
         "quantidade_aditivos_total": 0,
         "quantidade_aditivos_marcados_computaveis": 0,
@@ -3665,10 +3696,13 @@ def processar_arquivo_coleta(bytes_arquivo):
         valor_formalizado_anterior = valor_original_contrato
 
     # Regra conceitual do Valor Total Atualizado:
-    # o valor final é composto por execução atualizada por ciclo + saldo remanescente atualizado.
-    # Aditivos/supressões são eventos contratuais de controle e governança; não são somados
-    # como parcela autônoma quando já estiverem refletidos na execução, nos saldos ou no estoque.
-    valor_atualizado_contrato = valor_calculado_sem_aditivos
+    # o valor final é composto por execução atualizada por ciclo + saldo remanescente atualizado
+    # + aditivos/supressões computáveis quando indicados como parcela da análise atual.
+    # Aditivos informativos/já incorporados permanecem rastreáveis, mas não entram como parcela autônoma.
+    aditivos_somados_ao_valor_total = abs(numero_seguro(total_aditivos_atualizados, 0.0)) > 0.004
+    valor_atualizado_contrato = valor_calculado_sem_aditivos + (
+        total_aditivos_atualizados if aditivos_somados_ao_valor_total else 0.0
+    )
     impacto_analise_atual = valor_atualizado_contrato - valor_formalizado_anterior
 
     df_composicao_valor_total = montar_composicao_valor_total(
@@ -3676,6 +3710,8 @@ def processar_arquivo_coleta(bytes_arquivo):
         remanescente_atualizado,
         ciclo_ultimo_rem,
         valor_atualizado_contrato,
+        df_aditivos_computaveis=df_aditivos_computaveis,
+        total_aditivos_atualizados=total_aditivos_atualizados,
     )
 
     fator_acumulado = float(ciclos["Fator acumulado efetivo"].iloc[-1]) if "Fator acumulado efetivo" in ciclos.columns and not ciclos.empty else fator_remanescente
@@ -3752,7 +3788,7 @@ def processar_arquivo_coleta(bytes_arquivo):
         "total_aditivos_atualizados": total_aditivos_atualizados,
         "total_aditivos_informativos": total_aditivos_informativos,
         "aditivos_somados_ao_valor_total": False,
-        "formula_valor_total_atualizado": "execucao_atualizada_por_ciclo + saldo_remanescente_atualizado",
+        "formula_valor_total_atualizado": "execucao_atualizada_por_ciclo + saldo_remanescente_atualizado + aditivos_computaveis_atualizados",
         "quantidade_aditivos_total": int(len(df_aditivos_executivo)),
         "quantidade_aditivos_marcados_computaveis": int(len(df_aditivos_executivo[df_aditivos_executivo["Computa no Valor Global"].astype(bool)])) if not df_aditivos_executivo.empty and "Computa no Valor Global" in df_aditivos_executivo.columns else 0,
         "ciclo_ultimo_remanescente": ciclo_ultimo_rem,
