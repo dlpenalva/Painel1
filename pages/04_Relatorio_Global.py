@@ -772,9 +772,9 @@ def texto_contexto_analise(adm, res):
         "O C0 é tratado como ciclo-base inicial, sem aplicação de reajuste. "
         f"Foram considerados {qtd_ciclos} ciclo(s) de reajuste: {resumo_ciclos}. "
         f"Índice utilizado: {indice}. Fator acumulado considerado: {fator_fmt(fator)}. "
-        "O Valor Total Atualizado do Contrato mantém a composição execução atualizada por ciclo + saldo remanescente atualizado. "
+        "O Valor Total Atualizado do Contrato mantém a composição execução atualizada por ciclo + saldo remanescente atualizado + aditivos/supressões computáveis, quando aplicáveis. "
         f"{modo_txt}"
-        "Aditivos e supressões são apresentados como eventos de controle e governança, sem soma autônoma quando seus efeitos já estiverem refletidos na execução ou no saldo remanescente. "
+        "Aditivos e supressões computáveis são considerados no Valor Total Atualizado quando não estiverem refletidos na execução, no saldo remanescente ou no valor formalizado anterior. "
         f"{contexto_txt}"
     )
 
@@ -1595,34 +1595,224 @@ def _linhas_quadro_financeiro(res):
 
 
 def _linhas_quadro_memoria_fiscal(res):
-    """Usa a melhor memória disponível. Se não houver tabela fiscal detalhada, usa a composição existente."""
-    for chave in ["df_memoria_fiscal_valor_total", "df_memoria_valor_total", "df_composicao_valor_total"]:
-        df = res.get(chave) if isinstance(res, dict) else None
-        if isinstance(df, pd.DataFrame) and not df.empty:
-            break
-    else:
-        df = pd.DataFrame()
+    """Monta memória fiscal evolutiva do Valor Total Atualizado.
 
-    if df.empty:
+    O Quadro 3 da Apostila deve contar a história econômico-financeira do contrato:
+    valor original, execuções por ciclo, remanescentes intermediários, corte operacional,
+    saldo remanescente atualizado e aditivos/supressões computáveis.
+
+    O Quadro 4 permanece como composição sintética final.
+    """
+    if not isinstance(res, dict):
         return []
 
-    col_desc = _coluna_existente(df, ["Descrição", "Descricao", "Componente", "Parcela", "Indicador"])
-    col_valor = _coluna_existente(df, ["Valor", "valor"])
-    if not col_desc or not col_valor:
-        return []
+    # Se futuramente o módulo Valores fornecer uma memória fiscal analítica própria,
+    # ela tem prioridade absoluta.
+    for chave in ["df_memoria_fiscal_valor_total", "df_memoria_valor_total"]:
+        df_mem = res.get(chave)
+        if isinstance(df_mem, pd.DataFrame) and not df_mem.empty:
+            col_desc = _coluna_existente(df_mem, ["Descrição", "Descricao", "Componente", "Parcela", "Indicador"])
+            col_valor = _coluna_existente(df_mem, ["Valor", "valor"])
+            if col_desc and col_valor:
+                linhas_prontas = []
+                for _, row in df_mem.iterrows():
+                    desc = texto_seguro(row.get(col_desc, ""), "")
+                    valor = _numero_br_relatorio(row.get(col_valor, 0), 0.0)
+                    if desc:
+                        linhas_prontas.append([_letra_ref(len(linhas_prontas)), desc, moeda(valor)])
+                if linhas_prontas:
+                    return linhas_prontas
 
     linhas = []
-    for idx, (_, row) in enumerate(df.iterrows()):
-        desc = texto_seguro(row.get(col_desc, ""), "")
-        if not desc:
-            continue
-        valor = _numero_br_relatorio(row.get(col_valor, 0), 0.0)
-        # Ajustes textuais para evitar ambiguidade de percentual acumulado/ciclo.
-        desc_low = desc.lower()
-        if "início c3" in desc_low or "inicio c3" in desc_low:
-            if "sobre base" not in desc_low:
-                desc = "Remanescente atualizado no início do C3, sobre base já atualizada até C2"
-        linhas.append([_letra_ref(len(linhas)), desc, moeda(valor)])
+
+    def _adicionar(descricao, valor, permitir_zero=False):
+        valor_num = _numero_br_relatorio(valor, 0.0)
+        if permitir_zero or abs(valor_num) > 0.004:
+            linhas.append([_letra_ref(len(linhas)), descricao, moeda(valor_num)])
+
+    def _num(row, candidatos, padrao=0.0):
+        if row is None:
+            return padrao
+        for col in candidatos:
+            if col in row.index:
+                return _numero_br_relatorio(row.get(col, padrao), padrao)
+        return padrao
+
+    def _txt(row, candidatos, padrao=""):
+        if row is None:
+            return padrao
+        for col in candidatos:
+            if col in row.index:
+                return texto_seguro(row.get(col, ""), padrao)
+        return padrao
+
+    valor_original = _numero_br_relatorio(res.get("valor_original_contrato", 0), 0.0)
+    if abs(valor_original) > 0.004:
+        _adicionar("Valor original do contrato", valor_original)
+
+    # Execução por ciclo.
+    df_exec = _df_seguro(res, "df_execucao_atualizada")
+    exec_rows = []
+
+    if isinstance(df_exec, pd.DataFrame) and not df_exec.empty:
+        col_ciclo = _coluna_existente(df_exec, ["Ciclo", "ciclo", "Ciclo/Referência"])
+        if col_ciclo:
+            df_tmp = df_exec.copy()
+            df_tmp["_ordem_memoria"] = (
+                df_tmp[col_ciclo]
+                .astype(str)
+                .str.upper()
+                .str.extract(r"(\d+)")
+                .fillna(999)
+                .astype(int)
+            )
+            df_tmp = df_tmp.sort_values("_ordem_memoria", kind="stable")
+
+            for _, row in df_tmp.iterrows():
+                ciclo = _normalizar_nome_ciclo_doc(row.get(col_ciclo, ""))
+                if not ciclo or ciclo in ["TOTAL", "CICLO"]:
+                    continue
+
+                valor_original_exec = _num(
+                    row,
+                    [
+                        "Valor executado original",
+                        "Valor original executado",
+                        "Valor original/base",
+                        "Valor base",
+                        "Valor pago efetivo",
+                        "Valor pago/faturado",
+                    ],
+                    0.0,
+                )
+                valor_atualizado_exec = _num(
+                    row,
+                    [
+                        "Valor executado atualizado",
+                        "Valor atualizado",
+                        "Valor teórico calculado",
+                        "Valor devido reajustado",
+                    ],
+                    valor_original_exec,
+                )
+
+                if abs(valor_atualizado_exec) <= 0.004 and abs(valor_original_exec) <= 0.004:
+                    continue
+
+                status = _txt(row, ["Status financeiro", "Situação", "Tratamento financeiro", "Observação"], "")
+                status_norm = str(status).lower()
+
+                if ciclo == "C0":
+                    descricao = "C0 - execução sem reajuste"
+                elif "preclus" in status_norm or "sem efeito" in status_norm or "sem_efeito" in status_norm:
+                    descricao = f"{ciclo} - execução sem reajuste, em razão da preclusão/ausência de efeito financeiro"
+                else:
+                    descricao = f"{ciclo} - execução atualizada"
+
+                exec_rows.append({
+                    "ciclo": ciclo,
+                    "valor_original": valor_original_exec,
+                    "valor_atualizado": valor_atualizado_exec,
+                    "descricao": descricao,
+                })
+
+    acumulado_original = 0.0
+
+    for idx, item in enumerate(exec_rows):
+        ciclo = item["ciclo"]
+        valor_original_exec = _numero_br_relatorio(item["valor_original"], 0.0)
+        valor_atualizado_exec = _numero_br_relatorio(item["valor_atualizado"], valor_original_exec)
+
+        # Quando houver valor original/base, usa-o para memória de remanescente.
+        # Se não houver, usa valor atualizado apenas como fallback documental.
+        base_memoria = valor_original_exec if abs(valor_original_exec) > 0.004 else valor_atualizado_exec
+        acumulado_original += base_memoria
+
+        _adicionar(item["descricao"], valor_atualizado_exec)
+
+        if abs(valor_original) > 0.004:
+            rem_original = valor_original - acumulado_original
+            if rem_original > 0.004:
+                if idx + 1 < len(exec_rows):
+                    prox_ciclo = exec_rows[idx + 1]["ciclo"]
+                    desc_rem = f"Remanescente após {ciclo}, em base original, antes da apuração do {prox_ciclo}"
+                else:
+                    desc_rem = f"Remanescente após {ciclo}, em base original"
+                _adicionar(desc_rem, rem_original)
+
+    # Remanescente final: prioriza tabela de composição quando houver linha específica.
+    rem_final = 0.0
+    rem_final_desc = "Saldo remanescente atualizado"
+
+    df_comp = _df_seguro(res, "df_composicao_valor_total")
+    if isinstance(df_comp, pd.DataFrame) and not df_comp.empty:
+        col_desc = _coluna_existente(df_comp, ["Componente", "Parcela", "Descrição", "Descricao", "Indicador"])
+        col_valor = _coluna_existente(df_comp, ["Valor", "valor"])
+        if col_desc and col_valor:
+            for _, row in df_comp.iterrows():
+                desc = texto_seguro(row.get(col_desc, ""), "")
+                desc_norm = desc.lower()
+                if "remanescente" in desc_norm and "total" not in desc_norm:
+                    rem_final = _numero_br_relatorio(row.get(col_valor, 0), 0.0)
+                    rem_final_desc = desc
+                    break
+
+    if abs(rem_final) <= 0.004:
+        rem_final = _numero_br_relatorio(res.get("remanescente_reajustado", 0), 0.0)
+
+    if abs(rem_final) > 0.004:
+        config = res.get("config_ciclo_em_execucao", {}) or {}
+        ciclo_corte = texto_seguro(config.get("ciclo", ""), "")
+        data_corte = texto_seguro(config.get("data_corte") or config.get("competencia_corte") or "", "")
+        if ciclo_corte or data_corte:
+            complemento = []
+            if ciclo_corte:
+                complemento.append(str(ciclo_corte))
+            if data_corte:
+                complemento.append(str(data_corte))
+            rem_final_desc = f"Saldo remanescente atualizado no corte operacional ({' - '.join(complemento)})"
+        _adicionar(rem_final_desc, rem_final)
+
+    # Aditivos computáveis: preferir dataframe executivo e respeitar tratamento.
+    total_aditivos_computaveis = 0.0
+    df_ad = _df_seguro(res, "df_aditivos_executivo", "df_aditivos")
+
+    if isinstance(df_ad, pd.DataFrame) and not df_ad.empty:
+        col_valor = _coluna_existente(df_ad, ["Valor do aditivo reajustado", "Valor atualizado da alteração", "Valor atualizado", "Valor"])
+        col_trat = _coluna_existente(df_ad, ["Tratamento do aditivo", "Tratamento", "Computa no Valor Global"])
+        if col_valor:
+            for _, row in df_ad.iterrows():
+                trat = texto_seguro(row.get(col_trat, ""), "") if col_trat else ""
+                trat_norm = str(trat).lower()
+                computa_txt = str(row.get("Computa no Valor Global", "")).strip().lower() if "Computa no Valor Global" in row.index else ""
+                eh_informativo = any(t in trat_norm for t in ["informativo", "ja incorporado", "já incorporado", "ja incluido", "já incluído"])
+                computa = (not eh_informativo) and computa_txt not in ["não", "nao", "n", "false"]
+                if computa:
+                    total_aditivos_computaveis += _numero_br_relatorio(row.get(col_valor, 0), 0.0)
+
+    if abs(total_aditivos_computaveis) <= 0.004 and bool(res.get("aditivos_somados_ao_valor_total", False)):
+        total_aditivos_computaveis = _numero_br_relatorio(res.get("total_aditivos_atualizados", 0), 0.0)
+
+    if abs(total_aditivos_computaveis) > 0.004:
+        _adicionar("Aditivos/supressões computáveis atualizados", total_aditivos_computaveis)
+
+    total = _numero_br_relatorio(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)), 0.0)
+    if abs(total) > 0.004:
+        linhas.append(["Total", "Valor Total Atualizado do Contrato", moeda(total)])
+
+    # Fallback de segurança: se a memória evolutiva não conseguiu ser formada,
+    # usa a composição final para evitar quadro vazio.
+    if len(linhas) <= 2 and isinstance(df_comp, pd.DataFrame) and not df_comp.empty:
+        col_desc = _coluna_existente(df_comp, ["Componente", "Parcela", "Descrição", "Descricao", "Indicador"])
+        col_valor = _coluna_existente(df_comp, ["Valor", "valor"])
+        if col_desc and col_valor:
+            linhas = []
+            for _, row in df_comp.iterrows():
+                desc = texto_seguro(row.get(col_desc, ""), "")
+                valor = _numero_br_relatorio(row.get(col_valor, 0), 0.0)
+                if desc and abs(valor) > 0.004:
+                    linhas.append([_letra_ref(len(linhas)), desc, moeda(valor)])
+
     return linhas
 
 
@@ -1765,12 +1955,12 @@ def gerar_minuta_apostilamento_docx(adm, res):
     if info_corte.get("ativo"):
         _docx_add_texto(
             document,
-            f"3.1. Para fins de consolidação contratual, foi adotado corte operacional na competência {info_corte.get('competencia', 'não informada')}, correspondente à segregação entre a execução já realizada e o saldo remanescente futuro considerado na memória fiscal."
+            f"3.1. Para fins de consolidação contratual, foi adotado corte operacional na competência {info_corte.get('competencia', 'não informada')}, correspondente à segregação entre a execução já realizada e o saldo remanescente futuro considerado na memória fiscal. O Quadro 3 apresenta a evolução do contrato por ciclos, com a execução realizada, os remanescentes intermediários, o saldo remanescente final e os aditivos/supressões computáveis, quando aplicáveis."
         )
     else:
         _docx_add_texto(
             document,
-            "3.1. Para fins de consolidação contratual, a memória fiscal do Valor Total Atualizado foi organizada a partir da execução atualizada por ciclo e do saldo remanescente atualizado."
+            "3.1. Para fins de consolidação contratual, a memória fiscal do Valor Total Atualizado foi organizada de forma evolutiva, demonstrando a execução por ciclo, os remanescentes intermediários, o saldo remanescente final e os aditivos/supressões computáveis, quando aplicáveis."
         )
     linhas_mem = _linhas_quadro_memoria_fiscal(res)
     if linhas_mem:
@@ -1825,7 +2015,7 @@ def gerar_minuta_apostilamento_docx(adm, res):
         )
     else:
         _docx_add_texto(document, "5.1. Não foram identificados aditivos ou supressões específicos na base processada, sem prejuízo da conferência dos instrumentos já formalizados no processo.")
-    _docx_add_texto(document, "5.2. Os aditivos e supressões não devem ser somados de forma autônoma ao Valor Total Atualizado quando seus efeitos já estiverem refletidos na execução atualizada ou no saldo remanescente.")
+    _docx_add_texto(document, "5.2. Os aditivos e supressões computáveis integram o Valor Total Atualizado quando não estiverem refletidos na execução atualizada, no saldo remanescente ou no valor formalizado anterior, vedada a dupla contagem.")
 
     # Itens finais padrão
     _docx_add_texto(document, "6. Permanecem inalteradas e em pleno vigor as demais cláusulas e condições do Contrato e de seus instrumentos posteriores não modificadas por este Termo de Apostila.")
@@ -1955,7 +2145,7 @@ with tab2:
             st.info("Tabela detalhada do retroativo estimado por itens/estoque não disponível nesta sessão.")
 
     st.markdown("### Composição do Valor Total Atualizado do Contrato")
-    st.caption("Composição considerada: execução atualizada por ciclo + saldo remanescente atualizado. Aditivos/supressões são demonstrados separadamente para controle, sem soma autônoma ao total.")
+    st.caption("Composição considerada: execução atualizada por ciclo + saldo remanescente atualizado + aditivos/supressões computáveis, quando aplicáveis.")
     df_comp_valor = res.get("df_composicao_valor_total")
     if isinstance(df_comp_valor, pd.DataFrame) and not df_comp_valor.empty:
         st.dataframe(
@@ -1980,7 +2170,7 @@ with tab2:
     df_ad = res.get("df_aditivos_executivo", res.get("df_aditivos"))
     if isinstance(df_ad, pd.DataFrame) and not df_ad.empty:
         st.markdown("### Aditivos e Supressões")
-        st.caption("Quadro de controle formal. Esses valores não são somados autonomamente ao Valor Total Atualizado quando já estiverem incorporados à execução ou ao saldo remanescente.")
+        st.caption("Quadro de controle formal. Aditivos computáveis integram o Valor Total Atualizado; aditivos informativos permanecem apenas como memória quando já incorporados à execução, ao saldo remanescente ou ao valor formalizado anterior.")
         keep_ad = [c for c in ["Aditivo", "Ciclo/Marco", "Tratamento do aditivo", "Quantidade de linhas", "Valor do aditivo na assinatura", "Fator aplicado", "Valor do aditivo reajustado"] if c in df_ad.columns]
         st.dataframe(
             df_visual(df_ad[keep_ad].copy() if keep_ad else df_ad, moeda_cols=["Valor do aditivo na assinatura", "Valor do aditivo reajustado", "Valor original da alteração", "Valor atualizado da alteração"], fator_cols=["Fator aplicado"]),

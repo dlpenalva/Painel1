@@ -1289,6 +1289,15 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         fmt_gap_text_wrap_no_border = workbook.add_format({'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'text_wrap': True, 'valign': 'top'})
         fmt_gap_input_money = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'border': 1})
         fmt_gap_input_money_no_border = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#F4CCCC', 'font_color': '#9C0006'})
+        # PATCH_FORMATA_BASE_EXECUCAO_V4
+        # Formatos específicos da BASE_EXECUCAO_MENSAL.
+        fmt_base_center_no_border = workbook.add_format({'align': 'center', 'valign': 'vcenter'})
+        fmt_base_input_money_no_border = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#FFF2CC', 'align': 'right', 'valign': 'vcenter'})
+        fmt_base_obs_no_border = workbook.add_format({'align': 'left', 'valign': 'vcenter', 'text_wrap': True})
+        fmt_base_gap_center_no_border = workbook.add_format({'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'align': 'center', 'valign': 'vcenter'})
+        fmt_base_gap_input_money_no_border = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'align': 'right', 'valign': 'vcenter'})
+        fmt_base_gap_obs_no_border = workbook.add_format({'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'text_wrap': True, 'align': 'left', 'valign': 'vcenter'})
+
         fmt_total_no_border = workbook.add_format({'bold': True, 'bg_color': '#E2F0D9'})
         fmt_total_money_no_border = workbook.add_format({'bold': True, 'bg_color': '#E2F0D9', 'num_format': 'R$ #,##0.00'})
         fmt_total_num_no_border = workbook.add_format({'bold': True, 'bg_color': '#E2F0D9', 'num_format': '#,##0.00'})
@@ -1566,9 +1575,38 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
 
         # BASE_EXECUCAO_MENSAL
         financeiro_rows = []
+        # PATCH_BASE_CICLO_HISTORICO_C1_V2
+        # Inclui ciclos históricos/formalizados anteriores na BASE_EXECUCAO_MENSAL.
+        # Ex.: se o contexto indica último ciclo formalizado C1 e a análise atual começa em C2,
+        # C1 deve aparecer para registro da execução sem reajuste.
+        try:
+            ultimo_hist_num = _ciclo_para_numero(contexto_contratual.get('ultimo_ciclo_concedido', ''))
+        except Exception:
+            ultimo_hist_num = 0
+
+        if ultimo_hist_num > 0:
+            data_base_hist = _data_contexto_para_datetime(contexto_contratual.get('data_base_ultimo_ciclo'))
+            data_pedido_hist = _data_contexto_para_datetime(contexto_contratual.get('data_pedido_ultimo_ciclo'))
+            if data_base_hist is not None:
+                for n_hist in range(1, ultimo_hist_num + 1):
+                    ciclo_hist_nome = f"C{n_hist}"
+                    # Para o último ciclo histórico, usa a data-base informada no contexto.
+                    # Para ciclos anteriores, retrocede de 12 em 12 meses.
+                    try:
+                        inicio_hist = data_base_hist - relativedelta(months=12 * (ultimo_hist_num - n_hist))
+                    except Exception:
+                        inicio_hist = data_base_hist
+                    fim_hist = inicio_hist + relativedelta(months=11)
+                    for competencia in _competencias_mensais(inicio_hist, fim_hist):
+                        financeiro_rows.append({
+                            'Ciclo': ciclo_hist_nome,
+                            'Competência': competencia,
+                            'Valor bruto medido/aprovado por competência': '',
+                            'Tem efeito financeiro de reajuste?': 'Não',
+                            'Observação sobre efeito financeiro': 'Ciclo histórico/formalizado anterior; preencher a execução apenas para memória do Valor Total Atualizado, sem retroativo novo nesta análise.',
+                        })
+
         for ciclo in ciclos:
-            if bool(ciclo.get('ciclo_ja_concedido', False)):
-                continue
             ciclo_nome = ciclo.get('ciclo', '')
             competencias_sem_efeito = set(_competencias_sem_efeito_financeiro(ciclo))
             inicio_base_execucao = _primeira_competencia_base_execucao(ciclo)
@@ -1577,36 +1615,89 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
                     'Ciclo': ciclo_nome,
                     'Competência': competencia,
                     'Valor bruto medido/aprovado por competência': '',
-                    'Competência sem efeito financeiro?': 'Sim' if competencia in competencias_sem_efeito else 'Não',
+                    'Tem efeito financeiro de reajuste?': 'Não' if competencia in competencias_sem_efeito else 'Sim',
                     'Observação sobre efeito financeiro': 'Competência anterior ao início dos efeitos financeiros do pedido; não compõe retroativo a pagar.' if competencia in competencias_sem_efeito else '',
                 })
+        # PATCH_BASE_INSERE_CICLOS_HISTORICOS_V3
+        # Se a BASE_EXECUCAO_MENSAL começar em C2 ou ciclo posterior,
+        # insere automaticamente os ciclos históricos anteriores.
+        # Esses ciclos servem para registro de execução/memória,
+        # sem retroativo novo e sem efeito financeiro de reajuste.
+        try:
+            ciclos_nums_existentes = []
+            datas_por_ciclo = {}
+
+            for _r in financeiro_rows:
+                _ciclo_txt = str(_r.get('Ciclo', '')).strip().upper()
+                _m = re.search(r'C\s*(\d+)', _ciclo_txt)
+                if not _m:
+                    continue
+
+                _num = int(_m.group(1))
+                if _num <= 0:
+                    continue
+
+                _comp_txt = str(_r.get('Competência', '')).strip()
+                _comp = pd.to_datetime('01/' + _comp_txt, dayfirst=True, errors='coerce')
+                if pd.isna(_comp):
+                    continue
+
+                ciclos_nums_existentes.append(_num)
+                datas_por_ciclo.setdefault(_num, []).append(_comp)
+
+            if ciclos_nums_existentes:
+                primeiro_num = min(ciclos_nums_existentes)
+
+                if primeiro_num > 1 and primeiro_num in datas_por_ciclo:
+                    primeira_data_primeiro_ciclo = min(datas_por_ciclo[primeiro_num])
+                    linhas_historicas = []
+
+                    for num_hist in range(1, primeiro_num):
+                        inicio_hist = primeira_data_primeiro_ciclo - pd.DateOffset(months=12 * (primeiro_num - num_hist))
+                        fim_hist = inicio_hist + pd.DateOffset(months=11)
+
+                        for competencia_hist in pd.date_range(inicio_hist, fim_hist, freq='MS'):
+                            linhas_historicas.append({
+                                'Ciclo': f'C{num_hist}',
+                                'Competência': competencia_hist.strftime('%m/%Y'),
+                                'Valor bruto medido/aprovado por competência': '',
+                                'Tem efeito financeiro de reajuste?': 'Não',
+                                'Observação sobre efeito financeiro': 'Ciclo histórico/precluso ou já formalizado; preencher a execução apenas para memória do Valor Total Atualizado, sem retroativo novo nesta análise.',
+                            })
+
+                    financeiro_rows = linhas_historicas + financeiro_rows
+        except Exception:
+            pass
+
         if not financeiro_rows:
-            financeiro_rows.append({'Ciclo': '', 'Competência': '', 'Valor bruto medido/aprovado por competência': '', 'Competência sem efeito financeiro?': '', 'Observação sobre efeito financeiro': ''})
+            financeiro_rows.append({'Ciclo': '', 'Competência': '', 'Valor bruto medido/aprovado por competência': '', 'Tem efeito financeiro de reajuste?': '', 'Observação sobre efeito financeiro': ''})
         df_fin = pd.DataFrame(financeiro_rows)
         df_fin.to_excel(writer, sheet_name='BASE_EXECUCAO_MENSAL', index=False)
         ws = writer.sheets['BASE_EXECUCAO_MENSAL']
         ws.hide_gridlines(2)
-        ws.set_column('A:A', 12, fmt_no_border)
-        ws.set_column('B:B', 18, fmt_no_border)
-        ws.set_column('C:C', 24, fmt_input_money_no_border)
-        ws.set_column('D:D', 22, fmt_no_border)
-        ws.set_column('E:E', 58, fmt_text_wrap_no_border)
+        ws.set_column('A:A', 12, fmt_base_center_no_border)
+        ws.set_column('B:B', 18, fmt_base_center_no_border)
+        ws.set_column('C:C', 26, fmt_base_input_money_no_border)
+        ws.set_column('D:D', 24, fmt_base_center_no_border)
+        ws.set_column('E:E', 78, fmt_base_obs_no_border)
         for col, title in enumerate(df_fin.columns):
             ws.write(0, col, title, fmt_header_no_border)
         for row in range(1, len(df_fin) + 1):
-            sem_efeito_linha = str(df_fin.iloc[row-1].get('Competência sem efeito financeiro?', '')).strip().upper() == 'SIM'
+            sem_efeito_linha = str(df_fin.iloc[row-1].get('Tem efeito financeiro de reajuste?', '')).strip().upper() in ['NAO', 'NÃO', 'N']
             if sem_efeito_linha:
-                ws.write(row, 0, df_fin.iloc[row-1].get('Ciclo', ''), fmt_gap_text_no_border)
-                ws.write(row, 1, df_fin.iloc[row-1].get('Competência', ''), fmt_gap_text_no_border)
-                ws.write(row, 2, '', fmt_gap_input_money_no_border)
-                ws.write(row, 3, 'Sim', fmt_gap_text_no_border)
-                ws.write(row, 4, df_fin.iloc[row-1].get('Observação sobre efeito financeiro', ''), fmt_gap_text_wrap_no_border)
+                ws.write(row, 0, df_fin.iloc[row-1].get('Ciclo', ''), fmt_base_gap_center_no_border)
+                ws.write(row, 1, df_fin.iloc[row-1].get('Competência', ''), fmt_base_gap_center_no_border)
+                ws.write(row, 2, '', fmt_base_gap_input_money_no_border)
+                ws.write(row, 3, 'Não', fmt_base_gap_center_no_border)
+                ws.write(row, 4, df_fin.iloc[row-1].get('Observação sobre efeito financeiro', ''), fmt_base_gap_obs_no_border)
+                ws.set_row(row, 36)
             else:
-                ws.write(row, 0, df_fin.iloc[row-1].get('Ciclo', ''), fmt_no_border)
-                ws.write(row, 1, df_fin.iloc[row-1].get('Competência', ''), fmt_no_border)
-                ws.write(row, 2, '', fmt_input_money_no_border)
-                ws.write(row, 3, df_fin.iloc[row-1].get('Competência sem efeito financeiro?', ''), fmt_no_border)
-                ws.write(row, 4, df_fin.iloc[row-1].get('Observação sobre efeito financeiro', ''), fmt_text_wrap_no_border)
+                ws.write(row, 0, df_fin.iloc[row-1].get('Ciclo', ''), fmt_base_center_no_border)
+                ws.write(row, 1, df_fin.iloc[row-1].get('Competência', ''), fmt_base_center_no_border)
+                ws.write(row, 2, '', fmt_base_input_money_no_border)
+                ws.write(row, 3, df_fin.iloc[row-1].get('Tem efeito financeiro de reajuste?', ''), fmt_base_center_no_border)
+                ws.write(row, 4, df_fin.iloc[row-1].get('Observação sobre efeito financeiro', ''), fmt_base_obs_no_border)
+                ws.set_row(row, 22)
         total_row_fin = len(df_fin) + 1
         ultima_linha_fin_excel = len(df_fin) + 1
         ws.write(total_row_fin, 0, 'TOTAL', fmt_total_no_border)
@@ -2108,12 +2199,12 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         key=f"ciclo_ja_concedido_c{i}_{data_atual.strftime('%Y%m%d')}",
         help=(
             "Marque apenas se este ciclo já foi formalizado em instrumento anterior. "
-            "O ciclo será preservado como histórico/âncora, mas não será tratado como objeto novo da análise atual."
+            "O ciclo será preservado como histórico/âncora. Ele não será tratado como ciclo novo para retroativo, mas poderá aparecer na base financeira para registro da execução sem reajuste, quando aplicável."
         ),
     )
     if ciclo_ja_concedido:
         st.caption(
-            f"C{i} será mantido como histórico/âncora. Não entrará como ciclo novo no relatório da análise atual nem na aba financeira da coleta."
+            f"C{i} será mantido como histórico/âncora. Não entrará como ciclo novo no relatório da análise atual, mas aparecerá na aba financeira da coleta para permitir registro de execução sem reajuste, quando aplicável."
         )
 
     # Lógica de Admissibilidade preservada.
