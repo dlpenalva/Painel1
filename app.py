@@ -2,215 +2,79 @@ import streamlit as st
 from pathlib import Path
 from _ui_utils import render_versao_sidebar
 
-st.set_page_config(
-    page_title="cl8us · Gestão de Contratos",
-    page_icon="📋",
-    layout="wide",
-)
+st.set_page_config(page_title="TLB · cl8us - Apoio à Gestão de Contratos", layout="wide")
 
-APP_SEM_SENHA_VERSAO  = "20260516_RESTORE_SEM_SENHA"
-APP_DOU_13_VERSAO     = "20260516_DOU_13_GESTAO"
+# App sem barreira de senha interna.
+APP_SEM_SENHA_VERSAO = "20260516_RESTORE_SEM_SENHA"
+APP_DOU_13_VERSAO = "20260516_DOU_13_GESTAO"
 APP_ORIENTA_11_VERSAO = "20260516_CL8US_ORIENTA_SOLO_APOIO"
 APP_IST_ALERTA_VERSAO = "20260516_ALERTA_IST_ULTIMA_COMPETENCIA"
 
-st.markdown("""
-<style>
-/* ═══════════════════════════════════════════════════
-   SIDEBAR — dark slate, funciona com nav + formulário
-═══════════════════════════════════════════════════ */
-section[data-testid="stSidebar"] {
-    background: #1E293B !important;
-}
-section[data-testid="stSidebar"] > div,
-section[data-testid="stSidebar"] > div > div {
-    background: #1E293B !important;
-}
-
-/* ── Texto geral ── */
-section[data-testid="stSidebar"],
-section[data-testid="stSidebar"] p,
-section[data-testid="stSidebar"] span,
-section[data-testid="stSidebar"] label,
-section[data-testid="stSidebar"] small,
-section[data-testid="stSidebar"] div {
-    color: #CBD5E1 !important;
-}
-
-/* ── Grupo de nav "Fluxo principal" ── */
-section[data-testid="stSidebar"] [role="heading"],
-section[data-testid="stSidebar"] [role="separator"] {
-    color: #64748B !important;
-    font-size: 0.66rem !important;
-    font-weight: 700 !important;
-    letter-spacing: 0.1em !important;
-    text-transform: uppercase !important;
-    background: transparent !important;
-}
-
-/* ── Links de nav ── */
-section[data-testid="stSidebar"] nav a,
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a {
-    background: transparent !important;
-    border: none !important;
-    box-shadow: none !important;
-    color: #CBD5E1 !important;
-    font-size: 0.88rem !important;
-    font-weight: 400 !important;
-    border-radius: 6px !important;
-}
-section[data-testid="stSidebar"] nav a *,
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a * {
-    color: #CBD5E1 !important;
-}
-
-/* ── Hover ── */
-section[data-testid="stSidebar"] nav a:hover,
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a:hover {
-    background: rgba(255,255,255,0.06) !important;
-    color: #F1F5F9 !important;
-}
-
-/* ── Item ativo ── */
-section[data-testid="stSidebar"] nav a[aria-current="page"],
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a[aria-current="page"] {
-    background: #1F4E78 !important;
-    border-radius: 6px !important;
-    box-shadow: none !important;
-    border: none !important;
-}
-section[data-testid="stSidebar"] nav a[aria-current="page"] *,
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a[aria-current="page"] * {
-    color: #ffffff !important;
-    font-weight: 500 !important;
-    background: transparent !important;
-}
-
-/* ── Neutralizar pseudo-elementos e li ── */
-section[data-testid="stSidebar"] nav a::before,
-section[data-testid="stSidebar"] nav a::after,
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a::before,
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a::after {
-    display: none !important;
-    background: none !important;
-}
-section[data-testid="stSidebar"] ul,
-section[data-testid="stSidebar"] li,
-section[data-testid="stSidebar"] nav,
-section[data-testid="stSidebar"] [data-testid="stSidebarNav"] {
-    background: transparent !important;
-    border: none !important;
-}
-
-/* ── Inputs e campos de formulário ── */
-section[data-testid="stSidebar"] input,
-section[data-testid="stSidebar"] textarea,
-section[data-testid="stSidebar"] select {
-    background: #0F172A !important;
-    color: #F1F5F9 !important;
-    -webkit-text-fill-color: #F1F5F9 !important;
-    border: 1px solid #334155 !important;
-    border-radius: 6px !important;
-}
-
-/* ── Botões +/- do number_input ── */
-section[data-testid="stSidebar"] button[kind="secondary"],
-section[data-testid="stSidebar"] [data-testid="stNumberInput"] button,
-section[data-testid="stSidebar"] button {
-    background: #334155 !important;
-    color: #F1F5F9 !important;
-    border: 1px solid #475569 !important;
-    border-radius: 4px !important;
-}
-section[data-testid="stSidebar"] button:hover {
-    background: #475569 !important;
-}
-
-/* ── Selectbox ── */
-section[data-testid="stSidebar"] [data-baseweb="select"] > div,
-section[data-testid="stSidebar"] [data-testid="stSelectbox"] > div > div {
-    background: #0F172A !important;
-    border-color: #334155 !important;
-    color: #F1F5F9 !important;
-}
-
-/* ── Scrollbar ── */
-section[data-testid="stSidebar"] ::-webkit-scrollbar { width: 3px; }
-section[data-testid="stSidebar"] ::-webkit-scrollbar-track { background: transparent; }
-section[data-testid="stSidebar"] ::-webkit-scrollbar-thumb {
-    background: #334155;
-    border-radius: 4px;
-}
-
-/* ════════════════════════════════
-   BOXES COLORIDOS DA SIDEBAR
-════════════════════════════════ */
-
-/* Neutralizar qualquer fundo claro em divs da sidebar */
-section[data-testid="stSidebar"] div[style*="background"],
-section[data-testid="stSidebar"] div[style*="background-color"] {
-    background: rgba(255,255,255,0.06) !important;
-    border-color: rgba(255,255,255,0.12) !important;
-}
-
-/* Box laranja (lembrete C0) */
-section[data-testid="stSidebar"] div[style*="#FFF7E6"],
-section[data-testid="stSidebar"] div[style*="FFF7E6"],
-section[data-testid="stSidebar"] div[style*="#FFEAA7"],
-section[data-testid="stSidebar"] div[style*="rgba(255, 152, 0"] {
-    background: rgba(251,146,60,0.15) !important;
-    border-color: rgba(251,146,60,0.35) !important;
-}
-
-/* Box roxo (índice do contrato) */
-section[data-testid="stSidebar"] div[style*="#F5F0FF"],
-section[data-testid="stSidebar"] div[style*="#EDE9FE"],
-section[data-testid="stSidebar"] div[style*="#F5F3FF"],
-section[data-testid="stSidebar"] div[style*="4C1D95"],
-section[data-testid="stSidebar"] div[style*="C4B5FD"] {
-    background: rgba(139,92,246,0.15) !important;
-    border-color: rgba(139,92,246,0.3) !important;
-}
-
-/* Box azul claro (alertas IST/ICTI) */
-section[data-testid="stSidebar"] div[style*="#F8FAFC"],
-section[data-testid="stSidebar"] div[style*="#F0F9FF"],
-section[data-testid="stSidebar"] div[style*="#EFF6FF"],
-section[data-testid="stSidebar"] div[style*="#DBEAFE"],
-section[data-testid="stSidebar"] div[style*="E5EAF0"],
-section[data-testid="stSidebar"] div[style*="BAE6FD"] {
-    background: rgba(59,130,246,0.12) !important;
-    border-color: rgba(59,130,246,0.25) !important;
-}
-
-/* Texto dentro dos boxes — claro */
-section[data-testid="stSidebar"] div[style*="background"] p,
-section[data-testid="stSidebar"] div[style*="background"] span,
-section[data-testid="stSidebar"] div[style*="background"] div,
-section[data-testid="stSidebar"] div[style*="background"] strong {
-    color: #E2E8F0 !important;
-}
-
-/* ════════════════════════════════
-   DOWNLOAD BUTTON — verde escuro
-════════════════════════════════ */
-div[data-testid="stDownloadButton"] > button {
-    background-color: #1a5c38 !important;
-    color: #ffffff !important;
-    border: none !important;
-    border-radius: 14px !important;
-    font-weight: 600 !important;
-}
-div[data-testid="stDownloadButton"] > button:hover {
-    background-color: #14472b !important;
-}
-</style>
-""", unsafe_allow_html=True)
+st.markdown(
+    """
+    <style>
+    section[data-testid="stSidebar"] nav a,
+    section[data-testid="stSidebar"] nav a *,
+    section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a,
+    section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a * {
+        font-weight: 400 !important;
+    }
+    section[data-testid="stSidebar"] nav [role="heading"],
+    section[data-testid="stSidebar"] nav [role="heading"] *,
+    section[data-testid="stSidebar"] [data-testid="stSidebarNav"] [role="heading"],
+    section[data-testid="stSidebar"] [data-testid="stSidebarNav"] [role="heading"] *,
+    section[data-testid="stSidebar"] [data-testid="stSidebarNav"] div:not(:has(a)) > span,
+    section[data-testid="stSidebar"] [data-testid="stSidebarNav"] div:not(:has(a)) > p {
+        font-weight: 700 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 pages_dir = Path("pages")
+p0 = st.Page("pages/00_Calculadora_Reajustes.py", title="Calculadora de Reajustes", default=True)
 
-p_calc    = st.Page("pages/00_Calculadora_Reajustes.py", title="Calculadora de Reajustes", icon="🧮", default=True)
-p_analise = st.Page("pages/15_Analise_Contratual.py",    title="Análise e Documentos",     icon="📄")
-nav = {"Fluxo principal": [p_calc, p_analise]}
+nav = {"📌 Admissibilidade e Cálculo": [p0]}
+
+grupo_valor_global = []
+if (pages_dir / "03_Valor_Global.py").exists():
+    grupo_valor_global.append(st.Page("pages/03_Valor_Global.py", title="Valores"))
+if (pages_dir / "04_Relatorio_Global.py").exists():
+    grupo_valor_global.append(st.Page("pages/04_Relatorio_Global.py", title="Relatórios"))
+if (pages_dir / "06_Central_Arquivos.py").exists():
+    grupo_valor_global.append(st.Page("pages/06_Central_Arquivos.py", title="Central de Arquivos"))
+if (pages_dir / "07_Checklist_Processual.py").exists():
+    grupo_valor_global.append(st.Page("pages/07_Checklist_Processual.py", title="Checklist Processual"))
+if grupo_valor_global:
+    nav["🌐 Visão Global e Relatórios"] = grupo_valor_global
+
+grupo_gestao = []
+if (pages_dir / "05_Garantia.py").exists():
+    grupo_gestao.append(st.Page("pages/05_Garantia.py", title="Gestão da Garantia"))
+if (pages_dir / "12_Adequacao_Orcamentaria.py").exists():
+    grupo_gestao.append(st.Page("pages/12_Adequacao_Orcamentaria.py", title="Adequação Orçamentária"))
+if (pages_dir / "08_Avaliacao_Aditivos.py").exists():
+    grupo_gestao.append(st.Page("pages/08_Avaliacao_Aditivos.py", title="Aditivos: 25%"))
+if (pages_dir / "13_DOU.py").exists():
+    grupo_gestao.append(st.Page("pages/13_DOU.py", title="DOU"))
+if grupo_gestao:
+    nav["🛡️ Gestão Contratual"] = grupo_gestao
+
+grupo_instrucao = []
+if (pages_dir / "09_Infos_Previas.py").exists():
+    grupo_instrucao.append(st.Page("pages/09_Infos_Previas.py", title="Infos Prévias"))
+if (pages_dir / "10_Saneador.py").exists():
+    grupo_instrucao.append(st.Page("pages/10_Saneador.py", title="Saneador"))
+if grupo_instrucao:
+    nav["🧾 Instrução Processual"] = grupo_instrucao
+
+# Último bloco do menu: apoio, com Cl8us Orienta isolado.
+grupo_apoio = []
+if (pages_dir / "11_Cl8us_Orienta.py").exists():
+    grupo_apoio.append(st.Page("pages/11_Cl8us_Orienta.py", title="Cl8us Orienta"))
+if grupo_apoio:
+    nav["🧭 Apoio"] = grupo_apoio
 
 pg = st.navigation(nav)
 render_versao_sidebar()

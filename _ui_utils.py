@@ -12,56 +12,33 @@ MESES_PT_EXTENSO = {
 }
 
 
-def render_marca_topo(titulo_pagina="", subtitulo_pagina=""):
-    """Identidade visual cl8us — header unificado para todas as páginas."""
-    _sub = str(subtitulo_pagina or "")
-    _tit = str(titulo_pagina or "")
-
-    _topbar = (
-        '<style>'
-        '[data-testid="stAppViewContainer"] > section > div:first-child { padding-top: 0 !important; }'
-        '</style>'
-        '<div style="display:flex;align-items:center;justify-content:space-between;'
-        'padding:12px 0 10px 0;border-bottom:0.5px solid #E2E8F0;margin-bottom:18px">'
-        '<div style="display:flex;align-items:center;gap:10px">'
-        '<div style="width:32px;height:32px;border-radius:9px;'
-        'background:linear-gradient(135deg,#1F4E78 0%,#185FA5 100%);'
-        'display:flex;align-items:center;justify-content:center;flex-shrink:0">'
-        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="white"'
-        ' stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
-        '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>'
-        '<polyline points="14 2 14 8 20 8"/>'
-        '<line x1="16" y1="13" x2="8" y2="13"/>'
-        '<line x1="16" y1="17" x2="8" y2="17"/>'
-        '<polyline points="10 9 9 9 8 9"/>'
-        '</svg></div>'
-        '<div style="display:flex;align-items:baseline;gap:6px">'
-        '<span style="font-size:15px;font-weight:600;color:#1F4E78;letter-spacing:-.01em">TLB</span>'
-        '<span style="font-size:13px;color:#CBD5E1">&nbsp;·&nbsp;</span>'
-        '<span style="font-size:13px;font-weight:500;color:#0F172A">cl8us</span>'
-        '</div></div>'
-        '<div style="display:flex;align-items:center;gap:5px;'
-        'background:#F0FDF4;border:0.5px solid #BBF7D0;border-radius:20px;padding:3px 10px">'
-        '<div style="width:5px;height:5px;border-radius:50%;background:#16A34A"></div>'
-        '<span style="font-size:11px;color:#15803D;font-weight:500">uso para docs não sigilosos</span>'
-        '</div></div>'
+def render_marca_topo():
+    """Identidade visual própria do sistema, sem uso de logomarca institucional."""
+    st.markdown(
+        """
+        <style>
+        .tlb-cl8us-brand { display: inline-flex; flex-direction: column; gap: 1px; margin: 0 0 0.70rem 0; padding: 0; }
+        .tlb-cl8us-brand-main { display: flex; align-items: baseline; gap: 0.45rem; line-height: 1.05; letter-spacing: -0.02em; }
+        .tlb-cl8us-tlb { color: #123B63; font-size: 1.38rem; font-weight: 750; font-family: "Inter", "Segoe UI", Arial, sans-serif; }
+        .tlb-cl8us-dot { color: #C0842B; font-size: 1.18rem; font-weight: 700; }
+        .tlb-cl8us-name { color: #0F172A; font-size: 1.42rem; font-weight: 800; font-family: "Consolas", "SFMono-Regular", "Cascadia Mono", "Courier New", monospace; letter-spacing: -0.04em; }
+        .tlb-cl8us-subtitle { color: #64748B; font-size: 0.74rem; font-weight: 500; font-family: "Inter", "Segoe UI", Arial, sans-serif; margin-top: 0.12rem; letter-spacing: 0.01em; }
+        .tlb-cl8us-separator { width: 172px; border-bottom: 2px solid #1F4E79; opacity: 0.78; margin-top: 0.42rem; }
+        .tlb-cl8us-aviso { display: block; margin-top: 0.42rem; color: #A16207; font-family: "Inter", "Segoe UI", Arial, sans-serif; font-size: 0.74rem; font-style: italic; font-weight: 400; line-height: 1.20; }
+        </style>
+        <div class="tlb-cl8us-brand" aria-label="TLB cl8us - apoio à gestão de contratos">
+            <div class="tlb-cl8us-brand-main">
+                <span class="tlb-cl8us-tlb">TLB</span>
+                <span class="tlb-cl8us-dot">·</span>
+                <span class="tlb-cl8us-name">cl8us</span>
+            </div>
+            <div class="tlb-cl8us-subtitle">apoio à gestão de contratos</div>
+            <div class="tlb-cl8us-separator"></div>
+            <div class="tlb-cl8us-aviso">AVISO: use apenas para docs não sigilosos e de livre acesso.</div>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
-
-    _titulo_html = ""
-    if _sub:
-        _titulo_html += (
-            '<p style="font-size:10px;font-weight:600;letter-spacing:.07em;'
-            'text-transform:uppercase;color:#94A3B8;margin-bottom:5px">'
-            + _sub + '</p>'
-        )
-    if _tit:
-        _titulo_html += (
-            '<p style="font-size:22px;font-weight:500;color:#0F172A;'
-            'margin-bottom:0;letter-spacing:-.02em">'
-            + _tit + '</p>'
-        )
-
-    st.markdown(_topbar + _titulo_html, unsafe_allow_html=True)
 
 
 def render_versao_sidebar():
@@ -88,63 +65,24 @@ def _normalizar_mes_ano_ist(valor):
 
 
 def obter_ultima_competencia_ist(caminho="ist.csv"):
-    """Retorna a última competência disponível no ist.csv.
-
-    Busca robusta:
-    1. caminho informado;
-    2. pasta atual de execução;
-    3. pasta onde está o próprio _ui_utils.py.
-
-    Mantém compatibilidade com o CSV atual:
-    MES_ANO;INDICE_NIVEL
-    jan/22;298,959
-    """
-    candidatos = []
     caminho_csv = Path(caminho)
-
-    candidatos.append(caminho_csv)
-    if not caminho_csv.is_absolute():
-        candidatos.append(Path.cwd() / caminho)
-        try:
-            candidatos.append(Path(__file__).resolve().parent / caminho)
-        except Exception:
-            pass
-
-    vistos = set()
-    candidatos_unicos = []
-    for c in candidatos:
-        try:
-            chave = str(c.resolve())
-        except Exception:
-            chave = str(c)
-        if chave not in vistos:
-            vistos.add(chave)
-            candidatos_unicos.append(c)
+    if not caminho_csv.exists():
+        return None
 
     melhor = None
-
-    for arq_csv in candidatos_unicos:
-        if not arq_csv.exists():
-            continue
-
-        try:
-            with arq_csv.open("r", encoding="utf-8-sig", newline="") as arquivo:
-                leitor = csv.DictReader(arquivo, delimiter=";")
-                for linha in leitor:
-                    mes_ano = linha.get("MES_ANO") or linha.get("mes_ano") or linha.get("MÊS_ANO") or linha.get("MES")
-                    indice = linha.get("INDICE_NIVEL") or linha.get("indice_nivel") or linha.get("ÍNDICE_NÍVEL")
-                    info = _normalizar_mes_ano_ist(mes_ano)
-                    if not info:
-                        continue
-                    if melhor is None or info["data"] > melhor["data"]:
-                        melhor = {
-                            **info,
-                            "indice": str(indice).strip() if indice is not None else "",
-                            "arquivo": str(arq_csv),
-                        }
-        except Exception:
-            continue
-
+    try:
+        with caminho_csv.open("r", encoding="utf-8-sig", newline="") as arquivo:
+            leitor = csv.DictReader(arquivo, delimiter=";")
+            for linha in leitor:
+                mes_ano = linha.get("MES_ANO") or linha.get("mes_ano")
+                indice = linha.get("INDICE_NIVEL") or linha.get("indice_nivel")
+                info = _normalizar_mes_ano_ist(mes_ano)
+                if not info:
+                    continue
+                if melhor is None or info["ordem"] > melhor["ordem"]:
+                    melhor = {**info, "indice": str(indice).strip() if indice is not None else ""}
+    except Exception:
+        return None
     return melhor
 
 
@@ -205,38 +143,17 @@ def render_alerta_icti_ipeadata():
     )
 
 def render_indice_contrato_selectbox(key=None, index=0, options=None):
-    """Renderiza o campo de índice com fallback visual seguro.
+    """Renderiza o campo de índice com destaque visual consistente entre os fluxos."""
+    if options is None:
+        options = ["IST (Série Local)", "ICTI (Ipeadata)", "IPCA (433)", "IGP-M (189)"]
 
-    Garante que os índices principais apareçam mesmo se algum fluxo enviar
-    options vazio/None. Não altera a regra de cálculo: a função continua
-    retornando o texto do índice selecionado.
-    """
-    opcoes_padrao = ["IST (Série Local)", "ICTI (Ipeadata)", "IPCA (433)", "IGP-M (189)"]
-
-    if not options:
-        options = list(opcoes_padrao)
-    else:
-        options = [str(o).strip() for o in list(options) if str(o).strip()]
-        if not options:
-            options = list(opcoes_padrao)
-
-    for opt in opcoes_padrao:
-        if opt not in options:
-            options.append(opt)
-
-    try:
-        index = int(index or 0)
-    except Exception:
-        index = 0
-    if index < 0 or index >= len(options):
-        index = 0
-
-    with st.container():
+    with st.container(border=True):
         st.markdown(
             """
-            <div class="cl8us-indice-box">
+            <div style="background:#F5F3FF; border:1px solid #C4B5FD; border-radius:10px;
+                        padding:0.62rem 0.75rem; margin-bottom:0.55rem; color:#4C1D95;">
                 <div style="font-weight:800; font-size:0.98rem;">Índice do contrato</div>
-                <div style="font-size:0.84rem; opacity:0.86; margin-top:2px;">
+                <div style="font-size:0.86rem; line-height:1.25rem;">
                     Revise este campo antes de prosseguir. Ele deve corresponder ao índice previsto no contrato.
                 </div>
             </div>
@@ -252,18 +169,18 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
             help="Confirme o índice contratual antes de gerar cálculos, arquivo de coleta ou relatórios.",
         )
 
-        st.caption("Opções disponíveis: " + " · ".join(options))
-
-        selecionado_norm = str(selecionado or "").strip().upper()
-        if selecionado_norm:
-            st.caption(f"Índice selecionado para esta análise: **{selecionado}**.")
+        if selecionado == options[index]:
+            st.caption(f"Conferência necessária: confirme se o índice contratual correto é **{selecionado}**.")
         else:
-            st.warning("Nenhum índice foi selecionado. Confira a lista de opções antes de prosseguir.", icon="⚠️")
+            st.caption(f"Índice selecionado para esta análise: **{selecionado}**.")
 
+        selecionado_norm = str(selecionado).strip().upper()
         if selecionado_norm.startswith("IST"):
             render_alerta_ist_local()
+        elif selecionado_norm.startswith("ICTI"):
+            render_alerta_icti_ipeadata()
 
-        return selecionado
+    return selecionado
 
 
 def render_aviso_privacidade(tem_upload=False, tem_download=False):

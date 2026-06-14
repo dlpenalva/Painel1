@@ -4689,7 +4689,6 @@ def render_metodologia_corte_operacional_v4(resultado, modo_apuracao_ui="Complet
 # ============================================================
 
 aplicar_css_responsivo_telebras()
-# ── INICIO_UI ── não remover este comentário ─────────────────────────────────
 render_marca_topo()
 st.title("Valor Global do Contrato")
 
@@ -4717,76 +4716,16 @@ with st.expander("Contexto da Admissibilidade", expanded=True):
         )
 
 st.subheader("Carregar Arquivo de Coleta")
+arquivo = st.file_uploader("Carregue aqui o Arquivo de Coleta preenchido (.xlsx)", type=["xlsx"])
 
-tab_nova, tab_legado = st.tabs(["📋 Coleta Única (v2.0)", "📁 Arquivo de Coleta (legado)"])
-
-with tab_nova:
-    st.caption(
-        "Nova entrada de dados unificada. O sistema identifica o modo automaticamente "
-        "a partir do preenchimento do fiscal. Você confirma antes de processar."
-    )
-    arquivo_cu = st.file_uploader(
-        "Coleta Única preenchida (.xlsx)",
-        type=["xlsx"],
-        key="upload_coleta_unica_valores",
-    )
-    if arquivo_cu is not None:
+if arquivo is not None:
+    if st.button("Processar Coleta Preenchida", type="primary", use_container_width=False):
         try:
-            from _leitor_coleta_unica import ler_coleta_unica
-            from _ponte_coleta_valores import MODOS_COLETA
-            bytes_cu = arquivo_cu.getvalue()
-            _diag = ler_coleta_unica(bytes_cu)
-            if not _diag.get("ok"):
-                st.error(f"Não foi possível ler a Coleta Única: {_diag.get('erro', '')}")
-            else:
-                _modo_detectado = _diag.get("modo_preliminar", "Financeiro Histórico")
-                _idx_default = MODOS_COLETA.index(_modo_detectado) if _modo_detectado in MODOS_COLETA else 0
-                _fin = _diag.get("financeiro", {})
-                _its = _diag.get("itens", {})
-                col_modo, col_info = st.columns([2, 3])
-                with col_modo:
-                    modo_confirmado = st.selectbox(
-                        "Modo identificado — confirme ou ajuste:",
-                        options=MODOS_COLETA,
-                        index=_idx_default,
-                        key="modo_coleta_unica_confirmado",
-                    )
-                with col_info:
-                    st.markdown(
-                        f"**Financeiro:** {_fin.get('linhas_preenchidas',0)} linhas "
-                        f"— R$ {_fin.get('total',0.0):,.2f} &nbsp;|&nbsp; "
-                        f"**Itens:** {_its.get('itens_cadastrados',0)} "
-                        f"&nbsp;|&nbsp; **Ciclos:** {len(_diag.get('ciclos',[]))}",
-                        unsafe_allow_html=True,
-                    )
-                    for _rv in _diag.get("ressalvas", []):
-                        st.warning(_rv, icon="⚠️")
-                if st.button("Processar Coleta Única", type="primary", key="btn_processar_coleta_unica"):
-                    try:
-                        resultado = processar_arquivo_coleta(bytes_cu)
-                        resultado["modo_apuracao"] = modo_confirmado
-                        st.session_state["resultado_valor_global"] = resultado
-                        st.session_state["modo_coleta_unica_usado"] = modo_confirmado
-                        st.success(f"Coleta Única processada — modo: **{modo_confirmado}**")
-                    except Exception as exc:
-                        st.error(f"Não foi possível processar a Coleta Única: {exc}")
-        except ImportError:
-            st.info("Módulo de Coleta Única não encontrado na pasta. Verifique se _leitor_coleta_unica.py e _ponte_coleta_valores.py estão na raiz do projeto.")
-
-with tab_legado:
-    arquivo = st.file_uploader(
-        "Carregue aqui o Arquivo de Coleta preenchido (.xlsx)",
-        type=["xlsx"],
-        key="upload_coleta_legado",
-    )
-    if arquivo is not None:
-        if st.button("Processar Coleta Preenchida", type="primary", use_container_width=False, key="btn_processar_legado"):
-            try:
-                resultado = processar_arquivo_coleta(arquivo.getvalue())
-                st.session_state["resultado_valor_global"] = resultado
-                st.success("Arquivo processado com sucesso. Resultados disponíveis abaixo e no módulo Relatório Global.")
-            except Exception as exc:
-                st.error(f"Não foi possível processar o arquivo: {exc}")
+            resultado = processar_arquivo_coleta(arquivo.getvalue())
+            st.session_state["resultado_valor_global"] = resultado
+            st.success("Arquivo processado com sucesso. Resultados disponíveis abaixo e no módulo Relatório Global.")
+        except Exception as exc:
+            st.error(f"Não foi possível processar o arquivo: {exc}")
 
 resultado = st.session_state.get("resultado_valor_global")
 
