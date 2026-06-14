@@ -40,9 +40,7 @@ def selecionar_fluxo(tipo):
     st.session_state["calculadora_mais_de_um_ciclo"] = tipo == "Múltiplos ciclos"
 
 
-render_marca_topo()
-
-st.title("Calculadora de Reajustes")
+render_marca_topo(titulo_pagina="Calculadora de Reajustes", subtitulo_pagina="Cálculo e admissibilidade")
 st.markdown(
     """
     <style>
@@ -238,111 +236,60 @@ elif fluxo_query in ["multiplos", "múltiplos", "multiplo", "múltiplo"]:
 
 tipo = st.session_state.get("calculadora_tipo_analise")
 
-
 st.markdown(
     """
-    <div class="modo-guia-wrap">
-        <div class="modo-guia-title">Como identificar o tipo de planilha que você tem</div>
-        <div class="modo-guia-subtitle">
-            Antes de gerar a planilha para envio à fiscalização, escolha o modelo de coleta conforme a base de informação que será preenchida.
-            Em regra, prefira o Modo Padrão. Use os demais quando a fiscalização não puder informar valores mensais.
-            A pergunta principal é: <strong>qual planilha devo gerar para o fiscal preencher?</strong>
-        </div>
-        <div class="modo-guia-grid">
-            <div class="modo-guia-card modo-card-padrao">
-                <div class="modo-chip modo-chip-padrao">Modo Padrão</div>
-                <div class="modo-card-title">Planilha com itens remanescentes + valores mensais</div>
-                <div class="modo-card-leio">O que eu leio?</div>
-                <div class="modo-card-text">Remanescentes dos itens por ciclo e uma base mensal de execução por competência.</div>
-                <table class="mini-sheet">
-                    <tr><th colspan="3">Itens remanescentes</th></tr>
-                    <tr><td>Item 1</td><td class="num">9</td><td class="num">R$ 440,00</td></tr>
-                    <tr><td>Item 2</td><td class="num">1.456</td><td class="num">R$ 10,00</td></tr>
-                </table>
-                <table class="mini-sheet">
-                    <tr><th colspan="2">Valores mensais</th></tr>
-                    <tr><td>01/2025</td><td class="num">R$ 25.000,00</td></tr>
-                    <tr><td>02/2025</td><td class="num">R$ 24.800,00</td></tr>
-                </table>
-                <div class="modo-result">Resultado: retroativo financeiro por competência + saldo remanescente atualizado.</div>
-            </div>
-            <div class="modo-guia-card modo-card-reduzido">
-                <div class="modo-chip modo-chip-reduzido">Modo Reduzido</div>
-                <div class="modo-card-title">Planilha com itens remanescentes sem valores mensais</div>
-                <div class="modo-card-leio">O que eu leio?</div>
-                <div class="modo-card-text">Saldos/remanescentes dos itens por ciclo, mas sem base financeira mensal.</div>
-                <table class="mini-sheet">
-                    <tr><th colspan="3">Itens remanescentes</th></tr>
-                    <tr><td>Item 1</td><td class="num">9</td><td class="num">R$ 440,00</td></tr>
-                    <tr><td>Item 2</td><td class="num">1.456</td><td class="num">R$ 10,00</td></tr>
-                </table>
-                <table class="mini-sheet">
-                    <tr><th colspan="2">Valores mensais</th></tr>
-                    <tr><td>Competência</td><td class="num">—</td></tr>
-                    <tr><td>Valor</td><td class="num">—</td></tr>
-                </table>
-                <div class="modo-result">Resultado: apuração estimativa por itens/estoque + saldo remanescente atualizado.</div>
-            </div>
-            <div class="modo-guia-card modo-card-consumo">
-                <div class="modo-chip modo-chip-consumo">Consumo por Ciclo</div>
-                <div class="modo-card-title">Planilha com itens consumidos por ciclo sem valores mensais</div>
-                <div class="modo-card-leio">O que eu leio?</div>
-                <div class="modo-card-text">Quantidades consumidas/executadas por ciclo, sem base financeira mensal por competência.</div>
-                <table class="mini-sheet">
-                    <tr><th>Item</th><th class="num">C1</th><th class="num">C2</th><th class="num">C3</th></tr>
-                    <tr><td>Item 1</td><td class="num">5</td><td class="num">2</td><td class="num">1</td></tr>
-                    <tr><td>Item 2</td><td class="num">40</td><td class="num">18</td><td class="num">7</td></tr>
-                </table>
-                <table class="mini-sheet">
-                    <tr><th colspan="2">Valores mensais</th></tr>
-                    <tr><td>Competência</td><td class="num">—</td></tr>
-                    <tr><td>Valor</td><td class="num">—</td></tr>
-                </table>
-                <div class="modo-result">Resultado: Retroativo (itens consumidos/ciclo) + Saldo Remanescente Atualizado.</div>
-            </div>
-        </div>
-    </div>
+    <style>
+    .cl8us-tipo-wrap {
+        margin: 1.2rem 0 1.4rem 0;
+        padding: 12px 16px 12px 18px;
+        border-left: 4px solid #2563EB;
+        background: #F8FAFC;
+        border-radius: 0 8px 8px 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        font-size: 1.02rem;
+        color: #1E293B;
+        font-weight: 500;
+    }
+    .cl8us-tipo-wrap a {
+        color: #1E3A8A;
+        font-weight: 600;
+        text-decoration: none;
+        padding: 3px 10px;
+        border-radius: 5px;
+        border: 1.5px solid transparent;
+        transition: all 0.15s;
+    }
+    .cl8us-tipo-wrap a:hover {
+        background: #EFF6FF;
+        border-color: #93C5FD;
+    }
+    .cl8us-tipo-sel {
+        background: #1E3A8A !important;
+        color: #FFFFFF !important;
+        border-color: #1E3A8A !important;
+        font-weight: 700 !important;
+    }
+    .cl8us-tipo-sep { color: #94A3B8; margin: 0 2px; font-weight: 400; }
+    .cl8us-tipo-hint { color: #2563EB; font-size: 0.85rem; margin-left: 4px; }
+    </style>
     """,
     unsafe_allow_html=True,
 )
 
-
-st.subheader("A análise envolve mais de um ciclo de reajuste?")
-
-unico_classes = "calc-card-link calc-card-unico"
-mult_classes = "calc-card-link calc-card-multiplos"
-
-if tipo == "Ciclo único":
-    unico_classes += " calc-card-selected-unico"
-    unico_status = "Selecionado"
-else:
-    unico_status = "&nbsp;"
-
-if tipo == "Múltiplos ciclos":
-    mult_classes += " calc-card-selected-multiplos"
-    mult_status = "Selecionado"
-else:
-    mult_status = "&nbsp;"
+_unico_cls = "cl8us-tipo-sel" if tipo == "Ciclo único"      else ""
+_mult_cls  = "cl8us-tipo-sel" if tipo == "Múltiplos ciclos" else ""
+_hint      = '<span class="cl8us-tipo-hint">← selecione</span>' if not tipo else ""
 
 st.markdown(
     f"""
-    <div class="calc-card-grid">
-        <a class="{unico_classes}" href="?fluxo=unico" target="_self">
-            <div class="calc-card-title">Único ciclo</div>
-            <div class="calc-card-text">
-                Use quando há apenas um ciclo de reajuste a calcular.
-                Pedido tardio, acordo negocial, ciclo negativo ou histórico anterior podem ser tratados dentro do próprio fluxo, se existirem.
-            </div>
-            <div class="calc-selected">{unico_status}</div>
-        </a>
-        <a class="{mult_classes}" href="?fluxo=multiplos" target="_self">
-            <div class="calc-card-title">Múltiplos ciclos</div>
-            <div class="calc-card-text">
-                Use quando há dois ou mais ciclos, ciclos acumulados, valores represados em mais de um período,
-                recomposição de histórico por ciclo ou preclusões sucessivas.
-            </div>
-            <div class="calc-selected">{mult_status}</div>
-        </a>
+    <div class="cl8us-tipo-wrap">
+        A análise envolve
+        <a href="?fluxo=unico"     target="_self" class="{_unico_cls}">ciclo único</a>
+        <span class="cl8us-tipo-sep">ou</span>
+        <a href="?fluxo=multiplos" target="_self" class="{_mult_cls}">múltiplos ciclos</a>?
+        {_hint}
     </div>
     """,
     unsafe_allow_html=True,
@@ -353,7 +300,6 @@ if not tipo:
 
 
 st.divider()
-st.subheader(f"Área de cálculo — {'Único ciclo' if tipo == 'Ciclo único' else 'Múltiplos ciclos'}")
 
 if tipo == "Ciclo único":
     executar_motor("01_Calculo_Simples.py")
