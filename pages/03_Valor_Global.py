@@ -9,6 +9,7 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+aditivos_somados_ao_valor_total = 0.0  # fallback: planilha sem aditivos computaveis
 LEITOR_CONSUMO_ITENS_CICLO_VERSAO = "20260516_0207"
 
 try:
@@ -3544,6 +3545,7 @@ def ajustar_remanescente_por_corte_operacional(df_rem, df_execucao, valor_origin
     return df_rem_ajustado, ciclo_label, remanescente_original_operacional, remanescente_atualizado_operacional
 
 def processar_arquivo_coleta(bytes_arquivo):
+    aditivos_somados_ao_valor_total = 0.0  # fallback: planilha sem aditivos computaveis
     xls = pd.ExcelFile(BytesIO(bytes_arquivo))
     params = ler_parametros(bytes_arquivo, xls)
     contexto_contratual = contexto_contratual_de_parametros(params, bytes_arquivo, xls)

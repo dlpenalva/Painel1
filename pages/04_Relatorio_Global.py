@@ -1790,6 +1790,8 @@ def _linhas_quadro_memoria_fiscal(res):
                 if computa:
                     total_aditivos_computaveis += _numero_br_relatorio(row.get(col_valor, 0), 0.0)
 
+    # Fallback para modelos de coleta sem aba/linhas de aditivos computaveis.
+    aditivos_somados_ao_valor_total = 0.0
     if abs(total_aditivos_computaveis) <= 0.004 and bool(res.get("aditivos_somados_ao_valor_total", False)):
         total_aditivos_computaveis = _numero_br_relatorio(res.get("total_aditivos_atualizados", 0), 0.0)
 
