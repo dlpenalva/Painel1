@@ -2444,6 +2444,25 @@ if res:
         'ciclos': [ciclo_unico],
     }
 
+
+    # >>> BOTAO_COLETA_SIMPLES_ESTAVEL_V1
+    try:
+        _bytes_coleta_estavel = gerar_arquivo_coleta_excel(
+            st.session_state.get("dados_admissibilidade", {})
+        )
+        st.download_button(
+            label="Baixar Arquivo de Coleta",
+            data=_bytes_coleta_estavel,
+            file_name="ColetaReajuste.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+            help="Baixa o arquivo de coleta da versão estável, pré-preenchido com os dados desta apuração.",
+            key="btn_baixar_coleta_reajuste_estavel_simples_v1",
+        )
+    except Exception as _e_coleta_estavel:
+        st.warning(f"Não foi possível gerar o Arquivo de Coleta: {_e_coleta_estavel}")
+    # <<< BOTAO_COLETA_SIMPLES_ESTAVEL_V1
+
     # ── Botão de email ao fornecedor ──────────────────────────────────────
     try:
         _assunto_email, _corpo_email = _gerar_email_fornecedor(
