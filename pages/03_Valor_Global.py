@@ -1201,7 +1201,7 @@ def gerar_excel_valores_unitarios_por_ciclo(df_valores, ciclos):
         fmt_text = workbook.add_format({"border": 1})
         fmt_text_red = workbook.add_format({"font_color": "#C00000", "border": 1})
         fmt_pct = workbook.add_format({"num_format": "0.00%", "border": 1})
-        fmt_factor = workbook.add_format({"num_format": "0.0000", "border": 1})
+        fmt_factor = workbook.add_format({"num_format": "0.00", "border": 1})
 
         ciclo_fills = ["#FFFFFF", "#DDEBF7", "#E2F0D9", "#FFF2CC", "#EADCF8", "#E7E6E6", "#DDEBF7", "#E2F0D9"]
         def fmt_ciclo(ciclo, tipo="text", precluso=False, header=False):
@@ -1219,7 +1219,7 @@ def gerar_excel_valores_unitarios_por_ciclo(df_valores, ciclos):
             elif tipo == "pct":
                 base["num_format"] = "0.00%"
             elif tipo == "factor":
-                base["num_format"] = "0.0000"
+                base["num_format"] = "0.00"
             return workbook.add_format(base)
 
 
@@ -1320,7 +1320,7 @@ def gerar_excel_valores_unitarios_por_ciclo(df_valores, ciclos):
             ultima_linha_excel = ultima_linha_itens + 1
             col_letter = chr(ord('A') + excel_col_total) if excel_col_total < 26 else None
             if col_letter:
-                formula = f"=SUM({col_letter}{primeira_linha_excel}:{col_letter}{ultima_linha_excel})"
+                formula = f"=ROUND(SUM({col_letter}{primeira_linha_excel}:{col_letter}{ultima_linha_excel}),2)"
                 ws_m.write_blank(total_row, col_atual, None, fmt_ciclo(ciclo, "text", False))
                 ws_m.write_blank(total_row, col_atual + 1, None, fmt_ciclo(ciclo, "text", False))
                 ws_m.write_formula(total_row, col_atual + 2, formula, fmt_ciclo(ciclo, "money", False, header=True))
@@ -1408,7 +1408,7 @@ def gerar_planilha_executiva(resultado):
         fmt_money = workbook.add_format({"border": 1, "num_format": 'R$ #,##0.00', "valign": "vcenter"})
         fmt_money_bold = workbook.add_format({"border": 1, "num_format": 'R$ #,##0.00', "bold": True, "bg_color": "#E2F0D9"})
         fmt_pct = workbook.add_format({"border": 1, "num_format": "0.00%", "valign": "vcenter"})
-        fmt_factor = workbook.add_format({"border": 1, "num_format": "0.0000", "valign": "vcenter"})
+        fmt_factor = workbook.add_format({"border": 1, "num_format": "0.00", "valign": "vcenter"})
         fmt_red_money = workbook.add_format({"border": 1, "font_color": "#C00000", "num_format": 'R$ #,##0.00'})
         fmt_red_text = workbook.add_format({"border": 1, "font_color": "#C00000"})
         fmt_note = workbook.add_format({"italic": True, "font_color": "#64748B"})
@@ -1502,7 +1502,7 @@ def gerar_planilha_executiva(resultado):
             elif tipo == "pct":
                 base["num_format"] = "0.00%"
             elif tipo == "factor":
-                base["num_format"] = "0.0000"
+                base["num_format"] = "0.00"
             return workbook.add_format(base)
 
         # ====================================================
@@ -1807,7 +1807,7 @@ def gerar_planilha_executiva(resultado):
                 col_total_excel = col_atual + 2
                 if col_total_excel < 26:
                     col_letter = chr(ord('A') + col_total_excel)
-                    formula = f"=SUM({col_letter}{primeira_linha_excel}:{col_letter}{ultima_linha_excel})"
+                    formula = f"=ROUND(SUM({col_letter}{primeira_linha_excel}:{col_letter}{ultima_linha_excel}),2)"
                     ws_i.write_blank(total_row, col_atual, None, fmt_ciclo(ciclo, "text", False))
                     ws_i.write_blank(total_row, col_atual + 1, None, fmt_ciclo(ciclo, "text", False))
                     ws_i.write_formula(total_row, col_atual + 2, formula, fmt_ciclo(ciclo, "money", False, header=True))

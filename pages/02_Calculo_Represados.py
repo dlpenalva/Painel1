@@ -895,7 +895,7 @@ def gerar_modelo_consumo_itens_ciclo_excel(dados_admissibilidade):
         fmt_ciclo_money_b = workbook.add_format({'border': 1, 'bg_color': '#F4E7D3', 'num_format': 'R$ #,##0.00'})
         fmt_money = workbook.add_format({'border': 1, 'num_format': 'R$ #,##0.00'})
         fmt_percent = workbook.add_format({'border': 1, 'num_format': '0.00%'})
-        fmt_factor = workbook.add_format({'border': 1, 'num_format': '0.0000'})
+        fmt_factor = workbook.add_format({'border': 1, 'num_format': '0.00'})
         fmt_total = workbook.add_format({'bold': True, 'bg_color': cor_total, 'border': 1})
         fmt_total_num = workbook.add_format({'bold': True, 'bg_color': cor_total, 'border': 1, 'num_format': '#,##0.00'})
         fmt_total_money = workbook.add_format({'bold': True, 'bg_color': cor_total, 'border': 1, 'num_format': 'R$ #,##0.00'})
@@ -1267,12 +1267,12 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         fmt_total_num = workbook.add_format({'bold': True, 'bg_color': '#E2F0D9', 'border': 1, 'num_format': '#,##0.00'})
         fmt_decrease_red = workbook.add_format({'font_color': '#C00000'})
         fmt_percent = workbook.add_format({'num_format': '0.00%', 'border': 1})
-        fmt_factor = workbook.add_format({'num_format': '0.0000', 'border': 1})
-        fmt_factor_auto = workbook.add_format({'num_format': '0.0000', 'bg_color': '#EDEDED', 'border': 1})
+        fmt_factor = workbook.add_format({'num_format': '0.00', 'border': 1})
+        fmt_factor_auto = workbook.add_format({'num_format': '0.00', 'bg_color': '#EDEDED', 'border': 1})
         fmt_no_border = workbook.add_format({})
         fmt_int_no_border = workbook.add_format({'num_format': '0'})
         fmt_percent_no_border = workbook.add_format({'num_format': '0.00%'})
-        fmt_factor_no_border = workbook.add_format({'num_format': '0.0000'})
+        fmt_factor_no_border = workbook.add_format({'num_format': '0.00'})
         fmt_text_left_no_border = workbook.add_format({'align': 'left'})
         fmt_money_left_no_border = workbook.add_format({'num_format': 'R$ #,##0.00', 'align': 'left'})
         fmt_text_wrap_no_border = workbook.add_format({'align': 'left', 'valign': 'top', 'text_wrap': True})
@@ -1280,7 +1280,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         fmt_text_wrap = workbook.add_format({'border': 1, 'align': 'left', 'valign': 'top', 'text_wrap': True})
         fmt_int_left_no_border = workbook.add_format({'num_format': '0', 'align': 'left'})
         fmt_percent_left_no_border = workbook.add_format({'num_format': '0.00%', 'align': 'left'})
-        fmt_factor_left_no_border = workbook.add_format({'num_format': '0.0000', 'align': 'left'})
+        fmt_factor_left_no_border = workbook.add_format({'num_format': '0.00', 'align': 'left'})
         fmt_gap_date = workbook.add_format({'num_format': 'dd/mm/yyyy', 'border': 1, 'bg_color': '#F4CCCC', 'font_color': '#9C0006'})
         fmt_gap_text = workbook.add_format({'border': 1, 'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'align': 'center'})
         fmt_gap_text_wrap = workbook.add_format({'border': 1, 'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'text_wrap': True, 'valign': 'top'})
@@ -1339,12 +1339,33 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
                     return None
             return None
 
-        def _competencias_sem_efeito_financeiro(ciclo):
+        # PATCH_XLS_MENSALIZACAO_ESTAVEL_V1
+        def _primeira_competencia_habilitada_periodo(ciclo):
+            """Primeira competência do ciclo para fins financeiros, por critério mensal.
+
+            Regra consolidada para o XLS de coleta:
+            - a competência/mês é a unidade de referência;
+            - não se preserva fração de mês por dia dentro do XLS padrão;
+            - se o pedido ocorrer em mês posterior ao mês de aniversário da data-base,
+              as competências anteriores ao mês do pedido ficam sem efeito financeiro;
+            - eventual cálculo pro rata deve ser apartado, não automático neste XLS.
+            """
+            data_base = ciclo.get('data_base', '') or ciclo.get('Data-base', '')
+            dt_base = pd.to_datetime(data_base, dayfirst=True, errors='coerce')
+            if pd.notna(dt_base):
+                return (dt_base + relativedelta(years=1)).to_period('M')
+
+            # Fallback para arquivos/cenários antigos sem data_base explícita.
             fim_indice = _fim_intervalo_indice_periodo(ciclo.get('intervalo_indice', ciclo.get('Janela', '')))
+            if fim_indice is not None:
+                return fim_indice + 1
+            return None
+
+        def _competencias_sem_efeito_financeiro(ciclo):
+            primeira_comp_habilitada = _primeira_competencia_habilitada_periodo(ciclo)
             inicio_fin = _periodo_mensal_seguro(ciclo.get('financeiro_inicio', ''))
-            if fim_indice is None or inicio_fin is None:
+            if primeira_comp_habilitada is None or inicio_fin is None:
                 return []
-            primeira_comp_habilitada = fim_indice + 1
             ultima_comp_sem_efeito = inicio_fin - 1
             if ultima_comp_sem_efeito < primeira_comp_habilitada:
                 return []
@@ -1353,25 +1374,17 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         def _primeira_competencia_base_execucao(ciclo):
             """Define a primeira competência da BASE_EXECUCAO_MENSAL.
 
-            Regra contratual consolidada:
-            - se o pedido/efeito financeiro ocorre no próprio mês em que o ciclo se habilita,
-              a base mensal deve começar no mês do início financeiro;
-            - se houver atraso no pedido, a base mensal deve começar na primeira competência
-              habilitada após o intervalo do índice, para evidenciar os meses sem efeito financeiro;
-            - portanto, usa-se a menor competência entre o início financeiro e a primeira
-              competência habilitada. Isso preserva casos antigos, evita deslocamento de 1 mês
-              e permite demonstrar competências sem retroativo quando houver lapso.
+            A base de execução deve exibir o ciclo mensal inteiro: 12 competências a
+            partir do mês de aniversário da data-base. O atraso no pedido não desloca
+            nem alonga o ciclo; apenas marca as competências anteriores ao mês do pedido
+            como sem efeito financeiro.
             """
-            fim_indice = _fim_intervalo_indice_periodo(ciclo.get('intervalo_indice', ciclo.get('Janela', '')))
+            primeira_habilitada = _primeira_competencia_habilitada_periodo(ciclo)
+            if primeira_habilitada is not None:
+                return primeira_habilitada.strftime('%d/%m/%Y')
             inicio_fin = _periodo_mensal_seguro(ciclo.get('financeiro_inicio', ''))
-
-            if fim_indice is not None and inicio_fin is not None:
-                primeira_habilitada = fim_indice + 1
-                return min(inicio_fin, primeira_habilitada).strftime('%d/%m/%Y')
             if inicio_fin is not None:
                 return inicio_fin.strftime('%d/%m/%Y')
-            if fim_indice is not None:
-                return (fim_indice + 1).strftime('%d/%m/%Y')
             return ciclo.get('financeiro_inicio', '')
 
 
