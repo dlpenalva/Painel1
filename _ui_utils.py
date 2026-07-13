@@ -19,7 +19,7 @@ def render_marca_topo():
     st.markdown(
         """
         <style>
-        .tlb-cl8us-brand { display: inline-flex; flex-direction: column; gap: 1px; margin: 0 0 0.70rem 0; padding: 0; }
+        .tlb-cl8us-brand { display: inline-flex; flex-direction: column; gap: 1px; margin: 0 0 0.70rem 0; padding: 1.45rem 0 0; }
         .tlb-cl8us-brand-main { display: flex; align-items: baseline; gap: 0.45rem; line-height: 1.05; letter-spacing: -0.02em; }
         .tlb-cl8us-tlb { color: #123B63; font-size: 1.38rem; font-weight: 750; font-family: "Inter", "Segoe UI", Arial, sans-serif; }
         .tlb-cl8us-dot { color: #C0842B; font-size: 1.18rem; font-weight: 700; }
