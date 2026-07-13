@@ -67,6 +67,10 @@ def _render_css() -> None:
             --cl8us-main-end: #F2ECE1;
             --cl8us-surface: #FFFCF7;
             --cl8us-surface-soft: #F5F0E7;
+            --cl8us-input: #FFF9E8;
+            --cl8us-step: rgba(255, 255, 255, .42);
+            --cl8us-index: #FBE8AD;
+            --cl8us-index-line: #D5A11E;
             --cl8us-navy: #123B63;
             --cl8us-muted: #50687D;
             --cl8us-action: #7A1733;
@@ -135,6 +139,28 @@ def _render_css() -> None:
             margin: .8rem 0 .28rem 0;
             text-transform: uppercase;
         }
+        .cl8us-cycle-step {
+            background: var(--cl8us-step);
+            border-left: 4px solid var(--cl8us-navy);
+            border-radius: 0 8px 8px 0;
+            color: var(--cl8us-navy);
+            font-size: .87rem;
+            font-weight: 750;
+            letter-spacing: .01em;
+            margin: .65rem 0 .28rem;
+            padding: .48rem .72rem;
+        }
+        .cl8us-cycle-step.final { border-left-color: var(--cl8us-action); }
+        .cl8us-interval-box {
+            background: rgba(255, 253, 247, .82);
+            border: 1px solid rgba(18, 59, 99, .20);
+            border-radius: 9px;
+            color: var(--cl8us-navy);
+            font-size: .88rem;
+            margin: .55rem 0 .85rem;
+            padding: .62rem .74rem;
+        }
+        .cl8us-interval-box span { color: var(--cl8us-muted); font-size: .78rem; }
         .cl8us-version-rule {
             border-top: 1px solid rgba(18, 59, 99, .19);
             margin: 2.15rem 0 1.05rem;
@@ -159,10 +185,51 @@ def _render_css() -> None:
             text-transform: uppercase;
         }
         [data-testid="stVerticalBlockBorderWrapper"] {
-            background: rgba(249, 252, 254, .94);
+            background: rgba(255, 252, 247, .94);
             border-color: var(--cl8us-line) !important;
             border-radius: 13px;
             box-shadow: 0 10px 24px rgba(18, 59, 99, .075);
+        }
+        [data-testid="stVerticalBlockBorderWrapper"]:has(.cl8us-index-marker) {
+            background: var(--cl8us-index) !important;
+            border-color: var(--cl8us-index-line) !important;
+            box-shadow: 0 8px 18px rgba(122, 96, 25, .08);
+        }
+        .cl8us-index-marker { display: none; }
+        .cl8us-index-title {
+            color: var(--cl8us-navy);
+            font-size: .98rem;
+            font-weight: 800;
+            margin: .08rem 0 .55rem;
+        }
+        [data-baseweb="select"] > div,
+        [data-testid="stDateInput"] input,
+        [data-testid="stTextInput"] input {
+            background: var(--cl8us-surface) !important;
+            border-color: rgba(18, 59, 99, .20) !important;
+            border-radius: 9px !important;
+            color: var(--cl8us-navy) !important;
+        }
+        [data-testid="stSidebar"] [data-baseweb="select"] > div,
+        [data-testid="stSidebar"] [data-testid="stDateInput"] input,
+        [data-testid="stSidebar"] [data-testid="stTextInput"] input {
+            background: var(--cl8us-input) !important;
+        }
+        [data-baseweb="select"] > div:focus-within,
+        [data-testid="stDateInput"] input:focus,
+        [data-testid="stTextInput"] input:focus {
+            border-color: var(--cl8us-action) !important;
+            box-shadow: 0 0 0 1px var(--cl8us-action) !important;
+        }
+        [data-testid="stSidebar"] [data-testid="stRadio"] label {
+            border-left: 3px solid transparent;
+            border-radius: 0 8px 8px 0;
+            padding: .24rem .38rem;
+        }
+        [data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked) {
+            background: rgba(255, 255, 255, .40);
+            border-left-color: var(--cl8us-navy);
+            font-weight: 700;
         }
         .home-card {
             min-height: 132px;

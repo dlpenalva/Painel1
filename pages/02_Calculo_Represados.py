@@ -401,6 +401,17 @@ def _ciclo_para_numero(valor):
 def _primeiro_ciclo_analise(contexto):
     return max(_ciclo_para_numero((contexto or {}).get('ultimo_ciclo_concedido', '')) + 1, 1)
 
+
+def _calcular_data_inicial_ciclo(dt_base, primeiro_ciclo_num, contexto):
+    """Calcula a âncora do primeiro ciclo atual pela mesma regra da v3.0."""
+    ultimo_num = _ciclo_para_numero((contexto or {}).get('ultimo_ciclo_concedido', ''))
+    numero_inicial = int(primeiro_ciclo_num)
+    if ultimo_num > 0:
+        salto = numero_inicial - ultimo_num - 1
+        return dt_base if salto < 0 else dt_base + relativedelta(years=salto)
+    return dt_base + relativedelta(years=numero_inicial - 1)
+
+
 def _data_contexto_para_datetime(valor):
     if not valor:
         return None
@@ -1892,19 +1903,20 @@ if not st.session_state.get("_calculadora_reajustes_embedded", False):
     render_marca_topo()
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
     st.title("Calculadora multiciclo")
-    st.caption("Selecione o intervalo atual. Histórico e ciclos anteriores são informados somente no XLS baixado.")
+    st.caption("Selecione o intervalo atual. Ao iniciar após C1, confirme a situação do ciclo anterior.")
 
-# Premissa do Master 2.0: histórico contratual não é coletado na web.
+# O histórico permanece enxuto: a web coleta somente o marco necessário para
+# calcular corretamente o primeiro ciclo atual; os demais fatos ficam no XLS.
 contexto_contratual = {}
 primeiro_ciclo_num = 1
 default_dt_base_original = datetime(2022, 10, 10)
 
 with st.sidebar:
     dt_base_original = st.date_input(
-        "Data-base/âncora do C1:",
+        "Data-base/âncora inicial da análise atual:",
         value=default_dt_base_original,
         format="DD/MM/YYYY",
-        help="Informe a data-base do primeiro ciclo contratual. Ao iniciar em C2, C3 ou C4, a calculadora avança a linha anual automaticamente.",
+        help="Informe a data-base original do contrato ou a âncora a partir da qual os ciclos devem ser contados.",
     )
 
     st.markdown(
@@ -1917,7 +1929,7 @@ with st.sidebar:
     )
 
     st.markdown(
-        '<div class="cl8us-side-group">1 · Ciclo inicial desta análise</div>',
+        '<div class="cl8us-cycle-step">1 · Ciclo inicial desta análise</div>',
         unsafe_allow_html=True,
     )
     ciclo_ini_analise = st.selectbox(
@@ -1931,13 +1943,71 @@ with st.sidebar:
     )
     primeiro_ciclo_num = _ciclo_para_numero(ciclo_ini_analise)
 
+    _dt_base_calculo = dt_base_original
+    _contexto_calculo = {}
+    _sit_anterior = "Não se aplica"
+
+    if int(primeiro_ciclo_num) > 1:
+        st.markdown(
+            '<div class="cl8us-cycle-step">Histórico anterior à análise</div>',
+            unsafe_allow_html=True,
+        )
+        _opcoes_situacao_anterior = [
+            "Nenhum ciclo anterior concedido",
+            "Houve ciclo anterior concedido/formalizado",
+            "Situação desconhecida",
+        ]
+        _sit_anterior = st.radio(
+            "Situação anterior à análise:",
+            options=_opcoes_situacao_anterior,
+            key="rep_situacao_anterior_ciclo",
+            index=0,
+        )
+
+        if _sit_anterior == "Houve ciclo anterior concedido/formalizado":
+            _opcoes_ultimo_ciclo = [f"C{numero}" for numero in range(1, int(primeiro_ciclo_num))]
+            _ultimo_ciclo_anterior = st.selectbox(
+                "Último ciclo concedido/formalizado:",
+                options=_opcoes_ultimo_ciclo,
+                key="rep_ultimo_ciclo_anterior",
+            )
+            _marco_temporal_anterior = st.date_input(
+                "Marco temporal do último ciclo concedido/formalizado:",
+                value=dt_base_original,
+                key="rep_marco_temporal_anterior",
+                format="DD/MM/YYYY",
+                help="Este marco será usado para calcular a admissibilidade do próximo ciclo.",
+            )
+            st.text_input(
+                "Observação de rastreabilidade (opcional):",
+                key="rep_obs_rastreabilidade_anterior",
+                placeholder="Ex.: Apostilamento de 11/04/2023, Termo Aditivo n.º ...",
+            )
+            contexto_contratual = {
+                "ultimo_ciclo_concedido": _ultimo_ciclo_anterior,
+                "data_pedido_ultimo_ciclo": _marco_temporal_anterior,
+                "data_base_ultimo_ciclo": _marco_temporal_anterior,
+            }
+            _contexto_calculo = contexto_contratual
+            _dt_base_calculo = _marco_temporal_anterior
+        elif _sit_anterior == "Situação desconhecida":
+            st.warning(
+                f"Situação anterior não confirmada. A data-base de C{primeiro_ciclo_num} "
+                "será calculada pela linha anual da data-base original."
+            )
+        else:
+            st.info(
+                f"Sem ciclo anterior concedido. A data-base de C{primeiro_ciclo_num} "
+                "será calculada pela linha anual da data-base original."
+            )
+
     opcoes_ciclo_final = [f"C{numero}" for numero in range(primeiro_ciclo_num, 5)]
     chave_ciclo_final = "rep_ciclo_final_analise"
     if st.session_state.get(chave_ciclo_final) not in opcoes_ciclo_final:
         st.session_state[chave_ciclo_final] = opcoes_ciclo_final[min(1, len(opcoes_ciclo_final) - 1)]
 
     st.markdown(
-        '<div class="cl8us-side-group">2 · Ciclo final desta análise</div>',
+        '<div class="cl8us-cycle-step final">2 · Ciclo final desta análise</div>',
         unsafe_allow_html=True,
     )
     ciclo_fin_analise = st.selectbox(
@@ -1951,9 +2021,9 @@ with st.sidebar:
     qtd_ciclos = int(ultimo_ciclo_contratual) - int(primeiro_ciclo_num) + 1
     st.markdown(
         f"""
-        <div style="background:rgba(255,255,255,.52);border:1px solid rgba(18,59,99,.18);border-radius:9px;padding:9px 11px;margin:8px 0 12px;color:#123B63;font-size:.88rem;">
+        <div class="cl8us-interval-box">
             <strong>Intervalo selecionado:</strong> {ciclo_ini_analise} → {ciclo_fin_analise}<br>
-            <span style="font-size:.78rem;color:#50687D;">O XLS preservará C0 e os ciclos anteriores para preenchimento histórico.</span>
+            <span>O XLS será gerado com os ciclos reais selecionados.</span>
         </div>
         """,
         unsafe_allow_html=True,
@@ -1964,9 +2034,9 @@ with st.sidebar:
 # Isso evita que a página abra com um cenário fictício já calculado.
 input_ciclos = []
 containers_ciclos = []
-# Replica a regra validada no 3.0: sem contexto editável na web, a data-base
-# do ciclo inicial é obtida pela linha anual contada a partir do C1.
-data_atual = dt_base_original + relativedelta(years=primeiro_ciclo_num - 1)
+# Regra idêntica à v3.0: sem histórico concedido, segue a linha anual; com
+# ciclo formalizado, usa o marco informado e avança apenas os ciclos pulados.
+data_atual = _calcular_data_inicial_ciclo(_dt_base_calculo, primeiro_ciclo_num, _contexto_calculo)
 
 for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
     i = primeiro_ciclo_num + posicao_ciclo - 1
@@ -1991,8 +2061,8 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
             format="DD/MM/YYYY",
         )
 
-    # Todo ciclo selecionado nesta tela integra a análise atual. Ciclos já
-    # concedidos ou históricos são registrados exclusivamente no XLS.
+    # Todo ciclo selecionado nesta tela integra a análise atual. O ciclo
+    # histórico informado na lateral serve apenas como âncora e contexto do XLS.
     ciclo_ja_concedido = False
 
     # Lógica de Admissibilidade preservada.
@@ -2103,6 +2173,9 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
 chave_analise_multiplos = (
     primeiro_ciclo_num,
     dt_base_original.isoformat(),
+    _sit_anterior,
+    str(contexto_contratual.get("ultimo_ciclo_concedido", "")),
+    str(contexto_contratual.get("data_base_ultimo_ciclo", "")),
     int(qtd_ciclos),
     idx_sel,
     tuple(c['dt_ped'].isoformat() for c in input_ciclos),

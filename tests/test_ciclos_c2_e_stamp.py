@@ -21,24 +21,28 @@ class TestCiclosC2EStamp(unittest.TestCase):
         self.assertIn('options=["C1", "C2", "C3", "C4"]', MULTI)
         self.assertIn("range(primeiro_ciclo_num, 5)", MULTI)
         self.assertIn(
-            "data_atual = dt_base_original + relativedelta(years=primeiro_ciclo_num - 1)",
+            "data_atual = _calcular_data_inicial_ciclo(_dt_base_calculo, primeiro_ciclo_num, _contexto_calculo)",
             MULTI,
         )
         self.assertNotIn('"C5"', MULTI)
         self.assertNotIn("'C5'", MULTI)
 
-    def test_contexto_historico_foi_removido_das_duas_interfaces(self):
-        termos_proibidos = (
-            "_render_contexto_contratual_anterior",
-            "Preencher/editar Contexto do Contrato",
-            "Situação anterior à análise",
-            "Observação de rastreabilidade",
-        )
-        for pagina in (SIMPLES, MULTI):
-            with self.subTest(termo=pagina[:30]):
-                for termo in termos_proibidos:
-                    self.assertNotIn(termo, pagina)
-            self.assertIn("contexto_contratual = {}", pagina)
+    def test_historico_anterior_aparece_somente_no_multiciclo_apos_c1(self):
+        self.assertIn("if int(primeiro_ciclo_num) > 1:", MULTI)
+        self.assertIn("Histórico anterior à análise", MULTI)
+        self.assertIn("Situação anterior à análise:", MULTI)
+        self.assertIn("Nenhum ciclo anterior concedido", MULTI)
+        self.assertIn("Houve ciclo anterior concedido/formalizado", MULTI)
+        self.assertIn("Situação desconhecida", MULTI)
+        self.assertIn("Último ciclo concedido/formalizado:", MULTI)
+        self.assertIn("Marco temporal do último ciclo concedido/formalizado:", MULTI)
+        self.assertIn("'contexto_contratual_anterior': contexto_contratual", MULTI)
+        self.assertNotIn("Situação anterior à análise:", SIMPLES)
+
+    def test_regra_de_ancoragem_replica_a_versao_3(self):
+        self.assertIn("def _calcular_data_inicial_ciclo", MULTI)
+        self.assertIn("salto = numero_inicial - ultimo_num - 1", MULTI)
+        self.assertIn("return dt_base + relativedelta(years=numero_inicial - 1)", MULTI)
 
     def test_stamp_tem_fallback_brasileiro_e_e_renderizado(self):
         match = re.search(
@@ -54,6 +58,12 @@ class TestCiclosC2EStamp(unittest.TestCase):
         self.assertIn('a::before', APP)
         self.assertIn('a[aria-current="page"]::before', APP)
         self.assertIn("--cl8us-sidebar: #C6D9E8;", APP)
+        self.assertIn("--cl8us-input: #FFF9E8;", APP)
+        self.assertIn("--cl8us-index: #FBE8AD;", APP)
+        self.assertIn(":has(.cl8us-index-marker)", APP)
+        self.assertIn("cl8us-cycle-step", MULTI)
+        self.assertIn("cl8us-interval-box", MULTI)
+        self.assertIn("cl8us-index-marker", UI)
 
 
 if __name__ == "__main__":

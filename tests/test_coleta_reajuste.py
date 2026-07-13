@@ -76,6 +76,8 @@ class ColetaReajusteTests(unittest.TestCase):
             for row in ws.iter_rows():
                 for cell in row:
                     self.assertIsNone(getattr(cell, "comment", None))
+                    if isinstance(cell.value, str):
+                        self.assertNotIn("OBSERV", cell.value.upper())
 
         with ZipFile(CAMINHO_MODELO_COLETA) as pacote:
             nomes = "\n".join(pacote.namelist()).lower()
@@ -110,7 +112,11 @@ class ColetaReajusteTests(unittest.TestCase):
         self.assertEqual(wb["CONTROLE"]["B7"].value, "IPCA (433)")
         self.assertEqual(wb["parametros"]["F3"].value, 0.04)
         self.assertEqual(wb["parametros"]["F4"].value, 0.05)
+        self.assertEqual(wb["parametros"]["A3"].value, "Nao")
         self.assertEqual(wb["parametros"]["A4"].value, "Sim")
+        self.assertEqual(wb["parametros"]["D3"].value.strftime("%m/%Y"), "09/2023")
+        self.assertEqual(wb["parametros"]["D4"].value.strftime("%m/%Y"), "09/2024")
+        self.assertEqual(wb["parametros"]["H3"].value, "Histórico fora desta apuração")
 
         ws = wb["financeiro"]
         self.assertEqual(ws["A2"].value.strftime("%m/%Y"), "09/2022")
