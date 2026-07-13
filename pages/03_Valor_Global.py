@@ -9,6 +9,8 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
+from _coleta_reajuste import eh_coleta_reajuste, ler_coleta_reajuste
+
 aditivos_somados_ao_valor_total = 0.0  # fallback: planilha sem aditivos computaveis
 LEITOR_CONSUMO_ITENS_CICLO_VERSAO = "20260516_0207"
 
@@ -4696,8 +4698,8 @@ st.title("Valor Global do Contrato")
 
 st.markdown(
     """
-    Este módulo processa o **Arquivo de Coleta** preenchido e apresenta uma visão executiva
-    da execução financeira, dos deltas por ciclo e do valor atualizado do contrato.
+    Este módulo recebe o **Coleta_Reajuste.xlsx**, confere a integridade das fórmulas e identifica
+    o que foi preenchido. A planilha continua sendo a fonte dos resultados; a web não os recalcula.
     """
 )
 
@@ -4718,16 +4720,56 @@ with st.expander("Contexto da Admissibilidade", expanded=True):
         )
 
 st.subheader("Carregar Arquivo de Coleta")
-arquivo = st.file_uploader("Carregue aqui o Arquivo de Coleta preenchido (.xlsx)", type=["xlsx"])
+st.caption("O XLS é a fonte de verdade. A web valida o preenchimento e só apresenta o que estiver seguro no arquivo.")
+arquivo = st.file_uploader("Carregue o Coleta_Reajuste.xlsx preenchido", type=["xlsx"])
 
 if arquivo is not None:
-    if st.button("Processar Coleta Preenchida", type="primary", use_container_width=False):
+    if st.button("Validar Coleta Preenchida", type="primary", use_container_width=False):
         try:
-            resultado = processar_arquivo_coleta(arquivo.getvalue())
-            st.session_state["resultado_valor_global"] = resultado
-            st.success("Arquivo processado com sucesso. Resultados disponíveis abaixo e no módulo Relatório Global.")
+            conteudo = arquivo.getvalue()
+            if eh_coleta_reajuste(conteudo):
+                diagnostico = ler_coleta_reajuste(conteudo)
+                st.session_state["diagnostico_coleta_v2"] = diagnostico
+                st.session_state.pop("resultado_valor_global", None)
+            else:
+                # Compatibilidade temporária com coletas antigas, sem interferir no novo XLS-first.
+                resultado = processar_arquivo_coleta(conteudo)
+                st.session_state["resultado_valor_global"] = resultado
+                st.session_state.pop("diagnostico_coleta_v2", None)
+                st.warning("Arquivo legado processado. Novas apurações devem usar Coleta_Reajuste.xlsx.")
         except Exception as exc:
             st.error(f"Não foi possível processar o arquivo: {exc}")
+
+diagnostico_coleta = st.session_state.get("diagnostico_coleta_v2")
+if diagnostico_coleta:
+    if diagnostico_coleta.get("valido"):
+        st.success("Coleta reconhecida: estrutura e fórmulas essenciais preservadas.")
+    else:
+        st.error("A coleta não está segura para prosseguir.")
+
+    metadados = diagnostico_coleta.get("metadados", {})
+    contagens = diagnostico_coleta.get("contagens", {})
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("Índice", metadados.get("indice") or "Não informado")
+    col2.metric("Ciclo vigente", metadados.get("ciclo_vigente") or "Não informado")
+    col3.metric("Meses com valor", contagens.get("competencias_com_valor", 0))
+    col4.metric("Itens remanescentes", contagens.get("itens_remanescentes", 0))
+
+    for pendencia in diagnostico_coleta.get("pendencias", []):
+        st.error(pendencia)
+    for aviso in diagnostico_coleta.get("avisos", []):
+        st.warning(aviso)
+
+    if diagnostico_coleta.get("pronto_para_consolidar"):
+        st.info(
+            "A coleta possui base para a próxima etapa. Nesta entrega, a web valida e preserva os dados; "
+            "a consolidação dos resultados será ligada na segunda etapa, sem recalcular o XLS."
+        )
+    elif diagnostico_coleta.get("valido"):
+        st.info(
+            "A estrutura está válida, mas faltam dados operacionais. Nenhum total inseguro foi apresentado. "
+            "Preencha o XLS, abra-o no Excel para recalcular e salve antes de reenviar."
+        )
 
 resultado = st.session_state.get("resultado_valor_global")
 

@@ -150,8 +150,8 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
     with st.container(border=True):
         st.markdown(
             """
-            <div style="background:#F5F3FF; border:1px solid #C4B5FD; border-radius:10px;
-                        padding:0.62rem 0.75rem; margin-bottom:0.55rem; color:#4C1D95;">
+            <div style="background:#F7EEF1; border:1px solid #B86A82; border-left:5px solid #7A1733; border-radius:10px;
+                        padding:0.62rem 0.75rem; margin-bottom:0.55rem; color:#641229;">
                 <div style="font-weight:800; font-size:0.98rem;">Índice do contrato</div>
                 <div style="font-size:0.86rem; line-height:1.25rem;">
                     Revise este campo antes de prosseguir. Ele deve corresponder ao índice previsto no contrato.

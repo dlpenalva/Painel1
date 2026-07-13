@@ -49,6 +49,7 @@ def aplicar_css_aditivos25_compacto():
 from _ui_utils import render_indice_contrato_selectbox, render_marca_topo
 from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _data_para_datetime, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br, _percentual_formatado
+from _coleta_reajuste import NOME_ARQUIVO_COLETA, gerar_coleta_reajuste
 
 # ICTI/IPEADATA_LOCAL_FALLBACK_V1
 ICTI_SERCODIGO_LOCAL = "DIMAC_ICTI2"
@@ -2686,13 +2687,10 @@ if historico_coleta:
     }
 
     st.download_button(
-        label="📥 Gerar Arquivo de Coleta",
+        label="Baixar Coleta_Reajuste.xlsx",
         type="primary",
-        data=gerar_arquivo_coleta_excel(st.session_state['dados_admissibilidade']),
-        file_name="Coleta_Reajustes_Multiplos.xlsx",
+        data=gerar_coleta_reajuste(st.session_state['dados_admissibilidade']),
+        file_name=NOME_ARQUIVO_COLETA,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=False,
     )
-
-    modelo_consumo = gerar_modelo_consumo_itens_ciclo_excel(st.session_state['dados_admissibilidade'])
-    render_botao_download_modelo_consumo(modelo_consumo)

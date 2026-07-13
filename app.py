@@ -13,6 +13,73 @@ APP_IST_ALERTA_VERSAO = "20260516_ALERTA_IST_ULTIMA_COMPETENCIA"
 st.markdown(
     """
     <style>
+    :root {
+        --cl8us-sidebar: #C6D9E8;
+        --cl8us-bg-start: #D4E3EF;
+        --cl8us-bg-end: #BED4E5;
+        --cl8us-navy: #123B63;
+        --cl8us-action: #7A1733;
+        --cl8us-action-hover: #641229;
+    }
+    .stAppViewContainer {
+        background: linear-gradient(135deg, var(--cl8us-bg-start) 0%, var(--cl8us-bg-end) 100%);
+        color: var(--cl8us-navy);
+    }
+    [data-testid="stHeader"] {
+        background: rgba(212, 227, 239, 0.82);
+    }
+    section[data-testid="stSidebar"],
+    section[data-testid="stSidebar"] > div {
+        background: var(--cl8us-sidebar) !important;
+    }
+    section[data-testid="stSidebar"] * {
+        color: var(--cl8us-navy);
+    }
+    section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a[aria-current="page"] {
+        background: rgba(18, 59, 99, 0.12);
+        border-left: 4px solid var(--cl8us-navy);
+        border-radius: 0 10px 10px 0;
+    }
+    .stMainBlockContainer h1,
+    .stMainBlockContainer h2,
+    .stMainBlockContainer h3 {
+        color: var(--cl8us-navy);
+    }
+    .stButton > button,
+    .stDownloadButton > button {
+        border-radius: 999px;
+        font-weight: 700;
+        min-height: 2.55rem;
+        box-shadow: 0 5px 14px rgba(18, 59, 99, 0.13);
+        transition: transform 120ms ease, box-shadow 120ms ease, background 120ms ease;
+    }
+    .stButton > button[kind="primary"],
+    .stDownloadButton > button[kind="primary"] {
+        background: var(--cl8us-action);
+        border-color: var(--cl8us-action);
+        color: #FFFFFF;
+    }
+    .stButton > button[kind="primary"]:hover,
+    .stDownloadButton > button[kind="primary"]:hover {
+        background: var(--cl8us-action-hover);
+        border-color: var(--cl8us-action-hover);
+        color: #FFFFFF;
+        transform: translateY(-1px);
+        box-shadow: 0 8px 18px rgba(100, 18, 41, 0.22);
+    }
+    .stButton > button[kind="secondary"],
+    .stDownloadButton > button[kind="secondary"] {
+        background: rgba(255, 255, 255, 0.72);
+        border-color: rgba(18, 59, 99, 0.38);
+        color: var(--cl8us-navy);
+    }
+    [data-testid="stMetric"],
+    [data-testid="stFileUploaderDropzone"],
+    [data-testid="stExpander"] {
+        background: rgba(255, 255, 255, 0.68);
+        border-color: rgba(18, 59, 99, 0.15);
+        border-radius: 14px;
+    }
     section[data-testid="stSidebar"] nav a,
     section[data-testid="stSidebar"] nav a *,
     section[data-testid="stSidebar"] [data-testid="stSidebarNav"] a,

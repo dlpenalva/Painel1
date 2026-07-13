@@ -46,6 +46,7 @@ def aplicar_css_aditivos25_compacto():
 from _ui_utils import render_indice_contrato_selectbox, render_marca_topo
 from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br
+from _coleta_reajuste import NOME_ARQUIVO_COLETA, gerar_coleta_reajuste
 # Imports dos blocos auxiliares de orientação/coleta fiscal
 # ICTI/IPEADATA_LOCAL_FALLBACK_V1
 ICTI_SERCODIGO_LOCAL = "DIMAC_ICTI2"
@@ -2483,13 +2484,13 @@ if res:
 
     # >>> BOTAO_COLETA_SIMPLES_ESTAVEL_V1
     try:
-        _bytes_coleta_estavel = gerar_arquivo_coleta_excel(
+        _bytes_coleta_estavel = gerar_coleta_reajuste(
             st.session_state.get("dados_admissibilidade", {})
         )
         st.download_button(
-            label="Baixar Arquivo de Coleta",
+            label="Baixar Coleta_Reajuste.xlsx",
             data=_bytes_coleta_estavel,
-            file_name="ColetaReajuste.xlsx",
+            file_name=NOME_ARQUIVO_COLETA,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             type="primary",
             help="Baixa o arquivo de coleta da versão estável, pré-preenchido com os dados desta apuração.",
@@ -2528,4 +2529,3 @@ if res:
         )
     except Exception:
         pass
-

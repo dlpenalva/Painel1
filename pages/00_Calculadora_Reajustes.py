@@ -108,122 +108,79 @@ st.markdown(
         margin-top: .70rem;
     }
 
-    .modo-guia-wrap {
-        background: #FFFFFF;
-        border: 1px solid #E5EAF0;
+    .xlsx-flow-wrap {
+        background: rgba(255,255,255,.72);
+        border: 1px solid rgba(18,59,99,.16);
         border-radius: 16px;
-        padding: 1rem 1.05rem 1.1rem 1.05rem;
+        padding: 1.05rem 1.1rem 1.15rem 1.1rem;
         margin: .65rem 0 1.25rem 0;
-        box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+        box-shadow: 0 8px 24px rgba(18,59,99,.08);
     }
-    .modo-guia-title {
-        font-size: 1.02rem;
+    .xlsx-flow-kicker {
+        display: inline-block;
+        background: #123B63;
+        color: #FFFFFF;
+        border-radius: 999px;
+        padding: .22rem .62rem;
+        font-size: .72rem;
+        letter-spacing: .04em;
+        text-transform: uppercase;
+        font-weight: 800;
+        margin-bottom: .55rem;
+    }
+    .xlsx-flow-title {
+        font-size: 1.12rem;
         font-weight: 850;
-        color: #0F172A;
-        margin-bottom: .20rem;
+        color: #123B63;
+        margin-bottom: .25rem;
     }
-    .modo-guia-subtitle {
+    .xlsx-flow-subtitle {
         font-size: .90rem;
         color: #475569;
-        margin-bottom: .85rem;
+        margin-bottom: .95rem;
         line-height: 1.38rem;
     }
-    .modo-guia-grid {
+    .xlsx-flow-grid {
         display: grid;
-        grid-template-columns: repeat(3, minmax(0, 1fr));
-        gap: .95rem;
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+        gap: .75rem;
         align-items: stretch;
     }
-    .modo-guia-card {
-        border-radius: 14px;
-        padding: .92rem .95rem;
-        min-height: 305px;
-        box-sizing: border-box;
-        border: 1.4px solid #E2E8F0;
+    .xlsx-flow-step {
+        background: rgba(255,255,255,.78);
+        border: 1px solid rgba(18,59,99,.13);
+        border-radius: 12px;
+        padding: .78rem .82rem;
+        min-height: 112px;
     }
-    .modo-card-padrao {
-        background: #F8FAFC;
-        border-color: #CBD5E1;
-        color: #1E293B;
-    }
-    .modo-card-reduzido {
-        background: #F5F0FF;
-        border-color: #C4B5FD;
-        color: #4C1D95;
-    }
-    .modo-card-consumo {
-        background: #F6F3EE;
-        border-color: #B8A58A;
-        color: #3F4F35;
-    }
-    .modo-chip {
-        display: inline-block;
-        font-size: .72rem;
-        font-weight: 800;
-        letter-spacing: .02em;
-        text-transform: uppercase;
-        border-radius: 999px;
-        padding: .18rem .55rem;
-        margin-bottom: .45rem;
-    }
-    .modo-chip-padrao { background: #E2E8F0; color: #334155; }
-    .modo-chip-reduzido { background: #EDE9FE; color: #5B21B6; }
-    .modo-chip-consumo { background: #E7E0D4; color: #4E3B24; }
-    .modo-card-title {
-        font-size: .98rem;
+    .xlsx-flow-number {
+        color: #7A1733;
+        font-size: .75rem;
         font-weight: 850;
-        margin-bottom: .35rem;
+        margin-bottom: .28rem;
+        text-transform: uppercase;
+        letter-spacing: .03em;
+    }
+    .xlsx-flow-step-title {
+        color: #123B63;
+        font-size: .94rem;
+        font-weight: 850;
+        margin-bottom: .28rem;
+    }
+    .xlsx-flow-step-text {
+        color: #475569;
+        font-size: .82rem;
         line-height: 1.25rem;
     }
-    .modo-card-leio {
-        font-size: .84rem;
-        font-weight: 800;
-        margin: .55rem 0 .25rem 0;
-        color: inherit;
-    }
-    .modo-card-text {
-        font-size: .84rem;
-        line-height: 1.28rem;
-        color: inherit;
-        opacity: .95;
-    }
-    .mini-sheet {
-        width: 100%;
-        border-collapse: collapse;
-        margin: .45rem 0 .55rem 0;
-        font-size: .76rem;
-        background: rgba(255,255,255,.78);
-    }
-    .mini-sheet th {
-        text-align: left;
-        padding: .28rem .35rem;
-        font-weight: 850;
-        border-bottom: 1px solid rgba(100, 116, 139, .28);
-        white-space: nowrap;
-    }
-    .mini-sheet td {
-        padding: .25rem .35rem;
-        border-bottom: 1px solid rgba(100, 116, 139, .16);
-        white-space: nowrap;
-    }
-    .mini-sheet td.num { text-align: right; }
-    .modo-result {
-        margin-top: .55rem;
-        padding-top: .50rem;
-        border-top: 1px solid rgba(100, 116, 139, .22);
-        font-size: .80rem;
-        line-height: 1.22rem;
-        font-weight: 650;
-    }
     @media (max-width: 1100px) {
-        .modo-guia-grid { grid-template-columns: 1fr; }
-        .modo-guia-card { min-height: auto; }
+        .xlsx-flow-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     }
 
     @media (max-width: 900px) {
         .calc-card-grid {
             grid-template-columns: 1fr;
         }
+        .xlsx-flow-grid { grid-template-columns: 1fr; }
     }
     </style>
     """,
@@ -241,64 +198,33 @@ tipo = st.session_state.get("calculadora_tipo_analise")
 
 st.markdown(
     """
-    <div class="modo-guia-wrap">
-        <div class="modo-guia-title">Como identificar o tipo de planilha que você tem</div>
-        <div class="modo-guia-subtitle">
-            Antes de gerar a planilha para envio à fiscalização, escolha o modelo de coleta conforme a base de informação que será preenchida.
-            Em regra, prefira o Modo Padrão. Use os demais quando a fiscalização não puder informar valores mensais.
-            A pergunta principal é: <strong>qual planilha devo gerar para o fiscal preencher?</strong>
+    <div class="xlsx-flow-wrap">
+        <div class="xlsx-flow-kicker">Modelo único</div>
+        <div class="xlsx-flow-title">A apuração agora é conduzida pelo Coleta_Reajuste.xlsx</div>
+        <div class="xlsx-flow-subtitle">
+            Ciclo único e ciclos múltiplos usam o mesmo arquivo. A calculadora grava os marcos; o fiscal preenche o que possui;
+            o Excel calcula pelas fórmulas; e a web valida o retorno sem inventar dados ausentes.
         </div>
-        <div class="modo-guia-grid">
-            <div class="modo-guia-card modo-card-padrao">
-                <div class="modo-chip modo-chip-padrao">Modo Padrão</div>
-                <div class="modo-card-title">Planilha com itens remanescentes + valores mensais</div>
-                <div class="modo-card-leio">O que eu leio?</div>
-                <div class="modo-card-text">Remanescentes dos itens por ciclo e uma base mensal de execução por competência.</div>
-                <table class="mini-sheet">
-                    <tr><th colspan="3">Itens remanescentes</th></tr>
-                    <tr><td>Item 1</td><td class="num">9</td><td class="num">R$ 440,00</td></tr>
-                    <tr><td>Item 2</td><td class="num">1.456</td><td class="num">R$ 10,00</td></tr>
-                </table>
-                <table class="mini-sheet">
-                    <tr><th colspan="2">Valores mensais</th></tr>
-                    <tr><td>01/2025</td><td class="num">R$ 25.000,00</td></tr>
-                    <tr><td>02/2025</td><td class="num">R$ 24.800,00</td></tr>
-                </table>
-                <div class="modo-result">Resultado: retroativo financeiro por competência + saldo remanescente atualizado.</div>
+        <div class="xlsx-flow-grid">
+            <div class="xlsx-flow-step">
+                <div class="xlsx-flow-number">Etapa 1</div>
+                <div class="xlsx-flow-step-title">Calcule os ciclos</div>
+                <div class="xlsx-flow-step-text">Informe o índice, a data-base e o contexto contratual.</div>
             </div>
-            <div class="modo-guia-card modo-card-reduzido">
-                <div class="modo-chip modo-chip-reduzido">Modo Reduzido</div>
-                <div class="modo-card-title">Planilha com itens remanescentes sem valores mensais</div>
-                <div class="modo-card-leio">O que eu leio?</div>
-                <div class="modo-card-text">Saldos/remanescentes dos itens por ciclo, mas sem base financeira mensal.</div>
-                <table class="mini-sheet">
-                    <tr><th colspan="3">Itens remanescentes</th></tr>
-                    <tr><td>Item 1</td><td class="num">9</td><td class="num">R$ 440,00</td></tr>
-                    <tr><td>Item 2</td><td class="num">1.456</td><td class="num">R$ 10,00</td></tr>
-                </table>
-                <table class="mini-sheet">
-                    <tr><th colspan="2">Valores mensais</th></tr>
-                    <tr><td>Competência</td><td class="num">—</td></tr>
-                    <tr><td>Valor</td><td class="num">—</td></tr>
-                </table>
-                <div class="modo-result">Resultado: apuração estimativa por itens/estoque + saldo remanescente atualizado.</div>
+            <div class="xlsx-flow-step">
+                <div class="xlsx-flow-number">Etapa 2</div>
+                <div class="xlsx-flow-step-title">Baixe o XLS</div>
+                <div class="xlsx-flow-step-text">O arquivo sempre terá o nome Coleta_Reajuste.xlsx.</div>
             </div>
-            <div class="modo-guia-card modo-card-consumo">
-                <div class="modo-chip modo-chip-consumo">Consumo por Ciclo</div>
-                <div class="modo-card-title">Planilha com itens consumidos por ciclo sem valores mensais</div>
-                <div class="modo-card-leio">O que eu leio?</div>
-                <div class="modo-card-text">Quantidades consumidas/executadas por ciclo, sem base financeira mensal por competência.</div>
-                <table class="mini-sheet">
-                    <tr><th>Item</th><th class="num">C1</th><th class="num">C2</th><th class="num">C3</th></tr>
-                    <tr><td>Item 1</td><td class="num">5</td><td class="num">2</td><td class="num">1</td></tr>
-                    <tr><td>Item 2</td><td class="num">40</td><td class="num">18</td><td class="num">7</td></tr>
-                </table>
-                <table class="mini-sheet">
-                    <tr><th colspan="2">Valores mensais</th></tr>
-                    <tr><td>Competência</td><td class="num">—</td></tr>
-                    <tr><td>Valor</td><td class="num">—</td></tr>
-                </table>
-                <div class="modo-result">Resultado: Retroativo (itens consumidos/ciclo) + Saldo Remanescente Atualizado.</div>
+            <div class="xlsx-flow-step">
+                <div class="xlsx-flow-number">Etapa 3</div>
+                <div class="xlsx-flow-step-title">Preencha no Excel</div>
+                <div class="xlsx-flow-step-text">Use as células amarelas. As cinzas são automáticas ou contêm fórmulas.</div>
+            </div>
+            <div class="xlsx-flow-step">
+                <div class="xlsx-flow-number">Etapa 4</div>
+                <div class="xlsx-flow-step-title">Valide na web</div>
+                <div class="xlsx-flow-step-text">Dados incompletos geram pendências, não totais inseguros.</div>
             </div>
         </div>
     </div>
