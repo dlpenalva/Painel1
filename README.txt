@@ -1,17 +1,27 @@
-Atualizacao: Linha do Tempo do Contrato com Data-base para reajuste.
+CL8US 2.0 - CALCULADORA DE REAJUSTES
 
-Arquivo alterado:
-- pages\03_Valor_Global.py
+Status: linha oficial retomada em 13/07/2026.
+Aplicacao: https://reajustes.streamlit.app/
+Repositorio: https://github.com/dlpenalva/Painel1
+Entrada principal: app.py
 
-O evento inicial "Data-base para reajuste" passa a aparecer na timeline do site e no Relatorio Executivo em PDF da timeline.
+DECISAO DE ARQUITETURA
 
-Aplicacao:
-1. Execute atualizar_homologacao_timeline_data_base.bat; ou
-2. Copie pages\03_Valor_Global.py para C:\_DesktopReal\08.clausula\pages.
+O Streamlit conduz a admissibilidade, a escolha do indice e a geracao da
+coleta. O XLS continua sendo o artefato operacional de calculo, conferencia e
+integracao com a fiscalizacao. A retomada do 2.0 nao depende do projeto 3.0.
 
-Depois rode:
-cd /d C:\_DesktopReal\08.clausula
-.venv\Scripts\activate
-streamlit run app.py
+EXECUCAO LOCAL
 
-Depois de validar, execute criar_ponto_restauracao_homologacao_cl8us.bat para criar backup local da homologacao.
+1. Crie e ative um ambiente virtual.
+2. Instale as dependencias: pip install -r requirements.txt
+3. Execute: streamlit run app.py
+4. Verifique: http://localhost:8501/_stcore/health
+
+VALIDACAO MINIMA
+
+python -m compileall -q app.py _ui_utils.py _reajuste_utils.py _indice_utils.py pages
+python -m unittest discover -s tests -v
+
+O plano tecnico e os criterios de seguranca da retomada estao em
+docs/RETOMADA_V2.md.
