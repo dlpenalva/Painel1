@@ -349,21 +349,6 @@ def _render_alerta_indice_ausente(validacao, ciclo_label="C1"):
         st.dataframe(pd.DataFrame(dados), use_container_width=True, hide_index=True)
 
 
-def _render_card_contexto_contrato():
-    """Exibe cabeçalho executivo do bloco de contexto do contrato."""
-    st.markdown(
-        """
-        <div style="background:#F3F6FA;border:1px solid #D9E2EC;border-left:5px solid #1F4E78;border-radius:12px;padding:14px 16px;margin:10px 0 8px 0;">
-            <div style="color:#123B63;font-weight:800;font-size:1.02rem;margin-bottom:4px;">Contexto do Contrato</div>
-            <div style="color:#475569;font-size:0.92rem;line-height:1.45;">
-                Use este bloco quando o contrato já possuir reajustes, repactuações, aditivos ou supressões formalizados antes desta análise.
-            </div>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 def _ciclo_para_numero(valor):
     texto = str(valor or "").strip().upper()
     if texto.startswith("C"):
@@ -467,211 +452,6 @@ def _eventos_historicos_para_exportacao(contexto):
         if possui_conteudo:
             eventos.append(ev)
     return eventos
-
-def _render_contexto_contratual_anterior():
-    """Coleta contexto do contrato para uso pelo Valor Global.
-
-    Este bloco é opcional. Quando preenchido, registra memória formal anterior
-    para relatórios e governança, sem alterar automaticamente o Valor Total Atualizado.
-    """
-    contexto_salvo = st.session_state.get('contexto_contratual_anterior', {}) or {}
-    _render_card_contexto_contrato()
-    with st.expander('Preencher/editar Contexto do Contrato', expanded=False):
-        st.caption(
-            'Preencha apenas quando o contrato já possuir eventos formalizados antes desta análise. '
-            'Este contexto é memória processual e de governança; não altera automaticamente o Valor Total Atualizado, que permanece calculado por execução atualizada + saldo remanescente atualizado.'
-        )
-        col_ctx1, col_ctx2 = st.columns(2)
-        with col_ctx1:
-            valor_original_txt = st.text_input(
-                'Valor original do contrato',
-                value=contexto_salvo.get('valor_original_contrato_texto', ''),
-                placeholder='Ex.: 20.000.000,00',
-                key='ctx_valor_original_contrato',
-            )
-            opcoes_ciclo_concedido = ['C0 / Nenhum', 'C1', 'C2', 'C3', 'C4', 'Outro']
-            ciclo_salvo = str(contexto_salvo.get('ultimo_ciclo_concedido', '') or '').strip()
-            if ciclo_salvo in opcoes_ciclo_concedido:
-                indice_ciclo_salvo = opcoes_ciclo_concedido.index(ciclo_salvo)
-            elif ciclo_salvo == '' or ciclo_salvo.upper() == 'C0' or ciclo_salvo == 'Nenhum / C0':
-                indice_ciclo_salvo = 0
-            elif ciclo_salvo.upper() in opcoes_ciclo_concedido:
-                indice_ciclo_salvo = opcoes_ciclo_concedido.index(ciclo_salvo.upper())
-            else:
-                indice_ciclo_salvo = len(opcoes_ciclo_concedido) - 1
-            ultimo_ciclo = st.selectbox(
-                'Último ciclo já concedido/formalizado',
-                options=opcoes_ciclo_concedido,
-                index=indice_ciclo_salvo,
-                key='ctx_ultimo_ciclo_concedido',
-            )
-            data_base_ultimo = st.text_input(
-                'Data-base do último ciclo concedido/formalizado',
-                value=contexto_salvo.get('data_base_ultimo_ciclo', ''),
-                placeholder='Ex.: 23/09/2023',
-                key='ctx_data_base_ultimo_ciclo',
-            )
-            data_pedido_ultimo = st.text_input(
-                'Data do pedido do último ciclo concedido/formalizado',
-                value=contexto_salvo.get('data_pedido_ultimo_ciclo', ''),
-                placeholder='Ex.: 23/09/2024',
-                key='ctx_data_pedido_ultimo_ciclo',
-            )
-        with col_ctx2:
-            modo_valor_formalizado = st.radio(
-                'Como deseja informar o valor formalizado antes desta análise?',
-                options=['Informar valor diretamente', 'Calcular pelo valor original + percentual já aplicado'],
-                index=1 if contexto_salvo.get('modo_valor_formalizado') == 'Calcular pelo valor original + percentual já aplicado' else 0,
-                key='ctx_modo_valor_formalizado',
-            )
-            percentual_ja_aplicado_pct = st.number_input(
-                'Percentual já aplicado antes desta análise (%)',
-                min_value=0.0,
-                max_value=1000.0,
-                value=float(contexto_salvo.get('percentual_ja_aplicado_pct', 0.0) or 0.0),
-                step=0.01,
-                format='%.2f',
-                key='ctx_percentual_ja_aplicado_pct',
-                disabled=(modo_valor_formalizado == 'Informar valor diretamente'),
-            )
-            valor_original_previo = _parse_moeda_br(valor_original_txt)
-            valor_calculado_formalizado = round(valor_original_previo * (1 + percentual_ja_aplicado_pct / 100), 2) if valor_original_previo > 0 else 0.0
-
-            if modo_valor_formalizado == 'Calcular pelo valor original + percentual já aplicado':
-                fator_aplicado_previo = 1 + percentual_ja_aplicado_pct / 100
-                valor_calculado_txt = _formatar_moeda_br(valor_calculado_formalizado)
-                fator_txt = f"{fator_aplicado_previo:.6f}".replace('.', ',')
-                st.info(
-                    f"Memória do valor formalizado anterior: {_formatar_moeda_br(valor_original_previo)} × {fator_txt} = {valor_calculado_txt}. "
-                    "O campo abaixo permanece editável para ajuste manual, se houver aditivo, supressão, repactuação ou arredondamento formal."
-                )
-
-                chave_calculo_formalizado = f"{valor_original_previo:.2f}|{percentual_ja_aplicado_pct:.6f}|auto"
-                if st.session_state.get('ctx_valor_formalizado_auto_hash') != chave_calculo_formalizado:
-                    st.session_state['ctx_valor_formalizado_anterior'] = valor_calculado_txt
-                    st.session_state['ctx_valor_formalizado_auto_hash'] = chave_calculo_formalizado
-                valor_formalizado_default = st.session_state.get('ctx_valor_formalizado_anterior', valor_calculado_txt)
-            else:
-                valor_formalizado_default = contexto_salvo.get('valor_formalizado_anterior_texto', '')
-
-            valor_formalizado_txt = st.text_input(
-                'Valor contratual formalizado antes desta análise',
-                value=valor_formalizado_default,
-                placeholder='Ex.: 22.800.000,00',
-                key='ctx_valor_formalizado_anterior',
-                help='Valor editável. Ajuste manualmente se houver aditivos, supressões, repactuações ou arredondamento formal.',
-            )
-            referencia_documental_historico = st.text_input(
-                'Referência documental do histórico anterior',
-                value=contexto_salvo.get('referencia_documental_historico', ''),
-                placeholder='Ex.: TLB-TDA-2025/00001, Parecer, Despacho ou Ata',
-                key='ctx_referencia_documental_historico',
-            )
-            observacao = st.text_area(
-                'Observação sobre o histórico anterior',
-                value=contexto_salvo.get('observacao_historico', ''),
-                placeholder='Ex.: C1 e C2 já concedidos; valor inclui aditivo anterior formalizado.',
-                key='ctx_observacao_historico',
-                height=82,
-            )
-
-        eventos_limpos = []
-        with st.expander("Eventos históricos adicionais (opcional)", expanded=False):
-            st.caption(
-                "Use apenas para registrar outros eventos formalizados anteriores que não estejam cobertos pelo bloco principal acima, "
-                "como aditivo, supressão, repactuação, apostila anterior ou acordo negocial. "
-                "O último ciclo concedido já é exportado automaticamente pelo Contexto do Contrato."
-            )
-            eventos_salvos = contexto_salvo.get('eventos_historicos_anteriores') or []
-            # Não reapresenta na tabela registros automáticos gerados em versões anteriores.
-            eventos_salvos = [
-                ev for ev in eventos_salvos
-                if not (isinstance(ev, dict) and 'Registro gerado automaticamente pelo Contexto do Contrato' in str(ev.get('Observação', '') or ''))
-            ]
-            if not eventos_salvos:
-                eventos_salvos = [
-                    {
-                        'Tipo de evento': '',
-                        'Ciclo': 'C0 / Nenhum',
-                        'Data': '',
-                        'Valor formalizado/impacto': '',
-                        'Incorporado ao valor formalizado?': 'Sim',
-                        'Observação': '',
-                    }
-                ]
-            df_eventos_ctx = pd.DataFrame(eventos_salvos)
-            if 'Valor formalizado/impacto' not in df_eventos_ctx.columns:
-                if 'Valor atualizado/formalizado' in df_eventos_ctx.columns:
-                    df_eventos_ctx['Valor formalizado/impacto'] = df_eventos_ctx['Valor atualizado/formalizado']
-                elif 'Valor original' in df_eventos_ctx.columns:
-                    df_eventos_ctx['Valor formalizado/impacto'] = df_eventos_ctx['Valor original']
-                else:
-                    df_eventos_ctx['Valor formalizado/impacto'] = ''
-            colunas_eventos = [
-                'Tipo de evento', 'Ciclo', 'Data', 'Valor formalizado/impacto',
-                'Incorporado ao valor formalizado?', 'Observação'
-            ]
-            for col_evento in colunas_eventos:
-                if col_evento not in df_eventos_ctx.columns:
-                    df_eventos_ctx[col_evento] = ''
-            df_eventos_ctx = df_eventos_ctx[colunas_eventos]
-            eventos_editados = st.data_editor(
-                df_eventos_ctx,
-                hide_index=True,
-                use_container_width=True,
-                num_rows='dynamic',
-                key='ctx_eventos_historicos_anteriores',
-                column_config={
-                    'Tipo de evento': st.column_config.SelectboxColumn(
-                        'Tipo de evento',
-                        options=['', 'Reajuste', 'Repactuação', 'Aditivo', 'Supressão', 'Apostila anterior', 'Acordo negocial', 'Outro'],
-                    ),
-                    'Ciclo': st.column_config.SelectboxColumn(
-                        'Ciclo',
-                        options=['C0 / Nenhum', 'C1', 'C2', 'C3', 'C4', 'Outro'],
-                    ),
-                    'Incorporado ao valor formalizado?': st.column_config.SelectboxColumn(
-                        'Incorporado ao valor formalizado?',
-                        options=['Sim', 'Não'],
-                    ),
-                },
-            )
-            for _, evento_row in eventos_editados.iterrows():
-                evento = {col: str(evento_row.get(col, '') or '').strip() for col in colunas_eventos}
-                possui_conteudo_relevante = any([
-                    evento.get('Tipo de evento', ''),
-                    evento.get('Data', ''),
-                    evento.get('Valor formalizado/impacto', ''),
-                    evento.get('Observação', ''),
-                ])
-                if possui_conteudo_relevante:
-                    eventos_limpos.append(evento)
-
-        valor_original = _parse_moeda_br(valor_original_txt)
-        valor_formalizado = _parse_moeda_br(valor_formalizado_txt)
-        contexto = {
-            'valor_original_contrato': valor_original,
-            'valor_original_contrato_texto': valor_original_txt,
-            'valor_formalizado_anterior': valor_formalizado,
-            'valor_formalizado_anterior_texto': valor_formalizado_txt,
-            'modo_valor_formalizado': modo_valor_formalizado,
-            'percentual_ja_aplicado_pct': float(percentual_ja_aplicado_pct),
-            'valor_formalizado_calculado': float(valor_calculado_formalizado),
-            'ultimo_ciclo_concedido': ultimo_ciclo.strip(),
-            'data_base_ultimo_ciclo': data_base_ultimo.strip(),
-            'data_pedido_ultimo_ciclo': data_pedido_ultimo.strip(),
-            'referencia_documental_historico': referencia_documental_historico.strip(),
-            'observacao_historico': observacao.strip(),
-            'eventos_historicos_anteriores': eventos_limpos,
-        }
-        st.session_state['contexto_contratual_anterior'] = contexto
-
-        if valor_original > 0 or valor_formalizado > 0 or ultimo_ciclo.strip() or observacao.strip():
-            st.info(
-                f"Contexto informado: valor original { _formatar_moeda_br_md(valor_original) }; "
-                f"valor formalizado antes desta análise { _formatar_moeda_br_md(valor_formalizado) }."
-            )
-    return st.session_state.get('contexto_contratual_anterior', {})
 
 def _render_equacao_ist(i_ini, i_fim, variacao):
     equacao_html = f"""
@@ -2200,27 +1980,36 @@ Atenciosamente,"""
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
     render_marca_topo()
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
-    st.title("Único")
+    st.title("Calculadora 1 ciclo")
+    st.caption("Defina apenas o ciclo atual. Dados históricos e ciclos anteriores são registrados no XLS baixado.")
 
-contexto_contratual = _render_contexto_contratual_anterior()
+# A web não coleta histórico contratual. Essa memória pertence exclusivamente
+# ao XLS e deve ser preenchida/conferida pelo fiscal no arquivo de trabalho.
+contexto_contratual = {}
 
-primeiro_ciclo_num = _primeiro_ciclo_analise(contexto_contratual)
+opcoes_ciclo_analise = ["C1", "C2", "C3", "C4"]
+ciclo_analise = st.selectbox(
+    "Ciclo desta análise:",
+    options=opcoes_ciclo_analise,
+    key="sim_ciclo_analise",
+    help="Selecione o ciclo real objeto da apuração. C0 é apenas a base e não recebe reajuste.",
+)
+primeiro_ciclo_num = _ciclo_para_numero(ciclo_analise)
 ciclo_label = f"C{primeiro_ciclo_num}"
-default_dt_base = _data_base_inicial_pelo_contexto(contexto_contratual, datetime(2023, 8, 2))
-
-if _ciclo_para_numero(contexto_contratual.get('ultimo_ciclo_concedido', '')) > 0 and not contexto_contratual.get('data_pedido_ultimo_ciclo'):
-    st.error(
-        "Processamento inviável: há ciclo anterior concedido/formalizado, mas a data do pedido do último ciclo não foi informada."
-    )
-    st.warning(
-        "Informe a data do pedido do último ciclo no Contexto do Contrato. Esse dado será usado como âncora do próximo ciclo, pois corresponde ao início dos efeitos financeiros do último reajuste concedido/formalizado."
-    )
-    st.stop()
+st.markdown(
+    f"""
+    <div style="background:rgba(255,255,255,.46);border:1px solid rgba(18,59,99,.18);border-left:4px solid #123B63;border-radius:0 8px 8px 0;padding:8px 12px;margin:4px 0 12px;color:#123B63;">
+        <strong>Ciclo selecionado:</strong> {ciclo_label}
+    </div>
+    """,
+    unsafe_allow_html=True,
+)
+default_dt_base = datetime(2023, 8, 2)
 
 col1, col2 = st.columns(2)
 with col1:
     dt_base = st.date_input(f"Data-base/âncora do {ciclo_label}:", value=default_dt_base, format="DD/MM/YYYY")
-    dt_solic = st.date_input(f"Data do Pedido {ciclo_label}:", value=datetime(2024, 4, 9), format="DD/MM/YYYY")
+    dt_solic = st.date_input("Data do Pedido:", value=datetime(2024, 4, 9), format="DD/MM/YYYY")
 with col2:
     tipo_idx = render_indice_contrato_selectbox(key="indice_fluxo_unico")
 
@@ -2229,13 +2018,6 @@ chave_analise_simples = (
     dt_base.isoformat(),
     dt_solic.isoformat(),
     tipo_idx,
-    str(contexto_contratual.get('valor_original_contrato', 0.0)),
-    str(contexto_contratual.get('valor_formalizado_anterior', 0.0)),
-    contexto_contratual.get('ultimo_ciclo_concedido', ''),
-    contexto_contratual.get('data_pedido_ultimo_ciclo', ''),
-    contexto_contratual.get('modo_valor_formalizado', ''),
-    str(contexto_contratual.get('percentual_ja_aplicado_pct', 0.0)),
-    contexto_contratual.get('observacao_historico', ''),
 )
 
 

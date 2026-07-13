@@ -100,6 +100,17 @@ def _render_css() -> None:
             font-weight: 620;
             transition: background-color .16s ease, border-color .16s ease, transform .16s ease;
         }
+        [data-testid="stSidebar"] [data-testid="stPageLink"] a::before {
+            content: "";
+            display: inline-block;
+            width: .72rem;
+            height: .72rem;
+            margin-right: .55rem;
+            border: 1.5px solid rgba(18, 59, 99, .36);
+            border-radius: 999px;
+            background: rgba(255, 255, 255, .84);
+            vertical-align: -.06rem;
+        }
         [data-testid="stSidebar"] [data-testid="stPageLink"] a:hover {
             background: rgba(255, 255, 255, .28);
             transform: translateX(1px);
@@ -107,6 +118,10 @@ def _render_css() -> None:
         [data-testid="stSidebar"] [data-testid="stPageLink"] a[aria-current="page"] {
             background: rgba(255, 255, 255, .48);
             border-left-color: var(--cl8us-navy);
+        }
+        [data-testid="stSidebar"] [data-testid="stPageLink"] a[aria-current="page"]::before {
+            border: 4px solid var(--cl8us-action);
+            background: #FFFFFF;
         }
         .cl8us-side-brand { margin: .15rem 0 .12rem 0; line-height: 1; }
         .cl8us-side-brand strong { font-size: 1.18rem; letter-spacing: .01em; }
@@ -119,6 +134,10 @@ def _render_css() -> None:
             letter-spacing: .06em;
             margin: .8rem 0 .28rem 0;
             text-transform: uppercase;
+        }
+        .cl8us-version-rule {
+            border-top: 1px solid rgba(18, 59, 99, .19);
+            margin: 2.15rem 0 1.05rem;
         }
         .cl8us-hero {
             border: 1px solid var(--cl8us-line);
@@ -214,7 +233,7 @@ def _render_sidebar() -> None:
             '<div class="cl8us-side-caption">apoio à gestão de contratos</div>',
             unsafe_allow_html=True,
         )
-        st.markdown('<div class="cl8us-side-group">Operação</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cl8us-side-group">Calculadoras</div>', unsafe_allow_html=True)
         st.page_link(PAGINA_INICIO, label="Início")
         st.page_link(PAGINA_UM_CICLO, label="Calculadora 1 ciclo")
         st.page_link(PAGINA_MULTICICLO, label="Calculadora multiciclo")

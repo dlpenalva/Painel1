@@ -103,7 +103,7 @@ with linha_2[1]:
         _conteudo_card(
             "4 · Análise acumulada",
             "Calculadora multiciclo",
-            "Use para dois ou mais ciclos, inclusive histórico anterior necessário ao fator acumulado.",
+            "Use para dois ou mais ciclos e inicie a apuração em qualquer ciclo entre C1 e C4.",
         )
         if st.button("Abrir Calculadora multiciclo", use_container_width=True, key="abrir_multiciclo_inicio"):
             st.switch_page("pages/02_Calculo_Represados.py")

@@ -4,6 +4,8 @@ from pathlib import Path
 
 import streamlit as st
 
+from _versao import atualizado_em
+
 
 MESES_PT_EXTENSO = {
     "jan": "janeiro", "fev": "fevereiro", "mar": "março", "abr": "abril",
@@ -42,8 +44,9 @@ def render_marca_topo():
 
 
 def render_versao_sidebar():
-    """Função mantida por compatibilidade; não renderiza versão fixa."""
-    return None
+    """Exibe o carimbo obrigatório da versão efetivamente publicada."""
+    st.markdown('<div class="cl8us-version-rule"></div>', unsafe_allow_html=True)
+    st.caption(f"Atualizado em {atualizado_em()}")
 
 
 def _normalizar_mes_ano_ist(valor):
