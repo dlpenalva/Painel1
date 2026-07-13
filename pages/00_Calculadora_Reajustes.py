@@ -1,289 +1,114 @@
-import runpy
+"""Página inicial do fluxo XLS-first do Master 2.0."""
+
 from pathlib import Path
 
 import streamlit as st
 
-st.set_page_config(page_title="TLB · cl8us - Calculadora de Reajustes", layout="wide")
-
-from _ui_utils import render_marca_topo
+from _coleta_reajuste import CAMINHO_MODELO_COLETA, NOME_ARQUIVO_COLETA
 
 
-def executar_motor(nome_arquivo: str):
-    caminho = Path(__file__).resolve().parent / nome_arquivo
-    if not caminho.exists():
-        st.error(f"Arquivo do motor não localizado: {nome_arquivo}")
-        st.stop()
-
-    st.session_state["_calculadora_reajustes_embedded"] = True
-    try:
-        runpy.run_path(str(caminho), run_name="__main__")
-    finally:
-        st.session_state["_calculadora_reajustes_embedded"] = False
-
-
-def _obter_fluxo_query():
-    try:
-        fluxo = st.query_params.get("fluxo", "")
-        if isinstance(fluxo, list):
-            fluxo = fluxo[0] if fluxo else ""
-        return str(fluxo).lower()
-    except Exception:
-        try:
-            fluxo = st.experimental_get_query_params().get("fluxo", [""])
-            return str(fluxo[0]).lower() if fluxo else ""
-        except Exception:
-            return ""
-
-
-def selecionar_fluxo(tipo):
-    st.session_state["calculadora_tipo_analise"] = tipo
-    st.session_state["calculadora_mais_de_um_ciclo"] = tipo == "Múltiplos ciclos"
-
-
-render_marca_topo()
-
-st.title("Calculadora de Reajustes")
-st.markdown(
-    """
-    <style>
-    .calc-note {
-        background: #F8FAFC;
-        border: 1px solid #E5EAF0;
-        border-radius: 12px;
-        padding: .75rem .95rem;
-        color: #334155;
-        margin: .55rem 0 1rem 0;
-    }
-    .calc-card-grid {
-        display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 1.15rem;
-        margin: .35rem 0 1.05rem 0;
-        align-items: stretch;
-    }
-    .calc-card-link {
-        display: block;
-        height: 100%;
-        min-height: 182px;
-        border-radius: 14px;
-        padding: 1rem 1.05rem;
-        text-decoration: none !important;
-        box-sizing: border-box;
-        transition: all .12s ease-in-out;
-    }
-    .calc-card-link:hover {
-        transform: translateY(-1px);
-        text-decoration: none !important;
-    }
-    .calc-card-unico {
-        border: 1.6px solid #93C5FD;
-        background: #EFF6FF;
-        color: #1E3A8A;
-    }
-    .calc-card-multiplos {
-        border: 1.6px solid #F6C35B;
-        background: #FFF7E6;
-        color: #7A4A00;
-    }
-    .calc-card-selected-unico {
-        border: 2.2px solid #2563EB;
-        box-shadow: 0 0 0 2px rgba(37, 99, 235, .10);
-    }
-    .calc-card-selected-multiplos {
-        border: 2.2px solid #D97706;
-        box-shadow: 0 0 0 2px rgba(217, 119, 6, .10);
-    }
-    .calc-card-title {
-        font-weight: 800;
-        font-size: 1.16rem;
-        margin-bottom: .40rem;
-    }
-    .calc-card-text {
-        font-size: .93rem;
-        line-height: 1.42rem;
-    }
-    .calc-selected {
-        font-weight: 800;
-        font-size: .82rem;
-        margin-top: .70rem;
-    }
-
-    .xlsx-flow-wrap {
-        background: rgba(255,255,255,.72);
-        border: 1px solid rgba(18,59,99,.16);
-        border-radius: 16px;
-        padding: 1.05rem 1.1rem 1.15rem 1.1rem;
-        margin: .65rem 0 1.25rem 0;
-        box-shadow: 0 8px 24px rgba(18,59,99,.08);
-    }
-    .xlsx-flow-kicker {
-        display: inline-block;
-        background: #123B63;
-        color: #FFFFFF;
-        border-radius: 999px;
-        padding: .22rem .62rem;
-        font-size: .72rem;
-        letter-spacing: .04em;
-        text-transform: uppercase;
-        font-weight: 800;
-        margin-bottom: .55rem;
-    }
-    .xlsx-flow-title {
-        font-size: 1.12rem;
-        font-weight: 850;
-        color: #123B63;
-        margin-bottom: .25rem;
-    }
-    .xlsx-flow-subtitle {
-        font-size: .90rem;
-        color: #475569;
-        margin-bottom: .95rem;
-        line-height: 1.38rem;
-    }
-    .xlsx-flow-grid {
-        display: grid;
-        grid-template-columns: repeat(4, minmax(0, 1fr));
-        gap: .75rem;
-        align-items: stretch;
-    }
-    .xlsx-flow-step {
-        background: rgba(255,255,255,.78);
-        border: 1px solid rgba(18,59,99,.13);
-        border-radius: 12px;
-        padding: .78rem .82rem;
-        min-height: 112px;
-    }
-    .xlsx-flow-number {
-        color: #7A1733;
-        font-size: .75rem;
-        font-weight: 850;
-        margin-bottom: .28rem;
-        text-transform: uppercase;
-        letter-spacing: .03em;
-    }
-    .xlsx-flow-step-title {
-        color: #123B63;
-        font-size: .94rem;
-        font-weight: 850;
-        margin-bottom: .28rem;
-    }
-    .xlsx-flow-step-text {
-        color: #475569;
-        font-size: .82rem;
-        line-height: 1.25rem;
-    }
-    @media (max-width: 1100px) {
-        .xlsx-flow-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    }
-
-    @media (max-width: 900px) {
-        .calc-card-grid {
-            grid-template-columns: 1fr;
-        }
-        .xlsx-flow-grid { grid-template-columns: 1fr; }
-    }
-    </style>
-    """,
-    unsafe_allow_html=True,
+st.set_page_config(
+    page_title="TLB · cl8us — Início",
+    page_icon="CL",
+    layout="wide",
 )
 
-fluxo_query = _obter_fluxo_query()
-if fluxo_query in ["unico", "único"]:
-    selecionar_fluxo("Ciclo único")
-elif fluxo_query in ["multiplos", "múltiplos", "multiplo", "múltiplo"]:
-    selecionar_fluxo("Múltiplos ciclos")
+MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
-tipo = st.session_state.get("calculadora_tipo_analise")
+
+@st.cache_data(show_spinner=False)
+def _ler_modelo(caminho: str, alterado_em_ns: int) -> bytes:
+    del alterado_em_ns  # participa da chave para invalidar o cache após nova versão
+    return Path(caminho).read_bytes()
+
+
+def _conteudo_card(tag: str, titulo: str, texto: str) -> None:
+    st.markdown(
+        f"""
+        <div class="home-card">
+            <div class="home-card-tag">{tag}</div>
+            <strong>{titulo}</strong>
+            <p>{texto}</p>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
 
 st.markdown(
     """
-    <div class="xlsx-flow-wrap">
-        <div class="xlsx-flow-kicker">Modelo único</div>
-        <div class="xlsx-flow-title">A apuração agora é conduzida pelo Coleta_Reajuste.xlsx</div>
-        <div class="xlsx-flow-subtitle">
-            Ciclo único e ciclos múltiplos usam o mesmo arquivo. A calculadora grava os marcos; o fiscal preenche o que possui;
-            o Excel calcula pelas fórmulas; e a web valida o retorno sem inventar dados ausentes.
-        </div>
-        <div class="xlsx-flow-grid">
-            <div class="xlsx-flow-step">
-                <div class="xlsx-flow-number">Etapa 1</div>
-                <div class="xlsx-flow-step-title">Calcule os ciclos</div>
-                <div class="xlsx-flow-step-text">Informe o índice, a data-base e o contexto contratual.</div>
-            </div>
-            <div class="xlsx-flow-step">
-                <div class="xlsx-flow-number">Etapa 2</div>
-                <div class="xlsx-flow-step-title">Baixe o XLS</div>
-                <div class="xlsx-flow-step-text">O arquivo sempre terá o nome Coleta_Reajuste.xlsx.</div>
-            </div>
-            <div class="xlsx-flow-step">
-                <div class="xlsx-flow-number">Etapa 3</div>
-                <div class="xlsx-flow-step-title">Preencha no Excel</div>
-                <div class="xlsx-flow-step-text">Use as células amarelas. As cinzas são automáticas ou contêm fórmulas.</div>
-            </div>
-            <div class="xlsx-flow-step">
-                <div class="xlsx-flow-number">Etapa 4</div>
-                <div class="xlsx-flow-step-title">Valide na web</div>
-                <div class="xlsx-flow-step-text">Dados incompletos geram pendências, não totais inseguros.</div>
-            </div>
-        </div>
+    <div class="cl8us-hero">
+        <div class="cl8us-kicker">Master 2.0 · XLS-first</div>
+        <h1>Reajustes contratuais</h1>
+        <p>Calcule os marcos na web, trabalhe no Excel e devolva o mesmo arquivo para validação e documentos.</p>
     </div>
     """,
     unsafe_allow_html=True,
 )
 
-
-st.subheader("A análise envolve mais de um ciclo de reajuste?")
-
-unico_classes = "calc-card-link calc-card-unico"
-mult_classes = "calc-card-link calc-card-multiplos"
-
-if tipo == "Ciclo único":
-    unico_classes += " calc-card-selected-unico"
-    unico_status = "Selecionado"
-else:
-    unico_status = "&nbsp;"
-
-if tipo == "Múltiplos ciclos":
-    mult_classes += " calc-card-selected-multiplos"
-    mult_status = "Selecionado"
-else:
-    mult_status = "&nbsp;"
-
-st.markdown(
-    f"""
-    <div class="calc-card-grid">
-        <a class="{unico_classes}" href="?fluxo=unico" target="_self">
-            <div class="calc-card-title">Único ciclo</div>
-            <div class="calc-card-text">
-                Use quando há apenas um ciclo de reajuste a calcular.
-                Pedido tardio, acordo negocial, ciclo negativo ou histórico anterior podem ser tratados dentro do próprio fluxo, se existirem.
-            </div>
-            <div class="calc-selected">{unico_status}</div>
-        </a>
-        <a class="{mult_classes}" href="?fluxo=multiplos" target="_self">
-            <div class="calc-card-title">Múltiplos ciclos</div>
-            <div class="calc-card-text">
-                Use quando há dois ou mais ciclos, ciclos acumulados, valores represados em mais de um período,
-                recomposição de histórico por ciclo ou preclusões sucessivas.
-            </div>
-            <div class="calc-selected">{mult_status}</div>
-        </a>
-    </div>
-    """,
-    unsafe_allow_html=True,
+st.subheader("Fluxo operacional")
+st.caption(
+    "O Coleta_Reajuste.xlsx é o produto principal. A web prepara a coleta e, no retorno, "
+    "apresenta somente resultados sustentados pelos dados e pelas fórmulas do arquivo."
 )
 
-if not tipo:
-    st.stop()
+linha_1 = st.columns(2, gap="large")
+with linha_1[0]:
+    with st.container(border=True):
+        _conteudo_card(
+            "1 · Arquivo de trabalho",
+            "Coleta_Reajuste.xlsx",
+            "Baixe o modelo único com fórmulas. Ele atende tanto um ciclo quanto múltiplos ciclos.",
+        )
+        if CAMINHO_MODELO_COLETA.exists():
+            st.download_button(
+                "Baixar Coleta_Reajuste.xlsx",
+                data=_ler_modelo(
+                    str(CAMINHO_MODELO_COLETA),
+                    CAMINHO_MODELO_COLETA.stat().st_mtime_ns,
+                ),
+                file_name=NOME_ARQUIVO_COLETA,
+                mime=MIME_XLSX,
+                type="primary",
+                use_container_width=True,
+                key="download_coleta_inicio",
+            )
+        else:
+            st.error("O modelo Coleta_Reajuste.xlsx não foi localizado.")
 
+with linha_1[1]:
+    with st.container(border=True):
+        _conteudo_card(
+            "2 · Retorno do fiscal",
+            "Upload e resultados",
+            "Envie o XLS preenchido. A web confere a estrutura e sinaliza lacunas antes de liberar totais ou documentos.",
+        )
+        if st.button("Abrir upload e resultados", use_container_width=True, key="abrir_upload_inicio"):
+            st.switch_page("pages/03_Valor_Global.py")
 
-st.divider()
-st.subheader(f"Área de cálculo — {'Único ciclo' if tipo == 'Ciclo único' else 'Múltiplos ciclos'}")
+st.subheader("Preparar os marcos da coleta")
+linha_2 = st.columns(2, gap="large")
+with linha_2[0]:
+    with st.container(border=True):
+        _conteudo_card(
+            "3 · Análise simples",
+            "Calculadora 1 ciclo",
+            "Use quando apenas um ciclo é objeto da apuração. Ao final, baixe o mesmo Coleta_Reajuste.xlsx já parametrizado.",
+        )
+        if st.button("Abrir Calculadora 1 ciclo", use_container_width=True, key="abrir_um_ciclo_inicio"):
+            st.switch_page("pages/01_Calculo_Simples.py")
 
-if tipo == "Ciclo único":
-    executar_motor("01_Calculo_Simples.py")
-else:
-    executar_motor("02_Calculo_Represados.py")
+with linha_2[1]:
+    with st.container(border=True):
+        _conteudo_card(
+            "4 · Análise acumulada",
+            "Calculadora multiciclo",
+            "Use para dois ou mais ciclos, inclusive histórico anterior necessário ao fator acumulado.",
+        )
+        if st.button("Abrir Calculadora multiciclo", use_container_width=True, key="abrir_multiciclo_inicio"):
+            st.switch_page("pages/02_Calculo_Represados.py")
 
-
+st.info(
+    "Se as informações forem parciais, o XLS preserva a coleta disponível e a validação aponta o que falta. "
+    "A ausência de base segura não será convertida em valor estimado."
+)
