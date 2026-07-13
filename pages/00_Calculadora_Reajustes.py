@@ -5,6 +5,7 @@ from pathlib import Path
 import streamlit as st
 
 from _coleta_reajuste import CAMINHO_MODELO_COLETA, NOME_ARQUIVO_COLETA
+from _ui_utils import render_cabecalho_pagina
 
 
 st.set_page_config(
@@ -35,15 +36,9 @@ def _conteudo_card(tag: str, titulo: str, texto: str) -> None:
     )
 
 
-st.markdown(
-    """
-    <div class="cl8us-hero">
-        <div class="cl8us-kicker">Master 2.0 · XLS-first</div>
-        <h1>Reajustes contratuais</h1>
-        <p>Calcule os marcos na web, trabalhe no Excel e devolva o mesmo arquivo para validação e documentos.</p>
-    </div>
-    """,
-    unsafe_allow_html=True,
+render_cabecalho_pagina(
+    "Reajustes contratuais",
+    "Calcule os marcos na web, trabalhe no Excel e devolva o mesmo arquivo para validação e documentos.",
 )
 
 st.subheader("Fluxo operacional")
@@ -80,10 +75,10 @@ with linha_1[1]:
     with st.container(border=True):
         _conteudo_card(
             "2 · Retorno do fiscal",
-            "Upload e resultados",
+            "Upload e docs",
             "Envie o XLS preenchido. A web confere a estrutura e sinaliza lacunas antes de liberar totais ou documentos.",
         )
-        if st.button("Abrir upload e resultados", use_container_width=True, key="abrir_upload_inicio"):
+        if st.button("Abrir Upload e docs", use_container_width=True, key="abrir_upload_inicio"):
             st.switch_page("pages/03_Valor_Global.py")
 
 st.subheader("Preparar os marcos da coleta")

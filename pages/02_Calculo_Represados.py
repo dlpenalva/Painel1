@@ -46,7 +46,7 @@ def aplicar_css_aditivos25_compacto():
         unsafe_allow_html=True,
     )
 # <<< UX_ADITIVOS_25_COMPACTO
-from _ui_utils import render_indice_contrato_selectbox, render_marca_topo
+from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox
 from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _data_para_datetime, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br, _percentual_formatado
 from _coleta_reajuste import NOME_ARQUIVO_COLETA, gerar_coleta_reajuste
@@ -1900,10 +1900,10 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
     output.seek(0)
     return output.getvalue()
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
-    render_marca_topo()
-if not st.session_state.get("_calculadora_reajustes_embedded", False):
-    st.title("Calculadora multiciclo")
-    st.caption("Selecione o intervalo atual. Ao iniciar após C1, confirme a situação do ciclo anterior.")
+    render_cabecalho_pagina(
+        "Calculadora multiciclo",
+        "Ferramenta para análise contratual com mais de um ciclo de reajuste.",
+    )
 
 # O histórico permanece enxuto: a web coleta somente o marco necessário para
 # calcular corretamente o primeiro ciclo atual; os demais fatos ficam no XLS.

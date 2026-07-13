@@ -43,7 +43,7 @@ def aplicar_css_aditivos25_compacto():
         unsafe_allow_html=True,
     )
 # <<< UX_ADITIVOS_25_COMPACTO
-from _ui_utils import render_indice_contrato_selectbox, render_marca_topo
+from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox
 from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br
 from _coleta_reajuste import NOME_ARQUIVO_COLETA, gerar_coleta_reajuste
@@ -1978,10 +1978,10 @@ Atenciosamente,"""
     return assunto, corpo
 
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
-    render_marca_topo()
-if not st.session_state.get("_calculadora_reajustes_embedded", False):
-    st.title("Calculadora 1 ciclo")
-    st.caption("Defina apenas o ciclo atual. Dados históricos e ciclos anteriores são registrados no XLS baixado.")
+    render_cabecalho_pagina(
+        "Calculadora 1 ciclo",
+        "Ferramenta para análise contratual de um único ciclo de reajuste.",
+    )
 
 # A web não coleta histórico contratual. Essa memória pertence exclusivamente
 # ao XLS e deve ser preenchida/conferida pelo fiscal no arquivo de trabalho.

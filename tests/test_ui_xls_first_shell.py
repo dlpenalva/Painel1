@@ -5,6 +5,10 @@ import unittest
 ROOT = Path(__file__).resolve().parents[1]
 APP = (ROOT / "app.py").read_text(encoding="utf-8")
 INICIO = (ROOT / "pages" / "00_Calculadora_Reajustes.py").read_text(encoding="utf-8")
+SIMPLES = (ROOT / "pages" / "01_Calculo_Simples.py").read_text(encoding="utf-8")
+MULTI = (ROOT / "pages" / "02_Calculo_Represados.py").read_text(encoding="utf-8")
+DOCUMENTOS = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
+UI = (ROOT / "_ui_utils.py").read_text(encoding="utf-8")
 
 
 class TestCascaXlsFirst(unittest.TestCase):
@@ -12,8 +16,15 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn('st.page_link(PAGINA_INICIO, label="Início")', APP)
         self.assertIn('st.page_link(PAGINA_UM_CICLO, label="Calculadora 1 ciclo")', APP)
         self.assertIn('st.page_link(PAGINA_MULTICICLO, label="Calculadora multiciclo")', APP)
-        self.assertIn('st.page_link(PAGINA_UPLOAD, label="Upload e resultados")', APP)
+        self.assertIn('st.page_link(PAGINA_UPLOAD, label="Upload e docs")', APP)
         self.assertIn('position="hidden"', APP)
+
+    def test_menu_replica_rotulos_e_densidade_do_modelo_3(self):
+        self.assertIn('>Piloto controlado</div>', APP)
+        self.assertIn('>Documentos</div>', APP)
+        self.assertNotIn('>XLS preenchido</div>', APP)
+        self.assertIn('font-weight: 760;', APP)
+        self.assertIn('margin-block: -.6rem;', APP)
 
     def test_modulos_legados_permanecem_registrados_mas_fora_do_menu(self):
         self.assertNotIn('st.expander("Ferramentas complementares", expanded=False)', APP)
@@ -49,6 +60,23 @@ class TestCascaXlsFirst(unittest.TestCase):
     def test_inicio_nao_exibe_aviso_excluido(self):
         self.assertNotIn("Se as informações forem parciais", INICIO)
         self.assertNotIn("A ausência de base segura", INICIO)
+
+    def test_cabecalho_em_box_e_usado_nas_quatro_rotas(self):
+        self.assertIn("def render_cabecalho_pagina", UI)
+        self.assertIn("cl8us-page-header", APP)
+        for pagina in (INICIO, SIMPLES, MULTI, DOCUMENTOS):
+            self.assertIn("render_cabecalho_pagina(", pagina)
+
+    def test_documentos_fica_enxuto_antes_do_upload_e_preserva_o_motor(self):
+        self.assertIn('"Mesa GCC"', DOCUMENTOS)
+        self.assertIn("1 · Baixar arquivo de trabalho", DOCUMENTOS)
+        self.assertIn("2 · Enviar Coleta_Reajuste.xlsx preenchido", DOCUMENTOS)
+        self.assertIn("CAMINHO_MODELO_COLETA.read_bytes()", DOCUMENTOS)
+        self.assertIn('key="upload_coleta_documentos"', DOCUMENTOS)
+        self.assertIn("if arquivo is None:", DOCUMENTOS)
+        self.assertIn("st.stop()", DOCUMENTOS)
+        self.assertIn('if st.button("Validar Coleta Preenchida"', DOCUMENTOS)
+        self.assertLess(DOCUMENTOS.index("if arquivo is None:"), DOCUMENTOS.index("if arquivo is not None:"))
 
 
 if __name__ == "__main__":

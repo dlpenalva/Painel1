@@ -29,7 +29,7 @@ def _page(caminho: str, titulo: str, *, default: bool = False) -> st.Page:
 PAGINA_INICIO = _page("00_Calculadora_Reajustes.py", "Início", default=True)
 PAGINA_UM_CICLO = _page("01_Calculo_Simples.py", "Calculadora 1 ciclo")
 PAGINA_MULTICICLO = _page("02_Calculo_Represados.py", "Calculadora multiciclo")
-PAGINA_UPLOAD = _page("03_Valor_Global.py", "Upload e resultados")
+PAGINA_UPLOAD = _page("03_Valor_Global.py", "Upload e docs")
 
 PAGINAS_PRINCIPAIS = (
     PAGINA_INICIO,
@@ -86,7 +86,7 @@ def _render_css() -> None:
                 radial-gradient(circle at 92% 2%, rgba(255, 255, 255, .42) 0, rgba(255, 255, 255, 0) 32rem),
                 linear-gradient(135deg, var(--cl8us-main-start) 0%, var(--cl8us-main-end) 100%);
         }
-        [data-testid="stHeader"] { background: rgba(251, 248, 241, .82); }
+        [data-testid="stHeader"] { background: transparent; }
         .block-container { max-width: 1180px; padding-top: 1.45rem; padding-bottom: 3rem; }
         h1, h2, h3 { color: var(--cl8us-navy); letter-spacing: -.015em; }
 
@@ -100,9 +100,16 @@ def _render_css() -> None:
         [data-testid="stSidebar"] [data-testid="stPageLink"] a {
             border-left: 4px solid transparent;
             border-radius: 0 9px 9px 0;
-            padding: .38rem .52rem;
-            font-weight: 620;
+            padding: .18rem .42rem;
+            font-weight: 760;
+            line-height: 1.16;
             transition: background-color .16s ease, border-color .16s ease, transform .16s ease;
+        }
+        [data-testid="stSidebar"] [data-testid="stPageLink"] + [data-testid="stPageLink"] {
+            margin-top: -.58rem;
+        }
+        [data-testid="stSidebar"] [data-testid="stElementContainer"]:has(> [data-testid="stPageLink"]) {
+            margin-block: -.6rem;
         }
         [data-testid="stSidebar"] [data-testid="stPageLink"] a::before {
             content: "";
@@ -127,17 +134,16 @@ def _render_css() -> None:
             border: 4px solid var(--cl8us-action);
             background: #FFFFFF;
         }
-        .cl8us-side-brand { margin: .15rem 0 .12rem 0; line-height: 1; }
-        .cl8us-side-brand strong { font-size: 1.18rem; letter-spacing: .01em; }
+        .cl8us-side-brand { margin: .15rem 0 .1rem 0; line-height: 1; }
+        .cl8us-side-brand strong { font-size: .96rem; font-weight: 850; letter-spacing: .01em; }
         .cl8us-side-brand span { color: var(--cl8us-action); padding: 0 .15rem; }
-        .cl8us-side-caption { color: var(--cl8us-muted); font-size: .78rem; margin-bottom: 1.15rem; }
+        .cl8us-side-caption { color: var(--cl8us-muted); font-size: .72rem; margin-bottom: .72rem; }
         .cl8us-side-group {
-            color: var(--cl8us-muted);
-            font-size: .72rem;
-            font-weight: 800;
-            letter-spacing: .06em;
-            margin: .8rem 0 .28rem 0;
-            text-transform: uppercase;
+            color: var(--cl8us-navy);
+            font-size: .82rem;
+            font-weight: 850;
+            letter-spacing: .01em;
+            margin: .58rem 0 .2rem 0;
         }
         .cl8us-cycle-step {
             background: var(--cl8us-step);
@@ -164,6 +170,66 @@ def _render_css() -> None:
         .cl8us-version-rule {
             border-top: 1px solid rgba(18, 59, 99, .19);
             margin: 2.15rem 0 1.05rem;
+        }
+        .cl8us-page-header {
+            background: rgba(255, 252, 247, .96);
+            border: 1px solid rgba(156, 132, 92, .28);
+            border-radius: 0 0 13px 13px;
+            box-shadow: 0 10px 24px rgba(83, 68, 42, .08);
+            margin: -1.45rem 0 1.3rem;
+            padding: .82rem 1.08rem 1rem;
+        }
+        .cl8us-page-brand {
+            color: var(--cl8us-navy);
+            display: flex;
+            flex-wrap: wrap;
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: .95rem;
+            font-weight: 800;
+            line-height: 1;
+            margin-bottom: .9rem;
+        }
+        .cl8us-page-brand span { font-family: "Aptos", "Segoe UI", sans-serif; font-weight: 800; margin-left: .22rem; }
+        .cl8us-page-brand small {
+            color: #6B6256;
+            flex-basis: 100%;
+            font-family: "Aptos", "Segoe UI", sans-serif;
+            font-size: .59rem;
+            font-weight: 500;
+            margin-top: .18rem;
+        }
+        .cl8us-page-header h1 { font-size: 1.47rem; margin: 0 0 .48rem; }
+        .cl8us-page-header p { color: #625B51; font-size: .84rem; margin: 0 0 .62rem; }
+        .cl8us-page-privacy {
+            background: #FFF5D8;
+            border: 1px solid #D7A83B;
+            border-radius: 999px;
+            color: #8A5B0A;
+            display: inline-block;
+            font-size: .7rem;
+            font-weight: 700;
+            padding: .27rem .58rem;
+        }
+        .cl8us-docs-note {
+            background: rgba(255, 252, 247, .9);
+            border: 1px solid rgba(156, 132, 92, .28);
+            border-left: 4px solid var(--cl8us-navy);
+            border-radius: 0 8px 8px 0;
+            color: var(--cl8us-navy);
+            font-size: .8rem;
+            margin: 0 0 .72rem;
+            padding: .58rem .72rem;
+        }
+        .cl8us-docs-card-marker { display: none; }
+        .cl8us-docs-card-title {
+            color: var(--cl8us-navy);
+            font-size: 1.12rem;
+            font-weight: 800;
+            margin: 0 0 .32rem;
+        }
+        [data-testid="stVerticalBlockBorderWrapper"]:has(.cl8us-docs-card-marker) {
+            box-shadow: none;
+            margin-bottom: .72rem;
         }
         .cl8us-hero {
             border: 1px solid var(--cl8us-line);
@@ -300,12 +366,12 @@ def _render_sidebar() -> None:
             '<div class="cl8us-side-caption">apoio à gestão de contratos</div>',
             unsafe_allow_html=True,
         )
-        st.markdown('<div class="cl8us-side-group">Calculadoras</div>', unsafe_allow_html=True)
+        st.markdown('<div class="cl8us-side-group">Piloto controlado</div>', unsafe_allow_html=True)
         st.page_link(PAGINA_INICIO, label="Início")
         st.page_link(PAGINA_UM_CICLO, label="Calculadora 1 ciclo")
         st.page_link(PAGINA_MULTICICLO, label="Calculadora multiciclo")
-        st.markdown('<div class="cl8us-side-group">XLS preenchido</div>', unsafe_allow_html=True)
-        st.page_link(PAGINA_UPLOAD, label="Upload e resultados")
+        st.markdown('<div class="cl8us-side-group">Documentos</div>', unsafe_allow_html=True)
+        st.page_link(PAGINA_UPLOAD, label="Upload e docs")
 
         render_versao_sidebar()
 

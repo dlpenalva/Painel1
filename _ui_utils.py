@@ -1,4 +1,5 @@
 import csv
+import html as html_lib
 import re
 from pathlib import Path
 
@@ -38,6 +39,26 @@ def render_marca_topo():
             <div class="tlb-cl8us-separator"></div>
             <div class="tlb-cl8us-aviso">AVISO: use apenas para docs não sigilosos e de livre acesso.</div>
         </div>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
+def render_cabecalho_pagina(titulo, descricao):
+    """Cabeçalho operacional em box, alinhado à casca enxuta do Cl8us 3.0."""
+    titulo_seguro = html_lib.escape(str(titulo))
+    descricao_segura = html_lib.escape(str(descricao))
+    st.markdown(
+        f"""
+        <section class="cl8us-page-header" aria-label="{titulo_seguro}">
+            <div class="cl8us-page-brand">
+                <strong>TLB</strong><span>· cl8us</span>
+                <small>apoio à gestão de contratos</small>
+            </div>
+            <h1>{titulo_seguro}</h1>
+            <p>{descricao_segura}</p>
+            <div class="cl8us-page-privacy">Use apenas para documentos não sigilosos e de livre acesso.</div>
+        </section>
         """,
         unsafe_allow_html=True,
     )

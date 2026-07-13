@@ -9,7 +9,12 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from _coleta_reajuste import eh_coleta_reajuste, ler_coleta_reajuste
+from _coleta_reajuste import (
+    CAMINHO_MODELO_COLETA,
+    NOME_ARQUIVO_COLETA,
+    eh_coleta_reajuste,
+    ler_coleta_reajuste,
+)
 
 aditivos_somados_ao_valor_total = 0.0  # fallback: planilha sem aditivos computaveis
 LEITOR_CONSUMO_ITENS_CICLO_VERSAO = "20260516_0207"
@@ -61,7 +66,7 @@ def aplicar_css_aditivos25_compacto():
         unsafe_allow_html=True,
     )
 # <<< UX_ADITIVOS_25_COMPACTO
-from _ui_utils import render_marca_topo, render_aviso_privacidade
+from _ui_utils import render_aviso_privacidade, render_cabecalho_pagina
 
 def agora_brasilia():
     return datetime.now(ZoneInfo("America/Sao_Paulo"))
@@ -4693,15 +4698,51 @@ def render_metodologia_corte_operacional_v4(resultado, modo_apuracao_ui="Complet
 # ============================================================
 
 aplicar_css_responsivo_telebras()
-render_marca_topo()
-st.title("Valor Global do Contrato")
+render_cabecalho_pagina(
+    "Mesa GCC",
+    "Envie o Coleta_Reajuste.xlsx preenchido para validar a apuração, revisar os resultados e baixar documentos.",
+)
 
 st.markdown(
-    """
-    Este módulo recebe o **Coleta_Reajuste.xlsx**, confere a integridade das fórmulas e identifica
-    o que foi preenchido. A planilha continua sendo a fonte dos resultados; a web não os recalcula.
-    """
+    '<div class="cl8us-docs-note">O Coleta_Reajuste.xlsx reúne os dados da apuração. '
+    'A web valida sua estrutura antes de liberar resultados e documentos.</div>',
+    unsafe_allow_html=True,
 )
+
+with st.container(border=True):
+    st.markdown(
+        '<span class="cl8us-docs-card-marker"></span>'
+        '<div class="cl8us-docs-card-title">1 · Baixar arquivo de trabalho</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption("Use o modelo único com fórmulas para registrar a apuração contratual.")
+    if CAMINHO_MODELO_COLETA.exists():
+        st.download_button(
+            "Baixar Coleta_Reajuste.xlsx",
+            data=CAMINHO_MODELO_COLETA.read_bytes(),
+            file_name=NOME_ARQUIVO_COLETA,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+            key="download_coleta_documentos",
+        )
+    else:
+        st.error("O modelo Coleta_Reajuste.xlsx não foi localizado.")
+
+with st.container(border=True):
+    st.markdown(
+        '<span class="cl8us-docs-card-marker"></span>'
+        '<div class="cl8us-docs-card-title">2 · Enviar Coleta_Reajuste.xlsx preenchido</div>',
+        unsafe_allow_html=True,
+    )
+    arquivo = st.file_uploader(
+        "Selecione o arquivo .xlsx preenchido",
+        type=["xlsx"],
+        key="upload_coleta_documentos",
+    )
+
+if arquivo is None:
+    st.info("Envie o Coleta_Reajuste.xlsx preenchido para liberar a validação, os resultados e os documentos.")
+    st.stop()
 
 render_aviso_privacidade(tem_upload=True, tem_download=True)
 adm = st.session_state.get("dados_admissibilidade")
@@ -4718,10 +4759,6 @@ with st.expander("Contexto da Admissibilidade", expanded=True):
             "Os dados de admissibilidade não foram encontrados na sessão atual. "
             "A ferramenta utilizará os parâmetros constantes do Arquivo de Coleta."
         )
-
-st.subheader("Carregar Arquivo de Coleta")
-st.caption("O XLS é a fonte de verdade. A web valida o preenchimento e só apresenta o que estiver seguro no arquivo.")
-arquivo = st.file_uploader("Carregue o Coleta_Reajuste.xlsx preenchido", type=["xlsx"])
 
 if arquivo is not None:
     if st.button("Validar Coleta Preenchida", type="primary", use_container_width=False):
