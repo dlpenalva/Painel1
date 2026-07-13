@@ -1,0 +1,48 @@
+name: Atualizar IST pela Anatel
+
+on:
+  schedule:
+    # 09:15 em Brasília nos dias 10, 15 e 20 de cada mês.
+    - cron: "15 12 10,15,20 * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: atualizar-ist-anatel
+  cancel-in-progress: false
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Obter repositório
+        uses: actions/checkout@v4
+
+      - name: Preparar Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Instalar dependência de rede
+        run: python -m pip install requests==2.32.5
+
+      - name: Testar o atualizador
+        run: python -m unittest tests.test_atualizar_ist_anatel -v
+
+      - name: Consultar a Anatel e atualizar a base
+        run: python tools/atualizar_ist_anatel.py
+
+      - name: Publicar somente se houver nova competência
+        shell: bash
+        run: |
+          if git diff --quiet -- ist.csv; then
+            echo "A base já está atualizada."
+            exit 0
+          fi
+          git config user.name "cl8us-ist-bot"
+          git config user.email "cl8us-ist-bot@users.noreply.github.com"
+          git add -- ist.csv
+          git commit -m "Atualiza IST pela fonte oficial da Anatel"
+          git push

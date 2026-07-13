@@ -63,10 +63,10 @@ def _render_css() -> None:
         <style>
         :root {
             --cl8us-sidebar: #C6D9E8;
-            --cl8us-bg-start: #D4E3EF;
-            --cl8us-bg-end: #BED4E5;
-            --cl8us-surface: #F9FCFE;
-            --cl8us-surface-soft: #EDF4F8;
+            --cl8us-main-start: #FBF8F1;
+            --cl8us-main-end: #F2ECE1;
+            --cl8us-surface: #FFFCF7;
+            --cl8us-surface-soft: #F5F0E7;
             --cl8us-navy: #123B63;
             --cl8us-muted: #50687D;
             --cl8us-action: #7A1733;
@@ -80,9 +80,9 @@ def _render_css() -> None:
             color: var(--cl8us-navy);
             background:
                 radial-gradient(circle at 92% 2%, rgba(255, 255, 255, .42) 0, rgba(255, 255, 255, 0) 32rem),
-                linear-gradient(135deg, var(--cl8us-bg-start) 0%, var(--cl8us-bg-end) 100%);
+                linear-gradient(135deg, var(--cl8us-main-start) 0%, var(--cl8us-main-end) 100%);
         }
-        [data-testid="stHeader"] { background: rgba(212, 227, 239, .78); }
+        [data-testid="stHeader"] { background: rgba(251, 248, 241, .82); }
         .block-container { max-width: 1180px; padding-top: 1.45rem; padding-bottom: 3rem; }
         h1, h2, h3 { color: var(--cl8us-navy); letter-spacing: -.015em; }
 
@@ -120,12 +120,6 @@ def _render_css() -> None:
             margin: .8rem 0 .28rem 0;
             text-transform: uppercase;
         }
-        [data-testid="stSidebar"] [data-testid="stExpander"] {
-            background: rgba(255, 255, 255, .20);
-            border: 1px solid rgba(18, 59, 99, .12);
-            box-shadow: none;
-        }
-
         .cl8us-hero {
             border: 1px solid var(--cl8us-line);
             border-top: 4px solid var(--cl8us-navy);
@@ -227,11 +221,6 @@ def _render_sidebar() -> None:
         st.markdown('<div class="cl8us-side-group">XLS preenchido</div>', unsafe_allow_html=True)
         st.page_link(PAGINA_UPLOAD, label="Upload e resultados")
 
-        if PAGINAS_AUXILIARES:
-            st.divider()
-            with st.expander("Ferramentas complementares", expanded=False):
-                for pagina in PAGINAS_AUXILIARES:
-                    st.page_link(pagina, label=pagina.title)
         render_versao_sidebar()
 
 

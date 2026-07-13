@@ -15,10 +15,17 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn('st.page_link(PAGINA_UPLOAD, label="Upload e resultados")', APP)
         self.assertIn('position="hidden"', APP)
 
-    def test_modulos_legados_permanecem_registrados_mas_recolhidos(self):
-        self.assertIn('st.expander("Ferramentas complementares", expanded=False)', APP)
+    def test_modulos_legados_permanecem_registrados_mas_fora_do_menu(self):
+        self.assertNotIn('st.expander("Ferramentas complementares", expanded=False)', APP)
+        self.assertNotIn('for pagina in PAGINAS_AUXILIARES:', APP)
         self.assertIn('("04_Relatorio_Global.py", "Relatórios")', APP)
         self.assertIn('("13_DOU.py", "DOU")', APP)
+
+    def test_area_principal_usa_fundo_neutro_e_sidebar_mantem_azul(self):
+        self.assertIn('--cl8us-sidebar: #C6D9E8;', APP)
+        self.assertIn('--cl8us-main-start: #FBF8F1;', APP)
+        self.assertIn('--cl8us-main-end: #F2ECE1;', APP)
+        self.assertNotIn('--cl8us-bg-start:', APP)
 
     def test_inicio_expoe_quatro_boxes_e_os_destinos_corretos(self):
         for numero in range(1, 5):
@@ -38,6 +45,10 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertNotIn("fluxo_query", INICIO)
         self.assertNotIn("A análise envolve mais de um ciclo", INICIO)
         self.assertNotIn("runpy", INICIO)
+
+    def test_inicio_nao_exibe_aviso_excluido(self):
+        self.assertNotIn("Se as informações forem parciais", INICIO)
+        self.assertNotIn("A ausência de base segura", INICIO)
 
 
 if __name__ == "__main__":

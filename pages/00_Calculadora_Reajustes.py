@@ -107,8 +107,3 @@ with linha_2[1]:
         )
         if st.button("Abrir Calculadora multiciclo", use_container_width=True, key="abrir_multiciclo_inicio"):
             st.switch_page("pages/02_Calculo_Represados.py")
-
-st.info(
-    "Se as informações forem parciais, o XLS preserva a coleta disponível e a validação aponta o que falta. "
-    "A ausência de base segura não será convertida em valor estimado."
-)
