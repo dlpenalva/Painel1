@@ -15,6 +15,7 @@ from _coleta_reajuste import (
     eh_coleta_reajuste,
     ler_coleta_reajuste,
 )
+from _coleta_reajuste_documentos import adaptar_coleta_reajuste_para_documentos
 
 aditivos_somados_ao_valor_total = 0.0  # fallback: planilha sem aditivos computaveis
 LEITOR_CONSUMO_ITENS_CICLO_VERSAO = "20260516_0207"
@@ -66,7 +67,7 @@ def aplicar_css_aditivos25_compacto():
         unsafe_allow_html=True,
     )
 # <<< UX_ADITIVOS_25_COMPACTO
-from _ui_utils import render_aviso_privacidade, render_cabecalho_pagina
+from _ui_utils import render_cabecalho_pagina
 
 def agora_brasilia():
     return datetime.now(ZoneInfo("America/Sao_Paulo"))
@@ -546,6 +547,9 @@ def ler_ciclos(bytes_arquivo, xls):
     # O modelo Consumo por Itens/Ciclo usa CICLOS_APURADOS.
     mapa_exato = {normalizar_texto(s): s for s in xls.sheet_names}
     aba = mapa_exato.get("ciclos") or mapa_exato.get("ciclo") or mapa_exato.get("ciclos_apurados")
+    if not aba and mapa_exato.get("parametros"):
+        df = pd.read_excel(BytesIO(bytes_arquivo), sheet_name=mapa_exato["parametros"], header=0)
+        return padronizar_ciclos(df), "parametros"
     if not aba:
         return pd.DataFrame(), "indisponível"
 
@@ -558,13 +562,13 @@ def padronizar_ciclos(df):
         return pd.DataFrame()
 
     col_ciclo = localizar_coluna(df, ["Ciclo"])
-    col_base = localizar_coluna(df, ["Data-base", "Base"])
+    col_base = localizar_coluna(df, ["Data-base", "Base", "Data início", "DATA_INICIO"])
     col_intervalo = localizar_coluna(df, ["Intervalo do índice", "Intervalo", "Janela"])
     col_janela_adm = localizar_coluna(df, ["Janela de admissibilidade", "JanelaAdm"])
     col_pedido = localizar_coluna(df, ["Data do pedido", "Pedido"])
     col_inicio_financeiro = localizar_coluna(df, ["Início financeiro", "Inicio financeiro", "Início dos efeitos financeiros", "Inicio dos efeitos financeiros", "Efeitos financeiros"])
     col_fim_financeiro = localizar_coluna(df, ["Fim financeiro", "Fim dos efeitos financeiros", "Fim efeito financeiro"])
-    col_situacao = localizar_coluna(df, ["Situação", "Resultado"])
+    col_situacao = localizar_coluna(df, ["Situação", "Resultado", "SITUACAO"])
     col_variacao = localizar_coluna(df, ["Variação", "Variacao", "Percentual"])
     col_fator = localizar_coluna(df, ["Fator"])
     col_fator_acum = localizar_coluna(df, ["Fator acumulado", "Fator acumulado final", "Fator Acumulado"])
@@ -840,18 +844,18 @@ def atribuir_ciclo_por_competencia(competencias, ciclos):
 
 
 def ler_itens(bytes_arquivo, xls):
-    aba = localizar_aba(xls, ["ITENS_REMANESCENTES", "ITENS_CICLOS", "Itens"])
+    aba = localizar_aba(xls, ["ITENS_REMANESCENTES", "ITENS_REMANESC", "ITENS_CICLOS", "Itens"])
     if not aba:
         raise ValueError("Aba ITENS_REMANESCENTES não encontrada.")
 
-    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item", "Quantidade contratada", "Valor unitário original"])
+    df = ler_aba_com_cabecalho(bytes_arquivo, aba, termos_obrigatorios=["Item"])
     if df.empty:
         raise ValueError("Aba ITENS_REMANESCENTES está vazia.")
 
     col_item = localizar_coluna(df, ["Item"])
-    col_qtd = localizar_coluna(df, ["Quantidade contratada", "Qtd C0", "Quantidade", "Qtd"])
-    col_vu = localizar_coluna(df, ["Valor unitário original", "VU C0", "VU Original", "Valor Unitario"])
-    col_total = localizar_coluna(df, ["Valor total", "TOTAL C0", "Total"])
+    col_qtd = localizar_coluna(df, ["Quantidade contratada", "QTD_CONTRATADA", "Qtd C0", "Quantidade", "Qtd"])
+    col_vu = localizar_coluna(df, ["Valor unitário original", "VU_ORIGINAL", "VU C0", "VU Original", "Valor Unitario"])
+    col_total = localizar_coluna(df, ["Valor total", "VALOR_TOTAL", "TOTAL C0", "Total"])
 
     if col_item is None or col_qtd is None or col_vu is None:
         raise ValueError("Aba ITENS_REMANESCENTES precisa conter Item, Quantidade contratada e Valor unitário original.")
@@ -896,7 +900,8 @@ def ler_itens(bytes_arquivo, xls):
         possui_ciclo = re.search(r"C\s*\d+", nome_original, flags=re.IGNORECASE) is not None
         eh_inicio_ciclo = "inicio" in n or "inicial" in n or possui_ciclo
         eh_coluna_excluida = "atual" in n or "data_corte" in n or "corte" in n
-        if "remanescente" in n and "valor" not in n and "total" not in n and eh_inicio_ciclo and not eh_coluna_excluida:
+        eh_quantidade_remanescente = "remanescente" in n or n.startswith("qtd_rem_")
+        if eh_quantidade_remanescente and "valor" not in n and "total" not in n and eh_inicio_ciclo and not eh_coluna_excluida:
             colunas_rem.append(col)
 
     col_consumido = localizar_coluna(df, ["Consumido no Ciclo", "Consumido"])
@@ -4744,7 +4749,6 @@ if arquivo is None:
     st.info("Envie o Coleta_Reajuste.xlsx preenchido para liberar a validação, os resultados e os documentos.")
     st.stop()
 
-render_aviso_privacidade(tem_upload=True, tem_download=True)
 adm = st.session_state.get("dados_admissibilidade")
 
 with st.expander("Contexto da Admissibilidade", expanded=True):
@@ -4767,7 +4771,11 @@ if arquivo is not None:
             if eh_coleta_reajuste(conteudo):
                 diagnostico = ler_coleta_reajuste(conteudo)
                 st.session_state["diagnostico_coleta_v2"] = diagnostico
-                st.session_state.pop("resultado_valor_global", None)
+                if diagnostico.get("pronto_para_consolidar"):
+                    resultado = adaptar_coleta_reajuste_para_documentos(conteudo)
+                    st.session_state["resultado_valor_global"] = resultado
+                else:
+                    st.session_state.pop("resultado_valor_global", None)
             else:
                 # Compatibilidade temporária com coletas antigas, sem interferir no novo XLS-first.
                 resultado = processar_arquivo_coleta(conteudo)
@@ -4792,25 +4800,47 @@ if diagnostico_coleta:
     col3.metric("Meses com valor", contagens.get("competencias_com_valor", 0))
     col4.metric("Itens remanescentes", contagens.get("itens_remanescentes", 0))
 
+    status_resultados = metadados.get("status_resultados") or {}
+    status_geral = status_resultados.get("geral")
+    if status_geral:
+        if status_geral == "CONSOLIDADO — CONFERIR":
+            st.success(f"RESULTADOS: {status_geral}")
+        else:
+            st.warning(f"RESULTADOS: {status_geral}")
+        status_col1, status_col2, status_col3 = st.columns(3)
+        status_col1.caption(f"Retroativo: {status_resultados.get('retroativo') or 'não calculado'}")
+        status_col2.caption(f"VTA: {status_resultados.get('vta') or 'não calculado'}")
+        status_col3.caption(f"Remanescente: {status_resultados.get('remanescente') or 'não calculado'}")
+
     for pendencia in diagnostico_coleta.get("pendencias", []):
         st.error(pendencia)
     for aviso in diagnostico_coleta.get("avisos", []):
         st.warning(aviso)
 
-    if diagnostico_coleta.get("pronto_para_consolidar"):
+    if not diagnostico_coleta.get("pronto_para_consolidar") and diagnostico_coleta.get("valido"):
         st.info(
-            "A coleta possui base para a próxima etapa. Nesta entrega, a web valida e preserva os dados; "
-            "a consolidação dos resultados será ligada na segunda etapa, sem recalcular o XLS."
-        )
-    elif diagnostico_coleta.get("valido"):
-        st.info(
-            "A estrutura está válida, mas faltam dados operacionais. Nenhum total inseguro foi apresentado. "
-            "Preencha o XLS, abra-o no Excel para recalcular e salve antes de reenviar."
+            "A estrutura está válida, mas o XLS ainda indica base incompleta, cálculo manual ou cache não recalculado. "
+            "Nenhum total inseguro foi apresentado. Abra o arquivo no Excel, confira RESULTADOS e salve antes de reenviar."
         )
 
 resultado = st.session_state.get("resultado_valor_global")
 
 if resultado:
+    with st.container(border=True):
+        st.markdown("### Arquivos personalizados liberados")
+        st.caption(
+            "Planilha Executiva · Valores Unitários e Totais por Ciclo · Mapa dos Marcos · "
+            "Relatório Executivo · Minuta de Apostilamento · Checklist Processual · "
+            "Garantia Contratual · Saneador"
+        )
+        col_arquivos, col_relatorios, col_gestao = st.columns(3)
+        with col_arquivos:
+            st.page_link("pages/06_Central_Arquivos.py", label="Abrir Central de Arquivos", use_container_width=True)
+        with col_relatorios:
+            st.page_link("pages/04_Relatorio_Global.py", label="Gerar relatório e minuta", use_container_width=True)
+        with col_gestao:
+            st.page_link("pages/05_Garantia.py", label="Gerar garantia contratual", use_container_width=True)
+
     st.divider()
     st.subheader("Painel Executivo")
 

@@ -32,10 +32,28 @@ ABAS_CANONICAS = (
     "itens_Consumidos",
     "itens_PC",
     "aditivos",
-    "RESULTADOS",
     "itens_RC",
     "historico_VU",
+    "RESULTADOS",
 )
+
+NOMES_RESULTADOS_OBRIGATORIOS = {
+    "METODO_RETROATIVO",
+    "TOLERANCIA_DIVERGENCIA",
+    "VALOR_MANUAL_RETRO",
+    "JUSTIFICATIVA_RETRO",
+    "RETRO_FIN",
+    "RETRO_PC",
+    "RETRO_ITENS",
+    "RETRO_OFICIAL",
+    "VTA_CALCULADO",
+    "AJUSTE_MANUAL_VTA",
+    "VTA_MANUAL_OFICIAL",
+    "VTA_FINAL",
+    "QTD_REM_OFICIAL",
+    "REM_BASE_OFICIAL",
+    "REM_ATUALIZADO_OFICIAL",
+}
 
 ABAS_PROIBIDAS = ("itens_Execucao_Saldo", "Itens_Execução", "REGRA_NEGOCIO_CLAUS", "Regra")
 ERROS_EXCEL = {"#REF!", "#VALUE!", "#DIV/0!", "#NAME?", "#N/A", "#NUM!", "#NULL!"}
@@ -203,6 +221,29 @@ def _formulas(wb) -> dict[str, str]:
     }
 
 
+def _validar_resultados_integra(wb, etapa: str) -> dict[str, Any]:
+    if "RESULTADOS" not in wb.sheetnames:
+        raise ValueError(f"A aba RESULTADOS desapareceu na etapa {etapa}.")
+    ws = wb["RESULTADOS"]
+    formulas = sum(
+        1
+        for row in ws.iter_rows()
+        for cell in row
+        if isinstance(cell.value, str) and cell.value.startswith("=")
+    )
+    conteudo = sum(1 for row in ws.iter_rows() for cell in row if cell.value not in (None, ""))
+    if ws.sheet_state != "visible":
+        raise ValueError(f"A aba RESULTADOS não está visível na etapa {etapa}.")
+    if ws["A1"].value != "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL":
+        raise ValueError(f"A aba RESULTADOS está vazia ou foi substituída na etapa {etapa}.")
+    if formulas < 3000 or conteudo < 3300:
+        raise ValueError(
+            f"A aba RESULTADOS perdeu conteúdo na etapa {etapa}: "
+            f"{formulas} fórmulas e {conteudo} células preenchidas."
+        )
+    return {"visivel": True, "formulas": formulas, "conteudo": conteudo}
+
+
 def _normalizar_arquivo(wb) -> None:
     for ws in wb.worksheets:
         for row in ws.iter_rows():
@@ -231,6 +272,7 @@ def gerar_coleta_reajuste(dados_admissibilidade: dict[str, Any]) -> bytes:
     wb = load_workbook(CAMINHO_MODELO_COLETA, data_only=False)
     if tuple(wb.sheetnames) != ABAS_CANONICAS:
         raise ValueError("O modelo canônico possui abas inesperadas ou fora de ordem.")
+    _validar_resultados_integra(wb, "logo após o carregamento do template")
     formulas_originais = _formulas(wb)
 
     ws = wb["CONTROLE"]
@@ -247,22 +289,20 @@ def gerar_coleta_reajuste(dados_admissibilidade: dict[str, Any]) -> bytes:
         row = ciclo["numero"] + 2
         ws[f"A{row}"] = "Sim" if ciclo["computar"] else "Nao"
         ws[f"B{row}"] = ciclo["nome"]
-        ws[f"C{row}"] = f'{ciclo["inicio"]:%m/%Y} a {ciclo["fim"]:%m/%Y}'
-        ws[f"D{row}"] = ciclo["inicio"]
-        ws[f"E{row}"] = ciclo["fim"]
-        ws[f"F{row}"] = ciclo["percentual"]
-        ws[f"H{row}"] = ciclo["situacao"]
-        for col in ("A", "B", "C", "D", "E", "F", "H"):
+        ws[f"C{row}"] = ciclo["inicio"]
+        ws[f"D{row}"] = ciclo["fim"]
+        ws[f"E{row}"] = ciclo["percentual"]
+        ws[f"G{row}"] = ciclo["situacao"]
+        for col in ("A", "B", "C", "D", "E", "G"):
             cell = ws[f"{col}{row}"]
             cell.fill = PREENCHIMENTO_AUTOMATICO
             font = copy(cell.font)
             font.color = COR_MARINHO if ciclo["computar"] else COR_TEXTO
             font.b = bool(ciclo["computar"])
             cell.font = font
-        ws[f"C{row}"].number_format = "@"
-        for col in ("D", "E"):
+        for col in ("C", "D"):
             ws[f"{col}{row}"].number_format = "mm/yyyy"
-        ws[f"F{row}"].number_format = "0.00%"
+        ws[f"E{row}"].number_format = "0.00%"
 
     # C1-C4 ainda não alcançados permanecem estruturalmente presentes, mas vazios.
     ultimo = max(ciclo["numero"] for ciclo in ciclos)
@@ -270,9 +310,9 @@ def gerar_coleta_reajuste(dados_admissibilidade: dict[str, Any]) -> bytes:
         row = numero + 2
         ws[f"A{row}"] = "Nao"
         ws[f"B{row}"] = f"C{numero}"
-        for col in ("C", "D", "E", "F"):
+        for col in ("C", "D", "E"):
             ws[f"{col}{row}"] = None
-        ws[f"H{row}"] = "Não aplicável"
+        ws[f"G{row}"] = "Não aplicável"
 
     ws = wb["financeiro"]
     row = 2
@@ -281,7 +321,6 @@ def gerar_coleta_reajuste(dados_admissibilidade: dict[str, Any]) -> bytes:
             competencia = ciclo["inicio"] + relativedelta(months=deslocamento)
             ws[f"A{row}"] = competencia
             ws[f"A{row}"].number_format = "mm/yyyy"
-            ws[f"B{row}"] = ciclo["nome"].lower()
             ws[f"C{row}"] = None
             financeiro_inicio = ciclo["financeiro_inicio"]
             efeito = bool(
@@ -290,7 +329,7 @@ def gerar_coleta_reajuste(dados_admissibilidade: dict[str, Any]) -> bytes:
                 and _primeiro_dia_mes(competencia) >= _primeiro_dia_mes(financeiro_inicio)
             )
             ws[f"G{row}"] = "Sim" if efeito else "Nao"
-            for col in ("A", "B", "G"):
+            for col in ("A", "G"):
                 cell = ws[f"{col}{row}"]
                 cell.fill = PREENCHIMENTO_AUTOMATICO
                 cell.font = Font(
@@ -302,12 +341,13 @@ def gerar_coleta_reajuste(dados_admissibilidade: dict[str, Any]) -> bytes:
             ws[f"C{row}"].fill = PREENCHIMENTO_ENTRADA
             row += 1
     while row <= 61:
-        for col in ("A", "B", "C", "G"):
+        for col in ("A", "C", "G"):
             ws[f"{col}{row}"] = None
         ws[f"C{row}"].fill = PREENCHIMENTO_ENTRADA
         row += 1
 
     _normalizar_arquivo(wb)
+    _validar_resultados_integra(wb, "imediatamente antes do salvamento")
     formulas_finais = _formulas(wb)
     if formulas_finais != formulas_originais:
         alteradas = sorted(set(formulas_originais) ^ set(formulas_finais))[:5]
@@ -354,12 +394,35 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
     formulas = _formulas(wb)
     if len(formulas) < 1000:
         pendencias.append("A matriz de fórmulas foi removida ou está incompleta.")
-    for chave in ("financeiro!D2", "itens_Remanesc!D2", "itens_Consumidos!O2", "itens_PC!D2"):
+    for chave in (
+        "financeiro!D2",
+        "itens_Remanesc!D2",
+        "itens_Consumidos!O2",
+        "itens_PC!B2",
+        "RESULTADOS!B15",
+        "RESULTADOS!B16",
+        "RESULTADOS!B23",
+        "RESULTADOS!B26",
+        "RESULTADOS!B35",
+        "RESULTADOS!C35",
+        "RESULTADOS!D35",
+        "RESULTADOS!F36",
+    ):
         if chave not in formulas:
             pendencias.append(f"Fórmula estrutural ausente em {chave}.")
     referencias_quebradas = [chave for chave, formula in formulas.items() if "#REF!" in formula.upper()]
     if referencias_quebradas:
         pendencias.append("Há fórmulas com referência quebrada: " + ", ".join(referencias_quebradas[:5]))
+
+    nomes_definidos = set(wb.defined_names)
+    nomes_ausentes = sorted(NOMES_RESULTADOS_OBRIGATORIOS - nomes_definidos)
+    if nomes_ausentes:
+        pendencias.append("Nomes estruturais da aba RESULTADOS ausentes: " + ", ".join(nomes_ausentes[:8]))
+    if wb.sheetnames[-1] != "RESULTADOS":
+        avisos.append("A aba RESULTADOS deve permanecer como a última aba do arquivo.")
+    abas_coloridas = [ws.title for ws in wb.worksheets if ws.sheet_properties.tabColor is not None]
+    if abas_coloridas != ["RESULTADOS"]:
+        avisos.append("Somente a guia RESULTADOS deve possuir cor de aba.")
 
     comentarios = []
     observacoes = []
@@ -383,20 +446,21 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         pendencias.append("Nenhum ciclo está marcado para computar nesta apuração.")
     else:
         for numero in range(1, max(ativos) + 1):
-            if _numero(parametros[f"F{numero + 2}"].value) is None:
+            if _numero(parametros[f"E{numero + 2}"].value) is None:
                 pendencias.append(f"C{numero}: percentual necessário ao acumulado está ausente.")
 
     contagens = {
         "competencias_com_valor": sum(1 for row in range(2, 62) if _numero(wb["financeiro"][f"C{row}"].value) is not None),
         "itens_remanescentes": sum(1 for row in range(2, 201) if wb["itens_Remanesc"][f"A{row}"].value not in (None, "")),
         "itens_consumidos": sum(1 for row in range(2, 201) if wb["itens_Consumidos"][f"A{row}"].value not in (None, "")),
-        "pedidos_de_compra": sum(1 for row in range(2, 101) if wb["itens_PC"][f"B{row}"].value not in (None, "")),
+        "pedidos_de_compra": sum(1 for row in range(2, 101) if wb["itens_PC"][f"A{row}"].value not in (None, "")),
         "aditivos": sum(1 for row in range(2, 201) if wb["aditivos"][f"A{row}"].value not in (None, "")),
         "formulas": len(formulas),
     }
     if contagens["competencias_com_valor"] == 0 and contagens["itens_remanescentes"] == 0:
         avisos.append("Ainda não há valores mensais nem itens remanescentes preenchidos pelo fiscal.")
 
+    status_resultados: dict[str, Any] = {}
     try:
         wb_valores = load_workbook(BytesIO(conteudo), data_only=True, read_only=True)
         erros = []
@@ -407,6 +471,17 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
                         erros.append(f"{ws.title}!{cell.coordinate}={cell.value}")
         if erros:
             pendencias.append("O Excel salvou erros de cálculo: " + ", ".join(erros[:8]))
+        resultados_valores = wb_valores["RESULTADOS"]
+        status_resultados = {
+            "geral": resultados_valores["J4"].value,
+            "retroativo": resultados_valores["F16"].value,
+            "vta": resultados_valores["E26"].value,
+            "remanescente": resultados_valores["F36"].value,
+        }
+        if not status_resultados["geral"]:
+            avisos.append(
+                "Os status de RESULTADOS não estão calculados em cache; abra, recalcule e salve o XLS no Excel."
+            )
     except Exception:
         avisos.append("Não foi possível conferir os valores calculados em cache; abra e salve o arquivo no Excel.")
 
@@ -415,12 +490,13 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         "ciclo_vigente": wb["CONTROLE"]["B2"].value,
         "data_corte": wb["CONTROLE"]["B3"].value,
         "ciclos_em_analise": [f"C{numero}" for numero in ativos],
+        "status_resultados": status_resultados,
     }
+    possui_base = contagens["competencias_com_valor"] > 0 or contagens["itens_remanescentes"] > 0
+    resultados_seguros = status_resultados.get("geral") == "CONSOLIDADO — CONFERIR"
     return {
         "valido": not pendencias,
-        "pronto_para_consolidar": not pendencias and (
-            contagens["competencias_com_valor"] > 0 or contagens["itens_remanescentes"] > 0
-        ),
+        "pronto_para_consolidar": not pendencias and possui_base and resultados_seguros,
         "pendencias": pendencias,
         "avisos": avisos,
         "contagens": contagens,

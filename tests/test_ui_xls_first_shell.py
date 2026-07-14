@@ -78,6 +78,36 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn('if st.button("Validar Coleta Preenchida"', DOCUMENTOS)
         self.assertLess(DOCUMENTOS.index("if arquivo is None:"), DOCUMENTOS.index("if arquivo is not None:"))
 
+    def test_modo_um_usa_botoes_de_download_na_cor_padrao(self):
+        coleta = SIMPLES[SIMPLES.index('label="Baixar Coleta_Reajuste.xlsx"'):]
+        coleta = coleta[:coleta.index(")")]
+        rascunho = SIMPLES[SIMPLES.index('label="Baixar rascunho (.txt)"'):]
+        rascunho = rascunho[:rascunho.index(")")]
+        self.assertNotIn('type="primary"', coleta)
+        self.assertNotIn('type="primary"', rascunho)
+
+    def test_upload_nao_exibe_textos_excluidos(self):
+        self.assertNotIn("render_aviso_privacidade", DOCUMENTOS)
+        self.assertNotIn("A coleta possui base para a próxima etapa", DOCUMENTOS)
+        self.assertNotIn("O XLS consolidou os quatro eixos", DOCUMENTOS)
+
+    def test_upload_religa_processamento_e_expoe_os_oito_arquivos(self):
+        self.assertIn("adaptar_coleta_reajuste_para_documentos(conteudo)", DOCUMENTOS)
+        self.assertNotIn('elif diagnostico.get("valido"):', DOCUMENTOS)
+        self.assertNotIn("_resultado_processado_pela_web", DOCUMENTOS)
+        self.assertIn("Arquivos personalizados liberados", DOCUMENTOS)
+        for arquivo in (
+            "Planilha Executiva",
+            "Valores Unitários e Totais por Ciclo",
+            "Mapa dos Marcos",
+            "Relatório Executivo",
+            "Minuta de Apostilamento",
+            "Checklist Processual",
+            "Garantia Contratual",
+            "Saneador",
+        ):
+            self.assertIn(arquivo, DOCUMENTOS)
+
 
 if __name__ == "__main__":
     unittest.main()

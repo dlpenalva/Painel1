@@ -2274,7 +2274,6 @@ if res:
             data=_bytes_coleta_estavel,
             file_name=NOME_ARQUIVO_COLETA,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
             help="Baixa o arquivo de coleta da versão estável, pré-preenchido com os dados desta apuração.",
             key="btn_baixar_coleta_reajuste_estavel_simples_v1",
         )
@@ -2306,7 +2305,6 @@ if res:
             data=f"ASSUNTO: {_assunto_email}\n\n{_corpo_email}".encode("utf-8"),
             file_name="email_fornecedor_reajuste.txt",
             mime="text/plain",
-            type="primary",
             help="Rascunho editável. Substitua os campos entre colchetes antes de enviar.",
         )
     except Exception:

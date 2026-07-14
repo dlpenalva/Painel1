@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 from copy import copy
 from pathlib import Path
+import re
 
 from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
@@ -15,6 +16,7 @@ INPUT = PatternFill("solid", fgColor="FFFFF2CC")
 AUTO = PatternFill("solid", fgColor="FFEDEDED")
 HEADER = PatternFill("solid", fgColor="FF1F4E79")
 CHECK = PatternFill("solid", fgColor="FFE2EFDA")
+HISTORICAL_REQUIRED = PatternFill("solid", fgColor="FFFCE4D6")
 WHITE = "FFFFFFFF"
 NAVY = "FF1F4E79"
 GRAY = "FF595959"
@@ -24,6 +26,85 @@ PERCENT = '0.00%'
 FACTOR = '#,##0.0000'
 THIN = Side(style="thin", color="FFD9D9D9")
 GRID = Border(left=THIN, right=THIN, top=THIN, bottom=THIN)
+
+
+def _assert_resultados_integra(wb, etapa: str) -> None:
+    if "RESULTADOS" not in wb.sheetnames:
+        raise ValueError(f"A aba RESULTADOS desapareceu na etapa {etapa}.")
+    ws = wb["RESULTADOS"]
+    formulas = sum(
+        1
+        for row in ws.iter_rows()
+        for cell in row
+        if isinstance(cell.value, str) and cell.value.startswith("=")
+    )
+    conteudo = sum(1 for row in ws.iter_rows() for cell in row if cell.value not in (None, ""))
+    if ws.sheet_state != "visible":
+        raise ValueError(f"A aba RESULTADOS não está visível na etapa {etapa}.")
+    if ws["A1"].value != "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL":
+        raise ValueError(f"A aba RESULTADOS está vazia ou foi substituída na etapa {etapa}.")
+    if formulas < 3000 or conteudo < 3300:
+        raise ValueError(
+            f"A aba RESULTADOS perdeu conteúdo na etapa {etapa}: "
+            f"{formulas} fórmulas e {conteudo} células preenchidas."
+        )
+
+
+def _deslocar_referencia_parametros(match: re.Match[str]) -> str:
+    def deslocar(coluna: str) -> str:
+        return chr(ord(coluna.upper()) - 1) if coluna.upper() >= "D" else coluna.upper()
+
+    prefixo, cifra1, coluna1, linha1, cifra2, coluna2, linha2 = match.groups()
+    resultado = f"{prefixo}{cifra1}{deslocar(coluna1)}{linha1 or ''}"
+    if coluna2:
+        resultado += f":{cifra2}{deslocar(coluna2)}{linha2 or ''}"
+    return resultado
+
+
+REFERENCIA_PARAMETROS = re.compile(
+    r"(parametros!)(\$?)([A-H])(\$?\d+)?(?:\:(\$?)([A-H])(\$?\d+)?)?",
+    re.IGNORECASE,
+)
+
+
+def _excluir_campo_c_parametros(wb) -> None:
+    """Exclui a antiga coluna C e desloca somente referências a PARAMETROS."""
+
+    ws = wb["parametros"]
+    cabecalho = str(ws["C1"].value or "").strip().upper()
+    if cabecalho == "DATA_INICIO":
+        return
+    if cabecalho not in {"", "PERIODO_DO_CICLO"}:
+        raise ValueError(f"Cabeçalho inesperado em parametros!C1: {ws['C1'].value!r}")
+    ws.delete_cols(3, 1)
+
+    for planilha in wb.worksheets:
+        for row in planilha.iter_rows():
+            for cell in row:
+                if isinstance(cell, MergedCell):
+                    continue
+                if isinstance(cell.value, str) and cell.value.startswith("="):
+                    cell.value = REFERENCIA_PARAMETROS.sub(_deslocar_referencia_parametros, cell.value)
+        for regras in planilha.conditional_formatting._cf_rules.values():
+            for regra in regras:
+                if regra.formula:
+                    regra.formula = [
+                        REFERENCIA_PARAMETROS.sub(_deslocar_referencia_parametros, formula)
+                        for formula in regra.formula
+                    ]
+        for validacao in planilha.data_validations.dataValidation:
+            if validacao.formula1:
+                validacao.formula1 = REFERENCIA_PARAMETROS.sub(
+                    _deslocar_referencia_parametros, validacao.formula1
+                )
+            if validacao.formula2:
+                validacao.formula2 = REFERENCIA_PARAMETROS.sub(
+                    _deslocar_referencia_parametros, validacao.formula2
+                )
+
+    for nome in wb.defined_names.values():
+        if nome.attr_text:
+            nome.attr_text = REFERENCIA_PARAMETROS.sub(_deslocar_referencia_parametros, nome.attr_text)
 
 
 def _style_formula_range(ws, row_start: int, row_end: int, formulas: dict[str, str]) -> None:
@@ -59,14 +140,16 @@ def _reset_controle(wb) -> None:
 
 def _reset_parametros(wb) -> None:
     ws = wb["parametros"]
-    if ws.max_column > 8:
-        ws.delete_cols(9, ws.max_column - 8)
+    ws.conditional_formatting._cf_rules.clear()
+    if ws.max_column > 7:
+        ws.delete_cols(8, ws.max_column - 7)
     headers = [
-        "COMPUTAR_NESTA_APURACAO", "CICLO", "PERIODO_DO_CICLO", "DATA_INICIO",
-        "DATA_FIM", "PERCENTUAL_DO_CICLO", "FATOR_ACUMULADO", "SITUACAO",
+        "COMPUTAR_NESTA_APURACAO", "CICLO", "DATA_INICIO", "DATA_FIM",
+        "PERCENTUAL_DO_CICLO", "FATOR_ACUMULADO", "SITUACAO",
     ]
     for col, value in enumerate(headers, 1):
-        cell = ws.cell(1, col, value)
+        cell = ws.cell(1, col)
+        cell.value = value
         cell.fill = HEADER
         cell.font = Font(name="Calibri", size=10, bold=True, color=WHITE)
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
@@ -74,21 +157,21 @@ def _reset_parametros(wb) -> None:
     for row, cycle in enumerate(("C0", "C1", "C2", "C3", "C4"), 2):
         ws.cell(row, 1, "Nao").fill = INPUT
         ws.cell(row, 2, cycle)
-        for col in (3, 4, 5):
+        for col in (3, 4):
             ws.cell(row, col).value = None
-            ws.cell(row, col).number_format = "@" if col == 3 else "mm/yyyy"
-        ws.cell(row, 6).value = 0 if cycle == "C0" else None
-        ws.cell(row, 6).fill = INPUT
-        ws.cell(row, 6).number_format = PERCENT
+            ws.cell(row, col).number_format = "mm/yyyy"
+        ws.cell(row, 5).value = 0 if cycle == "C0" else None
+        ws.cell(row, 5).fill = INPUT
+        ws.cell(row, 5).number_format = PERCENT
         if cycle == "C0":
-            ws.cell(row, 7, "=1")
+            ws.cell(row, 6, "=1")
         else:
             prev = row - 1
-            ws.cell(row, 7, f'=IF(F{row}="","",IF(NOT(ISNUMBER(F{row})),"",IF(NOT(ISNUMBER(G{prev})),"",G{prev}*(1+F{row}))))')
-        ws.cell(row, 7).fill = AUTO
-        ws.cell(row, 7).number_format = FACTOR
-        ws.cell(row, 8, "Base" if cycle == "C0" else "Fora desta apuracao")
-        for col in range(1, 9):
+            ws.cell(row, 6, f'=IF(E{row}="","",IF(NOT(ISNUMBER(E{row})),"",IF(NOT(ISNUMBER(F{prev})),"",F{prev}*(1+E{row}))))')
+        ws.cell(row, 6).fill = AUTO
+        ws.cell(row, 6).number_format = FACTOR
+        ws.cell(row, 7, "Base" if cycle == "C0" else "Fora desta apuracao")
+        for col in range(1, 8):
             ws.cell(row, col).font = Font(name="Calibri", size=10, color=GRAY)
             ws.cell(row, col).border = GRID
             ws.cell(row, col).alignment = Alignment(vertical="center")
@@ -110,7 +193,7 @@ def _reset_parametros(wb) -> None:
         src = 2 + i
         ws.cell(row, 1, cycle)
         ws.cell(row, 2, f"=A{src}")
-        ws.cell(row, 3, f'=IF(B{row}="Sim",F{src},"")')
+        ws.cell(row, 3, f'=IF(B{row}="Sim",E{src},"")')
         ws.cell(row, 4, "=1" if cycle == "C0" else f'=IF(C{row}="","",1+C{row})')
         ws.cell(row, 5, "=1" if cycle == "C0" else f'=IF(B{row}="Sim",E{row-1}*D{row},E{row-1})')
         ws.cell(row, 6, "Base" if cycle == "C0" else f'=IF(B{row}="Sim","Aplicado","Fora da apuracao")')
@@ -136,9 +219,19 @@ def _reset_parametros(wb) -> None:
     dv = DataValidation(type="list", formula1='"Sim,Nao"', allow_blank=False)
     ws.add_data_validation(dv)
     dv.add("A2:A6")
+    # F/G vazios em ciclo histórico anterior ao ciclo analisado exigem ação do fiscal.
+    # A regra é reativa: ao informar o percentual, o destaque desaparece.
+    ws.conditional_formatting.add(
+        "E3:F6",
+        FormulaRule(
+            formula=['AND($A3="Nao",$C3<>"",$E3="")'],
+            fill=HISTORICAL_REQUIRED,
+            font=Font(color="FF9C5700", bold=True),
+        ),
+    )
     ws.freeze_panes = "A2"
     ws.sheet_view.showGridLines = False
-    widths = {"A": 30, "B": 10, "C": 24, "D": 16, "E": 16, "F": 23, "G": 20, "H": 28}
+    widths = {"A": 30, "B": 10, "C": 16, "D": 16, "E": 23, "F": 20, "G": 28}
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
 
@@ -155,16 +248,18 @@ def _reset_financeiro(wb) -> None:
     ):
         ws.cell(1, col, value)
     formulas = {
-        "D": '=IF(B{r}="","",IF(B{r}="c0",1,IF(B{r}="c1",IF(parametros!$A$3<>"Sim","",IF(NOT(ISNUMBER(parametros!$F$3)),"",1+parametros!$F$3)),IF(B{r}="c2",IF(parametros!$A$4<>"Sim","",IF(NOT(ISNUMBER(parametros!$F$4)),"",IF(parametros!$A$3="Sim",1+parametros!$F$3,1)*(1+parametros!$F$4))),IF(B{r}="c3",IF(parametros!$A$5<>"Sim","",IF(NOT(ISNUMBER(parametros!$F$5)),"",IF(parametros!$A$3="Sim",1+parametros!$F$3,1)*IF(parametros!$A$4="Sim",1+parametros!$F$4,1)*(1+parametros!$F$5))),IF(B{r}="c4",IF(parametros!$A$6<>"Sim","",IF(NOT(ISNUMBER(parametros!$F$6)),"",IF(parametros!$A$3="Sim",1+parametros!$F$3,1)*IF(parametros!$A$4="Sim",1+parametros!$F$4,1)*IF(parametros!$A$5="Sim",1+parametros!$F$5,1)*(1+parametros!$F$6))),""))))))',
+        "B": '=IF(A{r}="","",IF(OR(A{r}<MIN(parametros!$C$2:$C$6),A{r}>MAX(parametros!$D$2:$D$6)),"Fora dos ciclos",LOWER(LOOKUP(A{r},parametros!$C$2:$C$6,parametros!$B$2:$B$6))))',
+        "D": '=IF(B{r}="","",IF(B{r}="c0",1,IF(B{r}="c1",IF(parametros!$A$3<>"Sim","",IF(NOT(ISNUMBER(parametros!$E$3)),"",1+parametros!$E$3)),IF(B{r}="c2",IF(parametros!$A$4<>"Sim","",IF(NOT(ISNUMBER(parametros!$E$4)),"",IF(parametros!$A$3="Sim",1+parametros!$E$3,1)*(1+parametros!$E$4))),IF(B{r}="c3",IF(parametros!$A$5<>"Sim","",IF(NOT(ISNUMBER(parametros!$E$5)),"",IF(parametros!$A$3="Sim",1+parametros!$E$3,1)*IF(parametros!$A$4="Sim",1+parametros!$E$4,1)*(1+parametros!$E$5))),IF(B{r}="c4",IF(parametros!$A$6<>"Sim","",IF(NOT(ISNUMBER(parametros!$E$6)),"",IF(parametros!$A$3="Sim",1+parametros!$E$3,1)*IF(parametros!$A$4="Sim",1+parametros!$E$4,1)*IF(parametros!$A$5="Sim",1+parametros!$E$5,1)*(1+parametros!$E$6))),""))))))',
         "E": '=IF(OR(C{r}="",NOT(ISNUMBER(D{r}))),"",ROUND(C{r}*D{r},2))',
         "F": '=IF(OR(C{r}="",E{r}=""),"",IF(G{r}<>"Sim",0,ROUND(E{r}-C{r},2)))',
     }
     for row in range(2, 62):
-        for col in ("A", "B", "C", "G"):
+        for col in ("A", "C", "G"):
             ws[f"{col}{row}"] = None
             ws[f"{col}{row}"].border = GRID
             ws[f"{col}{row}"].font = Font(name="Calibri", size=10, color=GRAY)
         ws[f"A{row}"].number_format = "mm/yyyy"
+        ws[f"B{row}"].fill = AUTO
         ws[f"C{row}"].number_format = MONEY
         ws[f"C{row}"].fill = INPUT
         ws[f"G{row}"].alignment = Alignment(horizontal="center")
@@ -181,6 +276,7 @@ def _reset_financeiro(wb) -> None:
 
 def _reset_itens_remanesc(wb) -> None:
     ws = wb["itens_Remanesc"]
+    ws.conditional_formatting._cf_rules.clear()
     for row in range(2, 201):
         for col in ("A", "B", "C", "E", "G", "I", "K", "S", "T"):
             ws[f"{col}{row}"] = None
@@ -202,6 +298,44 @@ def _reset_itens_remanesc(wb) -> None:
         "AC": '=IF(OR(A{r}="",E{r}=""),"",ROUND(D{r}-E{r}*C{r},2))',
     }
     _style_formula_range(ws, 2, 200, formulas)
+    # Os valores totais aparecem na primeira linha livre depois do último item.
+    # A coluna U identifica visualmente a linha dinâmica; os itens devem ser
+    # preenchidos de forma contígua, como já exigido pelo fluxo de coleta.
+    money_cols = ("D", "F", "H", "J", "L", "N", "P", "R", "T", "AC")
+    base_formulas = dict(formulas)
+    for row in range(2, 202):
+        prev = row - 1
+        following = row + 1
+        is_total = (
+            "FALSE"
+            if row == 2
+            else f'AND(A{row}="",A{prev}<>"",COUNTIF(A{following}:$A$200,"<>")=0)'
+        )
+        for col, pattern in base_formulas.items():
+            if col in money_cols:
+                total = f'ROUND(SUMIF($A$2:A{prev},"<>",${col}$2:{col}{prev}),2)'
+                regular = pattern.format(r=row)
+                formulas_row = f'=IF({is_total},{total},{regular[1:]})'
+                ws[f"{col}{row}"] = formulas_row
+                ws[f"{col}{row}"].fill = AUTO
+                ws[f"{col}{row}"].font = Font(name="Calibri", size=10, color=GRAY)
+                ws[f"{col}{row}"].border = GRID
+        if row >= 3:
+            ws[f"U{row}"] = (
+                f'=IF({is_total},"TOTAL",'
+                f'IF(A{row}="","",IF(AND(G{row}<>"",E{row}<>"",G{row}>E{row}),'
+                '"ALERTA: REM_C2>REM_C1",IF(AND(I{r}<>"",G{r}<>"",I{r}>G{r}),'
+                '"ALERTA: REM_C3>REM_C2",IF(AND(K{r}<>"",I{r}<>"",K{r}>I{r}),'
+                '"ALERTA: REM_C4>REM_C3","OK")))))'.format(r=row)
+            )
+    ws.conditional_formatting.add(
+        "A2:AC201",
+        FormulaRule(
+            formula=['$U2="TOTAL"'],
+            fill=PatternFill("solid", fgColor="FFD9E1F2"),
+            font=Font(color=NAVY, bold=True),
+        ),
+    )
     for row in range(2, 201):
         for col in ("A", "B", "C", "E", "G", "I", "K"):
             ws[f"{col}{row}"].fill = INPUT
@@ -213,8 +347,8 @@ def _reset_itens_remanesc(wb) -> None:
     for i, cycle in enumerate(("C0", "C1", "C2", "C3", "C4"), 2):
         ws[f"W{i}"] = cycle
         ws[f"X{i}"] = f"=parametros!$A${i}"
-        ws[f"Y{i}"] = f'=IF(ISNUMBER(parametros!$F${i}),parametros!$F${i},"")'
-        ws[f"Z{i}"] = f'=IF(ISNUMBER(parametros!$G${i}),parametros!$G${i},"")'
+        ws[f"Y{i}"] = f'=IF(ISNUMBER(parametros!$E${i}),parametros!$E${i},"")'
+        ws[f"Z{i}"] = f'=IF(ISNUMBER(parametros!$F${i}),parametros!$F${i},"")'
         for col in ("W", "X", "Y", "Z"):
             ws[f"{col}{i}"].fill = AUTO
             ws[f"{col}{i}"].border = GRID
@@ -250,8 +384,8 @@ def _reset_itens_consumidos(wb) -> None:
     for i, cycle in enumerate(("C0", "C1", "C2", "C3", "C4"), 2):
         ws[f"R{i}"] = cycle
         ws[f"S{i}"] = f"=parametros!$A${i}"
-        ws[f"T{i}"] = f'=IF(ISNUMBER(parametros!$F${i}),parametros!$F${i},"")'
-        ws[f"U{i}"] = f'=IF(ISNUMBER(parametros!$G${i}),parametros!$G${i},"")'
+        ws[f"T{i}"] = f'=IF(ISNUMBER(parametros!$E${i}),parametros!$E${i},"")'
+        ws[f"U{i}"] = f'=IF(ISNUMBER(parametros!$F${i}),parametros!$F${i},"")'
     widths = {"A": 14, "B": 20, "C": 18, "D": 18, "E": 16, "F": 17, "G": 16, "H": 17, "I": 16, "J": 17, "K": 16, "L": 17, "M": 16, "N": 17, "O": 18, "P": 20, "Q": 34}
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
@@ -270,37 +404,55 @@ def _reset_itens_consumidos(wb) -> None:
 
 def _reset_itens_pc(wb) -> None:
     ws = wb["itens_PC"]
+    while str(ws["A1"].value or "").strip().upper() in {"ITEM", "NUMERO_PC"}:
+        ws.delete_cols(1, 1)
     ws.column_dimensions["A"].hidden = False
     for table_name in list(ws.tables):
         del ws.tables[table_name]
     for row in range(101, ws.max_row + 1):
-        for col in range(1, 13):
+        for col in range(1, 12):
             ws.cell(row, col).value = None
     for row in range(2, 101):
-        for col in ("A", "B", "C", "E", "H"):
+        for col in ("A", "C", "F"):
             ws[f"{col}{row}"] = None
             ws[f"{col}{row}"].fill = INPUT
             ws[f"{col}{row}"].border = GRID
-        ws[f"C{row}"].number_format = "dd/mm/yyyy"
-        ws[f"E{row}"].number_format = MONEY
+        ws[f"A{row}"].number_format = "dd/mm/yyyy"
+        ws[f"C{row}"].number_format = MONEY
     formulas = {
-        "D": '=IF(C{r}="","",IF(OR(C{r}<MIN(parametros!$D$2:$D$6),C{r}>MAX(parametros!$E$2:$E$6)),"Fora dos ciclos",LOOKUP(C{r},parametros!$D$2:$D$6,parametros!$B$2:$B$6)))',
-        "F": '=IF(D{r}="","",IFERROR(VLOOKUP(D{r},parametros!$A$11:$E$15,5,0),""))',
-        "G": '=IF(OR(E{r}="",F{r}=""),"",ROUND(E{r}*F{r},2))',
-        "I": '=IF(H{r}="Sim",IF(OR(G{r}="",E{r}=""),"",ROUND(G{r}-E{r},2)),0)',
-        "J": '=IF(H{r}="Nao",IF(G{r}="","",G{r}),0)',
-        "K": '=IF(H{r}="Nao",IF(OR(G{r}="",E{r}=""),"",ROUND(G{r}-E{r},2)),0)',
-        "L": '=IF(COUNTA(A{r}:H{r})=0,"",IF(C{r}="","DATA_PC vazia",IF(OR(D{r}="",D{r}="Fora dos ciclos"),"CICLO_PC nao identificado",IF(OR(E{r}="",E{r}=0),"VALOR_PC vazio ou zero",IF(AND(H{r}<>"Sim",H{r}<>"Nao"),"PC_PAGO_A_CONTRATADA invalido","OK")))))',
+        "B": '=IF(A{r}="","",IF(OR(A{r}<MIN(parametros!$C$2:$C$6),A{r}>MAX(parametros!$D$2:$D$6)),"Fora dos ciclos",LOOKUP(A{r},parametros!$C$2:$C$6,parametros!$B$2:$B$6)))',
+        "D": '=IF(B{r}="","",IFERROR(VLOOKUP(B{r},parametros!$A$11:$E$15,5,0),""))',
+        "E": '=IF(OR(C{r}="",D{r}=""),"",ROUND(C{r}*D{r},2))',
+        "G": '=IF(F{r}="Sim",IF(OR(E{r}="",C{r}=""),"",ROUND(E{r}-C{r},2)),0)',
+        "H": '=IF(F{r}="Nao",IF(E{r}="","",E{r}),0)',
+        "I": '=IF(F{r}="Nao",IF(OR(E{r}="",C{r}=""),"",ROUND(E{r}-C{r},2)),0)',
+        "J": '=IF(COUNTA(A{r}:F{r})=0,"",IF(A{r}="","DATA_PC vazia",IF(OR(B{r}="",B{r}="Fora dos ciclos"),"CICLO_PC nao identificado",IF(OR(C{r}="",C{r}=0),"VALOR_PC vazio ou zero",IF(AND(F{r}<>"Sim",F{r}<>"Nao"),"PC_PAGO_A_CONTRATADA invalido","OK")))))',
     }
     _style_formula_range(ws, 2, 100, formulas)
+    # Reconstrói o resumo lateral após a exclusão física de NUMERO_PC.
+    for row, cycle in enumerate(("C0", "C1", "C2", "C3", "C4"), 2):
+        ws[f"L{row}"] = cycle
+        ws[f"M{row}"] = f'=COUNTIF($B$2:$B$100,L{row})'
+        ws[f"N{row}"] = f'=SUMIF($B$2:$B$100,L{row},$C$2:$C$100)'
+        ws[f"O{row}"] = f'=SUMIF($B$2:$B$100,L{row},$E$2:$E$100)'
+        ws[f"P{row}"] = f'=SUMIF($B$2:$B$100,L{row},$G$2:$G$100)'
+        ws[f"Q{row}"] = f'=SUMIF($B$2:$B$100,L{row},$H$2:$H$100)'
+        ws[f"R{row}"] = f'=SUMIF($B$2:$B$100,L{row},$I$2:$I$100)'
+        ws[f"S{row}"] = f'=COUNTIFS($B$2:$B$100,L{row},$J$2:$J$100,"<>OK",$J$2:$J$100,"<>")'
+    ws["L7"] = "TOTAL"
+    for col in ("M", "N", "O", "P", "Q", "R", "S"):
+        ws[f"{col}7"] = f"=SUM({col}2:{col}6)"
     for row in range(2, 101):
-        ws[f"F{row}"].number_format = FACTOR
-        for col in ("G", "I", "J", "K"):
+        ws[f"D{row}"].number_format = FACTOR
+        for col in ("E", "G", "H", "I"):
             ws[f"{col}{row}"].number_format = MONEY
     ws.data_validations.dataValidation.clear()
     dv = DataValidation(type="list", formula1='"Sim,Nao"', allow_blank=True)
     ws.add_data_validation(dv)
-    dv.add("H2:H100")
+    dv.add("F2:F100")
+    widths = {"A": 16, "B": 16, "C": 18, "D": 18, "E": 20, "F": 24, "G": 28, "H": 26, "I": 20, "J": 30}
+    for col, width in widths.items():
+        ws.column_dimensions[col].width = width
     ws.freeze_panes = "A2"
     ws.sheet_view.showGridLines = False
 
@@ -308,10 +460,10 @@ def _reset_itens_pc(wb) -> None:
 def _reset_aditivos(wb) -> None:
     ws = wb["aditivos"]
     formulas = {
-        "C": '=IF(B{r}="","",IFERROR(IF(AND(B{r}>=parametros!$D$2,B{r}<=parametros!$E$2),"C0",IF(AND(B{r}>=parametros!$D$3,B{r}<=parametros!$E$3),"C1",IF(AND(B{r}>=parametros!$D$4,B{r}<=parametros!$E$4),"C2",IF(AND(B{r}>=parametros!$D$5,B{r}<=parametros!$E$5),"C3",IF(AND(B{r}>=parametros!$D$6,B{r}<=parametros!$E$6),"C4","Fora dos ciclos"))))),"Fora dos ciclos"))',
+        "C": '=IF(B{r}="","",IFERROR(IF(AND(B{r}>=parametros!$C$2,B{r}<=parametros!$D$2),"C0",IF(AND(B{r}>=parametros!$C$3,B{r}<=parametros!$D$3),"C1",IF(AND(B{r}>=parametros!$C$4,B{r}<=parametros!$D$4),"C2",IF(AND(B{r}>=parametros!$C$5,B{r}<=parametros!$D$5),"C3",IF(AND(B{r}>=parametros!$C$6,B{r}<=parametros!$D$6),"C4","Fora dos ciclos"))))),"Fora dos ciclos"))',
         "F": '=IF(A{r}="","",IFERROR(VLOOKUP(A{r},itens_Remanesc!$A:$C,3,0),""))',
         "G": '=IF(OR(E{r}="",F{r}=""),"",ROUND(E{r}*F{r},2))',
-        "I": '=IFERROR(VLOOKUP(C{r},parametros!$B:$G,6,0),"")',
+        "I": '=IFERROR(VLOOKUP(C{r},parametros!$B:$F,5,0),"")',
         "J": '=IF(G{r}="","",ROUND(IF(OR(UPPER(D{r})="SUPRESSAO",UPPER(D{r})="DECRESCIMO"),-1,1)*G{r}*IF(AND(UPPER(H{r})="SIM",ISNUMBER(I{r})),I{r},1),2))',
     }
     for row in range(2, 201):
@@ -364,8 +516,8 @@ def _reset_historico_vu(wb) -> None:
         ws[f"H{row}"].number_format = PERCENT
     for i, cycle in enumerate(("C0", "C1", "C2", "C3", "C4"), 2):
         ws[f"J{i}"] = cycle
-        ws[f"K{i}"] = f'=IF(ISNUMBER(parametros!$F${i}),parametros!$F${i},"")'
-        ws[f"L{i}"] = f'=IF(ISNUMBER(parametros!$G${i}),parametros!$G${i},"")'
+        ws[f"K{i}"] = f'=IF(ISNUMBER(parametros!$E${i}),parametros!$E${i},"")'
+        ws[f"L{i}"] = f'=IF(ISNUMBER(parametros!$F${i}),parametros!$F${i},"")'
         ws[f"K{i}"].number_format = PERCENT
         ws[f"L{i}"].number_format = FACTOR
         for col in ("J", "K", "L"):
@@ -377,25 +529,33 @@ def _reset_historico_vu(wb) -> None:
 
 def _reset_itens_rc(wb) -> None:
     ws = wb["itens_RC"]
+    ws.conditional_formatting._cf_rules.clear()
     for row in range(3, 203):
         src = row - 1
+        prev_src = src - 1
+        tail_start = src + 1
+        is_total = (
+            "FALSE"
+            if row == 3
+            else f'AND(itens_Remanesc!A{src}="",itens_Remanesc!A{prev_src}<>"",COUNTIF(itens_Remanesc!A{tail_start}:$A$200,"<>")=0)'
+        )
         formulas = {
-            "A": f'=IF(itens_Remanesc!A{src}="","",itens_Remanesc!A{src})',
-            "B": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$G$2))),"",ROUND(itens_Remanesc!C{src}*parametros!$G$2,2))',
+            "A": f'=IF({is_total},"TOTAL",IF(itens_Remanesc!A{src}="","",itens_Remanesc!A{src}))',
+            "B": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$F$2))),"",ROUND(itens_Remanesc!C{src}*parametros!$F$2,2))',
             "C": f'=IF(itens_Remanesc!A{src}="","",itens_Remanesc!B{src})',
-            "D": f'=IF(A{row}="","",ROUND(B{row}*C{row},2))',
-            "E": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$G$3))),"",ROUND(itens_Remanesc!C{src}*parametros!$G$3,2))',
+            "D": f'=IF(A{row}="TOTAL",ROUND(SUM($D$3:D{row-1}),2),IF(A{row}="","",ROUND(B{row}*C{row},2)))',
+            "E": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$F$3))),"",ROUND(itens_Remanesc!C{src}*parametros!$F$3,2))',
             "F": f'=IF(itens_Remanesc!A{src}="","",itens_Remanesc!E{src})',
-            "G": f'=IF(OR(A{row}="",E{row}="",F{row}=""),"",ROUND(E{row}*F{row},2))',
-            "H": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$G$4))),"",ROUND(itens_Remanesc!C{src}*parametros!$G$4,2))',
+            "G": f'=IF(A{row}="TOTAL",ROUND(SUM($G$3:G{row-1}),2),IF(OR(A{row}="",E{row}="",F{row}=""),"",ROUND(E{row}*F{row},2)))',
+            "H": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$F$4))),"",ROUND(itens_Remanesc!C{src}*parametros!$F$4,2))',
             "I": f'=IF(itens_Remanesc!A{src}="","",itens_Remanesc!G{src})',
-            "J": f'=IF(OR(A{row}="",H{row}="",I{row}=""),"",ROUND(H{row}*I{row},2))',
-            "K": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$G$5))),"",ROUND(itens_Remanesc!C{src}*parametros!$G$5,2))',
+            "J": f'=IF(A{row}="TOTAL",ROUND(SUM($J$3:J{row-1}),2),IF(OR(A{row}="",H{row}="",I{row}=""),"",ROUND(H{row}*I{row},2)))',
+            "K": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$F$5))),"",ROUND(itens_Remanesc!C{src}*parametros!$F$5,2))',
             "L": f'=IF(itens_Remanesc!A{src}="","",itens_Remanesc!I{src})',
-            "M": f'=IF(OR(A{row}="",K{row}="",L{row}=""),"",ROUND(K{row}*L{row},2))',
-            "N": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$G$6))),"",ROUND(itens_Remanesc!C{src}*parametros!$G$6,2))',
+            "M": f'=IF(A{row}="TOTAL",ROUND(SUM($M$3:M{row-1}),2),IF(OR(A{row}="",K{row}="",L{row}=""),"",ROUND(K{row}*L{row},2)))',
+            "N": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$F$6))),"",ROUND(itens_Remanesc!C{src}*parametros!$F$6,2))',
             "O": f'=IF(itens_Remanesc!A{src}="","",itens_Remanesc!K{src})',
-            "P": f'=IF(OR(A{row}="",N{row}="",O{row}=""),"",ROUND(N{row}*O{row},2))',
+            "P": f'=IF(A{row}="TOTAL",ROUND(SUM($P$3:P{row-1}),2),IF(OR(A{row}="",N{row}="",O{row}=""),"",ROUND(N{row}*O{row},2)))',
         }
         for col, formula in formulas.items():
             ws[f"{col}{row}"] = formula
@@ -407,24 +567,36 @@ def _reset_itens_rc(wb) -> None:
             ws[f"{col}{row}"].number_format = QTY
     for col in range(1, 17):
         ws.cell(203, col).value = None
-    ws["A203"] = "TOTAL"
-    for col in ("D", "G", "J", "M", "P"):
-        ws[f"{col}203"] = f"=SUM({col}3:{col}202)"
-        ws[f"{col}203"].number_format = MONEY
-    for cell in ws[203]:
-        cell.fill = PatternFill("solid", fgColor="FFC0C0C0")
-        cell.font = Font(name="Calibri", size=10, bold=True)
-        cell.border = GRID
+    ws.conditional_formatting.add(
+        "A3:P202",
+        FormulaRule(
+            formula=['$A3="TOTAL"'],
+            fill=PatternFill("solid", fgColor="FFD9E1F2"),
+            font=Font(color=NAVY, bold=True),
+        ),
+    )
     ws.freeze_panes = "A3"
     ws.sheet_view.showGridLines = False
 
 
 def _reset_resultados(wb) -> None:
-    idx = wb.sheetnames.index("historico")
-    old = wb["historico"]
-    wb.remove(old)
-    ws = wb.create_sheet("RESULTADOS", idx)
+    _assert_resultados_integra(wb, "antes do ajuste de referências")
+    if "historico" in wb.sheetnames:
+        wb.remove(wb["historico"])
+    ws = wb["RESULTADOS"]
+    wb._sheets.append(wb._sheets.pop(wb._sheets.index(ws)))
+    for row, cycle in enumerate(("C0", "C1", "C2", "C3", "C4"), 10):
+        ws[f"C{row}"] = (
+            f'=IF(COUNTIFS(itens_PC!$B$2:$B$100,"{cycle}",itens_PC!$C$2:$C$100,">0",'
+            f'itens_PC!$F$2:$F$100,"Sim")=0,"",ROUND(SUMIFS(itens_PC!$G$2:$G$100,'
+            f'itens_PC!$B$2:$B$100,"{cycle}",itens_PC!$F$2:$F$100,"Sim"),2))'
+        )
+    ws["D44"] = '=SUMPRODUCT(--(((itens_PC!$A$2:$A$100<>"")+(itens_PC!$C$2:$C$100<>"")+(itens_PC!$F$2:$F$100<>""))>0),--(itens_PC!$J$2:$J$100<>"OK"))'
+    ws["D45"] = '=ROUND(SUM(itens_PC!$I$2:$I$100),2)'
+    ws["B20"] = '=IF(COUNTIF(itens_Remanesc!$A$2:$A$200,"<>")=0,"",ROUND(SUMIF(itens_Remanesc!$A$2:$A$200,"<>",itens_Remanesc!$D$2:$D$200),2))'
+    ws["D32"] = '=IF(COUNTIF(itens_Remanesc!$A$2:$A$200,"<>")=0,"",ROUND(IF($F$4="C0",SUMIFS(itens_RC!$D$3:$D$202,itens_RC!$A$3:$A$202,"<>TOTAL",itens_RC!$A$3:$A$202,"<>"),IF($F$4="C1",SUMIFS(itens_RC!$G$3:$G$202,itens_RC!$A$3:$A$202,"<>TOTAL",itens_RC!$A$3:$A$202,"<>"),IF($F$4="C2",SUMIFS(itens_RC!$J$3:$J$202,itens_RC!$A$3:$A$202,"<>TOTAL",itens_RC!$A$3:$A$202,"<>"),IF($F$4="C3",SUMIFS(itens_RC!$M$3:$M$202,itens_RC!$A$3:$A$202,"<>TOTAL",itens_RC!$A$3:$A$202,"<>"),SUMIFS(itens_RC!$P$3:$P$202,itens_RC!$A$3:$A$202,"<>TOTAL",itens_RC!$A$3:$A$202,"<>"))))),2))'
     ws.sheet_view.showGridLines = False
+    _assert_resultados_integra(wb, "depois do ajuste de referências")
 
 
 def _normalize(wb) -> None:
@@ -461,12 +633,14 @@ def build(source: Path, destination: Path) -> None:
     wb = load_workbook(source, data_only=False)
     required = {
         "CONTROLE", "parametros", "financeiro", "itens_Remanesc",
-        "itens_Consumidos", "itens_PC", "aditivos", "historico",
+        "itens_Consumidos", "itens_PC", "aditivos", "RESULTADOS",
         "itens_RC", "historico_VU",
     }
     missing = sorted(required.difference(wb.sheetnames))
     if missing:
         raise ValueError(f"Modelo de origem sem abas obrigatorias: {', '.join(missing)}")
+    _assert_resultados_integra(wb, "logo após o carregamento do template")
+    _excluir_campo_c_parametros(wb)
     _reset_controle(wb)
     _reset_parametros(wb)
     _reset_financeiro(wb)
@@ -478,6 +652,7 @@ def build(source: Path, destination: Path) -> None:
     _reset_itens_rc(wb)
     _reset_historico_vu(wb)
     _normalize(wb)
+    _assert_resultados_integra(wb, "imediatamente antes do salvamento")
     destination.parent.mkdir(parents=True, exist_ok=True)
     wb.save(destination)
 
