@@ -38,10 +38,7 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
     diagnostico = ler_coleta_reajuste(conteudo)
     if not diagnostico.get("valido"):
         raise ValueError("A coleta possui pendências estruturais e não pode liberar documentos.")
-    if not diagnostico.get("pronto_para_consolidar"):
-        raise ValueError(
-            "A aba RESULTADOS ainda não está consolidada. Abra, recalcule e salve o arquivo no Excel."
-        )
+    capacidades = diagnostico.get("capacidades") or {}
 
     wb = load_workbook(BytesIO(conteudo), data_only=True, read_only=True)
     controle = wb["CONTROLE"]
@@ -191,11 +188,16 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
                 )
     df_posicao_contratual = pd.DataFrame(posicao_rows)
 
+    calculos = capacidades.get("calculos") or {}
+    retro_capacidade = calculos.get("retroativo") or {}
+    vta_capacidade = calculos.get("vta") or {}
+    rem_capacidade = calculos.get("valor_remanescente") or {}
+
     valor_original = _numero(resultados["B20"].value)
-    retroativo = _numero(resultados["B16"].value)
+    retroativo = _numero(retro_capacidade.get("valor"))
     rem_original = _numero(resultados["C35"].value)
-    rem_atualizado = _numero(resultados["D35"].value)
-    valor_total = _numero(resultados["B26"].value)
+    rem_atualizado = _numero(rem_capacidade.get("valor"))
+    valor_total = _numero(vta_capacidade.get("valor"))
     pago_total = float(df_financeiro["Valor pago/faturado"].sum()) if not df_financeiro.empty else 0.0
     devido_total = float(df_financeiro["Valor atualizado"].sum()) if not df_financeiro.empty else 0.0
     total_aditivos = float(df_aditivos["Valor do aditivo reajustado"].sum()) if not df_aditivos.empty else 0.0
@@ -241,11 +243,11 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
         "ok": True,
         "origem_coleta": "Coleta_Reajuste.xlsx",
         "data_processamento": datetime.now().strftime("%d/%m/%Y %H:%M"),
-        "modo_apuracao": "Consolidado pelo XLS",
-        "base_execucao_mensal_disponivel": True,
+        "modo_apuracao": "Processamento progressivo pelo XLS",
+        "base_execucao_mensal_disponivel": bool(financeiro_rows),
         "base_itens_disponivel": bool(valores_rows),
-        "aviso_base_execucao": "",
-        "ressalva_modo_apuracao": "",
+        "aviso_base_execucao": "" if financeiro_rows else "Financeiro não informado; os demais blocos permanecem utilizáveis.",
+        "ressalva_modo_apuracao": "Somente resultados sustentados pelos blocos disponíveis são apresentados.",
         "config_ciclo_em_execucao": {},
         "corte_operacional_solicitado": False,
         "corte_operacional_aplicado": False,
@@ -301,8 +303,23 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
         "df_posicao_contratual": df_posicao_contratual,
         "df_comparativo": df_comparativo,
         "df_auditoria_consistencia": pd.DataFrame(
-            [{"Validação": "RESULTADOS consolidado no Excel", "Status": "OK", "Diferença/Valor": 0.0}]
+            [
+                {
+                    "Validação": "Blocos independentes do XLS avaliados",
+                    "Status": "OK",
+                    "Diferença/Valor": "Processamento progressivo",
+                }
+            ]
         ),
         "status_resultados": diagnostico.get("metadados", {}).get("status_resultados", {}),
+        "capacidades": capacidades,
+        "diagnostico_coleta": diagnostico,
+        "resultados_progressivos": {
+            "retroativo": retro_capacidade,
+            "vta": vta_capacidade,
+            "valor_remanescente": rem_capacidade,
+            "posicao_contratual": calculos.get("posicao_contratual") or {},
+            "valores_unitarios": calculos.get("valores_unitarios") or {},
+        },
         "_resultado_lido_do_excel": True,
     }

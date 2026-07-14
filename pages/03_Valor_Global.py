@@ -16,6 +16,12 @@ from _coleta_reajuste import (
     ler_coleta_reajuste,
 )
 from _coleta_reajuste_documentos import adaptar_coleta_reajuste_para_documentos
+from _capacidades_apuracao import avaliar_capacidades_apuracao
+from _ui_capacidades import (
+    render_resultados_progressivos,
+    render_status_apuracao,
+    render_status_documentos,
+)
 
 aditivos_somados_ao_valor_total = 0.0  # fallback: planilha sem aditivos computaveis
 LEITOR_CONSUMO_ITENS_CICLO_VERSAO = "20260516_0207"
@@ -4704,13 +4710,13 @@ def render_metodologia_corte_operacional_v4(resultado, modo_apuracao_ui="Complet
 
 aplicar_css_responsivo_telebras()
 render_cabecalho_pagina(
-    "Mesa GCC",
-    "Envie o Coleta_Reajuste.xlsx preenchido para validar a apuração, revisar os resultados e baixar documentos.",
+    "Painel da Apuração Contratual",
+    "Envie o Coleta_Reajuste.xlsx preenchido para validar cada bloco, acompanhar os resultados disponíveis e gerar documentos.",
 )
 
 st.markdown(
     '<div class="cl8us-docs-note">O Coleta_Reajuste.xlsx reúne os dados da apuração. '
-    'A web valida sua estrutura antes de liberar resultados e documentos.</div>',
+    'A web valida a estrutura e aproveita, de forma independente, cada bloco seguro da apuração.</div>',
     unsafe_allow_html=True,
 )
 
@@ -4746,7 +4752,17 @@ with st.container(border=True):
     )
 
 if arquivo is None:
-    st.info("Envie o Coleta_Reajuste.xlsx preenchido para liberar a validação, os resultados e os documentos.")
+    st.info("Envie o Coleta_Reajuste.xlsx preenchido. Cada bloco informado será processado de forma independente.")
+    capacidades_iniciais = avaliar_capacidades_apuracao({}, {})
+    render_status_apuracao(capacidades_iniciais)
+    render_status_documentos(
+        capacidades_iniciais,
+        (
+            "planilha_executiva", "valores_unitarios", "relatorio_executivo",
+            "mapa_marcos", "minuta_apostilamento", "garantia_contratual",
+            "dou", "checklist_processual",
+        ),
+    )
     st.stop()
 
 adm = st.session_state.get("dados_admissibilidade")
@@ -4771,7 +4787,7 @@ if arquivo is not None:
             if eh_coleta_reajuste(conteudo):
                 diagnostico = ler_coleta_reajuste(conteudo)
                 st.session_state["diagnostico_coleta_v2"] = diagnostico
-                if diagnostico.get("pronto_para_consolidar"):
+                if diagnostico.get("valido"):
                     resultado = adaptar_coleta_reajuste_para_documentos(conteudo)
                     st.session_state["resultado_valor_global"] = resultado
                 else:
@@ -4800,48 +4816,102 @@ if diagnostico_coleta:
     col3.metric("Meses com valor", contagens.get("competencias_com_valor", 0))
     col4.metric("Itens remanescentes", contagens.get("itens_remanescentes", 0))
 
-    status_resultados = metadados.get("status_resultados") or {}
-    status_geral = status_resultados.get("geral")
-    if status_geral:
-        if status_geral == "CONSOLIDADO — CONFERIR":
-            st.success(f"RESULTADOS: {status_geral}")
-        else:
-            st.warning(f"RESULTADOS: {status_geral}")
-        status_col1, status_col2, status_col3 = st.columns(3)
-        status_col1.caption(f"Retroativo: {status_resultados.get('retroativo') or 'não calculado'}")
-        status_col2.caption(f"VTA: {status_resultados.get('vta') or 'não calculado'}")
-        status_col3.caption(f"Remanescente: {status_resultados.get('remanescente') or 'não calculado'}")
+    capacidades_coleta = diagnostico_coleta.get("capacidades") or avaliar_capacidades_apuracao({}, {})
+    render_status_apuracao(capacidades_coleta)
+    render_status_documentos(
+        capacidades_coleta,
+        (
+            "planilha_executiva", "valores_unitarios", "relatorio_executivo",
+            "mapa_marcos", "minuta_apostilamento", "garantia_contratual",
+            "dou", "checklist_processual",
+        ),
+    )
 
-    for pendencia in diagnostico_coleta.get("pendencias", []):
-        st.error(pendencia)
+    for bloqueio in diagnostico_coleta.get("bloqueios_estruturais", []):
+        st.error(bloqueio)
+    for lacuna in diagnostico_coleta.get("lacunas_apuracao", []):
+        st.warning(lacuna)
     for aviso in diagnostico_coleta.get("avisos", []):
         st.warning(aviso)
-
-    if not diagnostico_coleta.get("pronto_para_consolidar") and diagnostico_coleta.get("valido"):
-        st.info(
-            "A estrutura está válida, mas o XLS ainda indica base incompleta, cálculo manual ou cache não recalculado. "
-            "Nenhum total inseguro foi apresentado. Abra o arquivo no Excel, confira RESULTADOS e salve antes de reenviar."
-        )
 
 resultado = st.session_state.get("resultado_valor_global")
 
 if resultado:
     with st.container(border=True):
-        st.markdown("### Arquivos personalizados liberados")
-        st.caption(
-            "Planilha Executiva · Valores Unitários e Totais por Ciclo · Mapa dos Marcos · "
-            "Relatório Executivo · Minuta de Apostilamento · Checklist Processual · "
-            "Garantia Contratual · Saneador"
-        )
+        st.markdown("### Ações sobre os documentos")
+        st.caption("A Central mantém todos os documentos visíveis e explica individualmente eventuais dependências.")
+        documentos_cap = (resultado.get("capacidades") or {}).get("documentos") or {}
         col_arquivos, col_relatorios, col_gestao = st.columns(3)
         with col_arquivos:
             st.page_link("pages/06_Central_Arquivos.py", label="Abrir Central de Arquivos", use_container_width=True)
         with col_relatorios:
-            st.page_link("pages/04_Relatorio_Global.py", label="Gerar relatório e minuta", use_container_width=True)
+            if (documentos_cap.get("relatorio_executivo") or {}).get("habilitado"):
+                st.page_link("pages/04_Relatorio_Global.py", label="Gerar relatório e minuta", use_container_width=True)
+            else:
+                st.button("Relatório aguardando dados", disabled=True, use_container_width=True)
         with col_gestao:
-            st.page_link("pages/05_Garantia.py", label="Gerar garantia contratual", use_container_width=True)
+            if (documentos_cap.get("garantia_contratual") or {}).get("habilitado"):
+                st.page_link("pages/05_Garantia.py", label="Gerar garantia contratual", use_container_width=True)
+            else:
+                st.button("Garantia aguardando VTA", disabled=True, use_container_width=True)
 
     st.divider()
+    render_resultados_progressivos(resultado)
+    if not diagnostico_coleta.get("pronto_para_consolidar"):
+        st.subheader("Arquivos disponíveis nesta etapa")
+        col_planilha, col_itens, col_memoria = st.columns(3)
+        with col_planilha:
+            if (documentos_cap.get("planilha_executiva") or {}).get("habilitado"):
+                try:
+                    excel_executivo_parcial = gerar_planilha_executiva(resultado)
+                    st.session_state["arquivo_planilha_executiva_xlsx"] = excel_executivo_parcial
+                    st.download_button(
+                        "Baixar Planilha Executiva",
+                        data=excel_executivo_parcial,
+                        file_name="Planilha_Executiva_Analise_Reajuste.xlsx",
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        key="download_planilha_executiva_progressiva",
+                    )
+                except Exception as exc:
+                    st.error(f"Planilha Executiva não pôde ser gerada: {exc}")
+            else:
+                st.button("Planilha Executiva · Pendente de dados", disabled=True, use_container_width=True)
+        with col_itens:
+            df_vu_parcial = limpar_nan_inf_df(resultado.get("df_valores_unitarios_ciclo", pd.DataFrame()))
+            if (documentos_cap.get("valores_unitarios") or {}).get("habilitado") and not df_vu_parcial.empty:
+                excel_vu_parcial = gerar_excel_valores_unitarios_por_ciclo(df_vu_parcial, resultado["df_ciclos"])
+                st.session_state["arquivo_valores_unitarios_xlsx"] = excel_vu_parcial
+                st.download_button(
+                    "Baixar Itens por Ciclo",
+                    data=excel_vu_parcial,
+                    file_name="Valores_Unitarios_e_Totais_por_Ciclo.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    key="download_itens_ciclo_progressivo",
+                )
+            else:
+                st.button("Itens por Ciclo · Pendente de dados", disabled=True, use_container_width=True)
+        with col_memoria:
+            if (documentos_cap.get("mapa_marcos") or {}).get("habilitado"):
+                pdf_memoria_parcial = gerar_pdf_linha_tempo_contrato(resultado)
+                if pdf_memoria_parcial:
+                    st.session_state["arquivo_mapa_marcos_pdf"] = pdf_memoria_parcial
+                    st.download_button(
+                        "Baixar Memória e Marcos",
+                        data=pdf_memoria_parcial,
+                        file_name="Mapa_Marcos_Contratuais_Linha_do_Tempo.pdf",
+                        mime="application/pdf",
+                        use_container_width=True,
+                        key="download_memoria_progressiva",
+                    )
+                else:
+                    st.button("Memória · Disponível com ressalvas", disabled=True, use_container_width=True)
+            else:
+                st.button("Memória · Pendente de dados", disabled=True, use_container_width=True)
+        st.info("A apuração seguirá disponível nesta etapa. Complete apenas os blocos necessários aos resultados ainda pendentes.")
+        st.stop()
+
     st.subheader("Painel Executivo")
 
     modo_apuracao_ui = resultado.get("modo_apuracao", "Completo")

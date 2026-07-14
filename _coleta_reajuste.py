@@ -20,6 +20,8 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 from openpyxl.styles import Font, PatternFill
 
+from _capacidades_apuracao import avaliar_capacidades_apuracao
+
 
 NOME_ARQUIVO_COLETA = "Coleta_Reajuste.xlsx"
 CAMINHO_MODELO_COLETA = Path(__file__).resolve().parent / "templates" / NOME_ARQUIVO_COLETA
@@ -380,20 +382,26 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
 
     faltantes = [aba for aba in ABAS_OBRIGATORIAS_LEGADO if aba not in wb.sheetnames]
     proibidas = [aba for aba in ABAS_PROIBIDAS if aba in wb.sheetnames]
-    pendencias: list[str] = []
+    bloqueios_estruturais: list[str] = []
+    lacunas_apuracao: list[str] = []
     avisos: list[str] = []
     if faltantes:
-        pendencias.append("Abas obrigatórias ausentes: " + ", ".join(faltantes))
+        bloqueios_estruturais.append("Abas obrigatórias ausentes: " + ", ".join(faltantes))
     if proibidas:
-        pendencias.append("Abas excluídas reapareceram: " + ", ".join(proibidas))
+        bloqueios_estruturais.append("Abas excluídas reapareceram: " + ", ".join(proibidas))
     if faltantes:
+        capacidades = avaliar_capacidades_apuracao({}, {}, bloqueios_estruturais, [])
         return {
             "valido": False,
             "pronto_para_consolidar": False,
-            "pendencias": pendencias,
+            "processamento_progressivo": True,
+            "pendencias": bloqueios_estruturais,
+            "bloqueios_estruturais": bloqueios_estruturais,
+            "lacunas_apuracao": [],
             "avisos": avisos,
             "contagens": {},
             "metadados": {},
+            "capacidades": capacidades,
         }
 
     possui_posicao_contratual = "posicao_contratual" in wb.sheetnames
@@ -404,7 +412,7 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
 
     formulas = _formulas(wb)
     if len(formulas) < 1000:
-        pendencias.append("A matriz de fórmulas foi removida ou está incompleta.")
+        bloqueios_estruturais.append("A matriz de fórmulas foi removida ou está incompleta.")
     for chave in (
         "financeiro!D2",
         "itens_Remanesc!D2",
@@ -420,7 +428,7 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         "RESULTADOS!F36",
     ):
         if chave not in formulas:
-            pendencias.append(f"Fórmula estrutural ausente em {chave}.")
+            bloqueios_estruturais.append(f"Fórmula estrutural ausente em {chave}.")
     if possui_posicao_contratual:
         for chave in (
             "aditivos!L2",
@@ -435,15 +443,15 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
             "historico_VU!N2",
         ):
             if chave not in formulas:
-                pendencias.append(f"Fórmula estrutural ausente em {chave}.")
+                bloqueios_estruturais.append(f"Fórmula estrutural ausente em {chave}.")
     referencias_quebradas = [chave for chave, formula in formulas.items() if "#REF!" in formula.upper()]
     if referencias_quebradas:
-        pendencias.append("Há fórmulas com referência quebrada: " + ", ".join(referencias_quebradas[:5]))
+        bloqueios_estruturais.append("Há fórmulas com referência quebrada: " + ", ".join(referencias_quebradas[:5]))
 
     nomes_definidos = set(wb.defined_names)
     nomes_ausentes = sorted(NOMES_RESULTADOS_OBRIGATORIOS - nomes_definidos)
     if nomes_ausentes:
-        pendencias.append("Nomes estruturais da aba RESULTADOS ausentes: " + ", ".join(nomes_ausentes[:8]))
+        bloqueios_estruturais.append("Nomes estruturais da aba RESULTADOS ausentes: " + ", ".join(nomes_ausentes[:8]))
     if wb.sheetnames[-1] != "RESULTADOS":
         avisos.append("A aba RESULTADOS deve permanecer como a última aba do arquivo.")
     abas_coloridas = [ws.title for ws in wb.worksheets if ws.sheet_properties.tabColor is not None]
@@ -462,18 +470,18 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
                 if cell.row == 1 and _celula_tem_observacao(cell.value):
                     observacoes.append(f"{ws.title}!{cell.coordinate}")
     if comentarios:
-        pendencias.append("Comentários/observações de célula não são admitidos: " + ", ".join(comentarios[:5]))
+        bloqueios_estruturais.append("Comentários/observações de célula não são admitidos: " + ", ".join(comentarios[:5]))
     if observacoes:
-        pendencias.append("Campos de observação não são admitidos: " + ", ".join(observacoes[:5]))
+        bloqueios_estruturais.append("Campos de observação não são admitidos: " + ", ".join(observacoes[:5]))
 
     parametros = wb["parametros"]
     ativos = [numero for numero in range(1, 5) if str(parametros[f"A{numero + 2}"].value).strip().lower() == "sim"]
     if not ativos:
-        pendencias.append("Nenhum ciclo está marcado para computar nesta apuração.")
+        lacunas_apuracao.append("Nenhum ciclo está marcado para computar nesta apuração.")
     else:
         for numero in range(1, max(ativos) + 1):
             if _numero(parametros[f"E{numero + 2}"].value) is None:
-                pendencias.append(f"C{numero}: percentual necessário ao acumulado está ausente.")
+                lacunas_apuracao.append(f"C{numero}: percentual necessário ao acumulado está ausente.")
 
     contagens = {
         "competencias_com_valor": sum(1 for row in range(2, 62) if _numero(wb["financeiro"][f"C{row}"].value) is not None),
@@ -482,6 +490,10 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         "pedidos_de_compra": sum(1 for row in range(2, 101) if wb["itens_PC"][f"A{row}"].value not in (None, "")),
         "aditivos": sum(1 for row in range(2, 201) if wb["aditivos"][f"A{row}"].value not in (None, "")),
         "formulas": len(formulas),
+        "posicao_contratual_itens": 0,
+        "posicao_contratual_calculada": 0,
+        "historico_vu_itens": 0,
+        "historico_vu_calculado": 0,
     }
     if contagens["competencias_com_valor"] == 0 and contagens["itens_remanescentes"] == 0:
         avisos.append("Ainda não há valores mensais nem itens remanescentes preenchidos pelo fiscal.")
@@ -496,7 +508,32 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
                     if isinstance(cell.value, str) and cell.value.upper() in ERROS_EXCEL:
                         erros.append(f"{ws.title}!{cell.coordinate}={cell.value}")
         if erros:
-            pendencias.append("O Excel salvou erros de cálculo: " + ", ".join(erros[:8]))
+            lacunas_apuracao.append("O Excel salvou erros de cálculo: " + ", ".join(erros[:8]))
+        if possui_posicao_contratual:
+            contagens["posicao_contratual_itens"] = sum(
+                1 for row in range(2, 201)
+                if wb_valores["posicao_contratual"][f"A{row}"].value not in (None, "")
+            )
+            contagens["posicao_contratual_calculada"] = sum(
+                1 for row in range(2, 201)
+                if wb_valores["posicao_contratual"][f"A{row}"].value not in (None, "")
+                and any(
+                    _numero(wb_valores["posicao_contratual"][f"{col}{row}"].value) is not None
+                    for col in ("E", "G", "I", "K", "M", "O", "Q", "S", "U", "W")
+                )
+            )
+        contagens["historico_vu_itens"] = sum(
+            1 for row in range(2, 201)
+            if wb_valores["historico_VU"][f"A{row}"].value not in (None, "")
+        )
+        contagens["historico_vu_calculado"] = sum(
+            1 for row in range(2, 201)
+            if wb_valores["historico_VU"][f"A{row}"].value not in (None, "")
+            and any(
+                _numero(wb_valores["historico_VU"][f"{col}{row}"].value) is not None
+                for col in ("B", "D", "F", "H", "J", "L", "N", "P")
+            )
+        )
         if possui_posicao_contratual:
             alertas_aditivos = [
                 f"aditivos!M{row}={wb_valores['aditivos'][f'M{row}'].value}"
@@ -509,15 +546,26 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
                 if str(wb_valores["posicao_contratual"][f"X{row}"].value or "").startswith("ALERTA:")
             ]
             if alertas_aditivos:
-                pendencias.append("Aditivos quantitativos inconsistentes: " + ", ".join(alertas_aditivos[:5]))
+                lacunas_apuracao.append("Aditivos quantitativos inconsistentes: " + ", ".join(alertas_aditivos[:5]))
             if alertas_posicao:
-                pendencias.append("PosiÃ§Ã£o contratual inconsistente: " + ", ".join(alertas_posicao[:5]))
+                lacunas_apuracao.append("Posição contratual inconsistente: " + ", ".join(alertas_posicao[:5]))
         resultados_valores = wb_valores["RESULTADOS"]
         status_resultados = {
             "geral": resultados_valores["J4"].value,
             "retroativo": resultados_valores["F16"].value,
             "vta": resultados_valores["E26"].value,
             "remanescente": resultados_valores["F36"].value,
+            "valores": {
+                "retroativo_financeiro": resultados_valores["B15"].value,
+                "retroativo_pc": resultados_valores["C15"].value,
+                "retroativo_itens": resultados_valores["D15"].value,
+                "retroativo_oficial": resultados_valores["B16"].value,
+                "vta_calculado": resultados_valores["B23"].value,
+                "vta_oficial": resultados_valores["B26"].value,
+                "quantidade_remanescente": resultados_valores["B35"].value,
+                "remanescente_original": resultados_valores["C35"].value,
+                "remanescente_atualizado": resultados_valores["D35"].value,
+            },
         }
         if not status_resultados["geral"]:
             avisos.append(
@@ -534,15 +582,26 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         "status_resultados": status_resultados,
         "arquitetura_posicao_contratual": "canonica" if possui_posicao_contratual else "legada",
     }
-    possui_base = contagens["competencias_com_valor"] > 0 or contagens["itens_remanescentes"] > 0
-    resultados_seguros = status_resultados.get("geral") == "CONSOLIDADO — CONFERIR"
+    capacidades = avaliar_capacidades_apuracao(
+        contagens,
+        metadados,
+        bloqueios_estruturais,
+        lacunas_apuracao,
+    )
+    possui_base = capacidades["resumo"]["tem_alguma_evidencia"]
+    resultados_seguros = capacidades["resumo"]["apuracao_integral"]
+    pendencias = bloqueios_estruturais + lacunas_apuracao
     return {
-        "valido": not pendencias,
-        "pronto_para_consolidar": not pendencias and possui_base and resultados_seguros,
+        "valido": not bloqueios_estruturais,
+        "pronto_para_consolidar": not bloqueios_estruturais and possui_base and resultados_seguros,
+        "processamento_progressivo": True,
         "pendencias": pendencias,
+        "bloqueios_estruturais": bloqueios_estruturais,
+        "lacunas_apuracao": lacunas_apuracao,
         "avisos": avisos,
         "contagens": contagens,
         "metadados": metadados,
+        "capacidades": capacidades,
     }
 
 

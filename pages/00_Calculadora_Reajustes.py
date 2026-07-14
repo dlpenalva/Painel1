@@ -38,7 +38,7 @@ def _conteudo_card(tag: str, titulo: str, texto: str) -> None:
 
 render_cabecalho_pagina(
     "Reajustes contratuais",
-    "Calcule os marcos na web, trabalhe no Excel e devolva o mesmo arquivo para validação e documentos.",
+    "Baixe o XLS Coleta, registre as informações do processo e envie o arquivo preenchido para validação e geração progressiva dos documentos.",
 )
 
 st.subheader("Fluxo operacional")

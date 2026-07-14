@@ -37,6 +37,8 @@ def aplicar_css_aditivos25_compacto():
     )
 # <<< UX_ADITIVOS_25_COMPACTO
 from _ui_utils import render_marca_topo, render_aviso_privacidade
+from _capacidades_apuracao import avaliar_capacidades_apuracao
+from _ui_capacidades import render_status_documentos
 
 def gerar_excel_catalogo(df_catalogo, df_checklist=None):
     buffer = BytesIO()
@@ -64,29 +66,31 @@ def gerar_excel_catalogo(df_catalogo, df_checklist=None):
     return buffer.getvalue()
 
 
-def item_arquivo(nome, finalidade, formato, session_key, file_name, mime, modulo=None, pagina=None):
+def item_arquivo(nome, finalidade, formato, session_key, file_name, mime, modulo=None, pagina=None, capacidade=None):
     disponivel = bool(st.session_state.get(session_key))
+    status_capacidade = (CAPACIDADES.get("documentos") or {}).get(capacidade, {})
     return {
         "Arquivo": nome,
         "Finalidade": finalidade,
         "Formato": formato,
-        "Status": "Disponível" if disponivel else "Gerar no módulo",
+        "Status": "Disponível" if disponivel else status_capacidade.get("rotulo", "Aguardando dados"),
         "session_key": session_key,
         "file_name": file_name,
         "mime": mime,
         "modulo": modulo or "",
         "pagina": pagina,
+        "capacidade": status_capacidade,
     }
 
 
 def render_linha_arquivo(item):
     arquivo_bytes = st.session_state.get(item["session_key"])
     disponivel = bool(arquivo_bytes)
-    status_html = (
-        '<span class="central-status-ok">Disponível</span>'
-        if disponivel
-        else '<span class="central-status-pendente">Gerar no módulo</span>'
-    )
+    capacidade = item.get("capacidade") or {}
+    habilitado = bool(capacidade.get("habilitado"))
+    status_texto = "Disponível" if disponivel else capacidade.get("rotulo", "Aguardando dados")
+    status_classe = "central-status-ok" if disponivel or habilitado else "central-status-pendente"
+    status_html = f'<span class="{status_classe}">{status_texto}</span>'
     st.markdown('<div class="central-row">', unsafe_allow_html=True)
     col1, col2, col3, col4, col5 = st.columns([1.45, 2.60, 0.70, 1.05, 1.10], vertical_alignment="center")
     with col1:
@@ -103,49 +107,58 @@ def render_linha_arquivo(item):
                 "Baixar", data=arquivo_bytes, file_name=item["file_name"],
                 mime=item["mime"], key=f"download_{item['session_key']}", use_container_width=True,
             )
-        elif item.get("pagina"):
+        elif habilitado and item.get("pagina"):
             st.page_link(item["pagina"], label="Abrir módulo", use_container_width=True)
         else:
-            st.caption("Indisponível")
+            st.button("Aguardando dados", key=f"blocked_{item['session_key']}", disabled=True, use_container_width=True)
+    if not disponivel and capacidade.get("motivo"):
+        st.caption(capacidade["motivo"])
     st.markdown("</div>", unsafe_allow_html=True)
 
 
 render_marca_topo()
 st.title("Central de Arquivos")
-st.caption("Área única para localizar os principais arquivos gerados ou utilizados no fluxo de análise.")
+st.caption("Acompanhe o estado de cada documento e utilize imediatamente tudo o que a apuração já sustenta.")
 render_aviso_privacidade(tem_download=True)
+
+diagnostico = st.session_state.get("diagnostico_coleta_v2") or {}
+CAPACIDADES = diagnostico.get("capacidades") or avaliar_capacidades_apuracao({}, {})
+render_status_documentos(CAPACIDADES)
 
 itens = [
     item_arquivo("Planilha Executiva", "Conferência financeira e memória consolidada da análise.", "XLSX",
         "arquivo_planilha_executiva_xlsx", "Planilha_Executiva_Analise_Reajuste.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Valor Global", "pages/03_Valor_Global.py"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Valor Global", "pages/03_Valor_Global.py", "planilha_executiva"),
     item_arquivo("Valores Unitários e Totais por Ciclo", "Conferência dos valores unitários e totais remanescentes por ciclo.", "XLSX",
         "arquivo_valores_unitarios_xlsx", "Valores_Unitarios_e_Totais_por_Ciclo.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Valor Global", "pages/03_Valor_Global.py"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Valor Global", "pages/03_Valor_Global.py", "valores_unitarios"),
     item_arquivo("Relatório Executivo", "Instrução processual e síntese da análise de reajuste.", "PDF",
         "arquivo_relatorio_executivo_pdf", "Relatorio_Executivo_Analise_Reajuste.pdf",
-        "application/pdf", "Relatórios", "pages/04_Relatorio_Global.py"),
+        "application/pdf", "Relatórios", "pages/04_Relatorio_Global.py", "relatorio_executivo"),
     item_arquivo("Minuta de Apostilamento", "Formalização em DOCX editável.", "DOCX",
         "arquivo_minuta_apostilamento_docx", "minuta_termo_apostilamento.docx",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "Relatórios", "pages/04_Relatorio_Global.py"),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "Relatórios", "pages/04_Relatorio_Global.py", "minuta_apostilamento"),
     item_arquivo("Mapa dos Marcos", "Linha do tempo do contrato e marcos relevantes.", "PDF",
         "arquivo_mapa_marcos_pdf", "Mapa_Marcos_Contratuais_Linha_do_Tempo.pdf",
-        "application/pdf", "Valor Global", "pages/03_Valor_Global.py"),
+        "application/pdf", "Valor Global", "pages/03_Valor_Global.py", "mapa_marcos"),
     item_arquivo("Checklist Processual", "Controle interno de prontidão da instrução.", "XLSX",
         "arquivo_checklist_processual_xlsx", "Checklist_Processual.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Checklist Processual", "pages/07_Checklist_Processual.py"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Checklist Processual", "pages/07_Checklist_Processual.py", "checklist_processual"),
     item_arquivo("Garantia Contratual", "Endosso, controle e monitoramento da garantia.", "PDF",
         "arquivo_garantia_pdf", "relatorio_garantia_contratual.pdf",
-        "application/pdf", "Gestão da Garantia", "pages/05_Garantia.py"),
+        "application/pdf", "Gestão da Garantia", "pages/05_Garantia.py", "garantia_contratual"),
+    item_arquivo("DOU", "Minuta do extrato para publicação, com ressalvas quando houver campos pendentes.", "DOCX",
+        "arquivo_dou_docx", "Minuta_DOU.docx",
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "DOU", "pages/13_DOU.py", "dou"),
     item_arquivo("Avaliação de Aditivos", "Controle de acréscimos, supressões e limite de 25%.", "XLSX",
         "arquivo_avaliacao_aditivos_xlsx", "Avaliacao_Aditivos_Limite_25.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Avaliação de Aditivos", "pages/08_Avaliacao_Aditivos.py"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Avaliação de Aditivos", "pages/08_Avaliacao_Aditivos.py", "avaliacao_aditivos"),
     item_arquivo("Infos Prévias", "Levantamento mínimo de dados e documentos antes da análise.", "XLSX",
         "arquivo_infos_previas_xlsx", "Infos_Previas_Instrucao_Processual.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Infos Prévias", "pages/09_Infos_Previas.py"),
+        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Infos Prévias", "pages/09_Infos_Previas.py", "infos_previas"),
     item_arquivo("Saneador", "Minuta narrativa integrada para conferência antes da assinatura.", "DOCX",
         "arquivo_saneador_docx", "Saneador_Instrucao_Processual.docx",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "Saneador", "pages/10_Saneador.py"),
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "Saneador", "pages/10_Saneador.py", "saneador"),
 ]
 
 st.markdown(

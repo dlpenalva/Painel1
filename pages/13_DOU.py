@@ -456,6 +456,7 @@ with st.expander("Prévia do texto que será gerado no DOCX", expanded=True):
 
 try:
     arquivo_docx = gerar_docx_dou(texto_para_docx)
+    st.session_state["arquivo_dou_docx"] = arquivo_docx
     st.download_button(
         "Baixar DOCX pré-preenchido",
         data=arquivo_docx,

@@ -9,6 +9,8 @@ SIMPLES = (ROOT / "pages" / "01_Calculo_Simples.py").read_text(encoding="utf-8")
 MULTI = (ROOT / "pages" / "02_Calculo_Represados.py").read_text(encoding="utf-8")
 DOCUMENTOS = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
 UI = (ROOT / "_ui_utils.py").read_text(encoding="utf-8")
+UI_CAPACIDADES = (ROOT / "_ui_capacidades.py").read_text(encoding="utf-8")
+CENTRAL = (ROOT / "pages" / "06_Central_Arquivos.py").read_text(encoding="utf-8")
 
 
 class TestCascaXlsFirst(unittest.TestCase):
@@ -68,7 +70,8 @@ class TestCascaXlsFirst(unittest.TestCase):
             self.assertIn("render_cabecalho_pagina(", pagina)
 
     def test_documentos_fica_enxuto_antes_do_upload_e_preserva_o_motor(self):
-        self.assertIn('"Mesa GCC"', DOCUMENTOS)
+        self.assertNotIn("Mesa GCC", DOCUMENTOS)
+        self.assertIn('"Painel da Apuração Contratual"', DOCUMENTOS)
         self.assertIn("1 · Baixar arquivo de trabalho", DOCUMENTOS)
         self.assertIn("2 · Enviar Coleta_Reajuste.xlsx preenchido", DOCUMENTOS)
         self.assertIn("CAMINHO_MODELO_COLETA.read_bytes()", DOCUMENTOS)
@@ -95,7 +98,9 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn("adaptar_coleta_reajuste_para_documentos(conteudo)", DOCUMENTOS)
         self.assertNotIn('elif diagnostico.get("valido"):', DOCUMENTOS)
         self.assertNotIn("_resultado_processado_pela_web", DOCUMENTOS)
-        self.assertIn("Arquivos personalizados liberados", DOCUMENTOS)
+        self.assertIn("render_status_apuracao", DOCUMENTOS)
+        self.assertIn("render_status_documentos", DOCUMENTOS)
+        self.assertIn("Ações sobre os documentos", DOCUMENTOS)
         for arquivo in (
             "Planilha Executiva",
             "Valores Unitários e Totais por Ciclo",
@@ -106,7 +111,12 @@ class TestCascaXlsFirst(unittest.TestCase):
             "Garantia Contratual",
             "Saneador",
         ):
-            self.assertIn(arquivo, DOCUMENTOS)
+            self.assertIn(arquivo, DOCUMENTOS + UI_CAPACIDADES + CENTRAL)
+
+    def test_referencias_antigas_foram_removidas_da_interface(self):
+        self.assertNotIn("Mesa GCC", DOCUMENTOS)
+        self.assertNotIn("Calcule os marcos na web", INICIO)
+        self.assertNotIn("RESULTADOS:", DOCUMENTOS)
 
 
 if __name__ == "__main__":
