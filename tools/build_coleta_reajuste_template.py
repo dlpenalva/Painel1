@@ -277,25 +277,34 @@ def _reset_financeiro(wb) -> None:
 def _reset_itens_remanesc(wb) -> None:
     ws = wb["itens_Remanesc"]
     ws.conditional_formatting._cf_rules.clear()
+    ws["B1"] = "QTD_BASE_ORIGINAL"
+    for col, cycle, parameter_row in (("E", "C1", 3), ("G", "C2", 4), ("I", "C3", 5), ("K", "C4", 6)):
+        ws[f"{col}1"] = (
+            f'=IF(parametros!$C${parameter_row}="","QTD_REM_BASE_SEM_ADITIVO_{cycle}",'
+            f'"QTD_REM_BASE_SEM_ADITIVO_{cycle}"&CHAR(10)&"Inicio: "&RIGHT("0"&DAY(parametros!$C${parameter_row}),2)&"/"&'
+            f'RIGHT("0"&MONTH(parametros!$C${parameter_row}),2)&"/"&YEAR(parametros!$C${parameter_row}))'
+        )
     for row in range(2, 201):
         for col in ("A", "B", "C", "E", "G", "I", "K", "S", "T"):
             ws[f"{col}{row}"] = None
     formulas = {
         "D": '=IF(OR(A{r}="",B{r}="",C{r}=""),"",ROUND(B{r}*C{r},2))',
-        "F": '=IF(OR(A{r}="",E{r}="",C{r}="",NOT(ISNUMBER($Z$3))),"",ROUND(E{r}*C{r}*$Z$3,2))',
-        "H": '=IF(OR(A{r}="",G{r}="",C{r}="",NOT(ISNUMBER($Z$4))),"",ROUND(G{r}*C{r}*$Z$4,2))',
-        "J": '=IF(OR(A{r}="",I{r}="",C{r}="",NOT(ISNUMBER($Z$5))),"",ROUND(I{r}*C{r}*$Z$5,2))',
-        "L": '=IF(OR(A{r}="",K{r}="",C{r}="",NOT(ISNUMBER($Z$6))),"",ROUND(K{r}*C{r}*$Z$6,2))',
-        "M": '=IF(OR(E{r}="",G{r}=""),"",ROUND(MAX(E{r}-G{r},0),2))',
+        "F": '=IF(OR(A{r}="",posicao_contratual!K{r}="",C{r}="",NOT(ISNUMBER($Z$3))),"",ROUND(posicao_contratual!K{r}*C{r}*$Z$3,2))',
+        "H": '=IF(OR(A{r}="",posicao_contratual!O{r}="",C{r}="",NOT(ISNUMBER($Z$4))),"",ROUND(posicao_contratual!O{r}*C{r}*$Z$4,2))',
+        "J": '=IF(OR(A{r}="",posicao_contratual!S{r}="",C{r}="",NOT(ISNUMBER($Z$5))),"",ROUND(posicao_contratual!S{r}*C{r}*$Z$5,2))',
+        "L": '=IF(OR(A{r}="",posicao_contratual!W{r}="",C{r}="",NOT(ISNUMBER($Z$6))),"",ROUND(posicao_contratual!W{r}*C{r}*$Z$6,2))',
+        # Execucao e variacao contratual sao dimensoes distintas: a diferenca
+        # usa a base fisica informada, para uma supressao nao virar "execucao".
+        "M": '=IF(OR(posicao_contratual!J{r}="",posicao_contratual!N{r}=""),"",ROUND(MAX(posicao_contratual!J{r}-posicao_contratual!N{r},0),2))',
         "N": '=IF(OR(M{r}="",C{r}="",NOT(ISNUMBER($Z$3))),"",ROUND(M{r}*C{r}*$Z$3,2))',
-        "O": '=IF(OR(G{r}="",I{r}=""),"",ROUND(MAX(G{r}-I{r},0),2))',
+        "O": '=IF(OR(posicao_contratual!N{r}="",posicao_contratual!R{r}=""),"",ROUND(MAX(posicao_contratual!N{r}-posicao_contratual!R{r},0),2))',
         "P": '=IF(OR(O{r}="",C{r}="",NOT(ISNUMBER($Z$4))),"",ROUND(O{r}*C{r}*$Z$4,2))',
-        "Q": '=IF(OR(I{r}="",K{r}=""),"",ROUND(MAX(I{r}-K{r},0),2))',
+        "Q": '=IF(OR(posicao_contratual!R{r}="",posicao_contratual!V{r}=""),"",ROUND(MAX(posicao_contratual!R{r}-posicao_contratual!V{r},0),2))',
         "R": '=IF(OR(Q{r}="",C{r}="",NOT(ISNUMBER($Z$5))),"",ROUND(Q{r}*C{r}*$Z$5,2))',
-        "U": '=IF(A{r}="","",IF(AND(G{r}<>"",E{r}<>"",G{r}>E{r}),"ALERTA: REM_C2>REM_C1",IF(AND(I{r}<>"",G{r}<>"",I{r}>G{r}),"ALERTA: REM_C3>REM_C2",IF(AND(K{r}<>"",I{r}<>"",K{r}>I{r}),"ALERTA: REM_C4>REM_C3","OK"))))',
-        "V": '=IF(A{r}="","",IF(B{r}="","",IF(OR(B{r}<0,E{r}>B{r},G{r}>B{r},I{r}>B{r},K{r}>B{r}),"ALERTA: QTD_INVALIDA","OK")))',
-        "AB": '=IF(OR(A{r}="",E{r}=""),"",ROUND(B{r}-E{r},2))',
-        "AC": '=IF(OR(A{r}="",E{r}=""),"",ROUND(D{r}-E{r}*C{r},2))',
+        "U": '=IF(A{r}="","",posicao_contratual!X{r})',
+        "V": '=IF(A{r}="","",posicao_contratual!X{r})',
+        "AB": '=IF(OR(A{r}="",posicao_contratual!F{r}="",posicao_contratual!J{r}=""),"",ROUND(MAX(posicao_contratual!F{r}-posicao_contratual!J{r},0),2))',
+        "AC": '=IF(OR(AB{r}="",C{r}="",NOT(ISNUMBER($Z$2))),"",ROUND(AB{r}*C{r}*$Z$2,2))',
     }
     _style_formula_range(ws, 2, 200, formulas)
     # Os valores totais aparecem na primeira linha livre depois do último item.
@@ -321,13 +330,7 @@ def _reset_itens_remanesc(wb) -> None:
                 ws[f"{col}{row}"].font = Font(name="Calibri", size=10, color=GRAY)
                 ws[f"{col}{row}"].border = GRID
         if row >= 3:
-            ws[f"U{row}"] = (
-                f'=IF({is_total},"TOTAL",'
-                f'IF(A{row}="","",IF(AND(G{row}<>"",E{row}<>"",G{row}>E{row}),'
-                '"ALERTA: REM_C2>REM_C1",IF(AND(I{r}<>"",G{r}<>"",I{r}>G{r}),'
-                '"ALERTA: REM_C3>REM_C2",IF(AND(K{r}<>"",I{r}<>"",K{r}>I{r}),'
-                '"ALERTA: REM_C4>REM_C3","OK")))))'.format(r=row)
-            )
+            ws[f"U{row}"] = f'=IF({is_total},"TOTAL",IF(A{row}="","",posicao_contratual!X{row}))'
     ws.conditional_formatting.add(
         "A2:AC201",
         FormulaRule(
@@ -352,6 +355,33 @@ def _reset_itens_remanesc(wb) -> None:
         for col in ("W", "X", "Y", "Z"):
             ws[f"{col}{i}"].fill = AUTO
             ws[f"{col}{i}"].border = GRID
+    for col, value in enumerate(
+        (
+            "QTD_CONTRATADA_VIGENTE_C0", "QTD_CONTRATADA_VIGENTE_C1", "QTD_CONTRATADA_VIGENTE_C2",
+            "QTD_CONTRATADA_VIGENTE_C3", "QTD_CONTRATADA_VIGENTE_C4", "QTD_REM_AJUSTADA_C0",
+            "QTD_REM_AJUSTADA_C1", "QTD_REM_AJUSTADA_C2", "QTD_REM_AJUSTADA_C3", "QTD_REM_AJUSTADA_C4",
+            "CHECK_POSICAO_CONTRATUAL",
+        ),
+        30,
+    ):
+        ws.cell(1, col, value)
+    for row in range(2, 201):
+        for offset, source_col in enumerate(("E", "I", "M", "Q", "U"), 30):
+            ws.cell(row, offset, f'=IF(A{row}="","",posicao_contratual!{source_col}{row})')
+        for offset, source_col in enumerate(("G", "K", "O", "S", "W"), 35):
+            ws.cell(row, offset, f'=IF(A{row}="","",posicao_contratual!{source_col}{row})')
+        ws.cell(row, 40, f'=IF(A{row}="","",posicao_contratual!X{row})')
+        for col in range(30, 41):
+            ws.cell(row, col).fill = AUTO
+            ws.cell(row, col).border = GRID
+        for col in range(30, 40):
+            ws.cell(row, col).number_format = QTY
+    for col in range(30, 41):
+        cell = ws.cell(1, col)
+        cell.fill = HEADER
+        cell.font = Font(name="Calibri", size=9, bold=True, color=WHITE)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = GRID
     ws.freeze_panes = "A2"
     ws.sheet_view.showGridLines = False
 
@@ -464,7 +494,10 @@ def _reset_aditivos(wb) -> None:
         "F": '=IF(A{r}="","",IFERROR(VLOOKUP(A{r},itens_Remanesc!$A:$C,3,0),""))',
         "G": '=IF(OR(E{r}="",F{r}=""),"",ROUND(E{r}*F{r},2))',
         "I": '=IFERROR(VLOOKUP(C{r},parametros!$B:$F,5,0),"")',
-        "J": '=IF(G{r}="","",ROUND(IF(OR(UPPER(D{r})="SUPRESSAO",UPPER(D{r})="DECRESCIMO"),-1,1)*G{r}*IF(AND(UPPER(H{r})="SIM",ISNUMBER(I{r})),I{r},1),2))',
+        # L e a unica regra de sinal quantitativo. J apenas monetiza esse delta.
+        "J": '=IF(OR(L{r}="",F{r}=""),"",ROUND(L{r}*F{r}*IF(AND(UPPER(H{r})="SIM",ISNUMBER(I{r})),I{r},1),2))',
+        "L": '=IF(OR(A{r}="",C{r}="",D{r}="",NOT(ISNUMBER(E{r}))),"",IF(LEFT(UPPER(D{r}),5)="ACRES",ROUND(ABS(E{r}),2),IF(OR(LEFT(UPPER(D{r}),6)="SUPRES",LEFT(UPPER(D{r}),4)="DECR"),ROUND(-ABS(E{r}),2),"")))',
+        "M": '=IF(A{r}="","",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{r})=0,"ALERTA: ITEM_AUSENTE",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{r})>1,"ALERTA: ITEM_DUPLICADO",IF(OR(C{r}="",C{r}="Fora dos ciclos"),"ALERTA: CICLO_INVALIDO",IF(NOT(ISNUMBER(E{r})),"ALERTA: QTD_INVALIDA",IF(AND(LEFT(UPPER(D{r}),5)<>"ACRES",LEFT(UPPER(D{r}),6)<>"SUPRES",LEFT(UPPER(D{r}),4)<>"DECR"),"ALERTA: TIPO_INVALIDO","OK"))))))',
     }
     for row in range(2, 201):
         for col in ("A", "B", "D", "E", "H", "K"):
@@ -477,16 +510,23 @@ def _reset_aditivos(wb) -> None:
     for row in range(2, 201):
         for col in ("F", "G", "J"):
             ws[f"{col}{row}"].number_format = MONEY
+        ws[f"L{row}"].number_format = QTY
         ws[f"I{row}"].number_format = FACTOR
     ws.data_validations.dataValidation.clear()
-    for rng, values in (("D2:D200", "Acrescimo,Supressao"), ("H2:H200", "Sim,Nao"), ("K2:K200", "Sim,Nao")):
+    for rng, values in (("D2:D200", "Acrescimo,Supressao,Decrescimo"), ("H2:H200", "Sim,Nao"), ("K2:K200", "Sim,Nao")):
         dv = DataValidation(type="list", formula1=f'"{values}"', allow_blank=True)
         ws.add_data_validation(dv)
         dv.add(rng)
     red_fill = PatternFill("solid", fgColor="FFFFC7CE")
     red_font = Font(color="FF9C0006")
     ws.conditional_formatting.add("A2:K200", FormulaRule(formula=['OR(LEFT(UPPER($D2),6)="SUPRES",LEFT(UPPER($D2),4)="DECR")'], fill=red_fill, font=red_font))
-    widths = {"A": 12, "B": 18, "C": 16, "D": 30, "E": 25, "F": 22, "G": 24, "H": 24, "I": 22, "J": 25, "K": 25}
+    ws["L1"] = "DELTA_QTD_CONTRATUAL"
+    ws["M1"] = "CHECK_POSICAO_CONTRATUAL"
+    for col in ("L", "M"):
+        ws[f"{col}1"].fill = HEADER
+        ws[f"{col}1"].font = Font(name="Calibri", size=9, bold=True, color=WHITE)
+        ws[f"{col}1"].border = GRID
+    widths = {"A": 12, "B": 18, "C": 16, "D": 30, "E": 25, "F": 22, "G": 24, "H": 24, "I": 22, "J": 25, "K": 25, "L": 24, "M": 30}
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
     ws.row_dimensions[1].height = 40
@@ -496,11 +536,67 @@ def _reset_aditivos(wb) -> None:
     ws.sheet_view.showGridLines = False
 
 
+def _reset_posicao_contratual(wb) -> None:
+    """Materializa a unica regra de quantidade vigente e remanescente por ciclo."""
+
+    if "posicao_contratual" in wb.sheetnames:
+        ws = wb["posicao_contratual"]
+        if ws.max_row:
+            ws.delete_rows(1, ws.max_row)
+    else:
+        indice = wb.sheetnames.index("aditivos") + 1
+        ws = wb.create_sheet("posicao_contratual", indice)
+    headers = ["ITEM", "VU_ORIGINAL", "QTD_BASE_ORIGINAL"]
+    for ciclo in ("C0", "C1", "C2", "C3", "C4"):
+        headers.extend((f"DELTA_{ciclo}", f"QTD_CONTRATADA_{ciclo}", f"QTD_REM_BASE_{ciclo}", f"QTD_REM_AJUSTADA_{ciclo}"))
+    headers.append("CHECK_POSICAO_CONTRATUAL")
+    for col, value in enumerate(headers, 1):
+        cell = ws.cell(1, col, value)
+        cell.fill = HEADER
+        cell.font = Font(name="Calibri", size=9, bold=True, color=WHITE)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = GRID
+    cycle_blocks = (
+        ("C0", "D", "E", "F", "G", "B"),
+        ("C1", "H", "I", "J", "K", "E"),
+        ("C2", "L", "M", "N", "O", "G"),
+        ("C3", "P", "Q", "R", "S", "I"),
+        ("C4", "T", "U", "V", "W", "K"),
+    )
+    for row in range(2, 201):
+        ws[f"A{row}"] = f'=IF(itens_Remanesc!A{row}="","",itens_Remanesc!A{row})'
+        ws[f"B{row}"] = f'=IF(A{row}="","",itens_Remanesc!C{row})'
+        ws[f"C{row}"] = f'=IF(A{row}="","",itens_Remanesc!B{row})'
+        prev_contract = None
+        for ciclo, delta_col, contract_col, rem_base_col, rem_adj_col, source_col in cycle_blocks:
+            ws[f"{delta_col}{row}"] = f'=IF(A{row}="","",ROUND(SUMIFS(aditivos!$L$2:$L$200,aditivos!$A$2:$A$200,A{row},aditivos!$C$2:$C$200,"{ciclo}"),2))'
+            base_expr = f"C{row}" if prev_contract is None else f"{prev_contract}{row}"
+            ws[f"{contract_col}{row}"] = f'=IF(A{row}="","",ROUND({base_expr}+{delta_col}{row},2))'
+            ws[f"{rem_base_col}{row}"] = f'=IF(A{row}="","",IF(itens_Remanesc!{source_col}{row}="","",itens_Remanesc!{source_col}{row}))'
+            ws[f"{rem_adj_col}{row}"] = f'=IF(OR(A{row}="",{rem_base_col}{row}=""),"",ROUND({rem_base_col}{row}+({contract_col}{row}-$C{row}),2))'
+            prev_contract = contract_col
+        ws[f"X{row}"] = (
+            f'=IF(A{row}="","",IF(COUNTIF($A$2:$A$200,A{row})>1,"ALERTA: ITEM_DUPLICADO",'
+            f'IF(MIN(E{row},I{row},M{row},Q{row},U{row},G{row},K{row},O{row},S{row},W{row})<0,"ALERTA: POSICAO_NEGATIVA",'
+            f'IF(OR(AND(G{row}<>"",G{row}>E{row}),AND(K{row}<>"",K{row}>I{row}),AND(O{row}<>"",O{row}>M{row}),'
+            f'AND(S{row}<>"",S{row}>Q{row}),AND(W{row}<>"",W{row}>U{row})),"ALERTA: REMANESCENTE_SUPERA_POSICAO","OK"))))'
+        )
+        for col in range(1, 25):
+            ws.cell(row, col).fill = AUTO
+            ws.cell(row, col).border = GRID
+        for col in range(3, 24):
+            ws.cell(row, col).number_format = QTY
+    for col in range(1, 25):
+        ws.column_dimensions[ws.cell(1, col).column_letter].width = 22 if col > 3 else 18
+    ws.freeze_panes = "A2"
+    ws.sheet_view.showGridLines = False
+
+
 def _reset_historico_vu(wb) -> None:
     ws = wb["historico_VU"]
     formulas = {
         "A": '=IF(itens_Remanesc!A{r}="","",itens_Remanesc!A{r})',
-        "B": '=IF(itens_Remanesc!A{r}="","",itens_Remanesc!B{r})',
+        "B": '=IF(posicao_contratual!A{r}="","",posicao_contratual!E{r})',
         "C": '=IF(itens_Remanesc!A{r}="","",itens_Remanesc!C{r})',
         "D": '=IF(OR(A{r}="",C{r}="",NOT(ISNUMBER($L$3))),"",ROUND(C{r}*$L$3,2))',
         "E": '=IF(OR(A{r}="",C{r}="",NOT(ISNUMBER($L$4))),"",ROUND(C{r}*$L$4,2))',
@@ -509,11 +605,36 @@ def _reset_historico_vu(wb) -> None:
         "H": '=IF(OR(A{r}="",C{r}="",C{r}=0,NOT(ISNUMBER($L$6))),"",ROUND($L$6-1,4))',
     }
     _style_formula_range(ws, 2, 200, formulas)
+    ws["B1"] = "QTD_C0"
+    for col, value in enumerate(
+        (
+            "QTD_VIGENTE_C0", "QTD_VIGENTE_C1", "QTD_VIGENTE_C2", "QTD_VIGENTE_C3", "QTD_VIGENTE_C4",
+            "QTD_REM_AJUSTADA_C0", "QTD_REM_AJUSTADA_C1", "QTD_REM_AJUSTADA_C2", "QTD_REM_AJUSTADA_C3", "QTD_REM_AJUSTADA_C4",
+        ),
+        14,
+    ):
+        ws.cell(1, col, value)
+    for row in range(2, 201):
+        for offset, source_col in enumerate(("E", "I", "M", "Q", "U"), 14):
+            ws.cell(row, offset, f'=IF(A{row}="","",posicao_contratual!{source_col}{row})')
+        for offset, source_col in enumerate(("G", "K", "O", "S", "W"), 19):
+            ws.cell(row, offset, f'=IF(A{row}="","",posicao_contratual!{source_col}{row})')
     for row in range(2, 201):
         ws[f"B{row}"].number_format = QTY
         for col in ("C", "D", "E", "F", "G"):
             ws[f"{col}{row}"].number_format = MONEY
         ws[f"H{row}"].number_format = PERCENT
+        for col in range(14, 24):
+            ws.cell(row, col).fill = AUTO
+            ws.cell(row, col).border = GRID
+            ws.cell(row, col).number_format = QTY
+    for col in range(14, 24):
+        cell = ws.cell(1, col)
+        cell.fill = HEADER
+        cell.font = Font(name="Calibri", size=9, bold=True, color=WHITE)
+        cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
+        cell.border = GRID
+        ws.column_dimensions[cell.column_letter].width = 23
     for i, cycle in enumerate(("C0", "C1", "C2", "C3", "C4"), 2):
         ws[f"J{i}"] = cycle
         ws[f"K{i}"] = f'=IF(ISNUMBER(parametros!$E${i}),parametros!$E${i},"")'
@@ -542,19 +663,19 @@ def _reset_itens_rc(wb) -> None:
         formulas = {
             "A": f'=IF({is_total},"TOTAL",IF(itens_Remanesc!A{src}="","",itens_Remanesc!A{src}))',
             "B": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$F$2))),"",ROUND(itens_Remanesc!C{src}*parametros!$F$2,2))',
-            "C": f'=IF(itens_Remanesc!A{src}="","",itens_Remanesc!B{src})',
+            "C": f'=IF(posicao_contratual!A{src}="","",posicao_contratual!G{src})',
             "D": f'=IF(A{row}="TOTAL",ROUND(SUM($D$3:D{row-1}),2),IF(A{row}="","",ROUND(B{row}*C{row},2)))',
             "E": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$F$3))),"",ROUND(itens_Remanesc!C{src}*parametros!$F$3,2))',
-            "F": f'=IF(itens_Remanesc!A{src}="","",itens_Remanesc!E{src})',
+            "F": f'=IF(posicao_contratual!A{src}="","",posicao_contratual!K{src})',
             "G": f'=IF(A{row}="TOTAL",ROUND(SUM($G$3:G{row-1}),2),IF(OR(A{row}="",E{row}="",F{row}=""),"",ROUND(E{row}*F{row},2)))',
             "H": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$F$4))),"",ROUND(itens_Remanesc!C{src}*parametros!$F$4,2))',
-            "I": f'=IF(itens_Remanesc!A{src}="","",itens_Remanesc!G{src})',
+            "I": f'=IF(posicao_contratual!A{src}="","",posicao_contratual!O{src})',
             "J": f'=IF(A{row}="TOTAL",ROUND(SUM($J$3:J{row-1}),2),IF(OR(A{row}="",H{row}="",I{row}=""),"",ROUND(H{row}*I{row},2)))',
             "K": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$F$5))),"",ROUND(itens_Remanesc!C{src}*parametros!$F$5,2))',
-            "L": f'=IF(itens_Remanesc!A{src}="","",itens_Remanesc!I{src})',
+            "L": f'=IF(posicao_contratual!A{src}="","",posicao_contratual!S{src})',
             "M": f'=IF(A{row}="TOTAL",ROUND(SUM($M$3:M{row-1}),2),IF(OR(A{row}="",K{row}="",L{row}=""),"",ROUND(K{row}*L{row},2)))',
             "N": f'=IF(OR(itens_Remanesc!A{src}="",NOT(ISNUMBER(parametros!$F$6))),"",ROUND(itens_Remanesc!C{src}*parametros!$F$6,2))',
-            "O": f'=IF(itens_Remanesc!A{src}="","",itens_Remanesc!K{src})',
+            "O": f'=IF(posicao_contratual!A{src}="","",posicao_contratual!W{src})',
             "P": f'=IF(A{row}="TOTAL",ROUND(SUM($P$3:P{row-1}),2),IF(OR(A{row}="",N{row}="",O{row}=""),"",ROUND(N{row}*O{row},2)))',
         }
         for col, formula in formulas.items():
@@ -594,6 +715,8 @@ def _reset_resultados(wb) -> None:
     ws["D44"] = '=SUMPRODUCT(--(((itens_PC!$A$2:$A$100<>"")+(itens_PC!$C$2:$C$100<>"")+(itens_PC!$F$2:$F$100<>""))>0),--(itens_PC!$J$2:$J$100<>"OK"))'
     ws["D45"] = '=ROUND(SUM(itens_PC!$I$2:$I$100),2)'
     ws["B20"] = '=IF(COUNTIF(itens_Remanesc!$A$2:$A$200,"<>")=0,"",ROUND(SUMIF(itens_Remanesc!$A$2:$A$200,"<>",itens_Remanesc!$D$2:$D$200),2))'
+    ws["B32"] = '=IF(COUNTIF(itens_Remanesc!$A$2:$A$200,"<>")=0,"",ROUND(IF($F$4="C0",SUM(posicao_contratual!$G$2:$G$200),IF($F$4="C1",SUM(posicao_contratual!$K$2:$K$200),IF($F$4="C2",SUM(posicao_contratual!$O$2:$O$200),IF($F$4="C3",SUM(posicao_contratual!$S$2:$S$200),SUM(posicao_contratual!$W$2:$W$200))))),2))'
+    ws["C32"] = '=IF(COUNTIF(itens_Remanesc!$A$2:$A$200,"<>")=0,"",ROUND(IF($F$4="C0",SUMPRODUCT(posicao_contratual!$G$2:$G$200,itens_Remanesc!$C$2:$C$200),IF($F$4="C1",SUMPRODUCT(posicao_contratual!$K$2:$K$200,itens_Remanesc!$C$2:$C$200),IF($F$4="C2",SUMPRODUCT(posicao_contratual!$O$2:$O$200,itens_Remanesc!$C$2:$C$200),IF($F$4="C3",SUMPRODUCT(posicao_contratual!$S$2:$S$200,itens_Remanesc!$C$2:$C$200),SUMPRODUCT(posicao_contratual!$W$2:$W$200,itens_Remanesc!$C$2:$C$200))))),2))'
     ws["D32"] = '=IF(COUNTIF(itens_Remanesc!$A$2:$A$200,"<>")=0,"",ROUND(IF($F$4="C0",SUMIFS(itens_RC!$D$3:$D$202,itens_RC!$A$3:$A$202,"<>TOTAL",itens_RC!$A$3:$A$202,"<>"),IF($F$4="C1",SUMIFS(itens_RC!$G$3:$G$202,itens_RC!$A$3:$A$202,"<>TOTAL",itens_RC!$A$3:$A$202,"<>"),IF($F$4="C2",SUMIFS(itens_RC!$J$3:$J$202,itens_RC!$A$3:$A$202,"<>TOTAL",itens_RC!$A$3:$A$202,"<>"),IF($F$4="C3",SUMIFS(itens_RC!$M$3:$M$202,itens_RC!$A$3:$A$202,"<>TOTAL",itens_RC!$A$3:$A$202,"<>"),SUMIFS(itens_RC!$P$3:$P$202,itens_RC!$A$3:$A$202,"<>TOTAL",itens_RC!$A$3:$A$202,"<>"))))),2))'
     ws.sheet_view.showGridLines = False
     _assert_resultados_integra(wb, "depois do ajuste de referências")
@@ -648,6 +771,7 @@ def build(source: Path, destination: Path) -> None:
     _reset_itens_consumidos(wb)
     _reset_itens_pc(wb)
     _reset_aditivos(wb)
+    _reset_posicao_contratual(wb)
     _reset_resultados(wb)
     _reset_itens_rc(wb)
     _reset_historico_vu(wb)

@@ -32,9 +32,14 @@ ABAS_CANONICAS = (
     "itens_Consumidos",
     "itens_PC",
     "aditivos",
+    "posicao_contratual",
     "itens_RC",
     "historico_VU",
     "RESULTADOS",
+)
+
+ABAS_OBRIGATORIAS_LEGADO = tuple(
+    aba for aba in ABAS_CANONICAS if aba != "posicao_contratual"
 )
 
 NOMES_RESULTADOS_OBRIGATORIOS = {
@@ -373,7 +378,7 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
     except Exception as exc:
         raise ValueError("O arquivo não é um XLSX válido.") from exc
 
-    faltantes = [aba for aba in ABAS_CANONICAS if aba not in wb.sheetnames]
+    faltantes = [aba for aba in ABAS_OBRIGATORIAS_LEGADO if aba not in wb.sheetnames]
     proibidas = [aba for aba in ABAS_PROIBIDAS if aba in wb.sheetnames]
     pendencias: list[str] = []
     avisos: list[str] = []
@@ -390,6 +395,12 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
             "contagens": {},
             "metadados": {},
         }
+
+    possui_posicao_contratual = "posicao_contratual" in wb.sheetnames
+    if not possui_posicao_contratual:
+        avisos.append(
+            "Arquivo legado sem a camada posicao_contratual; quantidades por ciclo seguem o leiaute historico."
+        )
 
     formulas = _formulas(wb)
     if len(formulas) < 1000:
@@ -410,6 +421,21 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
     ):
         if chave not in formulas:
             pendencias.append(f"Fórmula estrutural ausente em {chave}.")
+    if possui_posicao_contratual:
+        for chave in (
+            "aditivos!L2",
+            "posicao_contratual!E2",
+            "posicao_contratual!I2",
+            "posicao_contratual!M2",
+            "posicao_contratual!Q2",
+            "posicao_contratual!U2",
+            "posicao_contratual!X2",
+            "itens_Remanesc!F2",
+            "itens_RC!C3",
+            "historico_VU!N2",
+        ):
+            if chave not in formulas:
+                pendencias.append(f"Fórmula estrutural ausente em {chave}.")
     referencias_quebradas = [chave for chave, formula in formulas.items() if "#REF!" in formula.upper()]
     if referencias_quebradas:
         pendencias.append("Há fórmulas com referência quebrada: " + ", ".join(referencias_quebradas[:5]))
@@ -471,6 +497,21 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
                         erros.append(f"{ws.title}!{cell.coordinate}={cell.value}")
         if erros:
             pendencias.append("O Excel salvou erros de cálculo: " + ", ".join(erros[:8]))
+        if possui_posicao_contratual:
+            alertas_aditivos = [
+                f"aditivos!M{row}={wb_valores['aditivos'][f'M{row}'].value}"
+                for row in range(2, 201)
+                if str(wb_valores["aditivos"][f"M{row}"].value or "").startswith("ALERTA:")
+            ]
+            alertas_posicao = [
+                f"posicao_contratual!X{row}={wb_valores['posicao_contratual'][f'X{row}'].value}"
+                for row in range(2, 201)
+                if str(wb_valores["posicao_contratual"][f"X{row}"].value or "").startswith("ALERTA:")
+            ]
+            if alertas_aditivos:
+                pendencias.append("Aditivos quantitativos inconsistentes: " + ", ".join(alertas_aditivos[:5]))
+            if alertas_posicao:
+                pendencias.append("PosiÃ§Ã£o contratual inconsistente: " + ", ".join(alertas_posicao[:5]))
         resultados_valores = wb_valores["RESULTADOS"]
         status_resultados = {
             "geral": resultados_valores["J4"].value,
@@ -491,6 +532,7 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         "data_corte": wb["CONTROLE"]["B3"].value,
         "ciclos_em_analise": [f"C{numero}" for numero in ativos],
         "status_resultados": status_resultados,
+        "arquitetura_posicao_contratual": "canonica" if possui_posicao_contratual else "legada",
     }
     possui_base = contagens["competencias_com_valor"] > 0 or contagens["itens_remanescentes"] > 0
     resultados_seguros = status_resultados.get("geral") == "CONSOLIDADO — CONFERIR"
@@ -511,6 +553,6 @@ def eh_coleta_reajuste(conteudo: bytes) -> bool:
         nucleares = {"CONTROLE", "parametros", "financeiro"}
         # Também reconhece uma coleta canônica danificada, para que o validador
         # possa explicar a aba ausente em vez de desviá-la ao leitor legado.
-        return nucleares.issubset(nomes) and len(nomes.intersection(ABAS_CANONICAS)) >= 5
+        return nucleares.issubset(nomes) and len(nomes.intersection(ABAS_OBRIGATORIAS_LEGADO)) >= 5
     except Exception:
         return False

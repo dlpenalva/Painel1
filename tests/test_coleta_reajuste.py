@@ -121,9 +121,30 @@ class ColetaReajusteTests(unittest.TestCase):
         remanesc = wb["itens_Remanesc"]
         self.assertIn('SUMIF($A$2:A2,"<>"', remanesc["D3"].value)
         self.assertIn('"TOTAL"', remanesc["U3"].value)
+        self.assertEqual(remanesc["B1"].value, "QTD_BASE_ORIGINAL")
+        self.assertIn("QTD_REM_BASE_SEM_ADITIVO_C2", remanesc["G1"].value)
+        self.assertIn("posicao_contratual!O2", remanesc["H2"].value)
+        self.assertIn("posicao_contratual!J2-posicao_contratual!N2", remanesc["M2"].value)
         self.assertIn('"TOTAL"', wb["itens_RC"]["A4"].value)
         self.assertIsNone(wb["itens_RC"]["A203"].value)
         self.assertIn("SUMIFS(itens_RC!$D$3:$D$202", resultados["D32"].value)
+        self.assertIn("SUM(posicao_contratual!$O$2:$O$200)", resultados["B32"].value)
+        self.assertIn("SUMPRODUCT(posicao_contratual!$O$2:$O$200", resultados["C32"].value)
+
+        aditivos = wb["aditivos"]
+        self.assertEqual(aditivos["L1"].value, "DELTA_QTD_CONTRATUAL")
+        self.assertIn('LEFT(UPPER(D2),5)="ACRES"', aditivos["L2"].value)
+        self.assertIn("L2*F2", aditivos["J2"].value)
+
+        posicao = wb["posicao_contratual"]
+        self.assertEqual(posicao["A1"].value, "ITEM")
+        self.assertEqual(posicao["M1"].value, "QTD_CONTRATADA_C2")
+        self.assertIn('aditivos!$C$2:$C$200,"C2"', posicao["L2"].value)
+        self.assertIn("I2+L2", posicao["M2"].value)
+        self.assertIn("N2+(M2-$C2)", posicao["O2"].value)
+        self.assertIn("ITEM_DUPLICADO", posicao["X2"].value)
+        self.assertIn("posicao_contratual!O2", wb["itens_RC"]["I3"].value)
+        self.assertIn("posicao_contratual!M2", wb["historico_VU"]["P2"].value)
 
         todas_formulas = "\n".join(formulas(wb).values()).upper()
         for termo in ("#REF!", "ITENS_EXECUCAO_SALDO", "REGRA_NEGOCIO_CLAUS", "HISTORICO!", "NUMERO_PC"):

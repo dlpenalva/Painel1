@@ -49,6 +49,8 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
     financeiro = wb["financeiro"]
     remanescentes = wb["itens_Remanesc"]
     aditivos = wb["aditivos"]
+    posicao = wb["posicao_contratual"] if "posicao_contratual" in wb.sheetnames else None
+    itens_rc = wb["itens_RC"]
     resultados = wb["RESULTADOS"]
 
     ciclos_rows = []
@@ -117,14 +119,24 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
 
     valores_rows = []
     qtd_cols = {"C0": "B", "C1": "E", "C2": "G", "C3": "I", "C4": "K"}
+    qtd_posicao_cols = {"C0": "G", "C1": "K", "C2": "O", "C3": "S", "C4": "W"}
     total_cols = {"C0": "D", "C1": "F", "C2": "H", "C3": "J", "C4": "L"}
+    total_rc_cols = {"C0": "D", "C1": "G", "C2": "J", "C3": "M", "C4": "P"}
     for row in range(2, 201):
         item = remanescentes[f"A{row}"].value
         if item in (None, ""):
             continue
         for ciclo, qtd_col in qtd_cols.items():
-            qtd = _numero(remanescentes[f"{qtd_col}{row}"].value)
-            total = _numero(remanescentes[f"{total_cols[ciclo]}{row}"].value)
+            qtd = _numero(
+                posicao[f"{qtd_posicao_cols[ciclo]}{row}"].value
+                if posicao is not None
+                else remanescentes[f"{qtd_col}{row}"].value
+            )
+            total = _numero(
+                itens_rc[f"{total_rc_cols[ciclo]}{row + 1}"].value
+                if posicao is not None
+                else remanescentes[f"{total_cols[ciclo]}{row}"].value
+            )
             valores_rows.append(
                 {
                     "Item": item,
@@ -148,6 +160,9 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
                 "Data do aditivo": aditivos[f"B{row}"].value,
                 "Ciclo/Marco": aditivos[f"C{row}"].value or "",
                 "Tipo de alteração": aditivos[f"D{row}"].value or "",
+                "Quantidade da alteração": _numero(aditivos[f"E{row}"].value),
+                "Delta quantitativo contratual": _numero(aditivos[f"L{row}"].value),
+                "Status da posição": aditivos[f"M{row}"].value or "",
                 "Valor do aditivo na assinatura": _numero(aditivos[f"G{row}"].value),
                 "Fator aplicado": _numero(aditivos[f"I{row}"].value, 1.0),
                 "Valor do aditivo reajustado": _numero(aditivos[f"J{row}"].value),
@@ -155,6 +170,26 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
             }
         )
     df_aditivos = pd.DataFrame(aditivos_rows)
+
+    posicao_rows = []
+    if posicao is not None:
+        contratada_cols = {"C0": "E", "C1": "I", "C2": "M", "C3": "Q", "C4": "U"}
+        rem_cols = {"C0": "G", "C1": "K", "C2": "O", "C3": "S", "C4": "W"}
+        for row in range(2, 201):
+            item = posicao[f"A{row}"].value
+            if item in (None, ""):
+                continue
+            for ciclo in ("C0", "C1", "C2", "C3", "C4"):
+                posicao_rows.append(
+                    {
+                        "Item": item,
+                        "Ciclo": ciclo,
+                        "Quantidade contratada vigente": _numero(posicao[f"{contratada_cols[ciclo]}{row}"].value),
+                        "Quantidade remanescente ajustada": _numero(posicao[f"{rem_cols[ciclo]}{row}"].value),
+                        "Status": posicao[f"X{row}"].value or "",
+                    }
+                )
+    df_posicao_contratual = pd.DataFrame(posicao_rows)
 
     valor_original = _numero(resultados["B20"].value)
     retroativo = _numero(resultados["B16"].value)
@@ -263,6 +298,7 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
         "df_aditivos_executivo": df_aditivos,
         "df_aditivos_computaveis": df_aditivos[df_aditivos.get("Computa no Valor Global", pd.Series(dtype=bool)) == True] if not df_aditivos.empty else pd.DataFrame(),
         "df_aditivos_informativos": pd.DataFrame(),
+        "df_posicao_contratual": df_posicao_contratual,
         "df_comparativo": df_comparativo,
         "df_auditoria_consistencia": pd.DataFrame(
             [{"Validação": "RESULTADOS consolidado no Excel", "Status": "OK", "Diferença/Valor": 0.0}]
