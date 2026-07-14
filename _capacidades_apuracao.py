@@ -7,6 +7,8 @@ documentos podem ser usados com seguranca.
 
 from __future__ import annotations
 
+import hashlib
+import json
 from typing import Any, Iterable
 
 
@@ -68,6 +70,197 @@ def _primeiro_valor(candidatos: Iterable[tuple[Any, str]]) -> tuple[Any, str]:
         if _numero_disponivel(valor):
             return valor, origem
     return None, ""
+
+
+def _assinatura_auditoria(conteudo: dict[str, Any]) -> str:
+    serializado = json.dumps(conteudo, ensure_ascii=False, sort_keys=True, default=str)
+    return hashlib.sha256(serializado.encode("utf-8")).hexdigest()
+
+
+def _rastreabilidade_resultados(
+    contagens: dict[str, Any],
+    metadados: dict[str, Any],
+    calculos: dict[str, dict[str, Any]],
+) -> dict[str, Any]:
+    """Descreve decisões já tomadas, sem participar dos cálculos ou estados."""
+
+    status = metadados.get("status_resultados") or {}
+    valores = status.get("valores") or {}
+    fontes_presentes = {
+        "Financeiro": int(contagens.get("competencias_com_valor") or 0) > 0,
+        "PCs": int(contagens.get("pedidos_de_compra") or 0) > 0,
+        "Itens consumidos": int(contagens.get("itens_consumidos") or 0) > 0,
+        "Itens remanescentes": int(contagens.get("itens_remanescentes") or 0) > 0,
+        "Posição contratual": int(contagens.get("posicao_contratual_itens") or 0) > 0,
+        "Histórico de VU": int(contagens.get("historico_vu_itens") or 0) > 0,
+    }
+    presentes = [fonte for fonte, presente in fontes_presentes.items() if presente]
+    ausentes = [
+        {
+            "fonte": fonte,
+            "motivo": "Não há registros dessa fonte no arquivo.",
+            "impacto": "Nenhum valor foi presumido ou criado para substituir a fonte ausente.",
+        }
+        for fonte, presente in fontes_presentes.items()
+        if not presente
+    ]
+
+    origem_retro = str(
+        status.get("origem_retroativo_oficial")
+        or status.get("metodo_retroativo")
+        or calculos["retroativo"].get("origem")
+        or ""
+    ).strip()
+    mapa_origens = {
+        "FINANCEIRO": "Financeiro",
+        "PCS": "PCs",
+        "ITENS": "Itens consumidos",
+        "MANUAL": "Entrada manual oficial",
+    }
+    fonte_retro = mapa_origens.get(origem_retro.upper(), origem_retro or "Não determinada")
+    fontes_retro_presentes = [fonte for fonte in ("Financeiro", "PCs", "Itens consumidos") if fontes_presentes[fonte]]
+    fontes_retro_excluidas = [
+        {
+            "fonte": fonte,
+            "motivo": "Fonte disponível apenas para conferência; não é o método oficial selecionado.",
+            "impacto": "Não foi somada ao retroativo, evitando dupla contagem.",
+        }
+        for fonte in fontes_retro_presentes
+        if fonte != fonte_retro
+    ]
+    retro = calculos["retroativo"]
+    trilha_retro = {
+        "resultado": "Retroativo",
+        "valor": retro.get("valor"),
+        "estado": retro.get("estado"),
+        "metodologia": f"Método oficial selecionado no XLS: {fonte_retro}.",
+        "fontes_consideradas": [
+            {"fonte": fonte_retro, "papel": "Método oficial do retroativo"},
+            {"fonte": "RESULTADOS!B16", "papel": "Valor oficial calculado e preservado pelo XLS"},
+        ] if retro.get("disponivel") else [],
+        "fontes_ausentes": [item for item in ausentes if item["fonte"] in ("Financeiro", "PCs", "Itens consumidos")],
+        "fontes_excluidas": fontes_retro_excluidas,
+        "impacto": (
+            f"Somente o método {fonte_retro} compõe o retroativo oficial; métodos paralelos não são acumulados."
+            if retro.get("disponivel")
+            else "Sem valor oficial disponível; nenhum retroativo foi inventado."
+        ),
+        "nivel_confianca": 2 if retro.get("estado") == ESTADO_COMPLETO else 1 if retro.get("disponivel") else 0,
+    }
+
+    vta = calculos["vta"]
+    vta_manual = valores.get("vta_manual_oficial")
+    ajuste_manual = valores.get("vta_ajuste_manual")
+    componentes = {
+        "base_contratual": valores.get("vta_base_contratual"),
+        "retroativo_oficial": valores.get("vta_retroativo"),
+        "ajuste_remanescente": valores.get("vta_ajuste_remanescente"),
+        "ajuste_manual": ajuste_manual,
+    }
+    componentes_numericos = {
+        chave: valor for chave, valor in componentes.items() if _numero_disponivel(valor)
+    }
+    if _numero_disponivel(vta_manual):
+        metodologia_vta = "VTA manual oficial informado no XLS; substitui a composição automática."
+        valor_reproduzido = vta_manual
+        fontes_vta = [{"fonte": "RESULTADOS!B25", "papel": "VTA manual oficial"}]
+    else:
+        metodologia_vta = (
+            "Composição automática do XLS: base contratual + retroativo oficial + "
+            "ajuste do remanescente + eventual ajuste manual."
+        )
+        obrigatorios = ("base_contratual", "retroativo_oficial", "ajuste_remanescente")
+        valor_reproduzido = (
+            sum(float(componentes_numericos.get(chave, 0)) for chave in componentes_numericos)
+            if all(_numero_disponivel(componentes.get(chave)) for chave in obrigatorios)
+            else None
+        )
+        fontes_vta = [
+            {"fonte": "RESULTADOS!B20", "papel": "Base contratual", "valor": componentes.get("base_contratual")},
+            {"fonte": "RESULTADOS!B21", "papel": "Retroativo oficial", "valor": componentes.get("retroativo_oficial")},
+            {"fonte": "RESULTADOS!B22", "papel": "Ajuste do remanescente", "valor": componentes.get("ajuste_remanescente")},
+        ]
+        if _numero_disponivel(ajuste_manual):
+            fontes_vta.append({"fonte": "RESULTADOS!B24", "papel": "Ajuste manual justificado", "valor": ajuste_manual})
+    reproduzivel = (
+        _numero_disponivel(vta.get("valor"))
+        and _numero_disponivel(valor_reproduzido)
+        and abs(float(vta["valor"]) - float(valor_reproduzido)) <= 0.01
+    )
+    trilha_vta = {
+        "resultado": "VTA",
+        "valor": vta.get("valor"),
+        "estado": vta.get("estado"),
+        "metodologia": metodologia_vta,
+        "fontes_consideradas": fontes_vta if vta.get("disponivel") else [],
+        "fontes_ausentes": ausentes,
+        "fontes_excluidas": fontes_retro_excluidas,
+        "componentes": componentes,
+        "valor_reproduzido": valor_reproduzido,
+        "reproduzivel": bool(reproduzivel),
+        "impacto": (
+            "O VTA varia somente quando muda ao menos um componente oficial ou quando há substituição manual justificada."
+            if vta.get("disponivel")
+            else "A composição está incompleta; o sistema mantém o VTA sem valor em vez de preencher lacunas."
+        ),
+        "nivel_confianca": 2 if vta.get("estado") == ESTADO_COMPLETO else 1 if vta.get("disponivel") else 0,
+    }
+
+    trilhas = {
+        "retroativo": trilha_retro,
+        "vta": trilha_vta,
+        "valor_remanescente": {
+            "resultado": "Valor remanescente",
+            "valor": calculos["valor_remanescente"].get("valor"),
+            "estado": calculos["valor_remanescente"].get("estado"),
+            "metodologia": "Saldo oficial preservado em RESULTADOS, derivado da base remanescente selecionada pelo XLS.",
+            "fontes_consideradas": [
+                {"fonte": "Itens remanescentes", "papel": "Base quantitativa e financeira"},
+                {"fonte": "RESULTADOS!D35", "papel": "Saldo atualizado oficial"},
+            ] if calculos["valor_remanescente"].get("disponivel") else [],
+            "fontes_ausentes": [item for item in ausentes if item["fonte"] == "Itens remanescentes"],
+            "fontes_excluidas": [],
+            "impacto": calculos["valor_remanescente"].get("detalhe"),
+        },
+        "posicao_contratual": {
+            "resultado": "Posição contratual",
+            "valor": calculos["posicao_contratual"].get("valor"),
+            "estado": calculos["posicao_contratual"].get("estado"),
+            "metodologia": "Leitura da posição contratual calculada e gravada no XLS por ciclo.",
+            "fontes_consideradas": [
+                {"fonte": "Posição contratual", "papel": "Evolução quantitativa por ciclo"}
+            ] if calculos["posicao_contratual"].get("disponivel") else [],
+            "fontes_ausentes": [item for item in ausentes if item["fonte"] == "Posição contratual"],
+            "fontes_excluidas": [],
+            "impacto": calculos["posicao_contratual"].get("detalhe"),
+        },
+        "valores_unitarios": {
+            "resultado": "Valores unitários",
+            "valor": calculos["valores_unitarios"].get("valor"),
+            "estado": calculos["valores_unitarios"].get("estado"),
+            "metodologia": "Leitura do histórico de valores unitários calculado e gravado no XLS.",
+            "fontes_consideradas": [
+                {"fonte": "Histórico de VU", "papel": "Evolução do valor unitário por ciclo"}
+            ] if calculos["valores_unitarios"].get("disponivel") else [],
+            "fontes_ausentes": [item for item in ausentes if item["fonte"] == "Histórico de VU"],
+            "fontes_excluidas": [],
+            "impacto": calculos["valores_unitarios"].get("detalhe"),
+        },
+    }
+    assinatura_base = {
+        "fontes_presentes": presentes,
+        "metodo_retroativo": fonte_retro,
+        "componentes_vta": componentes,
+        "vta_manual": vta_manual,
+    }
+    return {
+        "versao": 1,
+        "somente_auditoria": True,
+        "fontes_presentes": presentes,
+        "fontes_ausentes": ausentes,
+        "resultados": trilhas,
+        "assinatura_evidencias": _assinatura_auditoria(assinatura_base),
+    }
 
 
 def avaliar_capacidades_apuracao(
@@ -365,6 +558,7 @@ def avaliar_capacidades_apuracao(
 
     completos = sum(item["estado"] == ESTADO_COMPLETO for item in {**blocos, **calculos}.values())
     pendentes = sum(item["estado"] in (ESTADO_PARCIAL, ESTADO_NAO_INFORMADO) for item in {**blocos, **calculos}.values())
+    rastreabilidade = _rastreabilidade_resultados(contagens, metadados, calculos)
     return {
         "estruturalmente_valido": estruturalmente_valido,
         "processamento_progressivo": True,
@@ -382,4 +576,5 @@ def avaliar_capacidades_apuracao(
         },
         "bloqueios_estruturais": bloqueios,
         "lacunas_apuracao": lacunas,
+        "rastreabilidade": rastreabilidade,
     }

@@ -552,6 +552,8 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         resultados_valores = wb_valores["RESULTADOS"]
         status_resultados = {
             "geral": resultados_valores["J4"].value,
+            "metodo_retroativo": resultados_valores["B4"].value,
+            "origem_retroativo_oficial": resultados_valores["D16"].value,
             "retroativo": resultados_valores["F16"].value,
             "vta": resultados_valores["E26"].value,
             "remanescente": resultados_valores["F36"].value,
@@ -560,7 +562,12 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
                 "retroativo_pc": resultados_valores["C15"].value,
                 "retroativo_itens": resultados_valores["D15"].value,
                 "retroativo_oficial": resultados_valores["B16"].value,
+                "vta_base_contratual": resultados_valores["B20"].value,
+                "vta_retroativo": resultados_valores["B21"].value,
+                "vta_ajuste_remanescente": resultados_valores["B22"].value,
                 "vta_calculado": resultados_valores["B23"].value,
+                "vta_ajuste_manual": resultados_valores["B24"].value,
+                "vta_manual_oficial": resultados_valores["B25"].value,
                 "vta_oficial": resultados_valores["B26"].value,
                 "quantidade_remanescente": resultados_valores["B35"].value,
                 "remanescente_original": resultados_valores["C35"].value,

@@ -1,0 +1,284 @@
+{
+  "versao_fixture": 1,
+  "regra": "Valores e decisões homologados em 14/07/2026. Alterações exigem justificativa técnica explícita.",
+  "invariantes": [
+    "Fonte ausente nunca gera valor presumido.",
+    "Mais evidências não reduzem a confiança nem a quantidade de documentos habilitados.",
+    "O processo completo preserva retroativo de 40, VTA de 1040 e remanescente de 0.",
+    "O VTA só difere quando componentes, metodologia ou evidências diferem.",
+    "Métodos paralelos de retroativo são conferência e nunca são somados ao método oficial."
+  ],
+  "documentos_principais": [
+    "planilha_executiva",
+    "valores_unitarios",
+    "relatorio_executivo",
+    "mapa_marcos",
+    "minuta_apostilamento",
+    "garantia_contratual",
+    "dou",
+    "checklist_processual"
+  ],
+  "cenarios": {
+    "somente_financeiro": {
+      "entradas": {
+        "contagens": {
+          "competencias_com_valor": 1
+        },
+        "metadados": {
+          "ciclos_em_analise": ["C1"],
+          "status_resultados": {
+            "metodo_retroativo": "Financeiro",
+            "origem_retroativo_oficial": "Financeiro",
+            "retroativo": "CALCULADO — CONFERIR",
+            "vta": "INCOMPLETO — CÁLCULO MANUAL REQUERIDO",
+            "remanescente": "NÃO INFORMADO",
+            "valores": {
+              "retroativo_financeiro": 40.0,
+              "retroativo_oficial": 40.0,
+              "vta_base_contratual": null,
+              "vta_retroativo": 40.0,
+              "vta_ajuste_remanescente": null,
+              "vta_calculado": null,
+              "vta_ajuste_manual": null,
+              "vta_manual_oficial": null,
+              "vta_oficial": null,
+              "remanescente_atualizado": null
+            }
+          }
+        }
+      },
+      "metodologia_esperada": {
+        "retroativo": "Financeiro",
+        "vta": "Composição automática do XLS: base contratual + retroativo oficial + ajuste do remanescente + eventual ajuste manual."
+      },
+      "capacidades_disponiveis": ["financeiro", "retroativo"],
+      "capacidades_ausentes": ["pcs", "consumidos", "remanescentes", "vta", "posicao_contratual", "valor_remanescente", "valores_unitarios"],
+      "resultados_esperados": {
+        "retroativo": 40.0,
+        "vta": null,
+        "valor_remanescente": null
+      },
+      "documentos_esperados": {
+        "planilha_executiva": "DISPONÍVEL",
+        "valores_unitarios": "PENDENTE DE DADOS",
+        "relatorio_executivo": "DISPONÍVEL COM RESSALVAS",
+        "mapa_marcos": "DISPONÍVEL",
+        "minuta_apostilamento": "PENDENTE DE DADOS",
+        "garantia_contratual": "PENDENTE DE DADOS",
+        "dou": "DISPONÍVEL COM RESSALVAS",
+        "checklist_processual": "DISPONÍVEL"
+      },
+      "mensagens_esperadas": [
+        "Valor oficial preservado no XLS.",
+        "Há dados relacionados ao contrato, mas o VTA ainda não foi gravado em cache.",
+        "Depende de itens remanescentes."
+      ]
+    },
+    "financeiro_remanescentes": {
+      "entradas": {
+        "contagens": {
+          "competencias_com_valor": 1,
+          "itens_remanescentes": 1,
+          "posicao_contratual_itens": 1,
+          "posicao_contratual_calculada": 1,
+          "historico_vu_itens": 1,
+          "historico_vu_calculado": 1
+        },
+        "metadados": {
+          "ciclos_em_analise": ["C1"],
+          "status_resultados": {
+            "metodo_retroativo": "Financeiro",
+            "origem_retroativo_oficial": "Financeiro",
+            "retroativo": "CALCULADO — CONFERIR",
+            "vta": "CALCULADO — CONFERIR",
+            "remanescente": "BASE ÚNICA — CONFERIR",
+            "valores": {
+              "retroativo_financeiro": 40.0,
+              "retroativo_oficial": 40.0,
+              "vta_base_contratual": 1000.0,
+              "vta_retroativo": 40.0,
+              "vta_ajuste_remanescente": 40.0,
+              "vta_calculado": 1080.0,
+              "vta_ajuste_manual": null,
+              "vta_manual_oficial": null,
+              "vta_oficial": 1080.0,
+              "remanescente_atualizado": 1040.0
+            }
+          }
+        }
+      },
+      "metodologia_esperada": {
+        "retroativo": "Financeiro",
+        "vta": "Composição automática do XLS: base contratual + retroativo oficial + ajuste do remanescente + eventual ajuste manual."
+      },
+      "capacidades_disponiveis": ["financeiro", "itens", "remanescentes", "retroativo", "vta", "posicao_contratual", "valor_remanescente", "valores_unitarios"],
+      "capacidades_ausentes": ["pcs", "consumidos"],
+      "resultados_esperados": {
+        "retroativo": 40.0,
+        "vta": 1080.0,
+        "valor_remanescente": 1040.0
+      },
+      "documentos_esperados": "TODOS DISPONÍVEIS",
+      "mensagens_esperadas": [
+        "Valor Total Atualizado oficial preservado no XLS.",
+        "Saldo remanescente atualizado preservado no XLS."
+      ]
+    },
+    "pcs_remanescentes": {
+      "entradas": {
+        "contagens": {
+          "pedidos_de_compra": 1,
+          "itens_remanescentes": 1,
+          "posicao_contratual_itens": 1,
+          "posicao_contratual_calculada": 1,
+          "historico_vu_itens": 1,
+          "historico_vu_calculado": 1
+        },
+        "metadados": {
+          "ciclos_em_analise": ["C1"],
+          "status_resultados": {
+            "metodo_retroativo": "PCs",
+            "origem_retroativo_oficial": "PCs",
+            "retroativo": "CALCULADO — CONFERIR",
+            "vta": "CALCULADO — CONFERIR",
+            "remanescente": "BASE ÚNICA — CONFERIR",
+            "valores": {
+              "retroativo_pc": 20.0,
+              "retroativo_oficial": 20.0,
+              "vta_base_contratual": 1000.0,
+              "vta_retroativo": 20.0,
+              "vta_ajuste_remanescente": 40.0,
+              "vta_calculado": 1060.0,
+              "vta_ajuste_manual": null,
+              "vta_manual_oficial": null,
+              "vta_oficial": 1060.0,
+              "remanescente_atualizado": 1040.0
+            }
+          }
+        }
+      },
+      "metodologia_esperada": {
+        "retroativo": "PCs",
+        "vta": "Composição automática do XLS: base contratual + retroativo oficial + ajuste do remanescente + eventual ajuste manual."
+      },
+      "capacidades_disponiveis": ["itens", "pcs", "remanescentes", "retroativo", "vta", "posicao_contratual", "valor_remanescente", "valores_unitarios"],
+      "capacidades_ausentes": ["financeiro", "consumidos"],
+      "resultados_esperados": {
+        "retroativo": 20.0,
+        "vta": 1060.0,
+        "valor_remanescente": 1040.0
+      },
+      "documentos_esperados": "TODOS DISPONÍVEIS",
+      "mensagens_esperadas": [
+        "Valor Total Atualizado oficial preservado no XLS.",
+        "Saldo remanescente atualizado preservado no XLS."
+      ]
+    },
+    "financeiro_pcs_remanescentes": {
+      "entradas": {
+        "contagens": {
+          "competencias_com_valor": 1,
+          "pedidos_de_compra": 1,
+          "itens_remanescentes": 1,
+          "posicao_contratual_itens": 1,
+          "posicao_contratual_calculada": 1,
+          "historico_vu_itens": 1,
+          "historico_vu_calculado": 1
+        },
+        "metadados": {
+          "ciclos_em_analise": ["C1"],
+          "status_resultados": {
+            "metodo_retroativo": "Financeiro",
+            "origem_retroativo_oficial": "Financeiro",
+            "retroativo": "CALCULADO — CONFERIR",
+            "vta": "CALCULADO — CONFERIR",
+            "remanescente": "BASE ÚNICA — CONFERIR",
+            "valores": {
+              "retroativo_financeiro": 40.0,
+              "retroativo_pc": 40.0,
+              "retroativo_oficial": 40.0,
+              "vta_base_contratual": 1000.0,
+              "vta_retroativo": 40.0,
+              "vta_ajuste_remanescente": 40.0,
+              "vta_calculado": 1080.0,
+              "vta_ajuste_manual": null,
+              "vta_manual_oficial": null,
+              "vta_oficial": 1080.0,
+              "remanescente_atualizado": 1040.0
+            }
+          }
+        }
+      },
+      "metodologia_esperada": {
+        "retroativo": "Financeiro",
+        "vta": "Composição automática do XLS: base contratual + retroativo oficial + ajuste do remanescente + eventual ajuste manual."
+      },
+      "capacidades_disponiveis": ["financeiro", "itens", "pcs", "remanescentes", "retroativo", "vta", "posicao_contratual", "valor_remanescente", "valores_unitarios"],
+      "capacidades_ausentes": ["consumidos"],
+      "resultados_esperados": {
+        "retroativo": 40.0,
+        "vta": 1080.0,
+        "valor_remanescente": 1040.0
+      },
+      "documentos_esperados": "TODOS DISPONÍVEIS",
+      "mensagens_esperadas": [
+        "Fonte disponível apenas para conferência; não é o método oficial selecionado.",
+        "Não foi somada ao retroativo, evitando dupla contagem."
+      ]
+    },
+    "processo_completo": {
+      "entradas": {
+        "contagens": {
+          "competencias_com_valor": 1,
+          "pedidos_de_compra": 1,
+          "itens_remanescentes": 1,
+          "itens_consumidos": 1,
+          "posicao_contratual_itens": 1,
+          "posicao_contratual_calculada": 1,
+          "historico_vu_itens": 1,
+          "historico_vu_calculado": 1
+        },
+        "metadados": {
+          "ciclos_em_analise": ["C1"],
+          "status_resultados": {
+            "metodo_retroativo": "Financeiro",
+            "origem_retroativo_oficial": "Financeiro",
+            "retroativo": "CALCULADO — CONFERIR",
+            "vta": "CALCULADO — CONFERIR",
+            "remanescente": "CALCULADO — CONFERIR",
+            "valores": {
+              "retroativo_financeiro": 40.0,
+              "retroativo_pc": 40.0,
+              "retroativo_itens": 40.0,
+              "retroativo_oficial": 40.0,
+              "vta_base_contratual": 1000.0,
+              "vta_retroativo": 40.0,
+              "vta_ajuste_remanescente": 0.0,
+              "vta_calculado": 1040.0,
+              "vta_ajuste_manual": null,
+              "vta_manual_oficial": null,
+              "vta_oficial": 1040.0,
+              "remanescente_atualizado": 0.0
+            }
+          }
+        }
+      },
+      "metodologia_esperada": {
+        "retroativo": "Financeiro",
+        "vta": "Composição automática do XLS: base contratual + retroativo oficial + ajuste do remanescente + eventual ajuste manual."
+      },
+      "capacidades_disponiveis": ["financeiro", "itens", "pcs", "consumidos", "remanescentes", "retroativo", "vta", "posicao_contratual", "valor_remanescente", "valores_unitarios"],
+      "capacidades_ausentes": [],
+      "resultados_esperados": {
+        "retroativo": 40.0,
+        "vta": 1040.0,
+        "valor_remanescente": 0.0
+      },
+      "documentos_esperados": "TODOS DISPONÍVEIS",
+      "mensagens_esperadas": [
+        "Valor Total Atualizado oficial preservado no XLS.",
+        "Saldo remanescente atualizado preservado no XLS."
+      ]
+    }
+  }
+}
