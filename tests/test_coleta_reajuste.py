@@ -121,7 +121,7 @@ class ColetaReajusteTests(unittest.TestCase):
         remanesc = wb["itens_Remanesc"]
         self.assertIn('SUMIF($A$2:A2,"<>"', remanesc["D3"].value)
         self.assertIn('"TOTAL"', remanesc["U3"].value)
-        self.assertEqual(remanesc["B1"].value, "QTD_BASE_ORIGINAL")
+        self.assertIn("QTD_BASE_ORIGINAL", remanesc["B1"].value)
         self.assertIn("QTD_REM_BASE_SEM_ADITIVO_C2", remanesc["G1"].value)
         self.assertIn("posicao_contratual!O2", remanesc["H2"].value)
         self.assertIn("posicao_contratual!J2-posicao_contratual!N2", remanesc["M2"].value)

@@ -4829,6 +4829,8 @@ if diagnostico_coleta:
 
     for bloqueio in diagnostico_coleta.get("bloqueios_estruturais", []):
         st.error(bloqueio)
+    for bloqueio in diagnostico_coleta.get("bloqueios_criticos", []):
+        st.error(bloqueio)
     for lacuna in diagnostico_coleta.get("lacunas_apuracao", []):
         st.warning(lacuna)
     for aviso in diagnostico_coleta.get("avisos", []):

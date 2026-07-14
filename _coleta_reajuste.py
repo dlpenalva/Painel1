@@ -383,6 +383,7 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
     faltantes = [aba for aba in ABAS_OBRIGATORIAS_LEGADO if aba not in wb.sheetnames]
     proibidas = [aba for aba in ABAS_PROIBIDAS if aba in wb.sheetnames]
     bloqueios_estruturais: list[str] = []
+    bloqueios_criticos: list[str] = []
     lacunas_apuracao: list[str] = []
     avisos: list[str] = []
     if faltantes:
@@ -397,6 +398,7 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
             "processamento_progressivo": True,
             "pendencias": bloqueios_estruturais,
             "bloqueios_estruturais": bloqueios_estruturais,
+            "bloqueios_criticos": bloqueios_criticos,
             "lacunas_apuracao": [],
             "avisos": avisos,
             "contagens": {},
@@ -546,9 +548,13 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
                 if str(wb_valores["posicao_contratual"][f"X{row}"].value or "").startswith("ALERTA:")
             ]
             if alertas_aditivos:
-                lacunas_apuracao.append("Aditivos quantitativos inconsistentes: " + ", ".join(alertas_aditivos[:5]))
+                bloqueios_criticos.append(
+                    "Aditivos quantitativos inconsistentes: " + ", ".join(alertas_aditivos[:5])
+                )
             if alertas_posicao:
-                lacunas_apuracao.append("Posição contratual inconsistente: " + ", ".join(alertas_posicao[:5]))
+                bloqueios_criticos.append(
+                    "Posição contratual inconsistente: " + ", ".join(alertas_posicao[:5])
+                )
         resultados_valores = wb_valores["RESULTADOS"]
         status_resultados = {
             "geral": resultados_valores["J4"].value,
@@ -589,21 +595,23 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         "status_resultados": status_resultados,
         "arquitetura_posicao_contratual": "canonica" if possui_posicao_contratual else "legada",
     }
+    bloqueios = bloqueios_estruturais + bloqueios_criticos
     capacidades = avaliar_capacidades_apuracao(
         contagens,
         metadados,
-        bloqueios_estruturais,
+        bloqueios,
         lacunas_apuracao,
     )
     possui_base = capacidades["resumo"]["tem_alguma_evidencia"]
     resultados_seguros = capacidades["resumo"]["apuracao_integral"]
-    pendencias = bloqueios_estruturais + lacunas_apuracao
+    pendencias = bloqueios + lacunas_apuracao
     return {
-        "valido": not bloqueios_estruturais,
-        "pronto_para_consolidar": not bloqueios_estruturais and possui_base and resultados_seguros,
+        "valido": not bloqueios,
+        "pronto_para_consolidar": not bloqueios and possui_base and resultados_seguros,
         "processamento_progressivo": True,
         "pendencias": pendencias,
         "bloqueios_estruturais": bloqueios_estruturais,
+        "bloqueios_criticos": bloqueios_criticos,
         "lacunas_apuracao": lacunas_apuracao,
         "avisos": avisos,
         "contagens": contagens,

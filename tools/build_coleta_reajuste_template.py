@@ -277,12 +277,14 @@ def _reset_financeiro(wb) -> None:
 def _reset_itens_remanesc(wb) -> None:
     ws = wb["itens_Remanesc"]
     ws.conditional_formatting._cf_rules.clear()
-    ws["B1"] = "QTD_BASE_ORIGINAL"
+    ws["B1"] = "QTD_BASE_ORIGINAL\n(0 PARA NOVO ITEM FORMALIZADO)"
     for col, cycle, parameter_row in (("E", "C1", 3), ("G", "C2", 4), ("I", "C3", 5), ("K", "C4", 6)):
         ws[f"{col}1"] = (
-            f'=IF(parametros!$C${parameter_row}="","QTD_REM_BASE_SEM_ADITIVO_{cycle}",'
+            f'=IF(parametros!$C${parameter_row}="","QTD_REM_BASE_SEM_ADITIVO_{cycle}"&CHAR(10)'
+            f'&"Somente contrato original; nao somar aditivos",'
             f'"QTD_REM_BASE_SEM_ADITIVO_{cycle}"&CHAR(10)&"Inicio: "&RIGHT("0"&DAY(parametros!$C${parameter_row}),2)&"/"&'
-            f'RIGHT("0"&MONTH(parametros!$C${parameter_row}),2)&"/"&YEAR(parametros!$C${parameter_row}))'
+            f'RIGHT("0"&MONTH(parametros!$C${parameter_row}),2)&"/"&YEAR(parametros!$C${parameter_row})'
+            f'&CHAR(10)&"Somente contrato original; nao somar aditivos")'
         )
     for row in range(2, 201):
         for col in ("A", "B", "C", "E", "G", "I", "K", "S", "T"):
@@ -384,6 +386,7 @@ def _reset_itens_remanesc(wb) -> None:
         cell.border = GRID
     ws.freeze_panes = "A2"
     ws.sheet_view.showGridLines = False
+    ws.row_dimensions[1].height = 72
 
 
 def _reset_itens_consumidos(wb) -> None:
@@ -489,6 +492,9 @@ def _reset_itens_pc(wb) -> None:
 
 def _reset_aditivos(wb) -> None:
     ws = wb["aditivos"]
+    ws["A1"] = "ITEM\n(NOVO ITEM: CADASTRAR EM itens_Remanesc COM BASE 0)"
+    ws["D1"] = "TIPO DE ALTERAÇÃO FORMALIZADA"
+    ws["K1"] = "CONSIDERADO NO CÁLCULO FINANCEIRO? (SIM/NÃO)"
     formulas = {
         "C": '=IF(B{r}="","",IFERROR(IF(AND(B{r}>=parametros!$C$2,B{r}<=parametros!$D$2),"C0",IF(AND(B{r}>=parametros!$C$3,B{r}<=parametros!$D$3),"C1",IF(AND(B{r}>=parametros!$C$4,B{r}<=parametros!$D$4),"C2",IF(AND(B{r}>=parametros!$C$5,B{r}<=parametros!$D$5),"C3",IF(AND(B{r}>=parametros!$C$6,B{r}<=parametros!$D$6),"C4","Fora dos ciclos"))))),"Fora dos ciclos"))',
         "F": '=IF(A{r}="","",IFERROR(VLOOKUP(A{r},itens_Remanesc!$A:$C,3,0),""))',
@@ -526,10 +532,10 @@ def _reset_aditivos(wb) -> None:
         ws[f"{col}1"].fill = HEADER
         ws[f"{col}1"].font = Font(name="Calibri", size=9, bold=True, color=WHITE)
         ws[f"{col}1"].border = GRID
-    widths = {"A": 12, "B": 18, "C": 16, "D": 30, "E": 25, "F": 22, "G": 24, "H": 24, "I": 22, "J": 25, "K": 25, "L": 24, "M": 30}
+    widths = {"A": 34, "B": 18, "C": 16, "D": 32, "E": 25, "F": 22, "G": 24, "H": 24, "I": 22, "J": 25, "K": 32, "L": 24, "M": 30}
     for col, width in widths.items():
         ws.column_dimensions[col].width = width
-    ws.row_dimensions[1].height = 40
+    ws.row_dimensions[1].height = 58
     for cell in ws[1]:
         cell.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
     ws.freeze_panes = "A2"

@@ -1,0 +1,54 @@
+{
+  "natureza_dos_dados": "Dados exclusivamente sintéticos para regressão automatizada.",
+  "decisoes": {
+    "considerado_no_calculo": "Controla somente a composição financeira; nunca filtra a posição quantitativa.",
+    "aditivos": "A aba registra somente alterações quantitativas formalizadas.",
+    "novo_item": "Deve ser pré-cadastrado em itens_Remanesc com quantidade-base original zero."
+  },
+  "casos": {
+    "multiplos_aditivos_mesmo_ciclo": {
+      "item": "ITEM SINTETICO A",
+      "base_original": 100.0,
+      "eventos_c2": [40.0, 10.0, -5.0],
+      "delta_c2_esperado": 45.0,
+      "posicao_c0_a_c4_esperada": [100.0, 100.0, 145.0, 145.0, 145.0]
+    },
+    "nao_considerado_financeiramente": {
+      "item": "ITEM SINTETICO B",
+      "base_original": 100.0,
+      "eventos_c2": [40.0],
+      "considerado_no_calculo_financeiro": "Nao",
+      "delta_c2_esperado": 40.0,
+      "posicao_c2_esperada": 140.0
+    },
+    "quantidades_fracionarias": {
+      "item": "ITEM SINTETICO C",
+      "base_original": 1.25,
+      "eventos_c2": [0.75, -0.25],
+      "delta_c2_esperado": 0.5,
+      "posicao_c2_esperada": 1.75
+    },
+    "novo_item": {
+      "item": "ITEM SINTETICO NOVO",
+      "base_original": 0.0,
+      "eventos_c2": [5.5],
+      "posicao_c0_a_c4_esperada": [0.0, 0.0, 5.5, 5.5, 5.5]
+    },
+    "posicao_negativa": {
+      "item": "ITEM SINTETICO D",
+      "base_original": 100.0,
+      "eventos_c2": [-150.0],
+      "alerta_esperado": "ALERTA: POSICAO_NEGATIVA",
+      "upload_valido": false,
+      "documentos_liberados": 0
+    },
+    "remanescente_supera_posicao": {
+      "item": "ITEM SINTETICO E",
+      "base_original": 100.0,
+      "remanescente_c2": 110.0,
+      "alerta_esperado": "ALERTA: REMANESCENTE_SUPERA_POSICAO",
+      "upload_valido": false,
+      "documentos_liberados": 0
+    }
+  }
+}
