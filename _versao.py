@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-ATUALIZADO_EM_FALLBACK = "14/07/2026 06:50"
+ATUALIZADO_EM_FALLBACK = "14/07/2026 10:43"
 
 
 def _data_ultimo_commit() -> str | None:
@@ -34,4 +34,8 @@ def _data_ultimo_commit() -> str | None:
 
 def atualizado_em() -> str:
     """Retorna o carimbo visivel no formato brasileiro."""
-    return _data_ultimo_commit() or ATUALIZADO_EM_FALLBACK
+    data_commit = _data_ultimo_commit()
+    if not data_commit:
+        return ATUALIZADO_EM_FALLBACK
+    formato = "%d/%m/%Y %H:%M"
+    return max((data_commit, ATUALIZADO_EM_FALLBACK), key=lambda valor: datetime.strptime(valor, formato))

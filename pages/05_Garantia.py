@@ -404,7 +404,7 @@ def css():
         .linha-tempo-texto { color: #334155; font-size: 0.94rem; margin-bottom: 0; }
         .garantia-tabela-wrap { width: 100%; overflow-x: auto; margin: 10px 0 18px 0; }
         table.garantia-tabela { width: 100%; border-collapse: collapse; table-layout: fixed; font-size: 0.92rem; }
-        table.garantia-tabela th { background: #1F4E78; color: white; padding: 9px 10px; text-align: left; font-weight: 700; }
+        table.garantia-tabela th { background: #E6F0F7; color: #173B5D; border: 1px solid #C5D6E2; padding: 9px 10px; text-align: left; font-weight: 700; }
         table.garantia-tabela td { border: 1px solid #E5EAF0; padding: 9px 10px; vertical-align: top; white-space: normal; overflow-wrap: anywhere; word-break: normal; line-height: 1.35; }
         table.garantia-tabela td.valor { white-space: nowrap; overflow-wrap: normal; text-align: left; }
         </style>

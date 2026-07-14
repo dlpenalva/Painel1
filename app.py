@@ -9,6 +9,7 @@ from pathlib import Path
 
 import streamlit as st
 
+from _theme import render_cl8us_light_theme
 from _ui_utils import render_versao_sidebar
 
 
@@ -377,6 +378,7 @@ def _render_sidebar() -> None:
 
 
 _render_css()
+render_cl8us_light_theme()
 _render_sidebar()
 
 # Todas as páginas continuam registradas para manter links e funcionalidades.
