@@ -50,6 +50,7 @@ from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox
 from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _data_para_datetime, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br, _percentual_formatado
 from _coleta_reajuste import NOME_ARQUIVO_COLETA, gerar_coleta_reajuste
+from _email_contratada import render_email_contratada
 
 # ICTI/IPEADATA_LOCAL_FALLBACK_V1
 ICTI_SERCODIGO_LOCAL = "DIMAC_ICTI2"
@@ -2533,4 +2534,10 @@ if historico_coleta:
         file_name=NOME_ARQUIVO_COLETA,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=False,
+    )
+
+    render_email_contratada(
+        historico_coleta,
+        numero_contrato=st.session_state.get("dados_admissibilidade", {}).get("contrato"),
+        key="baixar_email_contratada_multiciclo",
     )

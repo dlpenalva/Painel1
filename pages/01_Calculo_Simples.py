@@ -47,6 +47,7 @@ from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox
 from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br
 from _coleta_reajuste import NOME_ARQUIVO_COLETA, gerar_coleta_reajuste
+from _email_contratada import gerar_rascunho_email_contratada
 # Imports dos blocos auxiliares de orientação/coleta fiscal
 # ICTI/IPEADATA_LOCAL_FALLBACK_V1
 ICTI_SERCODIGO_LOCAL = "DIMAC_ICTI2"
@@ -1977,6 +1978,16 @@ Dessa forma, solicitamos manifestação de acordo quanto aos critérios, ciclos,
 Atenciosamente,"""
     return assunto, corpo
 
+
+# A comunicação vigente ocorre depois da validação fiscal. Mantém-se o nome
+# interno por compatibilidade com o fluxo já publicado da calculadora simples.
+def _gerar_email_fornecedor(historico_coleta, adm=None):
+    adm = adm or {}
+    return gerar_rascunho_email_contratada(
+        historico_coleta,
+        numero_contrato=adm.get("contrato"),
+    )
+
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
     render_cabecalho_pagina(
         "Calculadora 1 ciclo",
@@ -2291,10 +2302,10 @@ if res:
             '<div style="background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:12px;'
             'padding:14px 16px;margin:12px 0 4px 0;">'
             '<div style="font-size:0.72rem;font-weight:700;color:#92400E;letter-spacing:.06em;'
-            'text-transform:uppercase;margin-bottom:6px;">&#x2709;&#xFE0F;&nbsp; Comunicação prévia ao fornecedor</div>'
+            'text-transform:uppercase;margin-bottom:6px;">&#x2709;&#xFE0F;&nbsp; Comunicação à contratada</div>'
             '<div style="font-size:0.84rem;color:#78350F;line-height:1.5;">'
-            'Rascunho de comunicação pré-redigido com os resultados desta análise.'
-            '&nbsp; <span style="opacity:.7;font-size:0.78rem;">Substitua os campos entre colchetes antes de enviar.</span></div>'
+            'Rascunho pré-redigido com os percentuais desta análise.'
+            '&nbsp; <span style="opacity:.75;font-size:0.78rem;">Complete os valores entre colchetes e envie somente após a validação do fiscal.</span></div>'
             f'<div style="font-size:0.78rem;color:#92400E;margin-top:8px;">'
             f'<strong>Assunto:</strong>&nbsp;{_assunto_email}</div>'
             '</div>',
@@ -2302,10 +2313,10 @@ if res:
         )
         st.download_button(
             label="Baixar rascunho (.txt)",
-            data=f"ASSUNTO: {_assunto_email}\n\n{_corpo_email}".encode("utf-8"),
-            file_name="email_fornecedor_reajuste.txt",
-            mime="text/plain",
-            help="Rascunho editável. Substitua os campos entre colchetes antes de enviar.",
+            data=f"ASSUNTO: {_assunto_email}\n\n{_corpo_email}".encode("utf-8-sig"),
+            file_name="Comunicacao_Contratada_Reajuste.txt",
+            mime="text/plain; charset=utf-8",
+            help="Revise contrato e valores validados antes do envio à contratada.",
         )
     except Exception:
         pass
