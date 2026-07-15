@@ -931,6 +931,7 @@ if metodo_garantia == "Método 1 — Delta da Garantia":
     st.subheader("Relatório")
     if REPORTLAB_OK:
         pdf_bytes = gerar_pdf_garantia_delta(dados_pdf_delta)
+        st.session_state["arquivo_garantia_pdf"] = pdf_bytes
         st.download_button(
             "Baixar relatório de garantia (PDF)",
             data=pdf_bytes,
@@ -1196,6 +1197,7 @@ else:
 
     if REPORTLAB_OK:
         pdf_bytes = gerar_pdf_garantia(dados_pdf, editado)
+        st.session_state["arquivo_garantia_pdf"] = pdf_bytes
         st.download_button(
             "Baixar relatório de garantia (PDF)",
             data=pdf_bytes,

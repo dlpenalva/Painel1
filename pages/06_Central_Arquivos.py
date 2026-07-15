@@ -1,176 +1,290 @@
-import pandas as pd
+from __future__ import annotations
+
+import html
+from typing import Any
+
 import streamlit as st
-from io import BytesIO
+
+from _capacidades_apuracao import avaliar_capacidades_apuracao
+from _ui_utils import render_marca_topo
+
 
 st.set_page_config(page_title="TLB · cl8us - Central de Arquivos", layout="wide")
 
 
+DOCUMENTOS = (
+    {
+        "nome": "Relatório Executivo",
+        "descricao": "Síntese da apuração e dos fundamentos disponíveis para conferência.",
+        "formato": "PDF",
+        "session_key": "arquivo_relatorio_executivo_pdf",
+        "file_name": "Relatorio_Executivo_Analise_Reajuste.pdf",
+        "mime": "application/pdf",
+        "pagina": "pages/04_Relatorio_Global.py",
+    },
+    {
+        "nome": "Minuta de Apostilamento",
+        "descricao": "Minuta editável com os dados disponíveis e campos pendentes destacados.",
+        "formato": "DOCX",
+        "session_key": "arquivo_minuta_apostilamento_docx",
+        "file_name": "minuta_termo_apostilamento.docx",
+        "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "pagina": "pages/04_Relatorio_Global.py",
+    },
+    {
+        "nome": "Despacho Saneador",
+        "descricao": "Minuta narrativa para revisão da instrução e das pendências identificadas.",
+        "formato": "DOCX",
+        "session_key": "arquivo_saneador_docx",
+        "file_name": "Saneador_Instrucao_Processual.docx",
+        "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "pagina": "pages/10_Saneador.py",
+    },
+    {
+        "nome": "Previsão Orçamentária",
+        "descricao": "Memorando editável com a projeção e a complementação disponíveis.",
+        "formato": "DOCX",
+        "session_key": "arquivo_previsao_orcamentaria_docx",
+        "file_name": "memorando_adequacao_orcamentaria.docx",
+        "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "pagina": "pages/12_Adequacao_Orcamentaria.py",
+    },
+    {
+        "nome": "Extrato para Publicação (DOU)",
+        "descricao": "Minuta do extrato para publicação com lacunas explicitamente sinalizadas.",
+        "formato": "DOCX",
+        "session_key": "arquivo_dou_docx",
+        "file_name": "DOU_Extrato_Termo_de_Apostila.docx",
+        "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "pagina": "pages/13_DOU.py",
+    },
+    {
+        "nome": "Sumário do Reajuste",
+        "descricao": "Planilha executiva para conferência financeira e memória consolidada.",
+        "formato": "XLSX",
+        "session_key": "arquivo_planilha_executiva_xlsx",
+        "file_name": "Sumario_Executivo_Reajuste.xlsx",
+        "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pagina": "pages/03_Valor_Global.py",
+    },
+    {
+        "nome": "Itens por Ciclo",
+        "descricao": "Evolução dos valores unitários e totais remanescentes por ciclo.",
+        "formato": "XLSX",
+        "session_key": "arquivo_valores_unitarios_xlsx",
+        "file_name": "Itens_por_Ciclo.xlsx",
+        "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "pagina": "pages/03_Valor_Global.py",
+    },
+    {
+        "nome": "Garantia Contratual",
+        "descricao": "Relatório de conferência, endosso e monitoramento da garantia.",
+        "formato": "PDF",
+        "session_key": "arquivo_garantia_pdf",
+        "file_name": "relatorio_garantia_contratual.pdf",
+        "mime": "application/pdf",
+        "pagina": "pages/05_Garantia.py",
+    },
+)
 
-# >>> UX_ADITIVOS_25_COMPACTO
-def aplicar_css_aditivos25_compacto():
+
+def aplicar_css_central() -> None:
     st.markdown(
         """
         <style>
-        div[data-testid="stMetric"] {
-            min-height: 72px;
-            padding: 8px 10px;
+        .central-intro {
+            color:#52667A;
+            font-size:.94rem;
+            line-height:1.45;
+            margin:-.25rem 0 1rem;
+            max-width:760px;
         }
-        div[data-testid="stMetricValue"] {
-            font-size: clamp(0.95rem, 1.55vw, 1.28rem) !important;
-            line-height: 1.12 !important;
-            white-space: normal !important;
-            overflow-wrap: anywhere !important;
-            word-break: normal !important;
+        .central-status {
+            background:#F7FBFE;
+            border:1px solid #D7E4EE;
+            border-radius:14px;
+            padding:14px 16px 15px;
+            margin:0 0 18px;
+            box-shadow:0 4px 14px rgba(31,78,121,.045);
         }
-        div[data-testid="stMetricLabel"] p {
-            font-size: clamp(0.70rem, 1.00vw, 0.86rem) !important;
-            line-height: 1.15 !important;
-            white-space: normal !important;
+        .central-status-head {
+            display:flex;
+            align-items:center;
+            justify-content:space-between;
+            gap:12px;
+            margin-bottom:10px;
         }
-        .aditivos25-ux-note {
-            font-size: 0.86rem;
-            color: #475569;
+        .central-status-title {
+            color:#173F63;
+            font-size:.96rem;
+            font-weight:800;
+        }
+        .central-status-count {
+            color:#315C7C;
+            background:#EAF3F9;
+            border:1px solid #C9DCE9;
+            border-radius:999px;
+            font-size:.72rem;
+            font-weight:750;
+            padding:4px 9px;
+            white-space:nowrap;
+        }
+        .central-status-grid {
+            display:grid;
+            grid-template-columns:repeat(5,minmax(0,1fr));
+            gap:8px;
+        }
+        .central-status-item {
+            display:flex;
+            align-items:center;
+            gap:7px;
+            min-width:0;
+            background:#FFFFFF;
+            border:1px solid #DFE8EF;
+            border-radius:9px;
+            padding:8px 9px;
+            color:#334E68;
+            font-size:.79rem;
+            font-weight:700;
+        }
+        .central-status-dot {
+            width:8px;
+            height:8px;
+            border-radius:50%;
+            background:#9BAAB7;
+            flex:0 0 auto;
+        }
+        .central-status-item.completo .central-status-dot { background:#3D9660; }
+        .central-status-item.parcial .central-status-dot { background:#D49A23; }
+        .central-status-item.bloqueado .central-status-dot { background:#D27045; }
+        div[data-testid="stVerticalBlockBorderWrapper"] {
+            background:#FFFFFF;
+            border-color:#DCE6EF !important;
+            border-radius:13px !important;
+            box-shadow:0 5px 16px rgba(31,78,121,.05);
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] h3 {
+            color:#173F63;
+            font-size:1rem;
+            line-height:1.25;
+            margin-bottom:.15rem;
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPageLink"] a {
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            width:100%;
+            min-height:2.35rem;
+            color:#173F63 !important;
+            background:#FFFFFF;
+            border:1px solid #9EB6C9;
+            border-radius:8px;
+            padding:.42rem .72rem;
+            font-weight:650;
+            text-decoration:none !important;
+            box-shadow:0 2px 6px rgba(31,78,121,.05);
+        }
+        div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPageLink"] a:hover {
+            color:#0F3555 !important;
+            background:#EEF6FB;
+            border-color:#6E96B3;
+        }
+        .central-card-description {
+            color:#5B6F82;
+            font-size:.82rem;
+            line-height:1.4;
+            min-height:2.3rem;
+            margin-bottom:.45rem;
+        }
+        @media (max-width:900px) {
+            .central-status-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+        }
+        @media (max-width:560px) {
+            .central-status-head { align-items:flex-start; flex-direction:column; }
+            .central-status-grid { grid-template-columns:1fr; }
         }
         </style>
         """,
         unsafe_allow_html=True,
     )
-# <<< UX_ADITIVOS_25_COMPACTO
-from _ui_utils import render_marca_topo, render_aviso_privacidade
-from _capacidades_apuracao import avaliar_capacidades_apuracao
-from _ui_capacidades import render_status_documentos
-
-def gerar_excel_catalogo(df_catalogo, df_checklist=None):
-    buffer = BytesIO()
-    with pd.ExcelWriter(buffer, engine="xlsxwriter") as writer:
-        df_catalogo.to_excel(writer, index=False, sheet_name="CENTRAL_ARQUIVOS")
-        workbook = writer.book
-        ws = writer.sheets["CENTRAL_ARQUIVOS"]
-        fmt_header = workbook.add_format({
-            "bold": True, "bg_color": "#1F4E79", "font_color": "#FFFFFF",
-            "border": 1, "align": "center", "valign": "vcenter"
-        })
-        fmt_wrap = workbook.add_format({"text_wrap": True, "valign": "top", "border": 1})
-        for col_num, value in enumerate(df_catalogo.columns):
-            ws.write(0, col_num, value, fmt_header)
-            ws.set_column(col_num, col_num, 24 if col_num not in [1, 4] else 40, fmt_wrap)
-        ws.freeze_panes(1, 0)
-        if df_checklist is not None and not df_checklist.empty:
-            df_checklist.to_excel(writer, index=False, sheet_name="CHECKLIST_PROCESSUAL")
-            ws2 = writer.sheets["CHECKLIST_PROCESSUAL"]
-            for col_num, value in enumerate(df_checklist.columns):
-                ws2.write(0, col_num, value, fmt_header)
-                ws2.set_column(col_num, col_num, 26 if col_num != 4 else 44, fmt_wrap)
-            ws2.freeze_panes(1, 0)
-    buffer.seek(0)
-    return buffer.getvalue()
 
 
-def item_arquivo(nome, finalidade, formato, session_key, file_name, mime, modulo=None, pagina=None, capacidade=None):
-    disponivel = bool(st.session_state.get(session_key))
-    status_capacidade = (CAPACIDADES.get("documentos") or {}).get(capacidade, {})
-    return {
-        "Arquivo": nome,
-        "Finalidade": finalidade,
-        "Formato": formato,
-        "Status": "Disponível" if disponivel else status_capacidade.get("rotulo", "Aguardando dados"),
-        "session_key": session_key,
-        "file_name": file_name,
-        "mime": mime,
-        "modulo": modulo or "",
-        "pagina": pagina,
-        "capacidade": status_capacidade,
-    }
+def render_status_entradas(capacidades: dict[str, Any]) -> None:
+    blocos = capacidades.get("blocos") or {}
+    ordem = ("financeiro", "itens", "pcs", "consumidos", "remanescentes")
+    cards = []
+    completos = 0
+    for chave in ordem:
+        item = blocos.get(chave) or {"nome": chave.title(), "estado": "nao_informado"}
+        estado = str(item.get("estado") or "nao_informado")
+        if estado == "completo":
+            completos += 1
+        nome = html.escape(str(item.get("nome") or chave.title()))
+        cards.append(
+            f'<div class="central-status-item {html.escape(estado)}">'
+            '<span class="central-status-dot" aria-hidden="true"></span>'
+            f'<span>{nome}</span></div>'
+        )
+    st.markdown(
+        '<section class="central-status" aria-label="Status da Apuração">'
+        '<div class="central-status-head">'
+        '<div class="central-status-title">Status da Apuração</div>'
+        f'<div class="central-status-count">{completos} de {len(ordem)} blocos preenchidos</div>'
+        '</div>'
+        f'<div class="central-status-grid">{"".join(cards)}</div>'
+        '</section>',
+        unsafe_allow_html=True,
+    )
 
 
-def render_linha_arquivo(item):
-    arquivo_bytes = st.session_state.get(item["session_key"])
-    disponivel = bool(arquivo_bytes)
-    capacidade = item.get("capacidade") or {}
-    habilitado = bool(capacidade.get("habilitado"))
-    status_texto = "Disponível" if disponivel else capacidade.get("rotulo", "Aguardando dados")
-    status_classe = "central-status-ok" if disponivel or habilitado else "central-status-pendente"
-    status_html = f'<span class="{status_classe}">{status_texto}</span>'
-    st.markdown('<div class="central-row">', unsafe_allow_html=True)
-    col1, col2, col3, col4, col5 = st.columns([1.45, 2.60, 0.70, 1.05, 1.10], vertical_alignment="center")
-    with col1:
-        st.markdown(f"**{item['Arquivo']}**")
-    with col2:
-        st.markdown(f"<span class='central-muted'>{item['Finalidade']}</span>", unsafe_allow_html=True)
-    with col3:
-        st.write(item["Formato"])
-    with col4:
-        st.markdown(status_html, unsafe_allow_html=True)
-    with col5:
-        if disponivel:
-            st.download_button(
-                "Baixar", data=arquivo_bytes, file_name=item["file_name"],
-                mime=item["mime"], key=f"download_{item['session_key']}", use_container_width=True,
+def render_documento(documento: dict[str, str], estrutura_valida: bool) -> None:
+    arquivo = st.session_state.get(documento["session_key"])
+    with st.container(border=True):
+        st.markdown(f"### {documento['nome']} · {documento['formato']}")
+        st.markdown(
+            f'<div class="central-card-description">{html.escape(documento["descricao"])}</div>',
+            unsafe_allow_html=True,
+        )
+        if not estrutura_valida:
+            st.button(
+                "Corrigir XLS para continuar",
+                key=f"central_bloqueado_{documento['session_key']}",
+                disabled=True,
+                use_container_width=True,
             )
-        elif habilitado and item.get("pagina"):
-            st.page_link(item["pagina"], label="Abrir módulo", use_container_width=True)
+        elif arquivo:
+            st.download_button(
+                "Baixar documento",
+                data=arquivo,
+                file_name=documento["file_name"],
+                mime=documento["mime"],
+                key=f"central_download_{documento['session_key']}",
+                use_container_width=True,
+            )
         else:
-            st.button("Aguardando dados", key=f"blocked_{item['session_key']}", disabled=True, use_container_width=True)
-    if not disponivel and capacidade.get("motivo"):
-        st.caption(capacidade["motivo"])
-    st.markdown("</div>", unsafe_allow_html=True)
+            st.page_link(
+                documento["pagina"],
+                label="Gerar e baixar",
+                use_container_width=True,
+            )
 
 
 render_marca_topo()
+aplicar_css_central()
 st.title("Central de Arquivos")
-st.caption("Acompanhe o estado de cada documento e utilize imediatamente tudo o que a apuração já sustenta.")
-render_aviso_privacidade(tem_download=True)
-
-diagnostico = st.session_state.get("diagnostico_coleta_v2") or {}
-CAPACIDADES = diagnostico.get("capacidades") or avaliar_capacidades_apuracao({}, {})
-render_status_documentos(CAPACIDADES)
-
-itens = [
-    item_arquivo("Planilha Executiva", "Conferência financeira e memória consolidada da análise.", "XLSX",
-        "arquivo_planilha_executiva_xlsx", "Planilha_Executiva_Analise_Reajuste.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Valor Global", "pages/03_Valor_Global.py", "planilha_executiva"),
-    item_arquivo("Valores Unitários e Totais por Ciclo", "Conferência dos valores unitários e totais remanescentes por ciclo.", "XLSX",
-        "arquivo_valores_unitarios_xlsx", "Valores_Unitarios_e_Totais_por_Ciclo.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Valor Global", "pages/03_Valor_Global.py", "valores_unitarios"),
-    item_arquivo("Relatório Executivo", "Instrução processual e síntese da análise de reajuste.", "PDF",
-        "arquivo_relatorio_executivo_pdf", "Relatorio_Executivo_Analise_Reajuste.pdf",
-        "application/pdf", "Relatórios", "pages/04_Relatorio_Global.py", "relatorio_executivo"),
-    item_arquivo("Minuta de Apostilamento", "Formalização em DOCX editável.", "DOCX",
-        "arquivo_minuta_apostilamento_docx", "minuta_termo_apostilamento.docx",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "Relatórios", "pages/04_Relatorio_Global.py", "minuta_apostilamento"),
-    item_arquivo("Mapa dos Marcos", "Linha do tempo do contrato e marcos relevantes.", "PDF",
-        "arquivo_mapa_marcos_pdf", "Mapa_Marcos_Contratuais_Linha_do_Tempo.pdf",
-        "application/pdf", "Valor Global", "pages/03_Valor_Global.py", "mapa_marcos"),
-    item_arquivo("Checklist Processual", "Controle interno de prontidão da instrução.", "XLSX",
-        "arquivo_checklist_processual_xlsx", "Checklist_Processual.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Checklist Processual", "pages/07_Checklist_Processual.py", "checklist_processual"),
-    item_arquivo("Garantia Contratual", "Endosso, controle e monitoramento da garantia.", "PDF",
-        "arquivo_garantia_pdf", "relatorio_garantia_contratual.pdf",
-        "application/pdf", "Gestão da Garantia", "pages/05_Garantia.py", "garantia_contratual"),
-    item_arquivo("DOU", "Minuta do extrato para publicação, com ressalvas quando houver campos pendentes.", "DOCX",
-        "arquivo_dou_docx", "Minuta_DOU.docx",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "DOU", "pages/13_DOU.py", "dou"),
-    item_arquivo("Avaliação de Aditivos", "Controle de acréscimos, supressões e limite de 25%.", "XLSX",
-        "arquivo_avaliacao_aditivos_xlsx", "Avaliacao_Aditivos_Limite_25.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Avaliação de Aditivos", "pages/08_Avaliacao_Aditivos.py", "avaliacao_aditivos"),
-    item_arquivo("Infos Prévias", "Levantamento mínimo de dados e documentos antes da análise.", "XLSX",
-        "arquivo_infos_previas_xlsx", "Infos_Previas_Instrucao_Processual.xlsx",
-        "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", "Infos Prévias", "pages/09_Infos_Previas.py", "infos_previas"),
-    item_arquivo("Saneador", "Minuta narrativa integrada para conferência antes da assinatura.", "DOCX",
-        "arquivo_saneador_docx", "Saneador_Instrucao_Processual.docx",
-        "application/vnd.openxmlformats-officedocument.wordprocessingml.document", "Saneador", "pages/10_Saneador.py", "saneador"),
-]
-
 st.markdown(
-    """
-    <div class="central-header">
-      <div style="display:grid; grid-template-columns: 1.45fr 2.60fr 0.70fr 1.05fr 1.10fr; gap: 1rem; align-items:center;">
-        <div>Arquivo</div><div>Finalidade</div><div>Formato</div><div>Status</div><div>Ação</div>
-      </div>
-    </div>
-    """,
+    '<div class="central-intro">Os oito documentos oficiais em um único lugar. '
+    'Cada arquivo utiliza as informações disponíveis e mantém eventuais pendências no próprio conteúdo.</div>',
     unsafe_allow_html=True,
 )
 
-for item in itens:
-    render_linha_arquivo(item)
+diagnostico = st.session_state.get("diagnostico_coleta_v2") or {}
+CAPACIDADES = diagnostico.get("capacidades") or avaliar_capacidades_apuracao({}, {})
+render_status_entradas(CAPACIDADES)
+
+estrutura_valida = bool(CAPACIDADES.get("estruturalmente_valido", True))
+for inicio in range(0, len(DOCUMENTOS), 4):
+    colunas = st.columns(4)
+    for coluna, documento in zip(colunas, DOCUMENTOS[inicio : inicio + 4]):
+        with coluna:
+            render_documento(documento, estrutura_valida)

@@ -702,6 +702,7 @@ with st.expander("Prévia do texto do memorando", expanded=False):
 
 try:
     docx_bytes = gerar_docx_memorando(dados_doc)
+    st.session_state["arquivo_previsao_orcamentaria_docx"] = docx_bytes
     st.download_button("Baixar memorando em DOCX", data=docx_bytes,
         file_name="memorando_adequacao_orcamentaria.docx",
         mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",

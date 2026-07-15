@@ -10,7 +10,11 @@ MULTI = (ROOT / "pages" / "02_Calculo_Represados.py").read_text(encoding="utf-8"
 DOCUMENTOS = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
 UI = (ROOT / "_ui_utils.py").read_text(encoding="utf-8")
 UI_CAPACIDADES = (ROOT / "_ui_capacidades.py").read_text(encoding="utf-8")
+CAPACIDADES = (ROOT / "_capacidades_apuracao.py").read_text(encoding="utf-8")
 CENTRAL = (ROOT / "pages" / "06_Central_Arquivos.py").read_text(encoding="utf-8")
+GARANTIA = (ROOT / "pages" / "05_Garantia.py").read_text(encoding="utf-8")
+SANEADOR = (ROOT / "pages" / "10_Saneador.py").read_text(encoding="utf-8")
+PREVISAO = (ROOT / "pages" / "12_Adequacao_Orcamentaria.py").read_text(encoding="utf-8")
 
 
 class TestCascaXlsFirst(unittest.TestCase):
@@ -111,7 +115,7 @@ class TestCascaXlsFirst(unittest.TestCase):
             "Garantia Contratual",
             "Saneador",
         ):
-            self.assertIn(arquivo, DOCUMENTOS + UI_CAPACIDADES + CENTRAL)
+            self.assertIn(arquivo, DOCUMENTOS + UI_CAPACIDADES + CAPACIDADES + CENTRAL)
 
     def test_referencias_antigas_foram_removidas_da_interface(self):
         self.assertNotIn("Mesa GCC", DOCUMENTOS)
@@ -123,6 +127,39 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn("return [padrao] * len(aditivos_temp.index)", DOCUMENTOS)
         self.assertIn("if isinstance(coluna, pd.DataFrame):", DOCUMENTOS)
         self.assertNotIn('aditivos_temp.get("Tratamento do aditivo", "").apply', DOCUMENTOS)
+
+    def test_central_e_hub_compacto_dos_oito_documentos_oficiais(self):
+        documentos = (
+            "Relatório Executivo",
+            "Minuta de Apostilamento",
+            "Despacho Saneador",
+            "Previsão Orçamentária",
+            "Extrato para Publicação (DOU)",
+            "Sumário do Reajuste",
+            "Itens por Ciclo",
+            "Garantia Contratual",
+        )
+        catalogo = CENTRAL[: CENTRAL.index("def aplicar_css_central")]
+        self.assertEqual(catalogo.count('"nome":'), 8)
+        for documento in documentos:
+            self.assertIn(documento, CENTRAL)
+        self.assertIn("render_status_entradas(CAPACIDADES)", CENTRAL)
+        self.assertIn('ordem = ("financeiro", "itens", "pcs", "consumidos", "remanescentes")', CENTRAL)
+        self.assertIn("st.container(border=True)", CENTRAL)
+        self.assertIn('label="Gerar e baixar"', CENTRAL)
+        self.assertIn('"Baixar documento"', CENTRAL)
+        self.assertNotIn("render_status_documentos", CENTRAL)
+        self.assertNotIn("central-header", CENTRAL)
+        self.assertNotIn("Pendente de dados", CENTRAL)
+        self.assertNotIn("Disponível com ressalvas", CENTRAL)
+
+    def test_central_bloqueia_somente_estrutura_critica_e_reaproveita_geradores(self):
+        self.assertIn('CAPACIDADES.get("estruturalmente_valido", True)', CENTRAL)
+        self.assertIn('"Corrigir XLS para continuar"', CENTRAL)
+        self.assertIn('st.session_state["arquivo_garantia_pdf"] = pdf_bytes', GARANTIA)
+        self.assertIn('st.session_state["arquivo_previsao_orcamentaria_docx"] = docx_bytes', PREVISAO)
+        self.assertIn('st.session_state["arquivo_saneador_docx"] = docx_bytes', SANEADOR)
+        self.assertIn("[campo a preencher]", SANEADOR)
 
 
 if __name__ == "__main__":
