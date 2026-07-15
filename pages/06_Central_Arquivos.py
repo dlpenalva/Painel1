@@ -169,7 +169,7 @@ def aplicar_css_central() -> None:
             line-height:1.25;
             margin-bottom:.15rem;
         }
-        div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPageLink"] a {
+        div[data-testid="stColumn"] div[data-testid="stPageLink"] a[data-testid="stPageLink-NavLink"] {
             display:flex;
             align-items:center;
             justify-content:center;
@@ -184,7 +184,7 @@ def aplicar_css_central() -> None:
             text-decoration:none !important;
             box-shadow:0 2px 6px rgba(31,78,121,.05);
         }
-        div[data-testid="stVerticalBlockBorderWrapper"] div[data-testid="stPageLink"] a:hover {
+        div[data-testid="stColumn"] div[data-testid="stPageLink"] a[data-testid="stPageLink-NavLink"]:hover {
             color:#0F3555 !important;
             background:#EEF6FB;
             border-color:#6E96B3;

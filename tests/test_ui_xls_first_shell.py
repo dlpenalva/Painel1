@@ -148,6 +148,7 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn("st.container(border=True)", CENTRAL)
         self.assertIn('label="Gerar e baixar"', CENTRAL)
         self.assertIn('"Baixar documento"', CENTRAL)
+        self.assertIn('a[data-testid="stPageLink-NavLink"]', CENTRAL)
         self.assertNotIn("render_status_documentos", CENTRAL)
         self.assertNotIn("central-header", CENTRAL)
         self.assertNotIn("Pendente de dados", CENTRAL)
