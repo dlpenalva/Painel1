@@ -114,6 +114,11 @@ class PosicaoContratualTests(unittest.TestCase):
                 self.assertFalse(diagnostico["pronto_para_consolidar"])
                 self.assertTrue(any(alerta in item for item in diagnostico["bloqueios_criticos"]))
                 self.assertFalse(diagnostico["capacidades"]["estruturalmente_valido"])
+                for documento in (
+                    "planilha_executiva", "valores_unitarios", "relatorio_executivo", "mapa_marcos",
+                    "minuta_apostilamento", "garantia_contratual", "dou", "checklist_processual",
+                ):
+                    self.assertFalse(diagnostico["capacidades"]["documentos"][documento]["habilitado"])
                 with self.assertRaisesRegex(ValueError, "não pode liberar documentos"):
                     adaptar_coleta_reajuste_para_documentos(payload)
 

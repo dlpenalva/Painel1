@@ -72,6 +72,13 @@ class CapacidadesApuracaoTests(unittest.TestCase):
         )
         self.assertFalse(capacidades["estruturalmente_valido"])
         self.assertTrue(all(item["estado"] == "bloqueado" for item in capacidades["blocos"].values()))
+        documentos_apuracao = (
+            "planilha_executiva", "valores_unitarios", "relatorio_executivo", "mapa_marcos",
+            "minuta_apostilamento", "garantia_contratual", "dou", "checklist_processual",
+        )
+        for chave in documentos_apuracao:
+            self.assertEqual(capacidades["documentos"][chave]["estado"], "bloqueado")
+            self.assertFalse(capacidades["documentos"][chave]["habilitado"])
 
     def test_adaptador_aceita_upload_parcial_e_preserva_estados_individuais(self):
         dados = {

@@ -118,6 +118,11 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertNotIn("Calcule os marcos na web", INICIO)
         self.assertNotIn("RESULTADOS:", DOCUMENTOS)
 
+    def test_linha_do_tempo_aceita_colunas_opcionais_ausentes(self):
+        self.assertIn("def serie_aditivo(nome_coluna, padrao):", DOCUMENTOS)
+        self.assertIn("return pd.Series(padrao, index=aditivos_temp.index)", DOCUMENTOS)
+        self.assertNotIn('aditivos_temp.get("Tratamento do aditivo", "").apply', DOCUMENTOS)
+
 
 if __name__ == "__main__":
     unittest.main()

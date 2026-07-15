@@ -556,6 +556,26 @@ def avaliar_capacidades_apuracao(
         ),
     }
 
+    if not estruturalmente_valido:
+        motivo_bloqueio = "Corrija as inconsistências críticas da coleta antes de gerar documentos."
+        for chave in (
+            "planilha_executiva",
+            "valores_unitarios",
+            "relatorio_executivo",
+            "mapa_marcos",
+            "minuta_apostilamento",
+            "garantia_contratual",
+            "dou",
+            "checklist_processual",
+        ):
+            documentos[chave] = _documento(
+                documentos[chave]["nome"],
+                ESTADO_BLOQUEADO,
+                "Bloqueado",
+                motivo_bloqueio,
+                habilitado=False,
+            )
+
     completos = sum(item["estado"] == ESTADO_COMPLETO for item in {**blocos, **calculos}.values())
     pendentes = sum(item["estado"] in (ESTADO_PARCIAL, ESTADO_NAO_INFORMADO) for item in {**blocos, **calculos}.values())
     rastreabilidade = _rastreabilidade_resultados(contagens, metadados, calculos)

@@ -4022,13 +4022,20 @@ def montar_eventos_linha_tempo(resultado):
         aditivos_temp = aditivos_temp.dropna(subset=["_data_evento"]).copy()
 
         if not aditivos_temp.empty:
-            aditivos_temp["_eh_supressao"] = aditivos_temp.get("Tipo de alteração", "Aditivo").apply(
+            def serie_aditivo(nome_coluna, padrao):
+                if nome_coluna in aditivos_temp.columns:
+                    return aditivos_temp[nome_coluna]
+                return pd.Series(padrao, index=aditivos_temp.index)
+
+            aditivos_temp["_eh_supressao"] = serie_aditivo("Tipo de alteração", "Aditivo").apply(
                 lambda v: "supress" in normalizar_texto(v) or "decresc" in normalizar_texto(v)
             )
             aditivos_temp["_eh_acrescimo"] = ~aditivos_temp["_eh_supressao"]
-            aditivos_temp["_ciclo"] = aditivos_temp.get("Ciclo/Marco", "").apply(normalizar_ciclo)
-            aditivos_temp["_tratamento"] = aditivos_temp.get("Tratamento do aditivo", "").apply(_texto_evento)
-            aditivos_temp["_valor"] = aditivos_temp.get("Valor atualizado da alteração", 0.0).apply(lambda v: numero_seguro(v, 0.0))
+            aditivos_temp["_ciclo"] = serie_aditivo("Ciclo/Marco", "").apply(normalizar_ciclo)
+            aditivos_temp["_tratamento"] = serie_aditivo("Tratamento do aditivo", "").apply(_texto_evento)
+            aditivos_temp["_valor"] = serie_aditivo("Valor atualizado da alteração", 0.0).apply(
+                lambda v: numero_seguro(v, 0.0)
+            )
 
             agrupados = (
                 aditivos_temp
