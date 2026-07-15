@@ -169,17 +169,43 @@ def aplicar_css_central() -> None:
             line-height:1.25;
             margin-bottom:.15rem;
         }
+        div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .central-card-description) {
+            box-sizing:border-box;
+            height:18rem;
+            min-height:18rem;
+            max-height:18rem;
+            display:flex;
+            flex-direction:column;
+            position:relative;
+        }
+        div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .central-card-description) > div[data-testid="stElementContainer"]:has(h3) {
+            height:8.05rem;
+            min-height:8.05rem;
+            max-height:8.05rem;
+            overflow:hidden;
+        }
+        div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(> div[data-testid="stElementContainer"] .central-card-description) > div[data-testid="stElementContainer"]:last-child {
+            position:absolute;
+            right:15px;
+            bottom:15px;
+            left:15px;
+            margin:0 !important;
+        }
         div[data-testid="stColumn"] div[data-testid="stPageLink"] a[data-testid="stPageLink-NavLink"] {
+            box-sizing:border-box;
             display:flex;
             align-items:center;
             justify-content:center;
             width:100%;
-            min-height:2.35rem;
+            height:2.48rem;
+            min-height:2.48rem;
             color:#173F63 !important;
             background:#FFFFFF;
             border:1px solid #9EB6C9;
             border-radius:8px;
             padding:.42rem .72rem;
+            margin:0 !important;
+            transform:translateY(-.04rem);
             font-weight:650;
             text-decoration:none !important;
             box-shadow:0 2px 6px rgba(31,78,121,.05);
@@ -193,7 +219,13 @@ def aplicar_css_central() -> None:
             color:#5B6F82;
             font-size:.82rem;
             line-height:1.4;
-            min-height:2.3rem;
+            height:3.5rem;
+            min-height:3.5rem;
+            max-height:3.5rem;
+            display:-webkit-box;
+            -webkit-box-orient:vertical;
+            -webkit-line-clamp:3;
+            overflow:hidden;
             margin-bottom:.45rem;
         }
         @media (max-width:900px) {
