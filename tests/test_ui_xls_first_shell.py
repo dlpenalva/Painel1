@@ -119,8 +119,9 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertNotIn("RESULTADOS:", DOCUMENTOS)
 
     def test_linha_do_tempo_aceita_colunas_opcionais_ausentes(self):
-        self.assertIn("def serie_aditivo(nome_coluna, padrao):", DOCUMENTOS)
-        self.assertIn("return pd.Series(padrao, index=aditivos_temp.index)", DOCUMENTOS)
+        self.assertIn("def valores_aditivo(nome_coluna, padrao):", DOCUMENTOS)
+        self.assertIn("return [padrao] * len(aditivos_temp.index)", DOCUMENTOS)
+        self.assertIn("if isinstance(coluna, pd.DataFrame):", DOCUMENTOS)
         self.assertNotIn('aditivos_temp.get("Tratamento do aditivo", "").apply', DOCUMENTOS)
 
 
