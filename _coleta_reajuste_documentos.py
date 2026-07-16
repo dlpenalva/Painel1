@@ -15,6 +15,18 @@ import pandas as pd
 from openpyxl import load_workbook
 
 from _coleta_reajuste import ler_coleta_reajuste
+from _objeto_processo import (
+    Aditivos,
+    Ciclos,
+    Diagnostico,
+    Financeiro,
+    Identificacao,
+    ObjetoProcesso,
+    PosicaoContratual,
+    Remanescentes,
+    Retroativo,
+    ValorTotalAtualizado,
+)
 
 
 def _numero(valor: Any, padrao: float = 0.0) -> float:
@@ -32,8 +44,12 @@ def _data_br(valor: Any) -> str:
     return str(valor or "")
 
 
-def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
-    """Monta o resultado documental a partir dos valores salvos em RESULTADOS."""
+def montar_objeto_processo(conteudo: bytes) -> ObjetoProcesso:
+    """Monta o Objeto Processo a partir dos valores salvos em RESULTADOS.
+
+    Único ponto do ClausGC que abre o workbook da Coleta. Depois daqui, a
+    Interface e os documentos consomem exclusivamente o objeto retornado.
+    """
 
     diagnostico = ler_coleta_reajuste(conteudo)
     if not diagnostico.get("valido"):
@@ -239,87 +255,96 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
         ]
     )
 
-    return {
-        "ok": True,
-        "origem_coleta": "Coleta_Reajuste.xlsx",
-        "data_processamento": datetime.now().strftime("%d/%m/%Y %H:%M"),
-        "modo_apuracao": "Processamento progressivo pelo XLS",
-        "base_execucao_mensal_disponivel": bool(financeiro_rows),
-        "base_itens_disponivel": bool(valores_rows),
-        "aviso_base_execucao": "" if financeiro_rows else "Financeiro não informado; os demais blocos permanecem utilizáveis.",
-        "ressalva_modo_apuracao": "Somente resultados sustentados pelos blocos disponíveis são apresentados.",
-        "config_ciclo_em_execucao": {},
-        "corte_operacional_solicitado": False,
-        "corte_operacional_aplicado": False,
-        "origem_ciclos": "Coleta_Reajuste.xlsx",
-        "indice": controle["B7"].value or "Não informado",
-        "fator_acumulado": fator_final,
-        "variacao_acumulada": fator_final - 1.0,
-        "quantidade_ciclos": len(ciclos_rows),
-        "valor_original_contrato": valor_original,
-        "contexto_contratual_anterior": {},
-        "valor_formalizado_anterior": valor_original,
-        "impacto_analise_atual": valor_total - valor_original,
-        "valor_pago_efetivo": pago_total,
-        "total_pago_faturado": pago_total,
-        "valor_teorico_calculado": devido_total,
-        "total_devido_reajustado": devido_total,
-        "delta_total": retroativo,
-        "delta_acumulado": retroativo,
-        "valor_represado_a_pagar": retroativo,
-        "valor_retroativo_estimado_itens_estoque": retroativo,
-        "retroativo_estimado_itens_estoque_disponivel": bool(abs(retroativo) > 0.004),
-        "quantidade_meses_sem_efeito_financeiro": 0,
-        "valor_total_sem_efeito_financeiro": 0.0,
-        "remanescente_original": rem_original,
-        "remanescente_reajustado": rem_atualizado,
-        "fator_remanescente": (rem_atualizado / rem_original) if rem_original else fator_final,
-        "valor_executado_atualizado": execucao_atualizada,
-        "valor_calculado_sem_aditivos": valor_total,
-        "valor_atualizado_contrato": valor_total,
-        "valor_global_financeiro": valor_total,
-        "total_aditivos_atualizados": total_aditivos,
-        "total_aditivos_informativos": 0.0,
-        "aditivos_somados_ao_valor_total": False,
-        "quantidade_aditivos_total": len(aditivos_rows),
-        "quantidade_aditivos_marcados_computaveis": sum(bool(r["Computa no Valor Global"]) for r in aditivos_rows),
-        "ciclo_ultimo_remanescente": controle["B2"].value or "",
-        "df_ciclos": df_ciclos,
-        "df_financeiro_mensal": df_financeiro,
-        "df_financeiro_mensal_corte_operacional": df_financeiro,
-        "df_financeiro_mensal_tratado": df_financeiro,
-        "df_meses_sem_efeito_financeiro": pd.DataFrame(),
-        "df_financeiro_por_ciclo": df_fin_por_ciclo,
-        "df_delta_por_ciclo": df_fin_por_ciclo.copy(),
-        "df_execucao_atualizada": df_execucao,
-        "df_retroativo_estimado_itens_estoque": pd.DataFrame(),
-        "df_composicao_valor_total": df_composicao,
-        "df_remanescentes": df_rem,
-        "df_valores_unitarios_ciclo": df_valores,
-        "df_aditivos": df_aditivos,
-        "df_aditivos_executivo": df_aditivos,
-        "df_aditivos_computaveis": df_aditivos[df_aditivos.get("Computa no Valor Global", pd.Series(dtype=bool)) == True] if not df_aditivos.empty else pd.DataFrame(),
-        "df_aditivos_informativos": pd.DataFrame(),
-        "df_posicao_contratual": df_posicao_contratual,
-        "df_comparativo": df_comparativo,
-        "df_auditoria_consistencia": pd.DataFrame(
-            [
-                {
-                    "Validação": "Blocos independentes do XLS avaliados",
-                    "Status": "OK",
-                    "Diferença/Valor": "Processamento progressivo",
-                }
-            ]
+    return ObjetoProcesso(
+        identificacao=Identificacao(
+            origem_coleta="Coleta_Reajuste.xlsx",
+            data_processamento=datetime.now().strftime("%d/%m/%Y %H:%M"),
+            modo_apuracao="Processamento progressivo pelo XLS",
+            indice=controle["B7"].value or "Não informado",
+            ciclo_ultimo_remanescente=controle["B2"].value or "",
         ),
-        "status_resultados": diagnostico.get("metadados", {}).get("status_resultados", {}),
-        "capacidades": capacidades,
-        "diagnostico_coleta": diagnostico,
-        "resultados_progressivos": {
-            "retroativo": retro_capacidade,
-            "vta": vta_capacidade,
-            "valor_remanescente": rem_capacidade,
-            "posicao_contratual": calculos.get("posicao_contratual") or {},
-            "valores_unitarios": calculos.get("valores_unitarios") or {},
-        },
-        "_resultado_lido_do_excel": True,
-    }
+        ciclos=Ciclos(
+            tabela=df_ciclos,
+            quantidade=len(ciclos_rows),
+            fator_acumulado=fator_final,
+            variacao_acumulada=fator_final - 1.0,
+            origem="Coleta_Reajuste.xlsx",
+        ),
+        financeiro=Financeiro(
+            mensal=df_financeiro,
+            por_ciclo=df_fin_por_ciclo,
+            valor_pago_efetivo=pago_total,
+            valor_teorico_calculado=devido_total,
+            disponivel=bool(financeiro_rows),
+            aviso="" if financeiro_rows else "Financeiro não informado; os demais blocos permanecem utilizáveis.",
+            meses_sem_efeito=pd.DataFrame(),
+            quantidade_meses_sem_efeito=0,
+            valor_total_sem_efeito=0.0,
+        ),
+        retroativo=Retroativo(
+            valor=retroativo,
+            disponivel=bool(abs(retroativo) > 0.004),
+            capacidade=retro_capacidade,
+            estimado_itens_estoque=pd.DataFrame(),
+        ),
+        vta=ValorTotalAtualizado(
+            valor_original_contrato=valor_original,
+            valor_total=valor_total,
+            execucao_atualizada=execucao_atualizada,
+            composicao=df_composicao,
+            capacidade=vta_capacidade,
+        ),
+        remanescentes=Remanescentes(
+            original=rem_original,
+            reajustado=rem_atualizado,
+            fator=(rem_atualizado / rem_original) if rem_original else fator_final,
+            tabela=df_rem,
+            valores_unitarios=df_valores,
+            execucao=df_execucao,
+            capacidade=rem_capacidade,
+            capacidade_valores_unitarios=calculos.get("valores_unitarios") or {},
+            base_itens_disponivel=bool(valores_rows),
+        ),
+        aditivos=Aditivos(
+            tabela=df_aditivos,
+            computaveis=(
+                df_aditivos[df_aditivos.get("Computa no Valor Global", pd.Series(dtype=bool)) == True]
+                if not df_aditivos.empty
+                else pd.DataFrame()
+            ),
+            total_atualizados=total_aditivos,
+            quantidade_total=len(aditivos_rows),
+            quantidade_computaveis=sum(bool(r["Computa no Valor Global"]) for r in aditivos_rows),
+        ),
+        posicao_contratual=PosicaoContratual(
+            tabela=df_posicao_contratual,
+            capacidade=calculos.get("posicao_contratual") or {},
+        ),
+        diagnostico=Diagnostico(
+            capacidades=capacidades,
+            status_resultados=diagnostico.get("metadados", {}).get("status_resultados", {}),
+            coleta=diagnostico,
+            comparativo=df_comparativo,
+            auditoria_consistencia=pd.DataFrame(
+                [
+                    {
+                        "Validação": "Blocos independentes do XLS avaliados",
+                        "Status": "OK",
+                        "Diferença/Valor": "Processamento progressivo",
+                    }
+                ]
+            ),
+            ressalva_modo_apuracao="Somente resultados sustentados pelos blocos disponíveis são apresentados.",
+        ),
+    )
+
+
+def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
+    """Expõe o Objeto Processo no contrato de dados histórico.
+
+    Camada de compatibilidade: preserva a assinatura e o dicionário já
+    consumidos pelos documentos e pela Interface. Novos consumidores devem
+    preferir `montar_objeto_processo`.
+    """
+
+    return montar_objeto_processo(conteudo).como_dicionario()
