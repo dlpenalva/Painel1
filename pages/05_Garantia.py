@@ -147,10 +147,7 @@ def obter_contexto_valor_global(resultado_valor_global):
 
     valor_original = numero_para_input(resultado_valor_global.get("valor_original_contrato", 0.0))
     valor_total_atualizado = numero_para_input(
-        resultado_valor_global.get(
-            "valor_atualizado_contrato",
-            resultado_valor_global.get("valor_global_contrato", resultado_valor_global.get("valor_global_estoque", 0.0)),
-        )
+        resultado_valor_global.get("valor_atualizado_contrato", 0.0)
     )
     valor_formalizado_anterior = numero_para_input(
         resultado_valor_global.get("valor_formalizado_anterior", contexto.get("valor_formalizado_anterior", 0.0))
@@ -318,7 +315,7 @@ def _metodologia_valor_importado_html(resultado_valor_global):
     corte = bool(resultado_valor_global.get("corte_operacional_aplicado") or resultado_valor_global.get("corte_operacional_solicitado") or cfg.get("aplicar"))
 
     try:
-        valor_total = moeda(resultado_valor_global.get("valor_atualizado_contrato", resultado_valor_global.get("valor_global_estoque", 0)))
+        valor_total = moeda(resultado_valor_global.get("valor_atualizado_contrato", 0))
     except Exception:
         valor_total = str(resultado_valor_global.get("valor_atualizado_contrato", "Não informado"))
     try:

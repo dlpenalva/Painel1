@@ -476,7 +476,7 @@ def _metodologia_valor_importado_html(resultado_valor_global):
     corte = bool(resultado_valor_global.get("corte_operacional_aplicado") or resultado_valor_global.get("corte_operacional_solicitado") or cfg.get("aplicar"))
 
     try:
-        valor_total = moeda(resultado_valor_global.get("valor_atualizado_contrato", resultado_valor_global.get("valor_global_estoque", 0)))
+        valor_total = moeda(resultado_valor_global.get("valor_atualizado_contrato", 0))
     except Exception:
         valor_total = str(resultado_valor_global.get("valor_atualizado_contrato", "Não informado"))
     try:

@@ -178,7 +178,7 @@ def indicadores_executivos_relatorio(res):
             ["Indicador", "Valor"],
             ["Modo de apuração", texto_seguro(res.get("modo_apuracao"), "Consumo por Itens/Ciclo")],
             ["Valor original", moeda(res.get("valor_original_contrato", 0))],
-            ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)))],
+            ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", 0))],
             ["Retroativo financeiro definitivo", "Não calculado"],
             ["Retroativo (itens consumidos/ciclo)", moeda(valor_retroativo_consumo_itens_ciclo(res))],
             ["Execução atualizada por itens/ciclo", moeda(res.get("valor_executado_atualizado", 0))],
@@ -190,7 +190,7 @@ def indicadores_executivos_relatorio(res):
             ["Indicador", "Valor"],
             ["Modo de apuração", texto_seguro(res.get("modo_apuracao"), "Reduzido por Itens/Estoque")],
             ["Valor original", moeda(res.get("valor_original_contrato", 0))],
-            ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)))],
+            ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", 0))],
             ["Retroativo financeiro definitivo", "Não calculado"],
             ["Retroativo estimado por itens/estoque", moeda(valor_retroativo_estimado_itens(res))],
             ["Execução estimada por itens/estoque", moeda(res.get("valor_executado_atualizado", 0))],
@@ -207,7 +207,7 @@ def indicadores_executivos_relatorio(res):
         ["Valor executado atualizado por ciclos", moeda(res.get("valor_executado_atualizado", 0))],
         ["Saldo remanescente atualizado", moeda(res.get("remanescente_reajustado", 0))],
         ["Valor total de aditivos/supressões", moeda(res.get("total_aditivos_atualizados", 0))],
-        ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)))],
+        ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", 0))],
         ["Metodologia de corte", metodologia_corte_operacional_info(res)["titulo"].replace("Metodologia aplicada: ", "")],
     ]
 
@@ -498,7 +498,7 @@ def _info_corte_operacional_relatorio(res):
         "remanescente_atualizado": rem_final,
         "remanescente_original": rem_orig,
         "execucao_corte": exec_corte,
-        "valor_total": _numero_br_relatorio(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)), 0.0),
+        "valor_total": _numero_br_relatorio(res.get("valor_atualizado_contrato", 0), 0.0),
     }
 
 
@@ -813,7 +813,7 @@ Saldo Remanescente Atualizado: {moeda(res.get('remanescente_reajustado', 0))}
 4. Consolidação contratual
 
 Valor original do contrato: {moeda(res.get('valor_original_contrato', 0))}
-Valor Total Atualizado do Contrato: {moeda(res.get('valor_atualizado_contrato', res.get('valor_global_estoque', 0)))}
+Valor Total Atualizado do Contrato: {moeda(res.get('valor_atualizado_contrato', 0))}
 Aditivos/supressões registrados para controle: {moeda(res.get('total_aditivos_atualizados', 0))}
 
 Data/hora de geração: {datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')}
@@ -851,7 +851,7 @@ Saldo remanescente atualizado: {moeda(res.get('remanescente_reajustado', 0))}
 4. Consolidação contratual
 
 Valor original do contrato: {moeda(res.get('valor_original_contrato', 0))}
-Valor Total Atualizado do Contrato: {moeda(res.get('valor_atualizado_contrato', res.get('valor_global_estoque', 0)))}
+Valor Total Atualizado do Contrato: {moeda(res.get('valor_atualizado_contrato', 0))}
 Aditivos/supressões registrados para controle: {moeda(res.get('total_aditivos_atualizados', 0))}
 
 Data/hora de geração: {datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')}
@@ -873,7 +873,7 @@ Valor represado a pagar: {moeda(res.get('valor_represado_a_pagar', 0))}
 Valor executado total atualizado, considerado até o início do ciclo atual: {moeda(res.get('valor_executado_atualizado', 0))}
 Saldo remanescente atualizado: {moeda(res.get('remanescente_reajustado', 0))}
 Aditivos da análise atual, para controle: {moeda(res.get('total_aditivos_atualizados', 0))}
-Valor Total Atualizado do Contrato: {moeda(res.get('valor_atualizado_contrato', res.get('valor_global_estoque', 0)))}
+Valor Total Atualizado do Contrato: {moeda(res.get('valor_atualizado_contrato', 0))}
 
 Data/hora de geração: {datetime.now(ZoneInfo('America/Sao_Paulo')).strftime('%d/%m/%Y %H:%M')}
 """.strip()
@@ -1027,7 +1027,7 @@ def criar_pdf_relatorio(adm, res):
             ["Componente", "Valor"],
             ["Valor executado atualizado", moeda(res.get("valor_executado_atualizado", 0))],
             ["Saldo remanescente atualizado", moeda(res.get("remanescente_reajustado", 0))],
-            ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)))],
+            ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", 0))],
         ], header=True, col_widths=[10 * cm, 7 * cm]))
         story.append(Paragraph(
             "Aditivos e supressões registrados são apresentados em seção própria para controle e não são somados como parcela autônoma ao Valor Total Atualizado quando já refletidos na execução ou no saldo remanescente.",
@@ -1798,7 +1798,7 @@ def _linhas_quadro_memoria_fiscal(res):
     if abs(total_aditivos_computaveis) > 0.004:
         _adicionar("Aditivos/supressões computáveis atualizados", total_aditivos_computaveis)
 
-    total = _numero_br_relatorio(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)), 0.0)
+    total = _numero_br_relatorio(res.get("valor_atualizado_contrato", 0), 0.0)
     if abs(total) > 0.004:
         linhas.append(["Total", "Valor Total Atualizado do Contrato", moeda(total)])
 
@@ -1840,7 +1840,7 @@ def _linhas_quadro_composicao_sintetica(res):
             linhas.append(["B", "Saldo remanescente atualizado", moeda(remanescente)])
         if abs(aditivos) > 0.004:
             linhas.append(["C", "Aditivos/supressões registrados", moeda(aditivos)])
-    total = _numero_br_relatorio(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)), 0.0)
+    total = _numero_br_relatorio(res.get("valor_atualizado_contrato", 0), 0.0)
     if abs(total) > 0.004:
         linhas.append(["Total", "Valor Total Atualizado", moeda(total)])
     return linhas
@@ -1991,7 +1991,7 @@ def gerar_minuta_apostilamento_docx(adm, res):
             total_last=True,
         )
         formula = _texto_formula_refs(linhas_comp[:-1] if linhas_comp and str(linhas_comp[-1][0]).upper() == "TOTAL" else linhas_comp)
-        total = _numero_br_relatorio(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)), 0.0)
+        total = _numero_br_relatorio(res.get("valor_atualizado_contrato", 0), 0.0)
         if formula:
             _docx_add_texto(document, f"4.2. A composição do Quadro 4 pode ser lida da seguinte forma: {formula} = {moeda(total)}.")
 
@@ -2074,7 +2074,7 @@ st.markdown(
     f"""
     <div class="telebras-kpi-destaque">
         <div class="telebras-kpi-destaque-label">Valor Total Atualizado do Contrato</div>
-        <div class="telebras-kpi-destaque-valor">{moeda(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)))}</div>
+        <div class="telebras-kpi-destaque-valor">{moeda(res.get("valor_atualizado_contrato", 0))}</div>
     </div>
     """,
     unsafe_allow_html=True,
