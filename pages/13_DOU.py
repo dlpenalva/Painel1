@@ -239,12 +239,13 @@ def ciclos_reajuste_texto(res, adm):
 def valor_total_atualizado(res):
     if not isinstance(res, dict):
         return 0.0
-    try:
-        v = float(res.get("valor_atualizado_contrato", 0) or 0)
-        if abs(v) > 0.004:
-            return v
-    except Exception:
-        pass
+    for chave in ["valor_atualizado_contrato", "valor_global_estoque", "valor_global_contrato"]:
+        try:
+            v = float(res.get(chave, 0) or 0)
+            if abs(v) > 0.004:
+                return v
+        except Exception:
+            pass
     return 0.0
 
 

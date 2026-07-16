@@ -17,17 +17,6 @@ from _coleta_reajuste import (
 )
 from _coleta_reajuste_documentos import adaptar_coleta_reajuste_para_documentos
 from _capacidades_apuracao import avaliar_capacidades_apuracao
-from _estado_upload import (
-    DETALHES_ARQUIVO_NAO_RECONHECIDO,
-    MENSAGEM_ARQUIVO_NAO_RECONHECIDO,
-    ORIGEM_COLETA_OFICIAL,
-    ORIGEM_NAO_RECONHECIDA,
-    limpar_estados_derivados,
-    procedencia_registrada,
-    registrar_upload,
-    sha256_do_arquivo,
-    upload_ja_processado,
-)
 from _ui_capacidades import (
     render_resultados_progressivos,
     render_status_apuracao,
@@ -3574,16 +3563,6 @@ def ajustar_remanescente_por_corte_operacional(df_rem, df_execucao, valor_origin
     return df_rem_ajustado, ciclo_label, remanescente_original_operacional, remanescente_atualizado_operacional
 
 def processar_arquivo_coleta(bytes_arquivo):
-    """LEGADO — isolado do fluxo oficial, sem chamadores.
-
-    Calculava a apuração em Python a partir de arquivos não canônicos. O Painel
-    passou a admitir exclusivamente o Coleta_Reajuste.xlsx oficial, cujo
-    resultado vem do próprio XLS; manter dois motores permitiria divergência
-    entre o que o arquivo diz e o que a tela mostra. Preservada aqui apenas até
-    a remoção controlada, junto de suas sub-rotinas (entre elas
-    `processar_consumo_itens_ciclo`). Não religar ao upload.
-    """
-
     aditivos_somados_ao_valor_total = 0.0  # fallback: planilha sem aditivos computaveis
     xls = pd.ExcelFile(BytesIO(bytes_arquivo))
     params = ler_parametros(bytes_arquivo, xls)
@@ -4818,59 +4797,24 @@ with st.expander("Contexto da Admissibilidade", expanded=True):
 
 if arquivo is not None:
     if st.button("Validar Coleta Preenchida", type="primary", use_container_width=False):
-        conteudo = arquivo.getvalue()
-        sha256 = sha256_do_arquivo(conteudo)
-        # Nada do arquivo anterior sobrevive à troca: o estado é apagado antes de
-        # qualquer decisão sobre o novo upload.
-        if not upload_ja_processado(st.session_state, sha256):
-            limpar_estados_derivados(st.session_state)
         try:
-            if not eh_coleta_reajuste(conteudo):
-                registrar_upload(
-                    st.session_state,
-                    sha256=sha256,
-                    origem=ORIGEM_NAO_RECONHECIDA,
-                    aceito=False,
-                    motivo=MENSAGEM_ARQUIVO_NAO_RECONHECIDO,
-                )
-            else:
+            conteudo = arquivo.getvalue()
+            if eh_coleta_reajuste(conteudo):
                 diagnostico = ler_coleta_reajuste(conteudo)
                 st.session_state["diagnostico_coleta_v2"] = diagnostico
                 if diagnostico.get("valido"):
                     resultado = adaptar_coleta_reajuste_para_documentos(conteudo)
                     st.session_state["resultado_valor_global"] = resultado
-                    registrar_upload(
-                        st.session_state,
-                        sha256=sha256,
-                        origem=ORIGEM_COLETA_OFICIAL,
-                        aceito=True,
-                    )
                 else:
-                    registrar_upload(
-                        st.session_state,
-                        sha256=sha256,
-                        origem=ORIGEM_COLETA_OFICIAL,
-                        aceito=False,
-                        motivo="A coleta oficial foi reprovada no diagnóstico estrutural.",
-                    )
+                    st.session_state.pop("resultado_valor_global", None)
+            else:
+                # Compatibilidade temporária com coletas antigas, sem interferir no novo XLS-first.
+                resultado = processar_arquivo_coleta(conteudo)
+                st.session_state["resultado_valor_global"] = resultado
+                st.session_state.pop("diagnostico_coleta_v2", None)
+                st.warning("Arquivo legado processado. Novas apurações devem usar Coleta_Reajuste.xlsx.")
         except Exception as exc:
-            # Falha no meio do processamento deixaria resultado e diagnóstico
-            # dessincronizados; o estado volta a ser ausência explícita.
-            limpar_estados_derivados(st.session_state)
-            registrar_upload(
-                st.session_state,
-                sha256=sha256,
-                origem=ORIGEM_NAO_RECONHECIDA,
-                aceito=False,
-                motivo=f"Não foi possível processar o arquivo: {exc}",
-            )
-
-procedencia = procedencia_registrada(st.session_state)
-if procedencia and procedencia.get("origem") == ORIGEM_NAO_RECONHECIDA:
-    st.error(procedencia.get("motivo") or MENSAGEM_ARQUIVO_NAO_RECONHECIDO)
-    for detalhe in DETALHES_ARQUIVO_NAO_RECONHECIDO:
-        st.caption(detalhe)
-    st.stop()
+            st.error(f"Não foi possível processar o arquivo: {exc}")
 
 diagnostico_coleta = st.session_state.get("diagnostico_coleta_v2")
 if diagnostico_coleta:
