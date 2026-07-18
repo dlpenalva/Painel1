@@ -412,6 +412,11 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
             "Arquivo legado sem a camada posicao_contratual; quantidades por ciclo seguem o leiaute historico."
         )
 
+    # Detecta modelo oficial: NUMERO_PC na coluna A de itens_PC desloca CICLO_PC para C2
+    _ws_ipc = wb["itens_PC"] if "itens_PC" in wb.sheetnames else None
+    _header_a1 = (_ws_ipc["A1"].value or "") if _ws_ipc is not None else ""
+    _chave_ciclo_pc = "itens_PC!C2" if str(_header_a1).strip().upper() == "NUMERO_PC" else "itens_PC!B2"
+
     formulas = _formulas(wb)
     if len(formulas) < 1000:
         bloqueios_estruturais.append("A matriz de fórmulas foi removida ou está incompleta.")
@@ -419,7 +424,7 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         "financeiro!D2",
         "itens_Remanesc!D2",
         "itens_Consumidos!O2",
-        "itens_PC!B2",
+        _chave_ciclo_pc,
         "RESULTADOS!B15",
         "RESULTADOS!B16",
         "RESULTADOS!B23",
@@ -486,7 +491,7 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
                 lacunas_apuracao.append(f"C{numero}: percentual necessário ao acumulado está ausente.")
 
     contagens = {
-        "competencias_com_valor": sum(1 for row in range(2, 62) if _numero(wb["financeiro"][f"C{row}"].value) is not None),
+        "competencias_com_valor": sum(1 for row in range(2, 74) if _numero(wb["financeiro"][f"C{row}"].value) is not None),
         "itens_remanescentes": sum(1 for row in range(2, 201) if wb["itens_Remanesc"][f"A{row}"].value not in (None, "")),
         "itens_consumidos": sum(1 for row in range(2, 201) if wb["itens_Consumidos"][f"A{row}"].value not in (None, "")),
         "pedidos_de_compra": sum(1 for row in range(2, 101) if wb["itens_PC"][f"A{row}"].value not in (None, "")),

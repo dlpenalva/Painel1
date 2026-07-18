@@ -9,13 +9,13 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from _coleta_reajuste import (
-    CAMINHO_MODELO_COLETA,
-    NOME_ARQUIVO_COLETA,
-    eh_coleta_reajuste,
-    ler_coleta_reajuste,
+from _coleta_oficial import (
+    NOME_ARQUIVO_COLETA_OFICIAL,
+    TEMPLATE_COLETA_OFICIAL,
+    assinatura_template_coleta,
+    gerar_coleta_oficial_preenchida,
 )
-from _coleta_reajuste_documentos import adaptar_coleta_reajuste_para_documentos
+from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
 from _capacidades_apuracao import avaliar_capacidades_apuracao
 from _ui_capacidades import (
     render_resultados_progressivos,
@@ -4726,14 +4726,20 @@ def render_metodologia_corte_operacional_v4(resultado, modo_apuracao_ui="Complet
 aplicar_css_responsivo_telebras()
 render_cabecalho_pagina(
     "Painel da Apuração Contratual",
-    "Envie o Coleta_Reajuste.xlsx preenchido para validar cada bloco, acompanhar os resultados disponíveis e gerar documentos.",
+    "Envie o Arquivo Coleta Oficial preenchido para validar cada bloco, acompanhar os resultados disponíveis e gerar documentos.",
 )
 
 st.markdown(
-    '<div class="cl8us-docs-note">O Coleta_Reajuste.xlsx reúne os dados da apuração. '
-    'A web valida a estrutura e aproveita, de forma independente, cada bloco seguro da apuração.</div>',
+    '<div class="cl8us-docs-note">O Arquivo Coleta Oficial reúne os dados da apuração. '
+    'A web lê o novo modelo, calcula em Python e reconcilia os resultados com a aba RESULTADOS.</div>',
     unsafe_allow_html=True,
 )
+
+
+@st.cache_data(show_spinner=False)
+def _coleta_oficial_cacheada(assinatura: str, dados_calculadora: dict) -> bytes:  # noqa: ARG001
+    """Gera o download usando a assinatura SHA-256 do template como chave do cache."""
+    return gerar_coleta_oficial_preenchida(dados_calculadora)
 
 with st.container(border=True):
     st.markdown(
@@ -4741,23 +4747,31 @@ with st.container(border=True):
         '<div class="cl8us-docs-card-title">1 · Baixar arquivo de trabalho</div>',
         unsafe_allow_html=True,
     )
-    st.caption("Use o modelo único com fórmulas para registrar a apuração contratual.")
-    if CAMINHO_MODELO_COLETA.exists():
-        st.download_button(
-            "Baixar Coleta_Reajuste.xlsx",
-            data=CAMINHO_MODELO_COLETA.read_bytes(),
-            file_name=NOME_ARQUIVO_COLETA,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            type="primary",
-            key="download_coleta_documentos",
-        )
+    st.caption("Use o modelo oficial com fórmulas para registrar a apuração contratual.")
+    if TEMPLATE_COLETA_OFICIAL.exists():
+        try:
+            _assinatura_coleta = assinatura_template_coleta(TEMPLATE_COLETA_OFICIAL)
+            _dados_calculadora_coleta = st.session_state.get("dados_admissibilidade", {}) or {}
+            st.download_button(
+                "Baixar Arquivo Coleta Oficial",
+                data=_coleta_oficial_cacheada(_assinatura_coleta, _dados_calculadora_coleta),
+                file_name=NOME_ARQUIVO_COLETA_OFICIAL,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                type="primary",
+                key="download_coleta_documentos",
+            )
+        except Exception as exc:
+            st.error(f"Não foi possível gerar o Arquivo Coleta Oficial: {exc}")
     else:
-        st.error("O modelo Coleta_Reajuste.xlsx não foi localizado.")
+        st.error(
+            "Não foi possível localizar o Arquivo Coleta Oficial neste ambiente. "
+            "O download foi bloqueado para evitar o uso de modelo incompatível."
+        )
 
 with st.container(border=True):
     st.markdown(
         '<span class="cl8us-docs-card-marker"></span>'
-        '<div class="cl8us-docs-card-title">2 · Enviar Coleta_Reajuste.xlsx preenchido</div>',
+        '<div class="cl8us-docs-card-title">2 · Enviar Arquivo Coleta Oficial preenchido</div>',
         unsafe_allow_html=True,
     )
     arquivo = st.file_uploader(
@@ -4767,7 +4781,7 @@ with st.container(border=True):
     )
 
 if arquivo is None:
-    st.info("Envie o Coleta_Reajuste.xlsx preenchido. Cada bloco informado será processado de forma independente.")
+    st.info("Envie o Arquivo Coleta Oficial preenchido. Cada bloco informado será processado de forma independente.")
     capacidades_iniciais = avaliar_capacidades_apuracao({}, {})
     render_status_apuracao(capacidades_iniciais)
     render_status_documentos(
@@ -4797,22 +4811,13 @@ with st.expander("Contexto da Admissibilidade", expanded=True):
 
 if arquivo is not None:
     if st.button("Validar Coleta Preenchida", type="primary", use_container_width=False):
+        st.session_state.pop("resultado_valor_global", None)
+        st.session_state.pop("diagnostico_coleta_v2", None)
         try:
             conteudo = arquivo.getvalue()
-            if eh_coleta_reajuste(conteudo):
-                diagnostico = ler_coleta_reajuste(conteudo)
-                st.session_state["diagnostico_coleta_v2"] = diagnostico
-                if diagnostico.get("valido"):
-                    resultado = adaptar_coleta_reajuste_para_documentos(conteudo)
-                    st.session_state["resultado_valor_global"] = resultado
-                else:
-                    st.session_state.pop("resultado_valor_global", None)
-            else:
-                # Compatibilidade temporária com coletas antigas, sem interferir no novo XLS-first.
-                resultado = processar_arquivo_coleta(conteudo)
-                st.session_state["resultado_valor_global"] = resultado
-                st.session_state.pop("diagnostico_coleta_v2", None)
-                st.warning("Arquivo legado processado. Novas apurações devem usar Coleta_Reajuste.xlsx.")
+            resultado, diagnostico = processar_coleta_oficial_runtime(conteudo)
+            st.session_state["diagnostico_coleta_v2"] = diagnostico
+            st.session_state["resultado_valor_global"] = resultado
         except Exception as exc:
             st.error(f"Não foi possível processar o arquivo: {exc}")
 
@@ -4850,6 +4855,26 @@ if diagnostico_coleta:
         st.warning(lacuna)
     for aviso in diagnostico_coleta.get("avisos", []):
         st.warning(aviso)
+
+    reconciliacao_ui = diagnostico_coleta.get("reconciliacao_xls_python") or {}
+    if reconciliacao_ui.get("disponivel"):
+        st.markdown("### Reconciliação XLS × Python")
+        status_reconciliacao = reconciliacao_ui.get("status_geral") or "SEM CAMPOS COMPARÁVEIS"
+        if reconciliacao_ui.get("divergencias_relevantes"):
+            st.error(
+                "Há divergência relevante entre a aba RESULTADOS e o cálculo Python. "
+                "A formalização e os documentos foram bloqueados; nenhum valor foi adotado automaticamente."
+            )
+        elif status_reconciliacao == "RESULTADO_XLS_INDISPONIVEL_POR_CACHE":
+            st.warning(
+                "Os resultados calculados do XLS não estão disponíveis no cache. "
+                "Abra o arquivo no Excel, recalcule, salve e envie novamente."
+            )
+        else:
+            st.success(f"Situação da reconciliação: {status_reconciliacao}.")
+        campos_reconciliacao = reconciliacao_ui.get("campos") or []
+        if campos_reconciliacao:
+            st.dataframe(pd.DataFrame(campos_reconciliacao), use_container_width=True, hide_index=True)
 
 resultado = st.session_state.get("resultado_valor_global")
 

@@ -367,7 +367,6 @@ def _render_sidebar() -> None:
             '<div class="cl8us-side-caption">apoio à gestão de contratos</div>',
             unsafe_allow_html=True,
         )
-        st.markdown('<div class="cl8us-side-group">Piloto controlado</div>', unsafe_allow_html=True)
         st.page_link(PAGINA_INICIO, label="Início")
         st.page_link(PAGINA_UM_CICLO, label="Calculadora 1 ciclo")
         st.page_link(PAGINA_MULTICICLO, label="Calculadora multiciclo")

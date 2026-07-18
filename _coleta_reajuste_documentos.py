@@ -1,8 +1,8 @@
-"""Adapta a coleta canônica aos documentos sem recalcular seus resultados.
+"""Integra o Arquivo Coleta Oficial ao contrato documental do runtime.
 
-O Excel continua sendo a fonte de verdade. Este módulo lê exclusivamente os
-valores em cache gravados pelo Excel e os organiza no contrato de dados já
-consumido pelos relatórios da aplicação.
+O leitor Python produz os resultados operacionais. Os valores gravados em
+RESULTADOS são usados para auditoria e reconciliação, nunca como substituição
+silenciosa do cálculo Python.
 """
 
 from __future__ import annotations
@@ -15,6 +15,8 @@ import pandas as pd
 from openpyxl import load_workbook
 
 from _coleta_reajuste import ler_coleta_reajuste
+from _leitor_masterfile_v10 import ler_masterfile_v10
+from _politica_entrega_segura import avaliar_entrega_segura
 
 
 def _numero(valor: Any, padrao: float = 0.0) -> float:
@@ -32,10 +34,25 @@ def _data_br(valor: Any) -> str:
     return str(valor or "")
 
 
-def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
-    """Monta o resultado documental a partir dos valores salvos em RESULTADOS."""
+def _retroativo_python(memoria: dict[str, Any], metodo: str) -> float | None:
+    total = 0.0
+    evidencias = 0
+    for ciclo in memoria.get("ciclos") or []:
+        reg = ((ciclo.get("retroativo") or {}).get(metodo) or {})
+        evidencias += int(reg.get("evidencias") or 0)
+        total += _numero(reg.get("retroativo"))
+    return round(total, 2) if evidencias else None
 
-    diagnostico = ler_coleta_reajuste(conteudo)
+
+def adaptar_coleta_reajuste_para_documentos(
+    conteudo: bytes,
+    *,
+    leitura: dict[str, Any] | None = None,
+    diagnostico: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    """Monta o contrato documental, preferindo os cálculos do leitor Python."""
+
+    diagnostico = diagnostico or ler_coleta_reajuste(conteudo)
     if not diagnostico.get("valido"):
         raise ValueError("A coleta possui pendências estruturais e não pode liberar documentos.")
     capacidades = diagnostico.get("capacidades") or {}
@@ -77,7 +94,7 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
     df_ciclos = pd.DataFrame(ciclos_rows)
 
     financeiro_rows = []
-    for row in range(2, 62):
+    for row in range(2, 74):
         valor = financeiro[f"C{row}"].value
         if valor in (None, ""):
             continue
@@ -193,11 +210,26 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
     vta_capacidade = calculos.get("vta") or {}
     rem_capacidade = calculos.get("valor_remanescente") or {}
 
+    memoria = ((leitura or {}).get("objeto_processo") or {}).get("memoria_por_ciclo") or {}
+    modo_python = str(((leitura or {}).get("controle") or {}).get("modo") or "")
+    metodo_python = {"principal": "financeiro", "pc": "pc", "d": "consumidos"}.get(modo_python)
+    retroativo_python = _retroativo_python(memoria, metodo_python) if metodo_python else None
+    ciclo_vigente = str(((leitura or {}).get("controle") or {}).get("ciclo_vigente") or controle["B2"].value or "").upper()
+    residual_vigente = next(
+        (c.get("residuais") or {} for c in memoria.get("ciclos") or [] if str(c.get("ciclo") or "").upper() == ciclo_vigente),
+        {},
+    )
+    vta_python = _numero((memoria.get("vta") or {}).get("valor_total_atualizado"), None)
+
     valor_original = _numero(resultados["B20"].value)
-    retroativo = _numero(retro_capacidade.get("valor"))
+    retroativo = retroativo_python if retroativo_python is not None else _numero(retro_capacidade.get("valor"))
     rem_original = _numero(resultados["C35"].value)
-    rem_atualizado = _numero(rem_capacidade.get("valor"))
-    valor_total = _numero(vta_capacidade.get("valor"))
+    if int(residual_vigente.get("itens") or 0) > 0:
+        rem_original = _numero(residual_vigente.get("valor_original"))
+        rem_atualizado = _numero(residual_vigente.get("valor_atualizado"))
+    else:
+        rem_atualizado = _numero(rem_capacidade.get("valor"))
+    valor_total = vta_python if vta_python is not None else _numero(vta_capacidade.get("valor"))
     pago_total = float(df_financeiro["Valor pago/faturado"].sum()) if not df_financeiro.empty else 0.0
     devido_total = float(df_financeiro["Valor atualizado"].sum()) if not df_financeiro.empty else 0.0
     total_aditivos = float(df_aditivos["Valor do aditivo reajustado"].sum()) if not df_aditivos.empty else 0.0
@@ -239,7 +271,7 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
         ]
     )
 
-    return {
+    resultado_documental = {
         "ok": True,
         "origem_coleta": "Coleta_Reajuste.xlsx",
         "data_processamento": datetime.now().strftime("%d/%m/%Y %H:%M"),
@@ -301,6 +333,8 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
         "df_aditivos_computaveis": df_aditivos[df_aditivos.get("Computa no Valor Global", pd.Series(dtype=bool)) == True] if not df_aditivos.empty else pd.DataFrame(),
         "df_aditivos_informativos": pd.DataFrame(),
         "df_posicao_contratual": df_posicao_contratual,
+        "df_pedidos_compra": pd.DataFrame(((leitura or {}).get("itens_pc_v10") or {}).get("itens") or []),
+        "df_itens_consumidos_runtime": pd.DataFrame(((leitura or {}).get("itens_consumidos_v10") or {}).get("itens") or []),
         "df_comparativo": df_comparativo,
         "df_auditoria_consistencia": pd.DataFrame(
             [
@@ -323,3 +357,60 @@ def adaptar_coleta_reajuste_para_documentos(conteudo: bytes) -> dict[str, Any]:
         },
         "_resultado_lido_do_excel": True,
     }
+    if leitura:
+        resultado_documental.update({
+            "origem_coleta": "COLETA_REAJUSTE_OFICIAL.xlsx",
+            "objeto_processo": leitura.get("objeto_processo") or {},
+            "reconciliacao_xls_python": leitura.get("reconciliacao_xls_python") or {},
+            "posicao_contratual_runtime": leitura.get("posicao_contratual") or {},
+            "memoria_por_ciclo": memoria,
+            "_resultado_calculado_python": True,
+        })
+    return resultado_documental
+
+
+def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Entry point único usado pelo upload real e pelos testes de integração."""
+    leitura = ler_masterfile_v10(conteudo, exigir_modelo_oficial=True)
+    if not leitura.get("ok"):
+        raise ValueError(leitura.get("erro") or "O Arquivo Coleta Oficial não pôde ser lido.")
+
+    diagnostico = ler_coleta_reajuste(conteudo)
+    if not diagnostico.get("valido"):
+        pendencias = diagnostico.get("pendencias") or diagnostico.get("bloqueios_estruturais") or []
+        raise ValueError("; ".join(str(item) for item in pendencias) or "A estrutura do Arquivo Coleta Oficial é inválida.")
+
+    resultado = adaptar_coleta_reajuste_para_documentos(
+        conteudo,
+        leitura=leitura,
+        diagnostico=diagnostico,
+    )
+    reconciliacao = leitura.get("reconciliacao_xls_python") or {}
+    politica = avaliar_entrega_segura(leitura)
+    bloqueios = list(politica.get("bloqueios") or [])
+
+    diagnostico["reconciliacao_xls_python"] = reconciliacao
+    diagnostico["politica_entrega_segura"] = politica
+    diagnostico["avisos"] = list(diagnostico.get("avisos") or []) + list(leitura.get("avisos") or [])
+    diagnostico["bloqueios_criticos"] = list(diagnostico.get("bloqueios_criticos") or []) + bloqueios
+    if bloqueios:
+        diagnostico["pronto_para_consolidar"] = False
+
+    capacidades = resultado.get("capacidades") or {}
+    if bloqueios:
+        for documento in (capacidades.get("documentos") or {}).values():
+            documento["habilitado"] = False
+            documento["estado"] = "bloqueado"
+            documento["rotulo"] = "Bloqueado para formalização"
+            documento["classificacao"] = "BLOQUEADO PARA FORMALIZAÇÃO"
+            documento["motivo"] = bloqueios[0]
+
+    resultado.update({
+        "capacidades": capacidades,
+        "diagnostico_coleta": diagnostico,
+        "reconciliacao_xls_python": reconciliacao,
+        "politica_entrega_segura": politica,
+        "formalizacao_bloqueada": bool(bloqueios),
+        "bloqueios_formalizacao": bloqueios,
+    })
+    return resultado, diagnostico
