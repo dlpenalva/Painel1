@@ -51,7 +51,7 @@ def test_calculadoras_e_upload_usam_o_mesmo_fluxo_oficial() -> None:
         assert "gerar_coleta_oficial_preenchida" in pagina
         assert "gerar_coleta_reajuste(" not in pagina
         assert "NOME_ARQUIVO_COLETA_OFICIAL" in pagina
-    assert "processar_coleta_oficial_runtime(conteudo_upload)" in upload
+    assert "processar_coleta_oficial_runtime(conteudo)" in upload
     assert "processar_arquivo_coleta(conteudo)" not in upload
     assert "ler_masterfile_v10(conteudo, exigir_modelo_oficial=True)" in runtime
     assert "reconciliacao_xls_python" in runtime

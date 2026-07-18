@@ -85,9 +85,8 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn('key="upload_coleta_documentos"', DOCUMENTOS)
         self.assertIn("if arquivo is None:", DOCUMENTOS)
         self.assertIn("st.stop()", DOCUMENTOS)
-        self.assertIn('if st.button("Processar"', DOCUMENTOS)
-        self.assertIn('st.caption(f"Arquivo enviado: {arquivo.name}")', DOCUMENTOS)
-        self.assertIn('"assinatura_processada_upload_docs"', DOCUMENTOS)
+        self.assertIn('if st.button("Validar Coleta Preenchida"', DOCUMENTOS)
+        self.assertLess(DOCUMENTOS.index("if arquivo is None:"), DOCUMENTOS.index("if arquivo is not None:"))
 
     def test_modo_um_usa_botoes_de_download_na_cor_padrao(self):
         coleta = SIMPLES[SIMPLES.index('label="Baixar Arquivo Coleta Oficial"'):]
@@ -103,25 +102,23 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertNotIn("O XLS consolidou os quatro eixos", DOCUMENTOS)
 
     def test_upload_religa_processamento_e_expoe_os_oito_arquivos(self):
-        self.assertIn("processar_coleta_oficial_runtime(conteudo_upload)", DOCUMENTOS)
+        self.assertIn("processar_coleta_oficial_runtime(conteudo)", DOCUMENTOS)
         self.assertNotIn('elif diagnostico.get("valido"):', DOCUMENTOS)
         self.assertNotIn("_resultado_processado_pela_web", DOCUMENTOS)
-        self.assertNotIn("render_status_apuracao", DOCUMENTOS)
-        self.assertNotIn("render_status_documentos", DOCUMENTOS)
-        self.assertNotIn("Status da Apuração", DOCUMENTOS)
-        self.assertNotIn("Documentos da Apuração", DOCUMENTOS)
-        self.assertIn("render_documentos_funcionais_upload(resultado)", DOCUMENTOS)
+        self.assertIn("render_status_apuracao", DOCUMENTOS)
+        self.assertIn("render_status_documentos", DOCUMENTOS)
+        self.assertIn("Ações sobre os documentos", DOCUMENTOS)
         for arquivo in (
             "Planilha Executiva",
-            "Itens por Ciclo",
+            "Valores Unitários e Totais por Ciclo",
+            "Mapa dos Marcos",
             "Relatório Executivo",
-            "Memória de Cálculo e Marcos",
-            "Termo de Apostila",
-            "Garantia Contratual",
-            "DOU",
+            "Minuta de Apostilamento",
             "Checklist Processual",
+            "Garantia Contratual",
+            "Saneador",
         ):
-            self.assertIn(arquivo, DOCUMENTOS)
+            self.assertIn(arquivo, DOCUMENTOS + UI_CAPACIDADES + CAPACIDADES + CENTRAL)
 
     def test_referencias_antigas_foram_removidas_da_interface(self):
         self.assertNotIn("Mesa GCC", DOCUMENTOS)

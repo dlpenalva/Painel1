@@ -335,9 +335,9 @@ class ColetaReajusteTests(unittest.TestCase):
             self.assertIn("file_name=NOME_ARQUIVO_COLETA_OFICIAL", fonte)
         self.assertNotIn("render_botao_download_modelo_consumo(modelo_consumo)", multiplos)
         self.assertIn("processar_coleta_oficial_runtime", valores)
-        self.assertNotIn("render_status_apuracao", valores)
-        self.assertNotIn("render_status_documentos", valores)
-        self.assertIn('st.session_state["diagnostico_coleta_v2"] = diagnostico_processado', valores)
+        self.assertIn("render_status_apuracao", valores)
+        self.assertIn("render_status_documentos", valores)
+        self.assertIn('st.session_state["diagnostico_coleta_v2"] = diagnostico', valores)
 
         adapter = (ROOT / "_coleta_reajuste_documentos.py").read_text(encoding="utf-8")
         self.assertNotIn('if not diagnostico.get("pronto_para_consolidar"):', adapter)
