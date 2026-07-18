@@ -110,6 +110,10 @@ def adaptar_coleta_reajuste_para_documentos(
             }
         )
     df_financeiro = pd.DataFrame(financeiro_rows)
+    df_sem_efeito = (
+        df_financeiro[df_financeiro["Efeito financeiro"] == "Nao"].copy()
+        if not df_financeiro.empty else pd.DataFrame()
+    )
 
     fin_ciclos = []
     for ciclo in [row["Ciclo"] for row in ciclos_rows]:
@@ -301,8 +305,11 @@ def adaptar_coleta_reajuste_para_documentos(
         "valor_represado_a_pagar": retroativo,
         "valor_retroativo_estimado_itens_estoque": retroativo,
         "retroativo_estimado_itens_estoque_disponivel": bool(abs(retroativo) > 0.004),
-        "quantidade_meses_sem_efeito_financeiro": 0,
-        "valor_total_sem_efeito_financeiro": 0.0,
+        "quantidade_meses_sem_efeito_financeiro": len(df_sem_efeito),
+        "valor_total_sem_efeito_financeiro": (
+            float(df_sem_efeito["Valor pago/faturado"].sum())
+            if not df_sem_efeito.empty else 0.0
+        ),
         "remanescente_original": rem_original,
         "remanescente_reajustado": rem_atualizado,
         "fator_remanescente": (rem_atualizado / rem_original) if rem_original else fator_final,
@@ -320,7 +327,7 @@ def adaptar_coleta_reajuste_para_documentos(
         "df_financeiro_mensal": df_financeiro,
         "df_financeiro_mensal_corte_operacional": df_financeiro,
         "df_financeiro_mensal_tratado": df_financeiro,
-        "df_meses_sem_efeito_financeiro": pd.DataFrame(),
+        "df_meses_sem_efeito_financeiro": df_sem_efeito,
         "df_financeiro_por_ciclo": df_fin_por_ciclo,
         "df_delta_por_ciclo": df_fin_por_ciclo.copy(),
         "df_execucao_atualizada": df_execucao,

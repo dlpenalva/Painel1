@@ -254,7 +254,8 @@ def _preencher_financeiro(ws, ciclos: dict[str, Any], data_corte_fallback=None, 
         # ciclo anterior e omitido e nenhuma competencia posterior ao corte
         # e inventada (nao ha obrigacao de 60 meses). Valor interno = dia 1,
         # exibicao mm/aaaa. Coluna B (CICLO) e formula do template — nunca
-        # escrita. C (valor pago) e G (efeito) sao do fiscal.
+        # escrita. C (valor pago) e do fiscal; G recebe a decisao inicial da
+        # Calculadora e permanece editavel pelo fiscal.
         marco = marco_inicial
         if isinstance(marco, datetime):
             marco = marco.date()
@@ -285,6 +286,34 @@ def _preencher_financeiro(ws, ciclos: dict[str, Any], data_corte_fallback=None, 
         while competencia <= limite:
             _escrever_entrada(ws, f"A{linha}", competencia)
             ws[f"A{linha}"].number_format = "MM/YYYY"
+            ciclo_competencia = None
+            for nome in ("C0", "C1", "C2", "C3", "C4"):
+                candidato = ciclos.get(nome) or {}
+                inicio = candidato.get("data_inicio")
+                fim = candidato.get("data_fim")
+                if isinstance(inicio, datetime):
+                    inicio = inicio.date()
+                if isinstance(fim, datetime):
+                    fim = fim.date()
+                if isinstance(inicio, date) and isinstance(fim, date) and inicio <= competencia <= fim:
+                    ciclo_competencia = candidato
+                    break
+            efeito = "Nao"
+            if ciclo_competencia:
+                computavel = str(
+                    ciclo_competencia.get("possui_efeito_financeiro") or ""
+                ).upper() in ("SIM", "S")
+                inicio_efeito = ciclo_competencia.get("inicio_efeito_financeiro")
+                if isinstance(inicio_efeito, datetime):
+                    inicio_efeito = inicio_efeito.date()
+                if computavel and isinstance(inicio_efeito, date):
+                    efeito = (
+                        "Sim"
+                        if (competencia.year, competencia.month)
+                        >= (inicio_efeito.year, inicio_efeito.month)
+                        else "Nao"
+                    )
+            _escrever_entrada(ws, f"G{linha}", efeito)
             competencia = competencia + relativedelta(months=1)
             linha += 1
         return
@@ -356,6 +385,24 @@ def _preencher_financeiro(ws, ciclos: dict[str, Any], data_corte_fallback=None, 
             _escrever_entrada(ws, f"B{linha}", None)
         _escrever_entrada(ws, f"C{linha}", None)
         _escrever_entrada(ws, f"G{linha}", None)
+
+
+def _registrar_inicio_efeitos_financeiros(wb, ciclos: dict[str, Any]) -> None:
+    """Persiste a decisao esperada em metadado, sem criar coluna."""
+    registros = []
+    for nome in ("C0", "C1", "C2", "C3", "C4"):
+        inicio = (ciclos.get(nome) or {}).get("inicio_efeito_financeiro")
+        if isinstance(inicio, datetime):
+            inicio = inicio.date()
+        if isinstance(inicio, date):
+            registros.append(f"{nome}={inicio.isoformat()}")
+    anterior = str(wb.properties.keywords or "")
+    anterior = ";".join(
+        parte for parte in anterior.split(";")
+        if parte and not parte.startswith("CL8US_INICIO_EFEITO:")
+    )
+    novo = "CL8US_INICIO_EFEITO:" + ",".join(registros)
+    wb.properties.keywords = ";".join(parte for parte in (anterior, novo) if parte)
 
 
 def _preencher_datas_fotografias_remanescentes(
@@ -551,6 +598,7 @@ def gerar_masterfile_preenchido(
     # v10.5.2: C0-C4 sempre existem temporalmente — ciclo fora da apuracao nao
     # some da linha do tempo nem tem seu periodo herdado pelo ciclo seguinte.
     ciclos_completos = _completar_periodos_ciclos(ciclos, dados_calculadora.get("data_corte"))
+    _registrar_inicio_efeitos_financeiros(wb, ciclos_completos)
 
     for linha, nome in enumerate(("C0", "C1", "C2", "C3", "C4"), start=2):
         ciclo = ciclos.get(nome)

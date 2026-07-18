@@ -19,7 +19,7 @@ from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SHA256_TEMPLATE_ESPERADO = "de2000f6558b0197d547de1e0ad71c3c7589d67310307d698a3df92095d0071e"
+SHA256_TEMPLATE_ESPERADO = "eb8d998e44a3a3f283b4d8081d58bbdd5d5d964bddbe0104c28de3cda0b87039"
 
 
 def _dados_calculadora() -> dict:

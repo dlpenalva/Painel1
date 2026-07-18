@@ -115,6 +115,35 @@ def _numero(valor: Any) -> float | None:
         return None
 
 
+def _inicio_efeito_definido(wb, ciclo: str) -> date | None:
+    texto = str(wb.properties.keywords or "")
+    match = re.search(rf"(?:^|[:,;]){re.escape(ciclo)}=(\d{{4}}-\d{{2}}-\d{{2}})", texto)
+    if not match:
+        return None
+    try:
+        return date.fromisoformat(match.group(1))
+    except ValueError:
+        return None
+
+
+def _tem_metadado_inicio_efeito(wb) -> bool:
+    return "CL8US_INICIO_EFEITO:" in str(wb.properties.keywords or "")
+
+
+def _ciclo_por_competencia_financeira(wb, competencia: Any) -> str:
+    data_comp = _data(competencia)
+    if data_comp is None:
+        return ""
+    ws = wb["parametros"]
+    for row in range(2, 7):
+        ciclo = str(ws[f"B{row}"].value or "").strip().upper()
+        inicio = _data(ws[f"C{row}"].value)
+        fim = _data(ws[f"D{row}"].value)
+        if ciclo and inicio and fim and inicio <= data_comp <= fim:
+            return ciclo
+    return ""
+
+
 def _percentual_ciclo(ciclo: dict[str, Any]) -> float | None:
     for chave in ("percentual_aplicado", "percentual_indice", "variacao"):
         valor = _numero(ciclo.get(chave))
@@ -489,6 +518,64 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         for numero in range(1, max(ativos) + 1):
             if _numero(parametros[f"E{numero + 2}"].value) is None:
                 lacunas_apuracao.append(f"C{numero}: percentual necessário ao acumulado está ausente.")
+
+    financeiro = wb["financeiro"]
+    divergencias_manuais: list[str] = []
+    comparar_ajustes_manuais = _tem_metadado_inicio_efeito(wb)
+    for row in range(2, 74):
+        competencia = financeiro[f"A{row}"].value
+        valor = _numero(financeiro[f"C{row}"].value)
+        efeito = str(financeiro[f"G{row}"].value or "")
+        ciclo = _ciclo_por_competencia_financeira(wb, competencia)
+        data_comp = _data(competencia)
+        referencia = (
+            f"ciclo {ciclo or 'nao identificado'}, competencia "
+            f"{data_comp.strftime('%m/%Y') if data_comp else 'nao informada'}"
+        )
+        if valor is not None and competencia not in (None, "") and data_comp is None:
+            bloqueios_criticos.append(
+                f"Competencia invalida na aba financeiro: linha {row}. "
+                "Informe uma data mensal valida."
+            )
+            continue
+        if efeito not in ("", "Sim", "Nao"):
+            bloqueios_criticos.append(
+                f"Efeito financeiro invalido na aba financeiro: {referencia}. "
+                "Use o dropdown e selecione exatamente Sim ou Nao."
+            )
+            continue
+        if valor is not None and not efeito:
+            bloqueios_criticos.append(
+                f"Efeito financeiro nao informado na aba financeiro: {referencia}."
+            )
+            continue
+        if (
+            not comparar_ajustes_manuais
+            or not efeito
+            or not ciclo
+            or data_comp is None
+        ):
+            continue
+        esperado = "Nao"
+        inicio_efeito = _inicio_efeito_definido(wb, ciclo)
+        ciclo_ativo = ciclo in {f"C{numero}" for numero in ativos}
+        if ciclo_ativo and inicio_efeito:
+            comp = data_comp.date()
+            esperado = (
+                "Sim"
+                if (comp.year, comp.month) >= (inicio_efeito.year, inicio_efeito.month)
+                else "Nao"
+            )
+        if efeito != esperado:
+            divergencias_manuais.append(
+                "Marcacao de efeito financeiro ajustada manualmente: "
+                f"{ciclo} - {data_comp.strftime('%m/%Y')}."
+            )
+    avisos.extend(divergencias_manuais[:12])
+    if len(divergencias_manuais) > 12:
+        avisos.append(
+            f"Ha mais {len(divergencias_manuais) - 12} marcacoes manuais de efeito financeiro."
+        )
 
     contagens = {
         "competencias_com_valor": sum(1 for row in range(2, 74) if _numero(wb["financeiro"][f"C{row}"].value) is not None),
