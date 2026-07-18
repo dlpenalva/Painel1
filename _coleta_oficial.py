@@ -1,7 +1,7 @@
 """Template oficial do XLS Coleta (modelo novo, com aba posicao_contratual).
 
 Fonte de verdade estrutural: templates/COLETA_REAJUSTE_OFICIAL.xlsx
-(SHA-256 de2000f6558b0197d547de1e0ad71c3c7589d67310307d698a3df92095d0071e,
+(SHA-256 eb8d998e44a3a3f283b4d8081d58bbdd5d5d964bddbe0104c28de3cda0b87039,
 apos rodada de UX de 17/07/2026 via Excel real: destaque CONTROLE!B1 +
 protecao, itens_PC coluna A em Texto com estilo de entrada, DATA_PC
 dd/mm/aaaa, CICLO_PC com alerta de data invalida, V:AC ocultas,
@@ -299,7 +299,14 @@ def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]
             "ciclo": f"C{numero}",
             "data_inicio": inicio,
             "data_fim": fim,
-            "data_pedido": _data(bruto.get("data_pedido") or bruto.get("financeiro_inicio")),
+            "data_pedido": _data(bruto.get("data_pedido")),
+            # Data final ja decidida pela Calculadora. O gerador apenas a
+            # propaga; nao recria tempestividade, negociacao ou excecoes.
+            "inicio_efeito_financeiro": _data(
+                bruto.get("inicio_efeito_financeiro")
+                or bruto.get("financeiro_inicio")
+                or bruto.get("inicio_financeiro")
+            ),
             "percentual": _percentual(bruto),
             "possui_efeito_financeiro": "Sim" if objeto_atual else "Não",
             "situacao": bruto.get("situacao_aplicada") or bruto.get("situacao") or "",

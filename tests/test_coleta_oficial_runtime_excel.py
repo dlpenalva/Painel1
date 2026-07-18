@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import os
 import re
+import time
 import zipfile
 from datetime import date
 from pathlib import Path
@@ -39,6 +40,38 @@ def _dados(*, longo: bool = False) -> dict:
     }
 
 
+def _dados_efeitos() -> dict:
+    return {
+        "origem": "Teste efeitos financeiros Excel COM",
+        "indice": "IST",
+        "data_base_original": "01/02/2023",
+        "data_corte": date(2025, 1, 31),
+        "ciclos": [{
+            "ciclo": "C1",
+            "data_inicio": date(2024, 2, 1),
+            "data_fim": date(2025, 1, 31),
+            "data_pedido": date(2024, 3, 10),
+            "financeiro_inicio": date(2024, 4, 18),
+            "percentual_aplicado": 0.10,
+            "objeto_analise_atual": True,
+        }],
+    }
+
+
+def _linha_competencia(ws, ano: int, mes: int) -> int:
+    for row in range(2, 74):
+        valor = ws[f"A{row}"].value
+        if valor and (valor.year, valor.month) == (ano, mes):
+            return row
+    raise AssertionError(f"competencia {mes:02d}/{ano} ausente")
+
+
+def _cor_excel(rgb: str) -> int:
+    rgb = rgb[-6:]
+    r, g, b = (int(rgb[i:i + 2], 16) for i in (0, 2, 4))
+    return r + (g << 8) + (b << 16)
+
+
 def _salvar(wb, caminho: Path) -> None:
     buf = io.BytesIO()
     wb.save(buf)
@@ -65,6 +98,53 @@ def _recalcular_excel(caminho: Path) -> None:
         if pasta is not None:
             pasta.Close(SaveChanges=False)
             pasta = None
+        excel.Quit()
+        excel = None
+        gc.collect()
+        pythoncom.CoUninitialize()
+
+
+def _excel_editar_e_inspecionar(caminho: Path, editar, inspecionar):
+    import gc
+    import pythoncom
+    import win32com.client
+
+    def tentar(acao):
+        ultimo = None
+        for _ in range(30):
+            try:
+                return acao()
+            except Exception as exc:
+                ultimo = exc
+                codigo = getattr(exc, "hresult", None)
+                if codigo is None and getattr(exc, "args", ()):
+                    codigo = exc.args[0]
+                if codigo != -2147418111:
+                    raise
+                pythoncom.PumpWaitingMessages()
+                time.sleep(0.2)
+        raise ultimo
+
+    pythoncom.CoInitialize()
+    excel = win32com.client.DispatchEx("Excel.Application")
+    excel.Visible = False
+    excel.DisplayAlerts = False
+    pasta = None
+    try:
+        pasta = tentar(lambda: excel.Workbooks.Open(
+            str(caminho.resolve()), UpdateLinks=0, ReadOnly=False, CorruptLoad=0
+        ))
+        time.sleep(0.5)
+        tentar(lambda: editar(pasta))
+        tentar(excel.CalculateFullRebuild)
+        resultado = tentar(lambda: inspecionar(pasta))
+        tentar(pasta.Save)
+        tentar(lambda: pasta.Close(SaveChanges=False))
+        pasta = None
+        return resultado
+    finally:
+        if pasta is not None:
+            pasta.Close(SaveChanges=False)
         excel.Quit()
         excel = None
         gc.collect()
@@ -201,3 +281,135 @@ def test_excel_com_pcs_multiciclo_ignora_fator_historico_fora_do_objeto(tmp_path
         "Divergência relevante XLS × Python" in bloqueio
         for bloqueio in resultado.get("bloqueios_formalizacao", [])
     )
+
+
+def _arquivo_efeitos(tmp_path: Path, nome: str) -> tuple[Path, int]:
+    payload = gerar_coleta_oficial_preenchida(_dados_efeitos())
+    wb = load_workbook(io.BytesIO(payload), data_only=False)
+    row = _linha_competencia(wb["financeiro"], 2024, 4)
+    caminho = tmp_path / nome
+    _salvar(wb, caminho)
+    return caminho, row
+
+
+def test_excel_com_efeito_a_nao_preserva_nominal_delta_zero_e_vermelho(tmp_path: Path) -> None:
+    caminho, row = _arquivo_efeitos(tmp_path, "efeito_a_nao.xlsx")
+
+    def editar(wb):
+        ws = wb.Worksheets("financeiro")
+        ws.Range(f"C{row}").Value = 100.0
+        ws.Range(f"G{row}").Value = "Nao"
+
+    def ler(wb):
+        ws = wb.Worksheets("financeiro")
+        return ws.Range(f"E{row}").Value, ws.Range(f"F{row}").Value, ws.Range(f"A{row}").DisplayFormat.Interior.Color
+
+    atualizado, delta, cor = _excel_editar_e_inspecionar(caminho, editar, ler)
+    assert atualizado == pytest.approx(100.0, abs=0.01)
+    assert delta == pytest.approx(0.0, abs=0.01)
+    assert cor == _cor_excel("FFC7CE")
+
+
+def test_excel_com_efeito_b_sim_aplica_fator_sem_vermelho(tmp_path: Path) -> None:
+    caminho, row = _arquivo_efeitos(tmp_path, "efeito_b_sim.xlsx")
+
+    def editar(wb):
+        ws = wb.Worksheets("financeiro")
+        ws.Range(f"C{row}").Value = 100.0
+        ws.Range(f"G{row}").Value = "Sim"
+
+    def ler(wb):
+        ws = wb.Worksheets("financeiro")
+        return ws.Range(f"E{row}").Value, ws.Range(f"F{row}").Value, ws.Range(f"A{row}").DisplayFormat.Interior.Color
+
+    atualizado, delta, cor = _excel_editar_e_inspecionar(caminho, editar, ler)
+    assert atualizado == pytest.approx(110.0, abs=0.01)
+    assert delta == pytest.approx(10.0, abs=0.01)
+    assert cor not in (_cor_excel("FFC7CE"), _cor_excel("FCE4D6"))
+
+
+def test_excel_com_efeito_c_override_persiste_vta_nominal_sem_duplicar_aviso(tmp_path: Path) -> None:
+    caminho, row = _arquivo_efeitos(tmp_path, "efeito_c_override.xlsx")
+
+    def editar(wb):
+        ws = wb.Worksheets("financeiro")
+        assert ws.Range(f"G{row}").Value == "Sim"
+        ws.Range(f"C{row}").Value = 100.0
+        ws.Range(f"G{row}").Value = "Nao"
+
+    def ler(wb):
+        ws = wb.Worksheets("financeiro")
+        return ws.Range(f"E{row}").Value, ws.Range(f"F{row}").Value, ws.Range(f"G{row}").Value
+
+    atualizado, delta, efeito = _excel_editar_e_inspecionar(caminho, editar, ler)
+    assert (atualizado, delta, efeito) == (100, 0, "Nao")
+    persistido = load_workbook(caminho, data_only=True, read_only=True)
+    assert persistido["financeiro"][f"G{row}"].value == "Nao"
+    assert persistido["financeiro"][f"E{row}"].value == pytest.approx(100.0, abs=0.01)
+    assert persistido["financeiro"][f"F{row}"].value == pytest.approx(0.0, abs=0.01)
+    persistido.close()
+    resultado, diagnostico = processar_coleta_oficial_runtime(caminho.read_bytes())
+    avisos = [a for a in diagnostico["avisos"] if "ajustada manualmente" in a]
+    assert resultado["valor_represado_a_pagar"] == pytest.approx(0.0, abs=0.01)
+    conferencia = next(
+        item for item in resultado["memoria_por_ciclo"]["conferencias_metodologicas"]
+        if item["metodo"] == "financeiro"
+    )
+    assert conferencia["executado_atualizado"] == pytest.approx(100.0, abs=0.01)
+    assert len(avisos) == 1
+
+
+def test_excel_com_efeito_d_vazio_bloqueia_e_f_e_documentos(tmp_path: Path) -> None:
+    caminho, row = _arquivo_efeitos(tmp_path, "efeito_d_vazio.xlsx")
+
+    def editar(wb):
+        ws = wb.Worksheets("financeiro")
+        ws.Range(f"C{row}").Value = 100.0
+        ws.Range(f"G{row}").ClearContents()
+
+    def ler(wb):
+        ws = wb.Worksheets("financeiro")
+        return ws.Range(f"E{row}").Value, ws.Range(f"F{row}").Value, ws.Range(f"A{row}").DisplayFormat.Interior.Color
+
+    atualizado, delta, cor = _excel_editar_e_inspecionar(caminho, editar, ler)
+    assert atualizado in (None, "")
+    assert delta in (None, "")
+    assert cor == _cor_excel("FCE4D6")
+    with pytest.raises(ValueError, match="Efeito financeiro nao informado.*04/2024"):
+        processar_coleta_oficial_runtime(caminho.read_bytes())
+
+
+def test_excel_com_efeito_e_dropdown_termina_em_g73(tmp_path: Path) -> None:
+    caminho, _ = _arquivo_efeitos(tmp_path, "efeito_e_dropdown.xlsx")
+
+    def validacao(celula):
+        try:
+            return celula.Validation.Type, celula.Validation.Formula1
+        except Exception:
+            return None, None
+
+    def ler(wb):
+        ws = wb.Worksheets("financeiro")
+        return validacao(ws.Range("G2")), validacao(ws.Range("G73")), validacao(ws.Range("G74"))
+
+    g2, g73, g74 = _excel_editar_e_inspecionar(caminho, lambda wb: None, ler)
+    assert g2[0] == 3 and g2[1].replace(";", ",") == "Sim,Nao"
+    assert g73[0] == 3 and g73[1].replace(";", ",") == "Sim,Nao"
+    assert g74 == (None, None)
+
+
+def test_excel_com_efeito_f_abre_sem_reparo_e_preserva_estrutura(tmp_path: Path) -> None:
+    caminho, _ = _arquivo_efeitos(tmp_path, "efeito_f_sem_reparo.xlsx")
+    antes = {p.name for p in tmp_path.iterdir()}
+
+    def ler(wb):
+        nomes = [wb.Worksheets(i).Name for i in range(1, wb.Worksheets.Count + 1)]
+        return nomes, wb.Worksheets("financeiro").Range("E2").Formula, wb.Worksheets("financeiro").Range("F73").Formula
+
+    nomes, formula_e2, formula_f73 = _excel_editar_e_inspecionar(caminho, lambda wb: None, ler)
+    depois = {p.name for p in tmp_path.iterdir()}
+    novos_logs = [n for n in depois - antes if "repair" in n.lower() or "recover" in n.lower()]
+    assert nomes == ["CONTROLE", "parametros", "financeiro", "itens_Remanesc", "itens_Consumidos", "itens_PC", "aditivos", "posicao_contratual", "itens_RC", "historico_VU", "RESULTADOS"]
+    assert 'G2="Sim"' in formula_e2
+    assert 'G73="Sim"' in formula_f73
+    assert not novos_logs
