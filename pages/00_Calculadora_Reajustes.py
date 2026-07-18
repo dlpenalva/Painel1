@@ -1,10 +1,13 @@
 """Página inicial do fluxo XLS-first do Master 2.0."""
 
-from pathlib import Path
-
 import streamlit as st
 
-from _coleta_reajuste import CAMINHO_MODELO_COLETA, NOME_ARQUIVO_COLETA
+from _coleta_oficial import (
+    NOME_ARQUIVO_COLETA_OFICIAL,
+    TEMPLATE_COLETA_OFICIAL,
+    assinatura_template_coleta,
+    gerar_coleta_oficial_preenchida,
+)
 from _ui_utils import render_cabecalho_pagina
 
 
@@ -18,9 +21,8 @@ MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @st.cache_data(show_spinner=False)
-def _ler_modelo(caminho: str, alterado_em_ns: int) -> bytes:
-    del alterado_em_ns  # participa da chave para invalidar o cache após nova versão
-    return Path(caminho).read_bytes()
+def _ler_modelo(assinatura: str) -> bytes:  # noqa: ARG001 — chave SHA-256 do cache
+    return gerar_coleta_oficial_preenchida(None)
 
 
 def _conteudo_card(tag: str, titulo: str, texto: str) -> None:
@@ -43,8 +45,8 @@ render_cabecalho_pagina(
 
 st.subheader("Fluxo operacional")
 st.caption(
-    "O Coleta_Reajuste.xlsx é o produto principal. A web prepara a coleta e, no retorno, "
-    "apresenta somente resultados sustentados pelos dados e pelas fórmulas do arquivo."
+    "O Arquivo Coleta Oficial é o produto principal. A web prepara a coleta e, no retorno, "
+    "calcula em Python e reconcilia os resultados com as fórmulas do arquivo."
 )
 
 linha_1 = st.columns(2, gap="large")
@@ -52,24 +54,21 @@ with linha_1[0]:
     with st.container(border=True):
         _conteudo_card(
             "1 · Arquivo de trabalho",
-            "Coleta_Reajuste.xlsx",
+            "Arquivo Coleta Oficial",
             "Baixe o modelo único com fórmulas. Ele atende tanto um ciclo quanto múltiplos ciclos.",
         )
-        if CAMINHO_MODELO_COLETA.exists():
+        if TEMPLATE_COLETA_OFICIAL.exists():
             st.download_button(
-                "Baixar Coleta_Reajuste.xlsx",
-                data=_ler_modelo(
-                    str(CAMINHO_MODELO_COLETA),
-                    CAMINHO_MODELO_COLETA.stat().st_mtime_ns,
-                ),
-                file_name=NOME_ARQUIVO_COLETA,
+                "Baixar Arquivo Coleta Oficial",
+                data=_ler_modelo(assinatura_template_coleta()),
+                file_name=NOME_ARQUIVO_COLETA_OFICIAL,
                 mime=MIME_XLSX,
                 type="primary",
                 use_container_width=True,
                 key="download_coleta_inicio",
             )
         else:
-            st.error("O modelo Coleta_Reajuste.xlsx não foi localizado.")
+            st.error("Não foi possível localizar o Arquivo Coleta Oficial neste ambiente. O download foi bloqueado para evitar o uso de modelo incompatível.")
 
 with linha_1[1]:
     with st.container(border=True):
@@ -88,7 +87,7 @@ with linha_2[0]:
         _conteudo_card(
             "3 · Análise simples",
             "Calculadora 1 ciclo",
-            "Use quando apenas um ciclo é objeto da apuração. Ao final, baixe o mesmo Coleta_Reajuste.xlsx já parametrizado.",
+            "Use quando apenas um ciclo é objeto da apuração. Ao final, baixe o Arquivo Coleta Oficial já parametrizado.",
         )
         if st.button("Abrir Calculadora 1 ciclo", use_container_width=True, key="abrir_um_ciclo_inicio"):
             st.switch_page("pages/01_Calculo_Simples.py")

@@ -15,6 +15,7 @@ from _coleta_reajuste import (
     gerar_coleta_reajuste,
     ler_coleta_reajuste,
 )
+from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -325,18 +326,18 @@ class ColetaReajusteTests(unittest.TestCase):
         self.assertIn("itens_Consumidos", diagnostico["pendencias"][0])
 
     def test_streamlit_usa_um_unico_nome_e_o_novo_motor(self):
-        self.assertEqual(NOME_ARQUIVO_COLETA, "Coleta_Reajuste.xlsx")
+        self.assertEqual(NOME_ARQUIVO_COLETA_OFICIAL, "COLETA_REAJUSTE_OFICIAL.xlsx")
         simples = (ROOT / "pages" / "01_Calculo_Simples.py").read_text(encoding="utf-8")
         multiplos = (ROOT / "pages" / "02_Calculo_Represados.py").read_text(encoding="utf-8")
         valores = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
         for fonte in (simples, multiplos):
-            self.assertIn("gerar_coleta_reajuste", fonte)
-            self.assertIn("file_name=NOME_ARQUIVO_COLETA", fonte)
+            self.assertIn("gerar_coleta_oficial_preenchida", fonte)
+            self.assertIn("file_name=NOME_ARQUIVO_COLETA_OFICIAL", fonte)
         self.assertNotIn("render_botao_download_modelo_consumo(modelo_consumo)", multiplos)
-        self.assertIn("ler_coleta_reajuste", valores)
+        self.assertIn("processar_coleta_oficial_runtime", valores)
         self.assertIn("render_status_apuracao", valores)
         self.assertIn("render_status_documentos", valores)
-        self.assertIn('if diagnostico.get("valido"):', valores)
+        self.assertIn('st.session_state["diagnostico_coleta_v2"] = diagnostico', valores)
 
         adapter = (ROOT / "_coleta_reajuste_documentos.py").read_text(encoding="utf-8")
         self.assertNotIn('if not diagnostico.get("pronto_para_consolidar"):', adapter)

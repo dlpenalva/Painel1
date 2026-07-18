@@ -26,7 +26,7 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn('position="hidden"', APP)
 
     def test_menu_replica_rotulos_e_densidade_do_modelo_3(self):
-        self.assertIn('>Piloto controlado</div>', APP)
+        self.assertNotIn('>Piloto controlado</div>', APP)
         self.assertIn('>Documentos</div>', APP)
         self.assertNotIn('>XLS preenchido</div>', APP)
         self.assertIn('font-weight: 760;', APP)
@@ -52,10 +52,11 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn('st.switch_page("pages/02_Calculo_Represados.py")', INICIO)
 
     def test_modelo_xls_e_a_fonte_do_download_inicial(self):
-        self.assertIn("CAMINHO_MODELO_COLETA", INICIO)
-        self.assertIn("NOME_ARQUIVO_COLETA", INICIO)
-        self.assertIn('file_name=NOME_ARQUIVO_COLETA', INICIO)
-        self.assertIn('"Baixar Coleta_Reajuste.xlsx"', INICIO)
+        self.assertIn("TEMPLATE_COLETA_OFICIAL", INICIO)
+        self.assertIn("assinatura_template_coleta", INICIO)
+        self.assertIn('file_name=NOME_ARQUIVO_COLETA_OFICIAL', INICIO)
+        self.assertIn('"Baixar Arquivo Coleta Oficial"', INICIO)
+        self.assertNotIn("CAMINHO_MODELO_COLETA", INICIO)
 
     def test_inicio_nao_reintroduz_seletor_intermediario_da_versao_antiga(self):
         self.assertNotIn("executar_motor", INICIO)
@@ -77,8 +78,10 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertNotIn("Mesa GCC", DOCUMENTOS)
         self.assertIn('"Painel da Apuração Contratual"', DOCUMENTOS)
         self.assertIn("1 · Baixar arquivo de trabalho", DOCUMENTOS)
-        self.assertIn("2 · Enviar Coleta_Reajuste.xlsx preenchido", DOCUMENTOS)
-        self.assertIn("CAMINHO_MODELO_COLETA.read_bytes()", DOCUMENTOS)
+        self.assertIn("2 · Enviar Arquivo Coleta Oficial preenchido", DOCUMENTOS)
+        self.assertIn("_coleta_oficial_cacheada", DOCUMENTOS)
+        self.assertIn("assinatura_template_coleta", DOCUMENTOS)
+        self.assertNotIn("CAMINHO_MODELO_COLETA.read_bytes()", DOCUMENTOS)
         self.assertIn('key="upload_coleta_documentos"', DOCUMENTOS)
         self.assertIn("if arquivo is None:", DOCUMENTOS)
         self.assertIn("st.stop()", DOCUMENTOS)
@@ -86,7 +89,7 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertLess(DOCUMENTOS.index("if arquivo is None:"), DOCUMENTOS.index("if arquivo is not None:"))
 
     def test_modo_um_usa_botoes_de_download_na_cor_padrao(self):
-        coleta = SIMPLES[SIMPLES.index('label="Baixar Coleta_Reajuste.xlsx"'):]
+        coleta = SIMPLES[SIMPLES.index('label="Baixar Arquivo Coleta Oficial"'):]
         coleta = coleta[:coleta.index(")")]
         rascunho = SIMPLES[SIMPLES.index('label="Baixar rascunho (.txt)"'):]
         rascunho = rascunho[:rascunho.index(")")]
@@ -99,7 +102,7 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertNotIn("O XLS consolidou os quatro eixos", DOCUMENTOS)
 
     def test_upload_religa_processamento_e_expoe_os_oito_arquivos(self):
-        self.assertIn("adaptar_coleta_reajuste_para_documentos(conteudo)", DOCUMENTOS)
+        self.assertIn("processar_coleta_oficial_runtime(conteudo)", DOCUMENTOS)
         self.assertNotIn('elif diagnostico.get("valido"):', DOCUMENTOS)
         self.assertNotIn("_resultado_processado_pela_web", DOCUMENTOS)
         self.assertIn("render_status_apuracao", DOCUMENTOS)

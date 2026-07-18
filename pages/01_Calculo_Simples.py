@@ -46,7 +46,7 @@ def aplicar_css_aditivos25_compacto():
 from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox
 from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br
-from _coleta_reajuste import NOME_ARQUIVO_COLETA, gerar_coleta_reajuste
+from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, gerar_coleta_oficial_preenchida
 from _email_contratada import gerar_rascunho_email_contratada
 # Imports dos blocos auxiliares de orientação/coleta fiscal
 # ICTI/IPEADATA_LOCAL_FALLBACK_V1
@@ -2277,19 +2277,19 @@ if res:
 
     # >>> BOTAO_COLETA_SIMPLES_ESTAVEL_V1
     try:
-        _bytes_coleta_estavel = gerar_coleta_reajuste(
+        _bytes_coleta_estavel = gerar_coleta_oficial_preenchida(
             st.session_state.get("dados_admissibilidade", {})
         )
         st.download_button(
-            label="Baixar Coleta_Reajuste.xlsx",
+            label="Baixar Arquivo Coleta Oficial",
             data=_bytes_coleta_estavel,
-            file_name=NOME_ARQUIVO_COLETA,
+            file_name=NOME_ARQUIVO_COLETA_OFICIAL,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            help="Baixa o arquivo de coleta da versão estável, pré-preenchido com os dados desta apuração.",
+            help="Baixa o Arquivo Coleta Oficial pré-preenchido com os dados desta apuração.",
             key="btn_baixar_coleta_reajuste_estavel_simples_v1",
         )
     except Exception as _e_coleta_estavel:
-        st.warning(f"Não foi possível gerar o Arquivo de Coleta: {_e_coleta_estavel}")
+        st.warning(f"Não foi possível gerar o Arquivo Coleta Oficial: {_e_coleta_estavel}")
     # <<< BOTAO_COLETA_SIMPLES_ESTAVEL_V1
 
     # ── Botão de email ao fornecedor ──────────────────────────────────────
