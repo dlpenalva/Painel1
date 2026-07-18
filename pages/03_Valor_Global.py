@@ -1,3 +1,4 @@
+import hashlib
 import re
 import html
 import unicodedata
@@ -16,12 +17,6 @@ from _coleta_oficial import (
     gerar_coleta_oficial_preenchida,
 )
 from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
-from _capacidades_apuracao import avaliar_capacidades_apuracao
-from _ui_capacidades import (
-    render_resultados_progressivos,
-    render_status_apuracao,
-    render_status_documentos,
-)
 
 aditivos_somados_ao_valor_total = 0.0  # fallback: planilha sem aditivos computaveis
 LEITOR_CONSUMO_ITENS_CICLO_VERSAO = "20260516_0207"
@@ -4719,6 +4714,118 @@ def render_metodologia_corte_operacional_v4(resultado, modo_apuracao_ui="Complet
         render_metodologia_corte_operacional_v4(resultado, modo_apuracao_ui)
 
 
+DOCUMENTOS_FUNCIONAIS_UPLOAD = (
+    ("planilha_executiva", "Planilha Executiva"),
+    ("valores_unitarios", "Itens por Ciclo"),
+    ("relatorio_executivo", "Relatório Executivo"),
+    ("mapa_marcos", "Memória de Cálculo e Marcos"),
+    ("minuta_apostilamento", "Termo de Apostila"),
+    ("garantia_contratual", "Garantia Contratual"),
+    ("dou", "DOU"),
+    ("checklist_processual", "Checklist Processual"),
+)
+
+
+def _render_pendencia_documento(chave, documento):
+    rotulo = documento.get("rotulo") or "Aguardando dados"
+    st.button(
+        rotulo,
+        disabled=True,
+        use_container_width=True,
+        key=f"upload_docs_{chave}_pendencia",
+    )
+    st.caption(documento.get("motivo") or "Complete os dados necessários para liberar este documento.")
+
+
+def _render_acao_documento_upload(chave, documento, resultado):
+    """Renderiza uma ação documental com identificadores estáveis por destino."""
+
+    habilitado = bool(documento.get("habilitado"))
+    if chave == "planilha_executiva" and habilitado:
+        arquivo_xlsx = gerar_planilha_executiva(resultado)
+        st.session_state["arquivo_planilha_executiva_xlsx"] = arquivo_xlsx
+        st.download_button(
+            "Baixar XLSX",
+            data=arquivo_xlsx,
+            file_name="Planilha_Executiva_Analise_Reajuste.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="upload_docs_planilha_executiva",
+        )
+    elif chave == "valores_unitarios" and habilitado:
+        valores = limpar_nan_inf_df(resultado.get("df_valores_unitarios_ciclo", pd.DataFrame()))
+        if valores.empty:
+            _render_pendencia_documento(chave, documento)
+            return
+        arquivo_xlsx = gerar_excel_valores_unitarios_por_ciclo(valores, resultado["df_ciclos"])
+        st.session_state["arquivo_valores_unitarios_xlsx"] = arquivo_xlsx
+        st.download_button(
+            "Baixar XLSX",
+            data=arquivo_xlsx,
+            file_name="Valores_Unitarios_e_Totais_por_Ciclo.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+            key="upload_docs_itens_ciclo",
+        )
+    elif chave == "mapa_marcos" and habilitado:
+        arquivo_pdf = gerar_pdf_linha_tempo_contrato(resultado)
+        if not arquivo_pdf:
+            _render_pendencia_documento(chave, documento)
+            return
+        st.session_state["arquivo_mapa_marcos_pdf"] = arquivo_pdf
+        st.download_button(
+            "Baixar PDF",
+            data=arquivo_pdf,
+            file_name="Mapa_Marcos_Contratuais_Linha_do_Tempo.pdf",
+            mime="application/pdf",
+            use_container_width=True,
+            key="upload_docs_memoria_marcos",
+        )
+    elif chave in {"relatorio_executivo", "minuta_apostilamento"} and habilitado:
+        st.page_link(
+            "pages/04_Relatorio_Global.py",
+            label=(
+                "Abrir Relatório Executivo"
+                if chave == "relatorio_executivo"
+                else "Abrir Termo de Apostila"
+            ),
+            use_container_width=True,
+        )
+    elif chave == "garantia_contratual" and habilitado:
+        st.page_link(
+            "pages/05_Garantia.py",
+            label="Abrir Garantia Contratual",
+            use_container_width=True,
+        )
+    elif chave == "dou" and habilitado:
+        st.page_link("pages/13_DOU.py", label="Abrir DOU", use_container_width=True)
+    elif chave == "checklist_processual" and habilitado:
+        st.page_link(
+            "pages/07_Checklist_Processual.py",
+            label="Abrir Checklist Processual",
+            use_container_width=True,
+        )
+    else:
+        _render_pendencia_documento(chave, documento)
+
+
+def render_documentos_funcionais_upload(resultado):
+    """Renderiza somente os oito destinos documentais após processamento explícito."""
+
+    documentos = (resultado.get("capacidades") or {}).get("documentos") or {}
+    colunas = st.columns(4) + st.columns(4)
+
+    for indice, (chave, titulo) in enumerate(DOCUMENTOS_FUNCIONAIS_UPLOAD):
+        documento = documentos.get(chave) or {}
+        with colunas[indice]:
+            with st.container(border=True):
+                st.markdown(f"#### {titulo}")
+                try:
+                    _render_acao_documento_upload(chave, documento, resultado)
+                except Exception as exc:
+                    st.error(f"Não foi possível preparar {titulo}: {exc}")
+
+
 # ============================================================
 # Interface
 # ============================================================
@@ -4781,102 +4888,51 @@ with st.container(border=True):
     )
 
 if arquivo is None:
-    st.info("Envie o Arquivo Coleta Oficial preenchido. Cada bloco informado será processado de forma independente.")
-    capacidades_iniciais = avaliar_capacidades_apuracao({}, {})
-    render_status_apuracao(capacidades_iniciais)
-    render_status_documentos(
-        capacidades_iniciais,
-        (
-            "planilha_executiva", "valores_unitarios", "relatorio_executivo",
-            "mapa_marcos", "minuta_apostilamento", "garantia_contratual",
-            "dou", "checklist_processual",
-        ),
-    )
     st.stop()
 
-adm = st.session_state.get("dados_admissibilidade")
+conteudo_upload = arquivo.getvalue()
+assinatura_upload = hashlib.sha256(conteudo_upload).hexdigest()
+if st.session_state.get("assinatura_upload_docs") != assinatura_upload:
+    st.session_state["assinatura_upload_docs"] = assinatura_upload
+    st.session_state.pop("assinatura_processada_upload_docs", None)
+    st.session_state.pop("resultado_valor_global", None)
+    st.session_state.pop("diagnostico_coleta_v2", None)
 
-with st.expander("Contexto da Admissibilidade", expanded=True):
-    if adm:
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Origem", adm.get("origem") or adm.get("tipo", "Não informado"))
-        col2.metric("Índice", adm.get("indice", "Não informado"))
-        col3.metric("Ciclos", len(adm.get("ciclos", [])))
-        st.caption("Dados herdados da sessão atual. Caso o arquivo contenha parâmetros próprios, eles também serão lidos para conferência.")
-    else:
-        st.warning(
-            "Os dados de admissibilidade não foram encontrados na sessão atual. "
-            "A ferramenta utilizará os parâmetros constantes do Arquivo de Coleta."
-        )
+st.caption(f"Arquivo enviado: {arquivo.name}")
 
-if arquivo is not None:
-    if st.button("Validar Coleta Preenchida", type="primary", use_container_width=False):
-        st.session_state.pop("resultado_valor_global", None)
-        st.session_state.pop("diagnostico_coleta_v2", None)
-        try:
-            conteudo = arquivo.getvalue()
-            resultado, diagnostico = processar_coleta_oficial_runtime(conteudo)
-            st.session_state["diagnostico_coleta_v2"] = diagnostico
-            st.session_state["resultado_valor_global"] = resultado
-        except Exception as exc:
-            st.error(f"Não foi possível processar o arquivo: {exc}")
+if st.button("Processar", type="primary", use_container_width=False, key="processar_coleta_upload_docs"):
+    st.session_state.pop("resultado_valor_global", None)
+    st.session_state.pop("diagnostico_coleta_v2", None)
+    st.session_state.pop("assinatura_processada_upload_docs", None)
+    try:
+        resultado_processado, diagnostico_processado = processar_coleta_oficial_runtime(conteudo_upload)
+        st.session_state["diagnostico_coleta_v2"] = diagnostico_processado
+        st.session_state["resultado_valor_global"] = resultado_processado
+        st.session_state["assinatura_processada_upload_docs"] = assinatura_upload
+    except Exception as exc:
+        st.error(f"Não foi possível processar o arquivo: {exc}")
 
-diagnostico_coleta = st.session_state.get("diagnostico_coleta_v2")
-if diagnostico_coleta:
-    if diagnostico_coleta.get("valido"):
-        st.success("Coleta reconhecida: estrutura e fórmulas essenciais preservadas.")
-    else:
-        st.error("A coleta não está segura para prosseguir.")
+if st.session_state.get("assinatura_processada_upload_docs") != assinatura_upload:
+    st.stop()
 
-    metadados = diagnostico_coleta.get("metadados", {})
-    contagens = diagnostico_coleta.get("contagens", {})
-    col1, col2, col3, col4 = st.columns(4)
-    col1.metric("Índice", metadados.get("indice") or "Não informado")
-    col2.metric("Ciclo vigente", metadados.get("ciclo_vigente") or "Não informado")
-    col3.metric("Meses com valor", contagens.get("competencias_com_valor", 0))
-    col4.metric("Itens remanescentes", contagens.get("itens_remanescentes", 0))
-
-    capacidades_coleta = diagnostico_coleta.get("capacidades") or avaliar_capacidades_apuracao({}, {})
-    render_status_apuracao(capacidades_coleta)
-    render_status_documentos(
-        capacidades_coleta,
-        (
-            "planilha_executiva", "valores_unitarios", "relatorio_executivo",
-            "mapa_marcos", "minuta_apostilamento", "garantia_contratual",
-            "dou", "checklist_processual",
-        ),
-    )
-
-    for bloqueio in diagnostico_coleta.get("bloqueios_estruturais", []):
-        st.error(bloqueio)
-    for bloqueio in diagnostico_coleta.get("bloqueios_criticos", []):
-        st.error(bloqueio)
-    for lacuna in diagnostico_coleta.get("lacunas_apuracao", []):
-        st.warning(lacuna)
-    for aviso in diagnostico_coleta.get("avisos", []):
-        st.warning(aviso)
-
-    reconciliacao_ui = diagnostico_coleta.get("reconciliacao_xls_python") or {}
-    if reconciliacao_ui.get("disponivel"):
-        st.markdown("### Reconciliação XLS × Python")
-        status_reconciliacao = reconciliacao_ui.get("status_geral") or "SEM CAMPOS COMPARÁVEIS"
-        if reconciliacao_ui.get("divergencias_relevantes"):
-            st.error(
-                "Há divergência relevante entre a aba RESULTADOS e o cálculo Python. "
-                "A formalização e os documentos foram bloqueados; nenhum valor foi adotado automaticamente."
-            )
-        elif status_reconciliacao == "RESULTADO_XLS_INDISPONIVEL_POR_CACHE":
-            st.warning(
-                "Os resultados calculados do XLS não estão disponíveis no cache. "
-                "Abra o arquivo no Excel, recalcule, salve e envie novamente."
-            )
-        else:
-            st.success(f"Situação da reconciliação: {status_reconciliacao}.")
-        campos_reconciliacao = reconciliacao_ui.get("campos") or []
-        if campos_reconciliacao:
-            st.dataframe(pd.DataFrame(campos_reconciliacao), use_container_width=True, hide_index=True)
+diagnostico_coleta = st.session_state.get("diagnostico_coleta_v2") or {}
 
 resultado = st.session_state.get("resultado_valor_global")
+
+if resultado:
+    metadados = diagnostico_coleta.get("metadados", {})
+    contagens = diagnostico_coleta.get("contagens", {})
+    resumo_indice, resumo_ciclo, resumo_meses, resumo_itens = st.columns(4)
+    resumo_indice.metric("Índice", metadados.get("indice", "—"))
+    resumo_ciclo.metric("Ciclo vigente", metadados.get("ciclo_vigente", "—"))
+    resumo_meses.metric("Meses com valor", contagens.get("competencias_com_valor", 0))
+    resumo_itens.metric("Itens remanescentes", contagens.get("itens_remanescentes", 0))
+    render_documentos_funcionais_upload(resultado)
+    st.stop()
+
+if diagnostico_coleta:
+    st.error("A coleta não pôde ser processada com segurança.")
+    st.stop()
 
 if resultado:
     with st.container(border=True):
