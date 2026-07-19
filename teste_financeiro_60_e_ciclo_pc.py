@@ -39,9 +39,11 @@ def _dados(marco=date(2023, 1, 1), efeito_c1="Nao"):
         "ciclos": [
             {"ciclo": "C1", "data_inicio": date(2024, 1, 1),
              "data_fim": date(2024, 12, 31), "percentual": 0.10,
+             "inicio_efeito_financeiro": date(2024, 1, 1),
              "possui_efeito_financeiro": efeito_c1, "situacao": "TEMPESTIVO"},
             {"ciclo": "C2", "data_inicio": date(2025, 1, 1),
              "data_fim": date(2025, 12, 31), "percentual": 0.10,
+             "inicio_efeito_financeiro": date(2025, 1, 1),
              "possui_efeito_financeiro": "Sim", "situacao": "TEMPESTIVO"},
         ],
     }

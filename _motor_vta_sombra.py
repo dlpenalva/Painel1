@@ -40,11 +40,16 @@ def _to_float(valor: Any, default: float = 0.0) -> float:
 
 
 def _valor_parcela_pc(item: dict[str, Any]) -> float:
+    efeito = str(item.get("efeito_financeiro_pc") or "").strip()
+    valor_pc = _to_float(item.get("valor_pc"))
+    if efeito == "Nao":
+        return valor_pc
+    if efeito != "Sim":
+        return 0.0
     valor_atualizado = _to_float(item.get("valor_atualizado"))
     if valor_atualizado:
         return valor_atualizado
 
-    valor_pc = _to_float(item.get("valor_pc"))
     fator = _to_float(item.get("fator_acumulado"), default=1.0) or 1.0
     return round(valor_pc * fator, 2)
 

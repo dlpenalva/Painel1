@@ -21,6 +21,10 @@ from openpyxl.cell.cell import MergedCell
 from openpyxl.styles import Font, PatternFill
 
 from _capacidades_apuracao import avaliar_capacidades_apuracao
+from _efeitos_financeiros_pc import (
+    efeito_financeiro_pc,
+    reconciliar_inicios_efeito,
+)
 
 
 NOME_ARQUIVO_COLETA = "Coleta_Reajuste.xlsx"
@@ -445,6 +449,11 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
     _ws_ipc = wb["itens_PC"] if "itens_PC" in wb.sheetnames else None
     _header_a1 = (_ws_ipc["A1"].value or "") if _ws_ipc is not None else ""
     _chave_ciclo_pc = "itens_PC!C2" if str(_header_a1).strip().upper() == "NUMERO_PC" else "itens_PC!B2"
+    _modelo_pc_etapa3 = bool(
+        _ws_ipc is not None
+        and str(_ws_ipc["L1"].value or "").strip().upper()
+        == "EFEITO_FINANCEIRO_PC"
+    )
 
     formulas = _formulas(wb)
     if len(formulas) < 1000:
@@ -465,6 +474,10 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
     ):
         if chave not in formulas:
             bloqueios_estruturais.append(f"Fórmula estrutural ausente em {chave}.")
+    if _modelo_pc_etapa3 and "itens_PC!L2" not in formulas:
+        bloqueios_estruturais.append(
+            "Formula estrutural ausente em itens_PC!L2."
+        )
     if possui_posicao_contratual:
         for chave in (
             "aditivos!L2",
@@ -518,6 +531,81 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         for numero in range(1, max(ativos) + 1):
             if _numero(parametros[f"E{numero + 2}"].value) is None:
                 lacunas_apuracao.append(f"C{numero}: percentual necessário ao acumulado está ausente.")
+
+    # Etapa 3: fonte visivel e metadado sao copias da mesma data canonica.
+    # Em legado, a inferencia Python so e aceita quando ha fonte confiavel.
+    inicios_pc, erros_inicios_pc, tem_inicio_visivel, tem_inicio_metadado = (
+        reconciliar_inicios_efeito(wb)
+    )
+    bloqueios_criticos.extend(
+        f"Inicio dos efeitos inconsistente: {erro}" for erro in erros_inicios_pc
+    )
+    ativos_nome = {f"C{numero}" for numero in ativos}
+    ws_pc = wb["itens_PC"]
+    layout_pc_numero = str(_header_a1).strip().upper() == "NUMERO_PC"
+    col_numero_pc = "A" if layout_pc_numero else None
+    col_data_pc = "B" if layout_pc_numero else "A"
+    col_valor_pc = "D" if layout_pc_numero else "C"
+    for row in range(2, 101):
+        if not any(
+            ws_pc[f"{col}{row}"].value not in (None, "")
+            for col in tuple(
+                c for c in (col_numero_pc, col_data_pc, col_valor_pc) if c
+            )
+        ):
+            continue
+        numero_pc = str(
+            (ws_pc[f"{col_numero_pc}{row}"].value if col_numero_pc else None)
+            or f"linha {row}"
+        ).strip()
+        data_pc = _data(ws_pc[f"{col_data_pc}{row}"].value)
+        if data_pc is None:
+            bloqueios_criticos.append(
+                f"DATA_PC vazia ou invalida: PC {numero_pc}, linha {row}."
+            )
+            continue
+        ciclo_pc = _ciclo_por_competencia_financeira(wb, data_pc)
+        if not ciclo_pc:
+            bloqueios_criticos.append(
+                f"Ciclo cronologico nao identificado: PC {numero_pc}, linha {row}."
+            )
+            continue
+        linha_param = int(ciclo_pc[1:]) + 2
+        reg_pc = {
+            "computar_nesta_apuracao": parametros[f"A{linha_param}"].value,
+            "inicio_efeito_financeiro": inicios_pc.get(ciclo_pc),
+        }
+        efeito_esperado = efeito_financeiro_pc(data_pc, ciclo_pc, reg_pc)
+        ciclo_ativo = ciclo_pc in ativos_nome
+        if ciclo_ativo and efeito_esperado is None:
+            bloqueios_criticos.append(
+                "INICIO_EFEITO_FINANCEIRO ausente ou inconsistente: "
+                f"PC {numero_pc} - {ciclo_pc}."
+            )
+            continue
+        marcador = ws_pc[f"L{row}"].value if _modelo_pc_etapa3 else None
+        marcador_formula = isinstance(marcador, str) and marcador.startswith("=")
+        if _modelo_pc_etapa3 and not marcador_formula:
+            bloqueios_criticos.append(
+                f"Marcador EFEITO_FINANCEIRO_PC ausente: PC {numero_pc} - {ciclo_pc}."
+            )
+        elif marcador not in (None, "") and not marcador_formula:
+            if str(marcador).strip() not in {"Sim", "Nao"}:
+                bloqueios_criticos.append(
+                    f"EFEITO_FINANCEIRO_PC invalido: PC {numero_pc} - {ciclo_pc}."
+                )
+            elif efeito_esperado is not None and str(marcador).strip() != efeito_esperado:
+                bloqueios_criticos.append(
+                    "EFEITO_FINANCEIRO_PC divergente da data canonica: "
+                    f"PC {numero_pc} - {ciclo_pc}."
+                )
+        if _modelo_pc_etapa3 and ciclo_ativo and (
+            not tem_inicio_visivel or not tem_inicio_metadado
+        ):
+            bloqueios_criticos.append(
+                "Fonte dupla obrigatoria incompleta para INICIO_EFEITO_FINANCEIRO: "
+                f"PC {numero_pc} - {ciclo_pc}."
+            )
 
     financeiro = wb["financeiro"]
     divergencias_manuais: list[str] = []

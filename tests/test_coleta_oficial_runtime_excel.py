@@ -5,7 +5,7 @@ import os
 import re
 import time
 import zipfile
-from datetime import date
+from datetime import date, datetime
 from pathlib import Path
 
 import pytest
@@ -23,13 +23,13 @@ pytestmark = pytest.mark.skipif(
 
 def _dados(*, longo: bool = False) -> dict:
     ciclos = [
-        {"ciclo": "C1", "data_inicio": date(2024, 1, 1), "data_fim": date(2024, 12, 31), "data_pedido": date(2024, 1, 1), "percentual": 0.10},
+        {"ciclo": "C1", "data_inicio": date(2024, 1, 1), "data_fim": date(2024, 12, 31), "data_pedido": date(2024, 1, 1), "financeiro_inicio": date(2024, 1, 1), "percentual": 0.10},
     ]
     if longo:
         ciclos.extend([
-            {"ciclo": "C2", "data_inicio": date(2025, 1, 1), "data_fim": date(2025, 12, 31), "data_pedido": date(2025, 1, 1), "percentual": 0.10},
-            {"ciclo": "C3", "data_inicio": date(2026, 1, 1), "data_fim": date(2026, 12, 31), "data_pedido": date(2026, 1, 1), "percentual": 0.10},
-            {"ciclo": "C4", "data_inicio": date(2027, 1, 1), "data_fim": date(2028, 12, 31), "data_pedido": date(2027, 1, 1), "percentual": 0.10},
+            {"ciclo": "C2", "data_inicio": date(2025, 1, 1), "data_fim": date(2025, 12, 31), "data_pedido": date(2025, 1, 1), "financeiro_inicio": date(2025, 1, 1), "percentual": 0.10},
+            {"ciclo": "C3", "data_inicio": date(2026, 1, 1), "data_fim": date(2026, 12, 31), "data_pedido": date(2026, 1, 1), "financeiro_inicio": date(2026, 1, 1), "percentual": 0.10},
+            {"ciclo": "C4", "data_inicio": date(2027, 1, 1), "data_fim": date(2028, 12, 31), "data_pedido": date(2027, 1, 1), "financeiro_inicio": date(2027, 1, 1), "percentual": 0.10},
         ])
     return {
         "origem": "Teste Excel COM",
@@ -185,6 +185,90 @@ def test_excel_com_linha_73_entra_em_resultados(tmp_path: Path) -> None:
     assert valores["RESULTADOS"]["B14"].value == pytest.approx(46.41, abs=0.01)
 
 
+def test_excel_com_efeitos_itens_pc_data_exata_cores_e_reabertura(tmp_path: Path) -> None:
+    caminho = tmp_path / "efeitos_itens_pc.xlsx"
+    caminho.write_bytes(gerar_coleta_oficial_preenchida(_dados_efeitos()))
+
+    def editar(pasta):
+        ws = pasta.Worksheets("itens_PC")
+        casos = (
+            (2, "PC-ANTES", datetime(2024, 4, 10), "Nao"),
+            (3, "PC-EXATO", datetime(2024, 4, 18), "Nao"),
+            (4, "PC-DEPOIS", datetime(2024, 4, 25), "Sim"),
+        )
+        for linha, numero, data_pc, pago in casos:
+            ws.Cells(linha, 1).Value = numero
+            ws.Cells(linha, 2).Value = data_pc
+            ws.Cells(linha, 4).Value = 100.0
+            ws.Cells(linha, 7).Value = pago
+
+    def inspecionar(pasta):
+        ws = pasta.Worksheets("itens_PC")
+        valores = {
+            linha: tuple(ws.Cells(linha, col).Value for col in (3, 5, 6, 8, 9, 10, 11, 12))
+            for linha in (2, 3, 4)
+        }
+        cores = {linha: ws.Cells(linha, 1).DisplayFormat.Interior.Color for linha in (2, 3, 4)}
+        links = pasta.LinkSources(1)
+        return valores, cores, ws.Cells(2, 2).NumberFormat, links
+
+    valores, cores, formato_data, links = _excel_editar_e_inspecionar(
+        caminho, editar, inspecionar
+    )
+    # tupla: C, E, F, H, I, J, K, L
+    assert valores[2][:6] == ("C1", 1.0, 100.0, 0.0, 100.0, 0.0)
+    assert valores[2][7] == "Nao" and valores[2][6] == "OK"
+    assert valores[3][:6] == ("C1", 1.1, 110.0, 0.0, 110.0, 10.0)
+    assert valores[3][7] == "Sim" and valores[3][6] == "OK"
+    assert valores[4][:6] == ("C1", 1.1, 110.0, 10.0, 0.0, 0.0)
+    assert valores[4][7] == "Sim" and valores[4][6] == "OK"
+    assert cores[2] == _cor_excel("FFF4CCCC")
+    assert cores[3] != _cor_excel("FFF4CCCC")
+    assert cores[4] != _cor_excel("FFF4CCCC")
+    assert "dd" in str(formato_data).lower()
+    assert links in (None, ())
+
+    reaberto = load_workbook(caminho, data_only=True)
+    assert reaberto["itens_PC"]["L2"].value == "Nao"
+    assert reaberto["itens_PC"]["L3"].value == "Sim"
+    assert reaberto["itens_PC"]["L4"].value == "Sim"
+    assert not any(
+        isinstance(cell.value, str) and cell.value.upper() in {
+            "#REF!", "#VALUE!", "#DIV/0!", "#NAME?", "#N/A", "#NUM!", "#NULL!"
+        }
+        for aba in reaberto.worksheets
+        for row in aba.iter_rows()
+        for cell in row
+    )
+
+    impeditivo = tmp_path / "efeitos_itens_pc_sem_inicio.xlsx"
+    wb_imp = load_workbook(io.BytesIO(gerar_coleta_oficial_preenchida(_dados_efeitos())))
+    wb_imp["parametros"]["H3"] = None
+    _salvar(wb_imp, impeditivo)
+
+    def editar_imp(pasta):
+        ws = pasta.Worksheets("itens_PC")
+        ws.Cells(2, 1).Value = "PC-SEM-INICIO"
+        ws.Cells(2, 2).Value = datetime(2024, 4, 18)
+        ws.Cells(2, 4).Value = 100.0
+        ws.Cells(2, 7).Value = "Sim"
+
+    def inspecionar_imp(pasta):
+        ws = pasta.Worksheets("itens_PC")
+        return (
+            ws.Cells(2, 12).Value,
+            ws.Cells(2, 11).Value,
+            ws.Cells(2, 1).DisplayFormat.Interior.Color,
+        )
+
+    efeito, check, cor = _excel_editar_e_inspecionar(
+        impeditivo, editar_imp, inspecionar_imp
+    )
+    assert efeito in (None, "")
+    assert "PC-SEM-INICIO" in check and "C1" in check
+    assert cor == _cor_excel("FFFFE699")
+
+
 def test_excel_com_runtime_financeiro_pc_reconciliacao_e_bloqueio(tmp_path: Path) -> None:
     base = gerar_coleta_oficial_preenchida(_dados())
 
@@ -245,16 +329,19 @@ def test_excel_com_pcs_multiciclo_ignora_fator_historico_fora_do_objeto(tmp_path
             {
                 "ciclo": "C1", "data_inicio": date(2024, 1, 1),
                 "data_fim": date(2024, 12, 31), "percentual": 0.05,
+                "financeiro_inicio": date(2024, 1, 1),
                 "ciclo_ja_concedido": True,
                 "situacao": "Histórico fora do objeto atual",
             },
             {
                 "ciclo": "C2", "data_inicio": date(2025, 1, 1),
                 "data_fim": date(2025, 12, 31), "percentual": 0.10,
+                "financeiro_inicio": date(2025, 1, 1),
             },
             {
                 "ciclo": "C3", "data_inicio": date(2026, 1, 1),
                 "data_fim": date(2026, 12, 31), "percentual": 0.08,
+                "financeiro_inicio": date(2026, 1, 1),
             },
         ],
     }

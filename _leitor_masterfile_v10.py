@@ -199,6 +199,17 @@ def _ler_parametros_v10(wb) -> dict[str, Any]:
     col_fator_acumulado = _col(mapa, "FATOR_ACUMULADO", "Fator acumulado")
     col_efeito_fin = _col(mapa, "EFEITO_FINANCEIRO", "Efeito financeiro?")
     col_situacao = _col(mapa, "SITUACAO", "Situação")
+    col_inicio_efeito = _col(
+        mapa, "INICIO_EFEITO_FINANCEIRO", "INICIO DO EFEITO FINANCEIRO"
+    )
+    from _efeitos_financeiros_pc import reconciliar_inicios_efeito
+    inicios_reconciliados, erros_inicio, tem_inicio_visivel, tem_inicio_metadado = (
+        reconciliar_inicios_efeito(wb)
+    )
+    resultado["fonte_inicio_efeito_visivel"] = tem_inicio_visivel
+    resultado["fonte_inicio_efeito_metadado"] = tem_inicio_metadado
+    resultado["inicio_efeito_consistente"] = not erros_inicio
+    resultado["alertas"].extend(erros_inicio)
 
     # No layout v10.2 real, FATOR_PROPRIO guarda o percentual do ciclo.
     # No legado A:I, o percentual tem coluna propria e FATOR_PROPRIO pode ser 1+pct.
@@ -242,6 +253,11 @@ def _ler_parametros_v10(wb) -> dict[str, Any]:
                 ws.cell(r, col_efeito_fin).value if col_efeito_fin else None
             ),
             "situacao": ws.cell(r, col_situacao).value if col_situacao else None,
+            "inicio_efeito_financeiro": inicios_reconciliados.get(ciclo),
+            "inicio_efeito_financeiro_parametros": (
+                _normalizar_data(ws.cell(r, col_inicio_efeito).value)
+                if col_inicio_efeito else None
+            ),
             "origem_aba": "parametros",
             "origem_linha": r,
         }
@@ -1897,6 +1913,10 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
     col_entra  = mapa.get("entra_no_calculo")
     col_obs    = mapa.get("observacao_itens_abrangidos") or mapa.get("observacao")
     col_check  = mapa.get("check")
+    col_efeito_pc = mapa.get("efeito_financeiro_pc")
+    col_retro = mapa.get("retroativo_reconhecido_a_pagar")
+    col_analise = mapa.get("valor_atualizado_em_analise")
+    col_delta = mapa.get("delta_potencial")
     col_pagto_smart = _col(
         mapa,
         "STATUS_PAGAMENTO_PC",
@@ -1996,7 +2016,7 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
         except (TypeError, ValueError):
             return default
 
-    parametros_pc = _ler_parametros_v10(wb) if layout_inteligente else {}
+    parametros_pc = _ler_parametros_v10(wb)
     por_ciclo_pc = parametros_pc.get("por_ciclo") or {}
 
     def _inferir_ciclo_fator_valor(data_pc: Any, valor_pc: Any) -> tuple[Any, Any, Any]:
@@ -2016,6 +2036,24 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
             if valor_num is not None and fator is not None else None
         )
         return ciclo_inferido, fator, valor_atualizado
+
+    def _fator_pc_na_apuracao(ciclo_alvo: Any) -> float | None:
+        try:
+            limite = int(str(ciclo_alvo or "").strip().upper().removeprefix("C"))
+        except (TypeError, ValueError):
+            return None
+        fator = 1.0
+        for numero in range(1, limite + 1):
+            reg = por_ciclo_pc.get(f"C{numero}") or {}
+            if not _sim_local(reg.get("computar_nesta_apuracao")):
+                continue
+            percentual = _tofl(reg.get("percentual_reajuste"), default=None)
+            if percentual is None:
+                return None
+            if abs(percentual) > 1.0:
+                percentual /= 100.0
+            fator *= 1.0 + percentual
+        return round(fator, 12)
 
     def _sim_local(valor: Any) -> bool:
         return _norm(valor) in {"sim", "s", "true", "1", "yes"}
@@ -2185,7 +2223,8 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
             and _norm(valor_deslocado) in {"sim", "nao"}
         )
 
-    for r in range(2, ws.max_row + 1):
+    limite_operacional = min(ws.max_row, 100) if ws.title == "itens_PC" else ws.max_row
+    for r in range(2, limite_operacional + 1):
         if _linha_exemplo_fiscal(ws, r):
             continue
         item_ou_grupo = ws.cell(r, col_item).value if col_item else None
@@ -2199,6 +2238,7 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
         entra   = ws.cell(r, col_entra).value  if col_entra  else "Sim"
         obs     = ws.cell(r, col_obs).value    if col_obs    else None
         pago    = ws.cell(r, col_pago).value   if col_pago   else None
+        efeito_pc = ws.cell(r, col_efeito_pc).value if col_efeito_pc else None
         layout_corrigido = False
 
         if _linha_pc_legado_deslocada(r):
@@ -2248,6 +2288,61 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
                 resultado["alertas"].append(
                     f"PC '{ident}': FATOR_ACUMULADO nao inferido na aba parametros."
                 )
+
+        # Compatibilidade segura quando o cache das formulas ainda nao existe:
+        # o ciclo continua vindo da mesma linha temporal, e o efeito usa somente
+        # a fonte canonica reconciliada. Nunca interpretar L vazia como Sim.
+        ciclo_norm = str(ciclo or "").strip().upper()
+        if ciclo_norm not in {f"C{i}" for i in range(5)}:
+            ciclo_inferido = enquadrar_data_pc(_normalizar_data(data_pc), por_ciclo_pc)
+            if ciclo_inferido:
+                ciclo = ciclo_inferido
+                ciclo_norm = ciclo_inferido
+                inferencias_linha.append("CICLO_PC recomposto pela linha temporal")
+
+        from _efeitos_financeiros_pc import efeito_financeiro_pc
+        efeito_inferido = efeito_financeiro_pc(
+            data_pc, ciclo, por_ciclo_pc.get(ciclo_norm)
+        )
+        if efeito_pc in (None, ""):
+            efeito_pc = efeito_inferido
+            if efeito_pc is not None:
+                inferencias_linha.append(
+                    "EFEITO_FINANCEIRO_PC pela DATA_PC e inicio canonico do ciclo"
+                )
+        elif str(efeito_pc).strip() not in {"Sim", "Nao"}:
+            resultado["alertas"].append(
+                f"PC '{ident}' linha {r}: EFEITO_FINANCEIRO_PC invalido."
+            )
+            efeito_pc = None
+        elif efeito_inferido is None:
+            resultado["alertas"].append(
+                f"PC '{ident}' linha {r}: marcador de efeito descartado; "
+                "a fonte canonica esta ausente ou inconsistente."
+            )
+            efeito_pc = None
+        elif str(efeito_pc).strip() != efeito_inferido:
+            resultado["alertas"].append(
+                f"PC '{ident}' linha {r}: EFEITO_FINANCEIRO_PC diverge da "
+                f"DATA_PC e da fonte canonica; prevalece {efeito_inferido}."
+            )
+            efeito_pc = efeito_inferido
+        if efeito_pc is None and str(ciclo or "").strip().upper() not in {"", "C0"}:
+            resultado["alertas"].append(
+                f"PC '{ident}' linha {r}: efeito financeiro indeterminado; "
+                "INICIO_EFEITO_FINANCEIRO ausente ou inconsistente."
+            )
+        valor_num = _tofl(valor, default=None)
+        fator_efetivo = (
+            1.0 if efeito_pc == "Nao"
+            else _fator_pc_na_apuracao(ciclo_norm) if efeito_pc == "Sim"
+            else None
+        )
+        fator = fator_efetivo
+        vatual = (
+            round(valor_num * fator_efetivo, 2)
+            if valor_num is not None and fator_efetivo is not None else None
+        )
 
         if layout_corrigido:
             resultado["alertas"].append(
@@ -2326,6 +2421,21 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
         _validar_campos_vta(campos_vta, ident, r, resultado["alertas"])
         _atualizar_resumo_vta(resultado["resumo_vta"], campos_vta)
 
+        pago_norm = _norm(pago)
+        retro_lido = _tofl(ws.cell(r, col_retro).value, default=None) if col_retro else None
+        analise_lida = _tofl(ws.cell(r, col_analise).value, default=None) if col_analise else None
+        delta_lido = _tofl(ws.cell(r, col_delta).value, default=None) if col_delta else None
+        incremento = (
+            round(vatual - valor_num, 2)
+            if vatual is not None and valor_num is not None else None
+        )
+        if retro_lido is None and pago_norm in {"sim", "s", "true", "1", "yes"}:
+            retro_lido = incremento
+        if analise_lida is None and pago_norm in {"nao", "n", "false", "0", "no"}:
+            analise_lida = vatual
+        if delta_lido is None and pago_norm in {"nao", "n", "false", "0", "no"}:
+            delta_lido = incremento
+
         registro = {
             "linha":            r,
             "item_ou_grupo":    item_ou_grupo,
@@ -2333,8 +2443,12 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
             "data_pc":          data_pc,
             "ciclo":            ciclo,
             "valor_pc":         _tofl(valor),
-            "fator_acumulado":  _tofl(fator, default=1.0),
-            "valor_atualizado": _tofl(vatual),
+            "fator_acumulado":  _tofl(fator, default=None),
+            "valor_atualizado": _tofl(vatual, default=None),
+            "efeito_financeiro_pc": efeito_pc,
+            "retroativo_reconhecido_a_pagar": retro_lido,
+            "valor_atualizado_em_analise": analise_lida,
+            "delta_potencial": delta_lido,
             "entra_no_calculo": str(entra or "Sim"),
             "pc_pago_a_contratada": pago,
             "observacao":       obs,
@@ -2379,8 +2493,8 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
                 )
 
     resultado["totais"] = {
-        "total_original":   sum(i["valor_pc"]          for i in resultado["itens"]),
-        "total_atualizado": sum(i["valor_atualizado"]   for i in resultado["itens"]),
+        "total_original":   sum((i["valor_pc"] or 0.0) for i in resultado["itens"]),
+        "total_atualizado": sum((i["valor_atualizado"] or 0.0) for i in resultado["itens"]),
         "count_pcs":        len(resultado["itens"]),
         "count_unitarios":  len(resultado["pc_unitarios"]),
         "count_globais":    len(resultado["pc_globais"]),

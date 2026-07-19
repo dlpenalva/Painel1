@@ -42,9 +42,11 @@ def _dados_calculadora():
         "ciclos": [
             {"ciclo": "C1", "data_inicio": date(2024, 1, 1),
              "data_fim": date(2024, 12, 31), "percentual": 0.10,
+             "inicio_efeito_financeiro": date(2024, 1, 1),
              "possui_efeito_financeiro": "Sim", "situacao": "TEMPESTIVO"},
             {"ciclo": "C2", "data_inicio": date(2025, 1, 1),
              "data_fim": date(2025, 12, 31), "percentual": 0.10,
+             "inicio_efeito_financeiro": date(2025, 1, 1),
              "possui_efeito_financeiro": "Sim", "situacao": "TEMPESTIVO"},
         ],
     }
@@ -80,7 +82,7 @@ def main() -> int:
     wb_g = load_workbook(io.BytesIO(preenchido))
     ws_g = wb_g["itens_PC"]
     headers = [ws_g.cell(1, i + 1).value for i in range(len(COLUNAS_ITENS_PC_OFICIAL))]
-    check("geracao preserva layout NUMERO_PC (A1:K1)",
+    check("geracao preserva layout NUMERO_PC (A1:L1)",
           headers == COLUNAS_ITENS_PC_OFICIAL, str(headers))
     check("geracao nao restaura ITEM",
           "ITEM" not in [ws_g.cell(1, i).value for i in range(1, 30)])

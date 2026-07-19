@@ -603,6 +603,10 @@ def _montar_pcs(leitura: dict[str, Any], painel: dict[str, Any]) -> list[dict[st
             "se_gerou_retroativo": elegivel_retroativo and valor_retro > 0.0,
             "valor_retroativo": pc.get("retroativo"),
             "valor_devido": pc.get("valor_devido"),
+            "efeito_financeiro_pc": (
+                pc.get("efeito_financeiro_pc")
+                or bruto.get("efeito_financeiro_pc")
+            ),
             "valor_pago": valor_pago,
             "valor_pc_historico": pc.get("valor_pc") if pc.get("valor_pc") is not None else bruto.get("valor_pc"),
             "alertas": list(pc.get("alertas") or []),
@@ -691,7 +695,12 @@ def _montar_memoria_por_ciclo(
             pcs_nao_elegiveis += 1
             continue
         ciclo_pc = str(pc.get("ciclo_calculado") or "").upper()
-        fator_pc = fator_pc_na_apuracao(ciclo_pc)
+        efeito_pc = str(pc.get("efeito_financeiro_pc") or "").strip()
+        fator_pc = (
+            1.0 if efeito_pc == "Nao"
+            else fator_pc_na_apuracao(ciclo_pc) if efeito_pc == "Sim"
+            else None
+        )
         valor_pago_pc = _f_none(pc.get("valor_pago"))
         if fator_pc is None or valor_pago_pc is None or valor_pago_pc <= 0.0:
             pcs_nao_elegiveis += 1
