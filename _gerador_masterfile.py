@@ -388,12 +388,26 @@ def _preencher_financeiro(ws, ciclos: dict[str, Any], data_corte_fallback=None, 
 
 
 def _registrar_inicio_efeitos_financeiros(wb, ciclos: dict[str, Any]) -> None:
-    """Persiste a decisao esperada em metadado, sem criar coluna."""
+    """Persiste a mesma data na fonte visivel e na copia de integridade."""
     registros = []
-    for nome in ("C0", "C1", "C2", "C3", "C4"):
+    ws_parametros = wb["parametros"] if "parametros" in wb.sheetnames else None
+    layout_oficial = bool(
+        ws_parametros is not None
+        and str(ws_parametros["B1"].value or "").strip().upper() == "CICLO"
+    )
+    if layout_oficial:
+        ws_parametros["H1"] = "INICIO_EFEITO_FINANCEIRO"
+    for linha, nome in enumerate(("C0", "C1", "C2", "C3", "C4"), start=2):
         inicio = (ciclos.get(nome) or {}).get("inicio_efeito_financeiro")
         if isinstance(inicio, datetime):
             inicio = inicio.date()
+        if layout_oficial:
+            _escrever_entrada(
+                ws_parametros,
+                f"H{linha}",
+                inicio if isinstance(inicio, date) else None,
+            )
+            ws_parametros[f"H{linha}"].number_format = "dd/mm/yyyy"
         if isinstance(inicio, date):
             registros.append(f"{nome}={inicio.isoformat()}")
     anterior = str(wb.properties.keywords or "")

@@ -1,7 +1,7 @@
 """Template oficial do XLS Coleta (modelo novo, com aba posicao_contratual).
 
 Fonte de verdade estrutural: templates/COLETA_REAJUSTE_OFICIAL.xlsx
-(SHA-256 eb8d998e44a3a3f283b4d8081d58bbdd5d5d964bddbe0104c28de3cda0b87039,
+(SHA-256 8569357302273d874aefc3cf7e5e25af6d60d216bc94457f953d0dc4a9666c6f,
 apos rodada de UX de 17/07/2026 via Excel real: destaque CONTROLE!B1 +
 protecao, itens_PC coluna A em Texto com estilo de entrada, DATA_PC
 dd/mm/aaaa, CICLO_PC com alerta de data invalida, V:AC ocultas,
@@ -55,7 +55,7 @@ ABAS_COLETA_OFICIAL = [
 
 ABA_POSICAO_CONTRATUAL = "posicao_contratual"
 
-# Colunas oficiais de itens_PC (linha 1, A:K) — NUMERO_PC obrigatorio na
+# Colunas oficiais de itens_PC (linha 1, A:L) — NUMERO_PC obrigatorio na
 # coluna A como identificador documental e chave de duplicidade. ITEM nao
 # existe no modelo oficial (decisao aprovada; nao restaurar).
 COLUNAS_ITENS_PC_OFICIAL = [
@@ -70,6 +70,7 @@ COLUNAS_ITENS_PC_OFICIAL = [
     "VALOR_ATUALIZADO_EM_ANALISE",
     "DELTA_POTENCIAL",
     "CHECK_PC_FINANCEIRO",
+    "EFEITO_FINANCEIRO_PC",
 ]
 
 # Cabecalhos essenciais da aba posicao_contratual (linha 1, A:X)
@@ -96,7 +97,7 @@ _RESIDUOS_POR_ABA: dict[str, list[str]] = {
 }
 # parametros: linhas 2-6, colunas de entrada (B=CICLO e F=formula preservados)
 _RESIDUOS_POR_ABA["parametros"] = [
-    f"{col}{lin}" for lin in range(2, 7) for col in ("A", "C", "D", "E", "G")
+    f"{col}{lin}" for lin in range(2, 7) for col in ("A", "C", "D", "E", "G", "H")
 ]
 # financeiro: competencia (A), valor pago (C) e efeito (G) — linhas 2-73
 # (grade estendida para 72 competencias mensais)
@@ -151,26 +152,26 @@ def _limpar_residuos(wb) -> None:
 def _validar_estrutura_itens_pc(wb) -> None:
     """Barreira contra regressao critica: itens_PC jamais pode sair esvaziada.
 
-    Valida cabecalhos A1:K1 e a densidade de formulas da grade (C:K, linhas
+    Valida cabecalhos A1:L1 e a densidade de formulas da grade (C:L, linhas
     2-100). Se o template em disco for trocado por uma versao sem a estrutura
     homologada, a geracao falha explicitamente em vez de entregar o XLS.
     """
     ws = wb["itens_PC"]
-    cabecalhos = [ws.cell(1, c).value for c in range(1, 12)]
+    cabecalhos = [ws.cell(1, c).value for c in range(1, 13)]
     if cabecalhos != COLUNAS_ITENS_PC_OFICIAL:
         raise ValueError(
-            "itens_PC invalida: cabecalhos A1:K1 divergem do modelo oficial "
+            "itens_PC invalida: cabecalhos A1:L1 divergem do modelo oficial "
             f"(encontrado: {cabecalhos})"
         )
     formulas = sum(
         1
-        for row in ws.iter_rows(min_row=2, max_row=100, min_col=3, max_col=11)
+        for row in ws.iter_rows(min_row=2, max_row=100, min_col=3, max_col=12)
         for cell in row
         if isinstance(cell.value, str) and cell.value.startswith("=")
     )
-    if formulas < 600:
+    if formulas < 700:
         raise ValueError(
-            f"itens_PC invalida: apenas {formulas} formulas na grade C2:K100 "
+            f"itens_PC invalida: apenas {formulas} formulas na grade C2:L100 "
             "(estrutura esvaziada)"
         )
     # Visao salva rolada (ex.: topLeftCell=AD1 com V:AC ocultas e sem grade)

@@ -41,6 +41,7 @@ from _estado_contratual_sombra import (
     estado_contratual_para_dict,
 )
 from _motor_vta_sombra import calcular_vta_sombra
+from _efeitos_financeiros_pc import efeito_financeiro_pc
 
 CICLOS = ("C0", "C1", "C2", "C3", "C4")
 
@@ -85,6 +86,7 @@ class ClassificacaoPC:
     interregno_inicio: date | None
     interregno_fim: date | None
     computa_nesta_apuracao: bool
+    efeito_financeiro_pc: str | None
     # Q5/Q6/Q7 — financeiro.
     valor_pc: float | None
     valor_devido: float | None
@@ -111,6 +113,7 @@ class ClassificacaoPC:
             "interregno_inicio": _iso(self.interregno_inicio),
             "interregno_fim": _iso(self.interregno_fim),
             "computa_nesta_apuracao": self.computa_nesta_apuracao,
+            "efeito_financeiro_pc": self.efeito_financeiro_pc,
             "valor_pc": self.valor_pc,
             "valor_devido": self.valor_devido,
             "valor_pago": self.valor_pago,
@@ -326,10 +329,35 @@ def _classificar_pc(
     fator_acum = _como_float(reg.get("fator_acumulado"))
     interregno_inicio = _como_data(reg.get("data_inicio"))
     interregno_fim = _como_data(reg.get("data_fim"))
+    efeito_pc = efeito_financeiro_pc(data_pc, ciclo_temporal, reg)
+    efeito_informado = str(item.get("efeito_financeiro_pc") or "").strip()
+    if (
+        efeito_informado in {"Sim", "Nao"}
+        and efeito_pc is not None
+        and efeito_informado != efeito_pc
+    ):
+        alertas.append(_alerta(
+            "EFEITO_FINANCEIRO_PC_DIVERGENTE",
+            f"PC {numero_pc!r}: marcador {efeito_informado} diverge da data "
+            f"canonica; prevalece {efeito_pc}.",
+            "ERRO_GRAVE", numero_pc,
+        ))
+    if ciclo_temporal not in (None, "C0") and computa and efeito_pc is None:
+        alertas.append(_alerta(
+            "INICIO_EFEITO_FINANCEIRO_AUSENTE",
+            f"PC {numero_pc!r} - {ciclo_temporal}: inicio do efeito financeiro "
+            "ausente ou inconsistente; calculo bloqueado.",
+            "ERRO_GRAVE", numero_pc,
+        ))
+        memoria.append(
+            "Inicio do efeito financeiro indeterminado: nenhum valor atualizado "
+            "foi calculado."
+        )
 
     # --- Q1: reajuste aplicavel? (temporal + existe percentual, ciclo != C0) ---
     reajuste_aplicavel = bool(
         ciclo_temporal and ciclo_temporal != "C0"
+        and efeito_pc == "Sim"
         and (percentual not in (None, 0.0) or fator_acum not in (None, 1.0))
     )
 
@@ -349,6 +377,14 @@ def _classificar_pc(
             f"{ciclo_temporal} fora da apuracao (COMPUTAR=Nao): fator neutro 1,0 "
             f"— formalizacao/financeiro nao alteram o ciclo."
         )
+    elif efeito_pc == "Nao":
+        fator_aplicado = 1.0
+        memoria.append(
+            f"{ciclo_temporal} preservado cronologicamente, mas DATA_PC anterior "
+            "ao inicio dos efeitos: fator neutro 1,0."
+        )
+    elif efeito_pc is None:
+        fator_aplicado = None
     elif fator_acum is not None:
         fator_aplicado = fator_acum
     else:
@@ -395,8 +431,12 @@ def _classificar_pc(
 
     # --- Q7: delta ---
     delta: float | None = None
-    if valor_devido is not None and valor_pago is not None:
+    if valor_devido is not None and _sim(pago_flag) and valor_pago is not None:
         delta = round(valor_devido - valor_pago, 2)
+    elif valor_devido is not None and pago_conhecido and valor_pc is not None:
+        # PC ainda nao pago: J representa somente o incremento potencial;
+        # o valor integral em analise permanece separado em I.
+        delta = round(valor_devido - valor_pc, 2)
 
     # --- Q8: natureza do delta ---
     tipo_fin = str(campos.get("tipo_financeiro") or "").strip().lower()
@@ -452,6 +492,7 @@ def _classificar_pc(
         interregno_inicio=interregno_inicio,
         interregno_fim=interregno_fim,
         computa_nesta_apuracao=computa,
+        efeito_financeiro_pc=efeito_pc,
         valor_pc=valor_pc,
         valor_devido=valor_devido,
         valor_pago=valor_pago,
