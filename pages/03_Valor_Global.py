@@ -68,7 +68,7 @@ def aplicar_css_aditivos25_compacto():
         unsafe_allow_html=True,
     )
 # <<< UX_ADITIVOS_25_COMPACTO
-from _ui_utils import render_cabecalho_pagina
+from _ui_utils import render_avisos_override_efeito_financeiro, render_cabecalho_pagina
 
 def agora_brasilia():
     return datetime.now(ZoneInfo("America/Sao_Paulo"))
@@ -4918,6 +4918,8 @@ if st.session_state.get("assinatura_processada_upload_docs") != assinatura_uploa
 diagnostico_coleta = st.session_state.get("diagnostico_coleta_v2") or {}
 
 resultado = st.session_state.get("resultado_valor_global")
+
+render_avisos_override_efeito_financeiro(diagnostico_coleta)
 
 if resultado:
     metadados = diagnostico_coleta.get("metadados", {})
