@@ -14,6 +14,26 @@ MESES_PT_EXTENSO = {
     "set": "setembro", "out": "outubro", "nov": "novembro", "dez": "dezembro",
 }
 
+PREFIXO_AVISO_OVERRIDE_EFEITO_FINANCEIRO = "Marcacao de efeito financeiro ajustada manualmente:"
+
+
+def render_avisos_override_efeito_financeiro(diagnostico):
+    """Exibe uma vez cada aviso canonico de override produzido pelo leitor."""
+    avisos = diagnostico.get("avisos", ()) if isinstance(diagnostico, dict) else ()
+    if isinstance(avisos, str):
+        avisos = (avisos,)
+
+    exibidos = []
+    vistos = set()
+    for aviso in avisos or ():
+        texto = str(aviso).strip()
+        if not texto.startswith(PREFIXO_AVISO_OVERRIDE_EFEITO_FINANCEIRO) or texto in vistos:
+            continue
+        vistos.add(texto)
+        exibidos.append(texto)
+        st.warning(texto)
+    return tuple(exibidos)
+
 
 def render_marca_topo():
     """Identidade visual própria do sistema, sem uso de logomarca institucional."""
