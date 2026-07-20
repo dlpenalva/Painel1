@@ -99,6 +99,12 @@ _RESIDUOS_POR_ABA: dict[str, list[str]] = {
 _RESIDUOS_POR_ABA["parametros"] = [
     f"{col}{lin}" for lin in range(2, 7) for col in ("A", "C", "D", "E", "G", "H")
 ]
+# Etapa 4: bloco MEMORIA DE CALCULO (J2:R80) — somente valores; os cabecalhos
+# J1:R1 pertencem ao template e nao sao residuos.
+_RESIDUOS_POR_ABA["parametros"] += [
+    f"{col}{lin}" for lin in range(2, 81)
+    for col in ("J", "K", "L", "M", "N", "O", "P", "Q", "R")
+]
 # financeiro: competencia (A), valor pago (C) e efeito (G) — linhas 2-73
 # (grade estendida para 72 competencias mensais)
 _RESIDUOS_POR_ABA["financeiro"] = [

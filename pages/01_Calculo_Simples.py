@@ -47,6 +47,7 @@ from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox
 from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br
 from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, gerar_coleta_oficial_preenchida
+from _memoria_calculo import normalizar_memoria_calculo
 from _email_contratada import gerar_rascunho_email_contratada
 # Imports dos blocos auxiliares de orientação/coleta fiscal
 # ICTI/IPEADATA_LOCAL_FALLBACK_V1
@@ -2258,6 +2259,11 @@ if res:
         'periodo_fim': _formatar_data(periodo_fim),
         'financeiro_inicio': _formatar_data(inicio_efeito_financeiro),
         'financeiro_fim': _formatar_data(fim_efeito_financeiro),
+        # Etapa 4: persiste no XLS a mesma memoria mensal exibida acima
+        # (res['dados']); nada e recalculado — apenas serializado.
+        'memoria_calculo': normalizar_memoria_calculo(
+            res, fator_ciclo_efetivo, percentual_aplicado
+        ),
     }
 
     st.session_state['dados_admissibilidade'] = {

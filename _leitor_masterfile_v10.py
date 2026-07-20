@@ -67,7 +67,10 @@ def _mapear_colunas_por_cabecalho(ws, linha_header: int = 1) -> dict[str, int]:
     mapa: dict[str, int] = {}
     for cell in ws[linha_header]:
         if cell.value:
-            mapa[_norm(cell.value)] = cell.column
+            # Primeira ocorrencia vence: o layout oficial fica a esquerda e o
+            # bloco MEMORIA DE CALCULO (J:R) repete nomes como CICLO e
+            # FATOR_ACUMULADO sem sombrear as colunas principais.
+            mapa.setdefault(_norm(cell.value), cell.column)
     return mapa
 
 
@@ -2817,6 +2820,9 @@ def ler_masterfile_v10(
         "objeto_processo": {},
         "execucao_saldo": {},          # v10.1 — entrada fiscal consolidada
         "versao_detectada": "",
+        # Etapa 4 — memoria de calculo persistida (parametros!J2:R80);
+        # leitura opcional: arquivos legados sem o bloco retornam {}.
+        "memoria_calculo": {},
         # Compatibilidade com _documentos_masterfile (usa .get())
         "itens_d": {}, "itens_pc": {},
     }
@@ -2890,6 +2896,14 @@ def ler_masterfile_v10(
                 f"Abas novas v10 ausentes: {res['abas_ausentes']} "
                 f"— arquivo pode ser v9 legado."
             )
+
+    # Etapa 4 — bloco MEMORIA DE CALCULO (opcional; nunca bloqueia a leitura).
+    if "parametros" in wb.sheetnames:
+        try:
+            from _memoria_calculo import ler_memoria_calculo
+            res["memoria_calculo"] = ler_memoria_calculo(wb["parametros"])
+        except Exception:
+            res["memoria_calculo"] = {}
 
     c = wb["CONTROLE"]
     modo_bruto = str(_achar_valor(c, "modo de leitura") or "").strip()
