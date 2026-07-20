@@ -17,6 +17,9 @@ from _coleta_oficial import (
     gerar_coleta_oficial_preenchida,
 )
 from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
+from _capacidades_apuracao import SEIS_DOCUMENTOS_CANONICOS
+from _sumario_executivo import gerar_sumario_executivo
+from _templates_documentos import gerar_despacho_saneador, gerar_termo_apostila
 
 aditivos_somados_ao_valor_total = 0.0  # fallback: planilha sem aditivos computaveis
 LEITOR_CONSUMO_ITENS_CICLO_VERSAO = "20260516_0207"
@@ -4714,16 +4717,29 @@ def render_metodologia_corte_operacional_v4(resultado, modo_apuracao_ui="Complet
         render_metodologia_corte_operacional_v4(resultado, modo_apuracao_ui)
 
 
-DOCUMENTOS_FUNCIONAIS_UPLOAD = (
-    ("planilha_executiva", "Planilha Executiva"),
-    ("valores_unitarios", "Itens por Ciclo"),
-    ("relatorio_executivo", "Relatório Executivo"),
-    ("mapa_marcos", "Memória de Cálculo e Marcos"),
-    ("minuta_apostilamento", "Termo de Apostila"),
-    ("garantia_contratual", "Garantia Contratual"),
-    ("dou", "DOU"),
-    ("checklist_processual", "Checklist Processual"),
-)
+DOCUMENTOS_FUNCIONAIS_UPLOAD = SEIS_DOCUMENTOS_CANONICOS
+
+_CSS_DOCS_GRID = """
+<style>
+div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]:has(.upload-doc-card) {
+    display:flex;
+    flex-direction:column;
+    min-height:10rem;
+}
+div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-card) {
+    display:flex;
+    flex-direction:column;
+    height:100%;
+}
+.upload-doc-card {
+    font-size:.85rem;
+    color:#52667A;
+    line-height:1.35;
+    margin-bottom:.5rem;
+    flex:1;
+}
+</style>
+"""
 
 
 def _render_pendencia_documento(chave, documento):
@@ -4741,79 +4757,90 @@ def _render_acao_documento_upload(chave, documento, resultado):
     """Renderiza uma ação documental com identificadores estáveis por destino."""
 
     habilitado = bool(documento.get("habilitado"))
-    if chave == "planilha_executiva" and habilitado:
-        arquivo_xlsx = gerar_planilha_executiva(resultado)
-        st.session_state["arquivo_planilha_executiva_xlsx"] = arquivo_xlsx
-        st.download_button(
-            "Baixar XLSX",
-            data=arquivo_xlsx,
-            file_name="Planilha_Executiva_Analise_Reajuste.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            key="upload_docs_planilha_executiva",
-        )
-    elif chave == "valores_unitarios" and habilitado:
-        valores = limpar_nan_inf_df(resultado.get("df_valores_unitarios_ciclo", pd.DataFrame()))
-        if valores.empty:
+
+    if chave == "sumario_executivo":
+        if habilitado:
+            try:
+                pdf = gerar_sumario_executivo(resultado)
+                st.session_state["arquivo_sumario_executivo_pdf"] = pdf
+                st.download_button(
+                    "Baixar PDF",
+                    data=pdf,
+                    file_name="Sumario_Executivo_Reajuste_Contratual.pdf",
+                    mime="application/pdf",
+                    use_container_width=True,
+                    key="upload_docs_sumario_executivo",
+                )
+            except Exception:
+                _render_pendencia_documento(chave, documento)
+        else:
             _render_pendencia_documento(chave, documento)
-            return
-        arquivo_xlsx = gerar_excel_valores_unitarios_por_ciclo(valores, resultado["df_ciclos"])
-        st.session_state["arquivo_valores_unitarios_xlsx"] = arquivo_xlsx
-        st.download_button(
-            "Baixar XLSX",
-            data=arquivo_xlsx,
-            file_name="Valores_Unitarios_e_Totais_por_Ciclo.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-            key="upload_docs_itens_ciclo",
-        )
-    elif chave == "mapa_marcos" and habilitado:
-        arquivo_pdf = gerar_pdf_linha_tempo_contrato(resultado)
-        if not arquivo_pdf:
-            _render_pendencia_documento(chave, documento)
-            return
-        st.session_state["arquivo_mapa_marcos_pdf"] = arquivo_pdf
-        st.download_button(
-            "Baixar PDF",
-            data=arquivo_pdf,
-            file_name="Mapa_Marcos_Contratuais_Linha_do_Tempo.pdf",
-            mime="application/pdf",
-            use_container_width=True,
-            key="upload_docs_memoria_marcos",
-        )
-    elif chave in {"relatorio_executivo", "minuta_apostilamento"} and habilitado:
+
+    elif chave == "adequacao_orcamentaria":
         st.page_link(
-            "pages/04_Relatorio_Global.py",
-            label=(
-                "Abrir Relatório Executivo"
-                if chave == "relatorio_executivo"
-                else "Abrir Termo de Apostila"
-            ),
+            "pages/12_Adequacao_Orcamentaria.py",
+            label="Abrir Adequação Orçamentária",
             use_container_width=True,
         )
-    elif chave == "garantia_contratual" and habilitado:
+
+    elif chave == "despacho_saneador":
+        if habilitado:
+            try:
+                docx = gerar_despacho_saneador(resultado)
+                st.session_state["arquivo_despacho_saneador_docx"] = docx
+                st.download_button(
+                    "Baixar DOCX",
+                    data=docx,
+                    file_name="Despacho_Saneador_Instrucao_Processual.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                    key="upload_docs_despacho_saneador",
+                )
+            except Exception:
+                _render_pendencia_documento(chave, documento)
+        else:
+            _render_pendencia_documento(chave, documento)
+
+    elif chave == "termo_apostila":
+        if habilitado:
+            try:
+                docx = gerar_termo_apostila(resultado)
+                st.session_state["arquivo_termo_apostila_docx"] = docx
+                st.download_button(
+                    "Baixar DOCX",
+                    data=docx,
+                    file_name="Termo_de_Apostila_Reajuste_Contratual.docx",
+                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                    use_container_width=True,
+                    key="upload_docs_termo_apostila",
+                )
+            except Exception:
+                _render_pendencia_documento(chave, documento)
+        else:
+            _render_pendencia_documento(chave, documento)
+
+    elif chave == "garantia_contratual":
         st.page_link(
             "pages/05_Garantia.py",
             label="Abrir Garantia Contratual",
             use_container_width=True,
         )
-    elif chave == "dou" and habilitado:
+
+    elif chave == "dou":
         st.page_link("pages/13_DOU.py", label="Abrir DOU", use_container_width=True)
-    elif chave == "checklist_processual" and habilitado:
-        st.page_link(
-            "pages/07_Checklist_Processual.py",
-            label="Abrir Checklist Processual",
-            use_container_width=True,
-        )
+
     else:
         _render_pendencia_documento(chave, documento)
 
 
 def render_documentos_funcionais_upload(resultado):
-    """Renderiza somente os oito destinos documentais após processamento explícito."""
+    """Renderiza os seis destinos documentais após processamento explícito."""
 
+    st.markdown(_CSS_DOCS_GRID, unsafe_allow_html=True)
     documentos = (resultado.get("capacidades") or {}).get("documentos") or {}
-    colunas = st.columns(4) + st.columns(4)
+    col_a, col_b, col_c = st.columns(3)
+    col_d, col_e, col_f = st.columns(3)
+    colunas = [col_a, col_b, col_c, col_d, col_e, col_f]
 
     for indice, (chave, titulo) in enumerate(DOCUMENTOS_FUNCIONAIS_UPLOAD):
         documento = documentos.get(chave) or {}

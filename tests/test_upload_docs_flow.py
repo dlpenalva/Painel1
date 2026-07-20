@@ -1,19 +1,13 @@
-import ast
+import sys
 from pathlib import Path
 import unittest
 
-
 ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(ROOT))
+
 PAGINA = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
 
-
-def _documentos_funcionais() -> tuple[tuple[str, str], ...]:
-    arvore = ast.parse(PAGINA)
-    for no in arvore.body:
-        if isinstance(no, ast.Assign):
-            if any(isinstance(alvo, ast.Name) and alvo.id == "DOCUMENTOS_FUNCIONAIS_UPLOAD" for alvo in no.targets):
-                return ast.literal_eval(no.value)
-    raise AssertionError("DOCUMENTOS_FUNCIONAIS_UPLOAD não foi encontrado")
+from _capacidades_apuracao import SEIS_DOCUMENTOS_CANONICOS
 
 
 class TestFluxoUploadDocs(unittest.TestCase):
@@ -44,27 +38,36 @@ class TestFluxoUploadDocs(unittest.TestCase):
         self.assertNotIn("Status da Apuração", PAGINA)
         self.assertNotIn("Documentos da Apuração", PAGINA)
 
-    def test_apos_processar_exibe_exatamente_oito_cards_funcionais(self):
-        documentos = _documentos_funcionais()
-        self.assertEqual(len(documentos), 8)
+    def test_apos_processar_exibe_exatamente_seis_cards_funcionais(self):
+        self.assertEqual(len(SEIS_DOCUMENTOS_CANONICOS), 6)
         self.assertEqual(
-            tuple(nome for _, nome in documentos),
+            tuple(nome for _, nome in SEIS_DOCUMENTOS_CANONICOS),
             (
-                "Planilha Executiva",
-                "Itens por Ciclo",
-                "Relatório Executivo",
-                "Memória de Cálculo e Marcos",
+                "Sumário Executivo",
+                "Adequação Orçamentária",
+                "Despacho Saneador",
                 "Termo de Apostila",
                 "Garantia Contratual",
                 "DOU",
-                "Checklist Processual",
             ),
         )
+        # DOCUMENTOS_FUNCIONAIS_UPLOAD deve referenciar o registro canônico
+        self.assertIn("DOCUMENTOS_FUNCIONAIS_UPLOAD = SEIS_DOCUMENTOS_CANONICOS", PAGINA)
         guarda = PAGINA.index('if st.session_state.get("assinatura_processada_upload_docs")')
         render = PAGINA.index("render_documentos_funcionais_upload(resultado)", guarda)
         parada = PAGINA.index("st.stop()", render)
         self.assertLess(guarda, render)
         self.assertLess(render, parada)
+
+    def test_ausencia_dos_cinco_acessos_antigos_na_interface(self):
+        for titulo in (
+            '"Planilha Executiva"',
+            '"Itens por Ciclo"',
+            '"Relatório Executivo"',
+            '"Memória de Cálculo e Marcos"',
+            '"Checklist Processual"',
+        ):
+            self.assertNotIn(titulo, PAGINA)
 
     def test_apos_processar_restaura_exatamente_quatro_resumos_antes_dos_cards(self):
         inicio = PAGINA.index("if resultado:", PAGINA.index("diagnostico_coleta ="))
@@ -94,11 +97,9 @@ class TestFluxoUploadDocs(unittest.TestCase):
         self.assertIn("except Exception as exc:", render)
 
         labels_links = (
-            "Abrir Relatório Executivo",
-            "Abrir Termo de Apostila",
+            "Abrir Adequação Orçamentária",
             "Abrir Garantia Contratual",
             "Abrir DOU",
-            "Abrir Checklist Processual",
         )
         self.assertEqual(len(labels_links), len(set(labels_links)))
         for label in labels_links:
@@ -110,12 +111,24 @@ class TestFluxoUploadDocs(unittest.TestCase):
         trecho = PAGINA[inicio:fim]
         chaves = (
             'key=f"upload_docs_{chave}_pendencia"',
-            'key="upload_docs_planilha_executiva"',
-            'key="upload_docs_itens_ciclo"',
-            'key="upload_docs_memoria_marcos"',
+            'key="upload_docs_sumario_executivo"',
+            'key="upload_docs_despacho_saneador"',
+            'key="upload_docs_termo_apostila"',
         )
         for chave in chaves:
             self.assertEqual(trecho.count(chave), 1)
+
+    def test_grade_tres_colunas_na_renderizacao(self):
+        render_inicio = PAGINA.index("def render_documentos_funcionais_upload")
+        render_fim = PAGINA.index("# Interface", render_inicio)
+        render = PAGINA[render_inicio:render_fim]
+        self.assertIn("st.columns(3)", render)
+        self.assertNotIn("st.columns(4)", render)
+
+    def test_novos_geradores_importados(self):
+        self.assertIn("from _sumario_executivo import gerar_sumario_executivo", PAGINA)
+        self.assertIn("from _templates_documentos import gerar_despacho_saneador, gerar_termo_apostila", PAGINA)
+        self.assertIn("from _capacidades_apuracao import SEIS_DOCUMENTOS_CANONICOS", PAGINA)
 
     def test_novo_arquivo_coleta_e_backend_oficial_permanecem_no_fluxo(self):
         self.assertIn("TEMPLATE_COLETA_OFICIAL", PAGINA)

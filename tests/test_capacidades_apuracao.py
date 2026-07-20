@@ -19,6 +19,12 @@ class CapacidadesApuracaoTests(unittest.TestCase):
         "dou",
         "checklist_processual",
     )
+    NOVOS_DOCUMENTOS_CANONICOS = (
+        "sumario_executivo",
+        "adequacao_orcamentaria",
+        "despacho_saneador",
+        "termo_apostila",
+    )
 
     def test_somente_financeiro_libera_metodo_sem_inventar_resultado_oficial(self):
         capacidades = avaliar_capacidades_apuracao(
@@ -108,6 +114,42 @@ class CapacidadesApuracaoTests(unittest.TestCase):
         self.assertEqual(resultado["capacidades"]["blocos"]["financeiro"]["estado"], "completo")
         self.assertEqual(resultado["capacidades"]["blocos"]["consumidos"]["estado"], "nao_informado")
         self.assertIn("minuta_apostilamento", resultado["capacidades"]["documentos"])
+
+    def test_novos_quatro_documentos_canonicos_presentes_em_todos_cenarios(self):
+        capacidades = avaliar_capacidades_apuracao(
+            {"competencias_com_valor": 2},
+            {
+                "ciclos_em_analise": ["C1"],
+                "status_resultados": {
+                    "retroativo": "CALCULADO — CONFERIR",
+                    "valores": {"retroativo_oficial": 40.0},
+                },
+            },
+        )
+        documentos = capacidades["documentos"]
+        for chave in self.NOVOS_DOCUMENTOS_CANONICOS:
+            self.assertIn(chave, documentos, msg=f"Chave '{chave}' ausente em documentos")
+            self.assertIn("habilitado", documentos[chave])
+            self.assertIn("estado", documentos[chave])
+        # adequacao_orcamentaria é sempre habilitada (não depende do XLS)
+        self.assertTrue(documentos["adequacao_orcamentaria"]["habilitado"])
+        # sumario, despacho, termo dependem de base_documental (financeiro completo)
+        self.assertTrue(documentos["sumario_executivo"]["habilitado"])
+        self.assertTrue(documentos["despacho_saneador"]["habilitado"])
+        self.assertTrue(documentos["termo_apostila"]["habilitado"])
+
+    def test_defeito_estrutural_bloqueia_novos_docs_dependentes_do_xls(self):
+        capacidades = avaliar_capacidades_apuracao(
+            {"competencias_com_valor": 1},
+            {"ciclos_em_analise": ["C1"]},
+            ["Fórmula estrutural ausente"],
+        )
+        documentos = capacidades["documentos"]
+        # adequacao_orcamentaria sempre habilitada mesmo com defeito
+        self.assertTrue(documentos["adequacao_orcamentaria"]["habilitado"])
+        # demais dependem de base_documental, que é False quando há defeito estrutural
+        for chave in ("sumario_executivo", "despacho_saneador", "termo_apostila"):
+            self.assertFalse(documentos[chave]["habilitado"], msg=f"'{chave}' deveria estar desabilitado com defeito estrutural")
 
     def test_cinco_cenarios_preservam_oito_documentos_com_estado_individual(self):
         cenarios = {
@@ -224,11 +266,14 @@ class CapacidadesApuracaoTests(unittest.TestCase):
                 )
                 documentos = capacidades["documentos"]
                 self.assertTrue(all(chave in documentos for chave in self.DOCUMENTOS_PRINCIPAIS))
+                self.assertTrue(all(chave in documentos for chave in self.NOVOS_DOCUMENTOS_CANONICOS))
                 self.assertTrue(
                     all(documentos[chave]["classificacao"] in classificacoes for chave in self.DOCUMENTOS_PRINCIPAIS)
                 )
                 self.assertTrue(documentos["checklist_processual"]["habilitado"])
                 self.assertTrue(documentos["dou"]["habilitado"])
+                # adequacao sempre habilitada em todos os cenários
+                self.assertTrue(documentos["adequacao_orcamentaria"]["habilitado"])
 
         somente_financeiro = avaliar_capacidades_apuracao(
             cenarios["somente_financeiro"][0],
