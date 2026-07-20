@@ -50,6 +50,7 @@ from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox
 from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _data_para_datetime, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br, _percentual_formatado
 from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, gerar_coleta_oficial_preenchida
+from _memoria_calculo import normalizar_memoria_calculo
 from _email_contratada import render_email_contratada
 
 # ICTI/IPEADATA_LOCAL_FALLBACK_V1
@@ -2455,6 +2456,13 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             'financeiro_fim': '',
             'periodo_inicio': _formatar_data(periodo_inicio),
             'periodo_fim': _formatar_data(periodo_fim),
+            # Etapa 4: memoria mensal exibida no expander, serializada sem
+            # recalcular. Ciclo nao calculado ou ja concedido (nao computado
+            # nesta apuracao) e omitido — sem memoria artificial.
+            'memoria_calculo': (
+                normalizar_memoria_calculo(res_c, fator_ciclo, percentual_aplicado)
+                if ciclo_calculado and not ciclo_ja_concedido else None
+            ),
         })
 
 if pendencias_indice:

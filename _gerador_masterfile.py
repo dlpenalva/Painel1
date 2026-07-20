@@ -718,7 +718,11 @@ def gerar_masterfile_preenchido(
     if _vnova:
         # Novo modelo: quadro MEMORIA DO FATOR (linhas 9-16) e 100% formula
         # no template — nada a preencher via Python.
-        pass
+        # Etapa 4: bloco MEMORIA DE CALCULO (parametros!J2:R80) — valores da
+        # memoria mensal ja calculada pelas Calculadoras; template legado sem
+        # os cabecalhos J1:R1 e ignorado sem erro.
+        from _memoria_calculo import escrever_memoria_calculo
+        escrever_memoria_calculo(parametros, ciclos)
     elif _v102 and "parametros" in wb.sheetnames:
         _preencher_memoria_fator(parametros, ciclos)
 
@@ -727,10 +731,14 @@ def gerar_masterfile_preenchido(
         data_corte = dados_calculadora.get("data_corte")
         # v10.5.2: usa ciclos com periodos completos — financeiro lista C1-C4
         # com datas corretas, sem pular ciclo nao computado (G="Não" nesses meses).
+        # Etapa 4: a grade financeira comeca no inicio de C0 (linha temporal
+        # financeira). data_base pode ser a data-base do indice, ate 12 meses
+        # antes de C0 — esse periodo pertence a memoria de calculo, nao a grade.
+        marco_c0 = (ciclos_completos.get("C0") or {}).get("data_inicio")
         _preencher_financeiro(
             financeiro, ciclos_completos, data_corte_fallback=data_corte,
             v102=_v102, novo=_vnova,
-            marco_inicial=dados_calculadora.get("data_base"),
+            marco_inicial=marco_c0 or dados_calculadora.get("data_base"),
         )
 
     wb.calculation.calcMode = "auto"

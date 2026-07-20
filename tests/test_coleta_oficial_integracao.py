@@ -19,7 +19,7 @@ from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SHA256_TEMPLATE_ESPERADO = "643561a9416d92646128692cd7a877d8a6c3752d30b38983ed439c7082dd724a"
+SHA256_TEMPLATE_ESPERADO = "750d62a1865677396ec0a0d4bc85434fc3c186838dfb061ac26633d0fd09cea4"
 
 
 def _dados_calculadora() -> dict:
@@ -109,6 +109,76 @@ def test_multiciclo_iniciado_em_c2_nao_marca_c1_como_objeto_atual() -> None:
     assert parametros["A4"].value == "Sim"
     assert parametros["B5"].value == "C3"
     assert parametros["A5"].value == "Sim"
+
+
+def test_financeiro_comeca_em_c0_na_linha_2_caso_simples() -> None:
+    # data-base do indice (2022-10) e 12 meses anterior ao inicio de C0
+    # (2023-10): o periodo do indice pertence a memoria de calculo, nunca
+    # a grade financeira. Primeira linha ativa = inicio de C0.
+    dados = {
+        "origem": "Reajuste Simples",
+        "indice": "ICTI",
+        "data_base_original": "01/10/2022",
+        "ciclos": [{
+            "ciclo": "C1",
+            "data_base": "01/10/2023",
+            "data_pedido": "01/10/2024",
+            "percentual_aplicado": 0.0623,
+            "financeiro_inicio": "01/10/2024",
+        }],
+    }
+    wb = load_workbook(io.BytesIO(gerar_coleta_oficial_preenchida(dados)), data_only=False)
+    financeiro = wb["financeiro"]
+    inicio_c0 = _dia(wb["parametros"]["C2"].value)
+    assert _dia(financeiro["A2"].value) == inicio_c0 == date(2023, 10, 1)
+    # nenhuma competencia anterior ao inicio de C0 em toda a grade
+    ativas = [r for r in range(2, 74) if financeiro[f"A{r}"].value is not None]
+    assert ativas and ativas == list(range(2, ativas[-1] + 1))  # contiguas a partir da linha 2
+    for r in ativas:
+        assert _dia(financeiro[f"A{r}"].value) >= inicio_c0
+    # linhas nao utilizadas permanecem vazias (A, C e G)
+    for r in range(ativas[-1] + 1, 74):
+        assert financeiro[f"A{r}"].value is None
+        assert financeiro[f"C{r}"].value is None
+        assert financeiro[f"G{r}"].value is None
+
+
+def test_financeiro_comeca_em_c0_na_linha_2_multiciclo() -> None:
+    dados = {
+        "origem": "Reajustes Múltiplos",
+        "indice": "ICTI",
+        "data_base_original": "01/10/2022",
+        "ciclos": [
+            {
+                "ciclo": "C1",
+                "data_base": "01/10/2023",
+                "data_pedido": "01/10/2024",
+                "percentual_aplicado": 0.0623,
+                "financeiro_inicio": "01/10/2023",
+                "objeto_analise_atual": True,
+            },
+            {
+                "ciclo": "C2",
+                "data_base": "01/10/2024",
+                "data_pedido": "01/10/2025",
+                "percentual_aplicado": 0.0442,
+                "financeiro_inicio": "01/10/2024",
+                "objeto_analise_atual": True,
+            },
+        ],
+    }
+    wb = load_workbook(io.BytesIO(gerar_coleta_oficial_preenchida(dados)), data_only=False)
+    financeiro = wb["financeiro"]
+    inicio_c0 = _dia(wb["parametros"]["C2"].value)
+    assert _dia(financeiro["A2"].value) == inicio_c0 == date(2023, 10, 1)
+    ativas = [r for r in range(2, 74) if financeiro[f"A{r}"].value is not None]
+    assert ativas == list(range(2, 38))  # 36 meses: C0 + C1 + C2 ate o corte
+    for r in ativas:
+        assert _dia(financeiro[f"A{r}"].value) >= inicio_c0
+    assert _dia(financeiro[f"A{ativas[-1]}"].value) == date(2026, 9, 1)
+    for r in range(38, 74):
+        assert financeiro[f"A{r}"].value is None
+        assert financeiro[f"G{r}"].value is None
 
 
 def test_template_tem_72_competencias_e_resultados_alcanca_linha_73() -> None:

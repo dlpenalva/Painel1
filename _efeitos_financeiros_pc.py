@@ -42,7 +42,12 @@ def inicios_em_parametros(wb) -> tuple[dict[str, date], bool]:
     if "parametros" not in wb.sheetnames:
         return {}, False
     ws = wb["parametros"]
-    colunas = {_cabecalho(c.value): c.column for c in ws[1] if c.value not in (None, "")}
+    # Primeira ocorrencia vence: o bloco MEMORIA DE CALCULO (parametros!J:R)
+    # repete nomes como CICLO sem sombrear o layout oficial A:H.
+    colunas: dict[str, int] = {}
+    for c in ws[1]:
+        if c.value not in (None, ""):
+            colunas.setdefault(_cabecalho(c.value), c.column)
     col_ciclo = colunas.get("CICLO")
     col_inicio = colunas.get(CABECALHO_INICIO_EFEITO)
     if not col_ciclo or not col_inicio:
