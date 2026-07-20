@@ -102,7 +102,7 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertNotIn("A coleta possui base para a próxima etapa", DOCUMENTOS)
         self.assertNotIn("O XLS consolidou os quatro eixos", DOCUMENTOS)
 
-    def test_upload_religa_processamento_e_expoe_os_oito_arquivos(self):
+    def test_upload_religa_processamento_e_expoe_os_seis_arquivos(self):
         self.assertIn("processar_coleta_oficial_runtime(conteudo_upload)", DOCUMENTOS)
         self.assertNotIn('elif diagnostico.get("valido"):', DOCUMENTOS)
         self.assertNotIn("_resultado_processado_pela_web", DOCUMENTOS)
@@ -111,17 +111,26 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertNotIn("Status da Apuração", DOCUMENTOS)
         self.assertNotIn("Documentos da Apuração", DOCUMENTOS)
         self.assertIn("render_documentos_funcionais_upload(resultado)", DOCUMENTOS)
-        for arquivo in (
+        # Nomes são iterados dinamicamente; verifica marcadores concretos por chave
+        for marcador in (
+            "upload_docs_sumario_executivo",
+            "Abrir Adequação Orçamentária",
+            "upload_docs_despacho_saneador",
+            "Despacho_Saneador_Instrucao_Processual.docx",
+            "upload_docs_termo_apostila",
+            "Termo_de_Apostila_Reajuste_Contratual.docx",
+            "Abrir Garantia Contratual",
+            "Abrir DOU",
+        ):
+            self.assertIn(marcador, DOCUMENTOS)
+        for removido in (
             "Planilha Executiva",
             "Itens por Ciclo",
             "Relatório Executivo",
             "Memória de Cálculo e Marcos",
-            "Termo de Apostila",
-            "Garantia Contratual",
-            "DOU",
             "Checklist Processual",
         ):
-            self.assertIn(arquivo, DOCUMENTOS)
+            self.assertNotIn(f'"{removido}"', DOCUMENTOS)
 
     def test_referencias_antigas_foram_removidas_da_interface(self):
         self.assertNotIn("Mesa GCC", DOCUMENTOS)
@@ -134,19 +143,17 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn("if isinstance(coluna, pd.DataFrame):", DOCUMENTOS)
         self.assertNotIn('aditivos_temp.get("Tratamento do aditivo", "").apply', DOCUMENTOS)
 
-    def test_central_e_hub_compacto_dos_oito_documentos_oficiais(self):
+    def test_central_e_hub_compacto_dos_seis_documentos_oficiais(self):
         documentos = (
-            "Relatório Executivo",
-            "Minuta de Apostilamento",
+            "Sumário Executivo",
+            "Adequação Orçamentária",
             "Despacho Saneador",
-            "Previsão Orçamentária",
-            "Extrato para Publicação (DOU)",
-            "Sumário do Reajuste",
-            "Itens por Ciclo",
+            "Termo de Apostila",
             "Garantia Contratual",
+            "DOU",
         )
         catalogo = CENTRAL[: CENTRAL.index("def aplicar_css_central")]
-        self.assertEqual(catalogo.count('"nome":'), 8)
+        self.assertEqual(catalogo.count('"nome":'), 6)
         for documento in documentos:
             self.assertIn(documento, CENTRAL)
         self.assertIn("render_status_entradas(CAPACIDADES)", CENTRAL)

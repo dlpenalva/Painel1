@@ -17,6 +17,15 @@ ESTADO_PARCIAL = "parcial"
 ESTADO_NAO_INFORMADO = "nao_informado"
 ESTADO_BLOQUEADO = "bloqueado"
 
+SEIS_DOCUMENTOS_CANONICOS: tuple[tuple[str, str], ...] = (
+    ("sumario_executivo",      "Sumário Executivo"),
+    ("adequacao_orcamentaria", "Adequação Orçamentária"),
+    ("despacho_saneador",      "Despacho Saneador"),
+    ("termo_apostila",         "Termo de Apostila"),
+    ("garantia_contratual",    "Garantia Contratual"),
+    ("dou",                    "DOU"),
+)
+
 
 def _numero_disponivel(valor: Any) -> bool:
     return valor not in (None, "") and not isinstance(valor, bool)
@@ -541,6 +550,34 @@ def avaliar_capacidades_apuracao(
             "A minuta pode ser preparada; valores pendentes permanecem sinalizados." if base_documental else "Depende de dados do processo.",
             habilitado=base_documental,
         ),
+        "sumario_executivo": _documento(
+            "Sumário Executivo",
+            ESTADO_COMPLETO if base_documental else ESTADO_NAO_INFORMADO,
+            "Disponível" if base_documental else "Pendente de XLS",
+            "Gerado a partir dos dados disponíveis; campos ausentes permanecem sinalizados." if base_documental else "Envie e processe o Arquivo Coleta Oficial.",
+            habilitado=base_documental,
+        ),
+        "adequacao_orcamentaria": _documento(
+            "Adequação Orçamentária",
+            ESTADO_COMPLETO,
+            "Disponível",
+            "Acesso direto ao módulo de adequação orçamentária.",
+            habilitado=True,
+        ),
+        "despacho_saneador": _documento(
+            "Despacho Saneador",
+            ESTADO_COMPLETO if base_documental else ESTADO_NAO_INFORMADO,
+            "Disponível" if base_documental else "Pendente de XLS",
+            "Campos manuais permanecem destacados em amarelo." if base_documental else "Envie e processe o Arquivo Coleta Oficial.",
+            habilitado=base_documental,
+        ),
+        "termo_apostila": _documento(
+            "Termo de Apostila",
+            ESTADO_COMPLETO if base_documental else ESTADO_NAO_INFORMADO,
+            "Disponível" if base_documental else "Pendente de XLS",
+            "Campos manuais permanecem destacados em amarelo." if base_documental else "Envie e processe o Arquivo Coleta Oficial.",
+            habilitado=base_documental,
+        ),
         "avaliacao_aditivos": _documento(
             "Avaliação de Aditivos", ESTADO_COMPLETO, "Disponível",
             "Módulo independente para registrar e avaliar alterações contratuais.", habilitado=True,
@@ -567,6 +604,9 @@ def avaliar_capacidades_apuracao(
             "garantia_contratual",
             "dou",
             "checklist_processual",
+            "sumario_executivo",
+            "despacho_saneador",
+            "termo_apostila",
         ):
             documentos[chave] = _documento(
                 documentos[chave]["nome"],
