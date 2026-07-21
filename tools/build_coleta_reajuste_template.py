@@ -16,7 +16,7 @@ INPUT = PatternFill("solid", fgColor="FFFFF2CC")
 AUTO = PatternFill("solid", fgColor="FFEDEDED")
 HEADER = PatternFill("solid", fgColor="FF1F4E79")
 CHECK = PatternFill("solid", fgColor="FFE2EFDA")
-HISTORICAL_REQUIRED = PatternFill("solid", fgColor="FFFCE4D6")
+HISTORICAL_REQUIRED = PatternFill("solid", fgColor="FFFFC7CE")
 WHITE = "FFFFFFFF"
 NAVY = "FF1F4E79"
 GRAY = "FF595959"
@@ -222,11 +222,11 @@ def _reset_parametros(wb) -> None:
     # F/G vazios em ciclo histórico anterior ao ciclo analisado exigem ação do fiscal.
     # A regra é reativa: ao informar o percentual, o destaque desaparece.
     ws.conditional_formatting.add(
-        "E3:F6",
+        "E3:E6",
         FormulaRule(
             formula=['AND($A3="Nao",$C3<>"",$E3="")'],
             fill=HISTORICAL_REQUIRED,
-            font=Font(color="FF9C5700", bold=True),
+            font=Font(color="FF9C0006", bold=True),
         ),
     )
     ws.freeze_panes = "A2"
@@ -240,20 +240,28 @@ def _reset_financeiro(wb) -> None:
     ws = wb["financeiro"]
     if ws.max_column > 7:
         ws.delete_cols(8, ws.max_column - 7)
-    if ws.max_row > 61:
-        ws.delete_rows(62, ws.max_row - 61)
+    if ws.max_row > 74:
+        ws.delete_rows(75, ws.max_row - 74)
     for col, value in enumerate(
         ("COMPETENCIA", "CICLO", "VALOR_PAGO", "FATOR_APLICAVEL", "VALOR_ATUALIZADO", "DELTA", "EFEITO_FINANCEIRO"),
         1,
     ):
         ws.cell(1, col, value)
     formulas = {
-        "B": '=IF(A{r}="","",IF(OR(A{r}<MIN(parametros!$C$2:$C$6),A{r}>MAX(parametros!$D$2:$D$6)),"Fora dos ciclos",LOWER(LOOKUP(A{r},parametros!$C$2:$C$6,parametros!$B$2:$B$6))))',
+        "B": (
+            '=IF(A{r}="","",'
+            'IF(AND(ISNUMBER(parametros!$C$2),ISNUMBER(parametros!$D$2),A{r}>=parametros!$C$2,A{r}<=parametros!$D$2),"c0",'
+            'IF(AND(ISNUMBER(parametros!$C$3),ISNUMBER(parametros!$D$3),A{r}>=parametros!$C$3,A{r}<=parametros!$D$3),"c1",'
+            'IF(AND(ISNUMBER(parametros!$C$4),ISNUMBER(parametros!$D$4),A{r}>=parametros!$C$4,A{r}<=parametros!$D$4),"c2",'
+            'IF(AND(ISNUMBER(parametros!$C$5),ISNUMBER(parametros!$D$5),A{r}>=parametros!$C$5,A{r}<=parametros!$D$5),"c3",'
+            'IF(AND(ISNUMBER(parametros!$C$6),ISNUMBER(parametros!$D$6),A{r}>=parametros!$C$6,A{r}<=parametros!$D$6),"c4",'
+            '"Fora dos ciclos"))))))'
+        ),
         "D": '=IF(B{r}="","",IF(B{r}="c0",1,IF(B{r}="c1",IF(parametros!$A$3<>"Sim","",IF(NOT(ISNUMBER(parametros!$E$3)),"",1+parametros!$E$3)),IF(B{r}="c2",IF(parametros!$A$4<>"Sim","",IF(NOT(ISNUMBER(parametros!$E$4)),"",IF(parametros!$A$3="Sim",1+parametros!$E$3,1)*(1+parametros!$E$4))),IF(B{r}="c3",IF(parametros!$A$5<>"Sim","",IF(NOT(ISNUMBER(parametros!$E$5)),"",IF(parametros!$A$3="Sim",1+parametros!$E$3,1)*IF(parametros!$A$4="Sim",1+parametros!$E$4,1)*(1+parametros!$E$5))),IF(B{r}="c4",IF(parametros!$A$6<>"Sim","",IF(NOT(ISNUMBER(parametros!$E$6)),"",IF(parametros!$A$3="Sim",1+parametros!$E$3,1)*IF(parametros!$A$4="Sim",1+parametros!$E$4,1)*IF(parametros!$A$5="Sim",1+parametros!$E$5,1)*(1+parametros!$E$6))),""))))))',
         "E": '=IF(OR(C{r}="",NOT(ISNUMBER(D{r}))),"",ROUND(C{r}*D{r},2))',
         "F": '=IF(OR(C{r}="",E{r}=""),"",IF(G{r}<>"Sim",0,ROUND(E{r}-C{r},2)))',
     }
-    for row in range(2, 62):
+    for row in range(2, 74):
         for col in ("A", "C", "G"):
             ws[f"{col}{row}"] = None
             ws[f"{col}{row}"].border = GRID
@@ -263,11 +271,33 @@ def _reset_financeiro(wb) -> None:
         ws[f"C{row}"].number_format = MONEY
         ws[f"C{row}"].fill = INPUT
         ws[f"G{row}"].alignment = Alignment(horizontal="center")
-    _style_formula_range(ws, 2, 61, formulas)
-    for row in range(2, 62):
+    _style_formula_range(ws, 2, 73, formulas)
+    for row in range(2, 74):
         ws[f"D{row}"].number_format = FACTOR
         ws[f"E{row}"].number_format = MONEY
         ws[f"F{row}"].number_format = MONEY
+    # Linha TOTAL (74): soma das colunas monetárias; D74 vazio (fator não é somável)
+    ws["B74"] = "TOTAL"
+    ws["B74"].font = Font(name="Calibri", size=10, bold=True, color=GRAY)
+    ws["B74"].border = GRID
+    ws["C74"] = "=SUM(C2:C73)"
+    ws["C74"].fill = AUTO
+    ws["C74"].number_format = MONEY
+    ws["C74"].border = GRID
+    ws["E74"] = "=SUM(E2:E73)"
+    ws["E74"].fill = AUTO
+    ws["E74"].number_format = MONEY
+    ws["E74"].border = GRID
+    ws["F74"] = "=SUM(F2:F73)"
+    ws["F74"].fill = AUTO
+    ws["F74"].number_format = MONEY
+    ws["F74"].border = GRID
+    # Atualizar validação G2:G73 (expande de G2:G61 se necessário)
+    from openpyxl.worksheet.datavalidation import DataValidation
+    ws.data_validations.dataValidation.clear()
+    dv_g = DataValidation(type="list", formula1='"Sim,Nao"', allow_blank=True)
+    ws.add_data_validation(dv_g)
+    dv_g.add("G2:G73")
     ws.freeze_panes = None
     ws.sheet_view.showGridLines = False
     for col, width in {"A": 16, "B": 14, "C": 18, "D": 17, "E": 19, "F": 18, "G": 19}.items():

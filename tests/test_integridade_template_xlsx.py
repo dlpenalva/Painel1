@@ -26,7 +26,7 @@ NS = {
 FORMULAS_POR_ABA = {
     "CONTROLE": 6,
     "parametros": 32,
-    "financeiro": 288,
+    "financeiro": 291,
     "itens_Remanesc": 5215,
     "itens_Consumidos": 1806,
     "itens_PC": 834,
@@ -137,7 +137,7 @@ def test_financeiro_preservada():
         for celula in linha
         if isinstance(celula.value, str) and celula.value.startswith("=")
     )
-    assert formulas == 288
+    assert formulas == 291  # 72 fórmulas B + 216 DEF linhas 2-73 + 3 SUM em C74/E74/F74
     validacoes = [
         (dv.type, str(dv.sqref)) for dv in ws.data_validations.dataValidation
     ]

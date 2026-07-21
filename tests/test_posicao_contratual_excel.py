@@ -2,6 +2,7 @@ import json
 import os
 import shutil
 import tempfile
+import time
 import unittest
 from datetime import datetime
 from pathlib import Path
@@ -13,6 +14,18 @@ from _coleta_reajuste_documentos import adaptar_coleta_reajuste_para_documentos
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "posicao_contratual.json"
+_RPC_REJECTED = -2147418111
+
+
+def _tentar(fn, tentativas: int = 5, espera: float = 0.5):
+    for i in range(tentativas):
+        try:
+            return fn()
+        except Exception as exc:
+            if getattr(exc, "hresult", None) == _RPC_REJECTED and i < tentativas - 1:
+                time.sleep(espera * (i + 1))
+                continue
+            raise
 
 
 @unittest.skipUnless(
@@ -22,7 +35,7 @@ FIXTURE = Path(__file__).parent / "fixtures" / "posicao_contratual.json"
 class PosicaoContratualExcelTests(unittest.TestCase):
     @staticmethod
     def _preencher_parametros(wb):
-        parametros = wb.Worksheets("parametros")
+        parametros = _tentar(lambda: wb.Worksheets("parametros"))
         for row, ano in zip(range(2, 7), range(2023, 2028)):
             parametros.Range(f"A{row}").Value = "Sim"
             parametros.Range(f"C{row}").Value = datetime(ano, 1, 1)
@@ -33,17 +46,18 @@ class PosicaoContratualExcelTests(unittest.TestCase):
         import win32com.client
 
         casos = json.loads(FIXTURE.read_text(encoding="utf-8"))["casos"]
-        with tempfile.TemporaryDirectory() as temp:
+        with tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
             caminho = Path(temp) / "homologacao_posicao.xlsx"
             shutil.copy2(CAMINHO_MODELO_COLETA, caminho)
             excel = win32com.client.DispatchEx("Excel.Application")
             excel.Visible = False
             excel.DisplayAlerts = False
             try:
-                wb = excel.Workbooks.Open(str(caminho.resolve()), UpdateLinks=0, ReadOnly=False)
+                wb = _tentar(lambda: excel.Workbooks.Open(str(caminho.resolve()), UpdateLinks=0, ReadOnly=False))
+                time.sleep(0.3)
                 self._preencher_parametros(wb)
 
-                itens = wb.Worksheets("itens_Remanesc")
+                itens = _tentar(lambda: wb.Worksheets("itens_Remanesc"))
                 itens.Range("A2").Value = casos["multiplos_aditivos_mesmo_ciclo"]["item"]
                 itens.Range("B2").Value = 100.0
                 itens.Range("C2").Value = 10.0
@@ -55,7 +69,7 @@ class PosicaoContratualExcelTests(unittest.TestCase):
                 for cell in ("E3", "G3", "I3", "K3"):
                     itens.Range(cell).Value = 0.0
 
-                aditivos = wb.Worksheets("aditivos")
+                aditivos = _tentar(lambda: wb.Worksheets("aditivos"))
                 for row, (tipo, quantidade, considerado) in enumerate(
                     (("Acrescimo", 40.0, "Nao"), ("Acrescimo", 10.0, "Sim"), ("Supressao", 5.0, "Sim")),
                     2,
@@ -71,11 +85,16 @@ class PosicaoContratualExcelTests(unittest.TestCase):
                 aditivos.Range("E5").Value = 5.5
                 aditivos.Range("K5").Value = "Nao"
 
-                excel.CalculateFullRebuild()
+                _tentar(excel.CalculateFullRebuild)
+                time.sleep(0.3)
                 wb.Save()
-                wb.Close(SaveChanges=True)
+                wb.Close(SaveChanges=False)
             finally:
-                excel.Quit()
+                try:
+                    excel.Quit()
+                except Exception:
+                    pass
+                time.sleep(1.0)
 
             calculado = load_workbook(caminho, data_only=True, read_only=True)
             posicao = calculado["posicao_contratual"]
@@ -94,34 +113,40 @@ class PosicaoContratualExcelTests(unittest.TestCase):
 
         casos = json.loads(FIXTURE.read_text(encoding="utf-8"))["casos"]
         for chave in ("posicao_negativa", "remanescente_supera_posicao"):
-            with self.subTest(chave=chave), tempfile.TemporaryDirectory() as temp:
+            with self.subTest(chave=chave), tempfile.TemporaryDirectory(ignore_cleanup_errors=True) as temp:
                 caminho = Path(temp) / f"{chave}.xlsx"
                 shutil.copy2(CAMINHO_MODELO_COLETA, caminho)
                 excel = win32com.client.DispatchEx("Excel.Application")
                 excel.Visible = False
                 excel.DisplayAlerts = False
                 try:
-                    wb = excel.Workbooks.Open(str(caminho.resolve()), UpdateLinks=0, ReadOnly=False)
+                    wb = _tentar(lambda: excel.Workbooks.Open(str(caminho.resolve()), UpdateLinks=0, ReadOnly=False))
+                    time.sleep(0.3)
                     self._preencher_parametros(wb)
-                    itens = wb.Worksheets("itens_Remanesc")
+                    itens = _tentar(lambda: wb.Worksheets("itens_Remanesc"))
                     itens.Range("A2").Value = casos[chave]["item"]
                     itens.Range("B2").Value = 100.0
                     itens.Range("C2").Value = 10.0
                     for cell in ("E2", "G2", "I2", "K2"):
                         itens.Range(cell).Value = 100.0
                     if chave == "posicao_negativa":
-                        aditivos = wb.Worksheets("aditivos")
+                        aditivos = _tentar(lambda: wb.Worksheets("aditivos"))
                         aditivos.Range("A2").Value = casos[chave]["item"]
                         aditivos.Range("B2").Value = datetime(2025, 6, 1)
                         aditivos.Range("D2").Value = "Supressao"
                         aditivos.Range("E2").Value = 150.0
                     else:
                         itens.Range("G2").Value = 110.0
-                    excel.CalculateFullRebuild()
+                    _tentar(excel.CalculateFullRebuild)
+                    time.sleep(0.3)
                     wb.Save()
-                    wb.Close(SaveChanges=True)
+                    wb.Close(SaveChanges=False)
                 finally:
-                    excel.Quit()
+                    try:
+                        excel.Quit()
+                    except Exception:
+                        pass
+                    time.sleep(1.0)
 
                 calculado = load_workbook(caminho, data_only=True, read_only=True)
                 self.assertEqual(calculado["posicao_contratual"]["X2"].value, casos[chave]["alerta_esperado"])

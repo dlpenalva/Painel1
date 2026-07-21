@@ -22,6 +22,8 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
+from openpyxl.styles import PatternFill
+
 CABECALHOS_MEMORIA_CALCULO = (
     "CICLO", "TIPO_REGISTRO", "ORDEM", "COMPETENCIA", "VALOR_INDICE",
     "FATOR_MENSAL", "FATOR_ACUMULADO", "VARIACAO_FINAL", "METODO_FONTE",
@@ -200,10 +202,14 @@ def escrever_memoria_calculo(ws_parametros, ciclos: dict[str, Any]) -> None:
         variacao = _numero(registro.get("variacao_final"))
         if variacao is not None:
             ws_parametros[f"Q{linha}"] = variacao
-            ws_parametros[f"Q{linha}"].number_format = "0.0000%"
+            ws_parametros[f"Q{linha}"].number_format = "0.00%"
         metodo_fonte = registro.get("metodo_fonte")
         if metodo_fonte:
             ws_parametros[f"R{linha}"] = str(metodo_fonte)
+        if tipo == "RESULTADO":
+            _fill_resultado = PatternFill("solid", fgColor="FFD9E1F2")
+            for col in COLUNAS_MEMORIA_CALCULO:
+                ws_parametros[f"{col}{linha}"].fill = _fill_resultado
         linha += 1
 
 

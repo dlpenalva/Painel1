@@ -211,7 +211,10 @@ def test_limites_operacionais_convergem_na_linha_73():
     assert _capacidade_financeiro(ws) == 72
     assert "for row in range(2, 74)" in inspect.getsource(ler_coleta_reajuste)
     assert all(str(ws[f"{col}{row}"].value).startswith("=") for row in range(2, 74) for col in "BDEF")
-    assert all(ws[f"{col}74"].value is None for col in "ABCDEFG")
+    # Linha 74 = TOTAL: B=label, C/E/F=SUM, A/D/G=vazios
+    assert ws["B74"].value == "TOTAL"
+    assert all(str(ws[f"{col}74"].value).upper().startswith("=SUM") for col in "CEF")
+    assert all(ws[f"{col}74"].value is None for col in "ADG")
     assert all(str(intervalo.sqref) == "A2:G73" for intervalo in ws.conditional_formatting._cf_rules)
     formulas_resultados = [
         cell.value for row in wb["RESULTADOS"].iter_rows() for cell in row

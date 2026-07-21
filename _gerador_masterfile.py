@@ -643,6 +643,7 @@ def gerar_masterfile_preenchido(
                     parametros, f"G{linha}",
                     "Base" if nome == "C0" else "Fora desta apuracao",
                 )
+                parametros[f"G{linha}"].fill = PatternFill("solid", fgColor="FFEDEDED")
                 continue
             _escrever_entrada(
                 parametros, f"E{linha}",
@@ -652,6 +653,7 @@ def gerar_masterfile_preenchido(
             computar = "Sim" if efeito_raw.upper() in ("SIM", "S") else "Nao"
             _escrever_entrada(parametros, f"A{linha}", computar)
             _escrever_entrada(parametros, f"G{linha}", ciclo.get("situacao"))
+            parametros[f"G{linha}"].fill = PatternFill("solid", fgColor="FFEDEDED")
         elif _v102:
             # v10.2: A=COMPUTAR_NESTA_APURACAO, B=CICLO, C=PERIODO, D=DATA_INICIO,
             #         E=DATA_FIM, F=FATOR_PROPRIO, G=formula (preservar), H=SITUACAO

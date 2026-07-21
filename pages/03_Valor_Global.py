@@ -17,6 +17,7 @@ from _coleta_oficial import (
     gerar_coleta_oficial_preenchida,
 )
 from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
+from _estado_apuracao_upload import apuracao_persistida_valida
 from _capacidades_apuracao import SEIS_DOCUMENTOS_CANONICOS
 from _sumario_executivo import gerar_sumario_executivo
 from _templates_documentos import gerar_despacho_saneador, gerar_termo_apostila
@@ -4915,29 +4916,36 @@ with st.container(border=True):
     )
 
 if arquivo is None:
-    st.stop()
+    # Reidratação pós-navegação: o file_uploader perde o arquivo ao voltar de outra
+    # página (o Streamlit descarta o estado de widgets não renderizados). A fonte de
+    # verdade após o processamento é o session_state: se já existe uma apuração
+    # processada e válida, recupera-a em vez de exigir novo upload/reprocessamento.
+    if apuracao_persistida_valida(st.session_state):
+        assinatura_upload = st.session_state["assinatura_processada_upload_docs"]
+    else:
+        st.stop()
+else:
+    conteudo_upload = arquivo.getvalue()
+    assinatura_upload = hashlib.sha256(conteudo_upload).hexdigest()
+    if st.session_state.get("assinatura_upload_docs") != assinatura_upload:
+        st.session_state["assinatura_upload_docs"] = assinatura_upload
+        st.session_state.pop("assinatura_processada_upload_docs", None)
+        st.session_state.pop("resultado_valor_global", None)
+        st.session_state.pop("diagnostico_coleta_v2", None)
 
-conteudo_upload = arquivo.getvalue()
-assinatura_upload = hashlib.sha256(conteudo_upload).hexdigest()
-if st.session_state.get("assinatura_upload_docs") != assinatura_upload:
-    st.session_state["assinatura_upload_docs"] = assinatura_upload
-    st.session_state.pop("assinatura_processada_upload_docs", None)
-    st.session_state.pop("resultado_valor_global", None)
-    st.session_state.pop("diagnostico_coleta_v2", None)
+    st.caption(f"Arquivo enviado: {arquivo.name}")
 
-st.caption(f"Arquivo enviado: {arquivo.name}")
-
-if st.button("Processar", type="primary", use_container_width=False, key="processar_coleta_upload_docs"):
-    st.session_state.pop("resultado_valor_global", None)
-    st.session_state.pop("diagnostico_coleta_v2", None)
-    st.session_state.pop("assinatura_processada_upload_docs", None)
-    try:
-        resultado_processado, diagnostico_processado = processar_coleta_oficial_runtime(conteudo_upload)
-        st.session_state["diagnostico_coleta_v2"] = diagnostico_processado
-        st.session_state["resultado_valor_global"] = resultado_processado
-        st.session_state["assinatura_processada_upload_docs"] = assinatura_upload
-    except Exception as exc:
-        st.error(f"Não foi possível processar o arquivo: {exc}")
+    if st.button("Processar", type="primary", use_container_width=False, key="processar_coleta_upload_docs"):
+        st.session_state.pop("resultado_valor_global", None)
+        st.session_state.pop("diagnostico_coleta_v2", None)
+        st.session_state.pop("assinatura_processada_upload_docs", None)
+        try:
+            resultado_processado, diagnostico_processado = processar_coleta_oficial_runtime(conteudo_upload)
+            st.session_state["diagnostico_coleta_v2"] = diagnostico_processado
+            st.session_state["resultado_valor_global"] = resultado_processado
+            st.session_state["assinatura_processada_upload_docs"] = assinatura_upload
+        except Exception as exc:
+            st.error(f"Não foi possível processar o arquivo: {exc}")
 
 if st.session_state.get("assinatura_processada_upload_docs") != assinatura_upload:
     st.stop()
@@ -4951,11 +4959,20 @@ render_avisos_override_efeito_financeiro(diagnostico_coleta)
 if resultado:
     metadados = diagnostico_coleta.get("metadados", {})
     contagens = diagnostico_coleta.get("contagens", {})
-    resumo_indice, resumo_ciclo, resumo_meses, resumo_itens = st.columns(4)
+    _ciclos_str = ", ".join(metadados.get("ciclos_em_analise", [])) or "—"
+    _st_res = (metadados.get("status_resultados") or {})
+    _retro_val = (_st_res.get("valores") or {}).get("retroativo_oficial")
+    _retro_str = (
+        "R$ " + f"{_retro_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        if isinstance(_retro_val, (int, float)) else "—"
+    )
+    _acum_val = resultado.get("variacao_acumulada")
+    _acum_str = f"{_acum_val * 100:.2f}%".replace(".", ",") if isinstance(_acum_val, (int, float)) else "—"
+    resumo_indice, resumo_ciclos, resumo_retro, resumo_acum = st.columns(4)
     resumo_indice.metric("Índice", metadados.get("indice", "—"))
-    resumo_ciclo.metric("Ciclo vigente", metadados.get("ciclo_vigente", "—"))
-    resumo_meses.metric("Meses com valor", contagens.get("competencias_com_valor", 0))
-    resumo_itens.metric("Itens remanescentes", contagens.get("itens_remanescentes", 0))
+    resumo_ciclos.metric("Ciclos analisados", _ciclos_str)
+    resumo_retro.metric("Retroativo reconhecido", _retro_str)
+    resumo_acum.metric("Percentual acumulado", _acum_str)
     render_documentos_funcionais_upload(resultado)
     st.stop()
 

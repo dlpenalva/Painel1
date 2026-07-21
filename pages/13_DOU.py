@@ -402,19 +402,14 @@ valor_total = valor_total_atualizado(res)
 auto["valor_total"] = moeda(valor_total) if valor_total else "[preencher campo]"
 auto["valor_total_extenso"] = valor_por_extenso(valor_total) if valor_total else "[preencher campo]"
 
-st.markdown("### Campos manuais")
-col1, col2 = st.columns(2)
-with col1:
-    referencias = st.text_input("Referência(s)", value="[preencher campo]")
-    contrato = st.text_input("Contrato", value="[preencher campo]")
-    instrumento = st.text_input("Instrumento assinado", value="[N. do Termo de Apostila]")
-with col2:
-    processo = st.text_input("Processo n.º", value="[preencher campo]")
-    data_assinatura = st.text_input("Data de Assinatura", value="[preencher campo]")
-    cnpj = st.text_input("CNPJ/MF", value="[preencher campo]")
-
-objeto = st.text_area("Objeto", value="[preencher campo]", height=80)
-signatarios = st.text_input("Signatários", value="[preencher campo]")
+referencias = "[preencher campo]"
+contrato = "[preencher campo]"
+instrumento = "[N. do Termo de Apostila]"
+processo = "[preencher campo]"
+data_assinatura = "[preencher campo]"
+cnpj = "[preencher campo]"
+objeto = "[preencher campo]"
+signatarios = "[preencher campo]"
 
 st.markdown("### Dados automáticos")
 st.markdown(
