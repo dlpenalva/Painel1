@@ -41,6 +41,40 @@ def _classificar(xls: float | None, py: float | None, tolerancia: float) -> str 
     return STATUS_RELEVANTE
 
 
+# Etapa 5b: mapa de dependencia direta entre campos oficiais. Uma divergencia
+# relevante em um campo torna nao-confiaveis o proprio campo e os que dependem
+# diretamente dele. Retroativo e VTA/remanescente sao dimensoes independentes:
+# uma divergencia so de retroativo nao contamina VTA, e vice-versa.
+_DEPENDENTES_DIRETOS: dict[str, tuple[str, ...]] = {
+    "QTD_REM_OFICIAL": ("REM_BASE_OFICIAL", "REM_ATUALIZADO_OFICIAL", "VTA_FINAL"),
+    "REM_BASE_OFICIAL": ("REM_ATUALIZADO_OFICIAL", "VTA_FINAL"),
+    "REM_ATUALIZADO_OFICIAL": ("VTA_FINAL",),
+    "VTA_FINAL": (),
+    "RETRO_FIN": ("RETRO_OFICIAL",),
+    "RETRO_PC": ("RETRO_OFICIAL",),
+    "RETRO_ITENS": ("RETRO_OFICIAL",),
+    "RETRO_OFICIAL": (),
+}
+
+
+def campos_nao_confiaveis_para_documentos(reconciliacao: dict[str, Any] | None) -> set[str]:
+    """Campos oficiais que NAO devem ser preenchidos nos documentos liberados.
+
+    Recebe o dicionario de reconciliacao_xls_python e retorna o conjunto de
+    campos canonicos (o proprio divergente + dependentes diretos) que precisam
+    ficar vazios nos 3 documentos liberados apesar da divergencia (Etapa 5b).
+    Nunca adota XLS nem Python; apenas marca o que deixar em branco.
+    """
+    nao_confiaveis: set[str] = set()
+    for div in (reconciliacao or {}).get("divergencias_relevantes") or []:
+        campo = str(div.get("campo") or "")
+        if not campo:
+            continue
+        nao_confiaveis.add(campo)
+        nao_confiaveis.update(_DEPENDENTES_DIRETOS.get(campo, ()))
+    return nao_confiaveis
+
+
 def reconciliar_xls_python(leitura: dict[str, Any]) -> dict[str, Any]:
     """Compara os valores nomeados de RESULTADOS com o motor Python."""
     resultado: dict[str, Any] = {

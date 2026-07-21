@@ -30,7 +30,7 @@ FORMULAS_POR_ABA = {
     "itens_Remanesc": 5215,
     "itens_Consumidos": 1806,
     "itens_PC": 834,
-    "aditivos": 1392,
+    "aditivos": 1393,
     "posicao_contratual": 4776,
     "itens_RC": 3200,
     "historico_VU": 3592,
@@ -161,6 +161,27 @@ def test_itens_pc_efeito_financeiro_aplicado():
     assert {par.cell(r, 8).number_format for r in range(2, 7)} == {
         "dd/mm/yyyy;@"
     }
+
+
+def test_aditivos_dropdown_tipo_alteracao_sem_decrescimo():
+    """Ajuste final: aditivos!D2:D200 lista apenas Acrescimo/Supressao.
+
+    O dropdown de TIPO DE ALTERACAO FORMALIZADA nao pode mais oferecer
+    "Decrescimo"; deve conter exclusivamente Acrescimo e Supressao, cobrindo
+    todo o intervalo D2:D200.
+    """
+    wb = load_workbook(TEMPLATE)
+    ws = wb["aditivos"]
+    dvs_d = [
+        dv for dv in ws.data_validations.dataValidation
+        if dv.type == "list" and "D2:D200" in str(dv.sqref)
+    ]
+    assert len(dvs_d) == 1, "esperada uma validacao de lista cobrindo D2:D200"
+    dv = dvs_d[0]
+    assert str(dv.sqref) == "D2:D200"
+    itens = [t.strip() for t in dv.formula1.strip('"').split(",")]
+    assert itens == ["Acrescimo", "Supressao"]
+    assert not any("Decr" in i for i in itens)
 
 
 def test_abertura_e_reabertura_sem_reparo_no_excel_real():

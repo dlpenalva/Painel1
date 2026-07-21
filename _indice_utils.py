@@ -81,6 +81,16 @@ def calcular_ist_numero_indice(data_inicio, caminho="ist.csv"):
     v_ini = float(v_ini_rows["indice"].iloc[0])
     v_fim = float(v_fim_rows["indice"].iloc[0])
 
+    # Memoria canonica: preserva a serie mensal REAL do ist.csv no intervalo
+    # [mes-base, mes-base + 12 meses], sem interpolar nem fabricar competencias.
+    # O RESULTADO continua sendo calculado pelo metodo homologado (v_fim / v_ini);
+    # apenas a auditoria/memoria passa a mostrar todas as competencias do periodo.
+    serie_periodo = (
+        df[(df["data"] >= r_ini) & (df["data"] <= r_fim)][["data", "indice"]]
+        .sort_values("data")
+        .reset_index(drop=True)
+    )
+
     return {
         "variacao": (v_fim / v_ini) - 1,
         "i_ini": v_ini,
@@ -88,7 +98,7 @@ def calcular_ist_numero_indice(data_inicio, caminho="ist.csv"):
         "d_ini": r_ini,
         "d_fim": r_fim,
         "metodo": "Divisão de Número-Índice (Série Local)",
-        "dados": pd.DataFrame({"data": [r_ini, r_fim], "indice": [v_ini, v_fim]}),
+        "dados": serie_periodo,
     }
 
 

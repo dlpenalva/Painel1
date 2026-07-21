@@ -549,7 +549,7 @@ def _reset_aditivos(wb) -> None:
         ws[f"L{row}"].number_format = QTY
         ws[f"I{row}"].number_format = FACTOR
     ws.data_validations.dataValidation.clear()
-    for rng, values in (("D2:D200", "Acrescimo,Supressao,Decrescimo"), ("H2:H200", "Sim,Nao"), ("K2:K200", "Sim,Nao")):
+    for rng, values in (("D2:D200", "Acrescimo,Supressao"), ("H2:H200", "Sim,Nao"), ("K2:K200", "Sim,Nao")):
         dv = DataValidation(type="list", formula1=f'"{values}"', allow_blank=True)
         ws.add_data_validation(dv)
         dv.add(rng)

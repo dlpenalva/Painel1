@@ -302,6 +302,8 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
         "aditivos": aditivos,
         "financeiro": financeiro,
         "sintese": sintese,
+        # Etapa 7: estrutura canonica unica de VU por ciclo (C0..ultimo analisado).
+        "historico_vu": dados.get("historico_vu") or {},
     }
 
 
@@ -373,6 +375,7 @@ def gerar_despacho_saneador(
     _ds_par6_data_corte(doc, campos_manuais)
     _ds_quadro3_vta(doc, dados, campos_manuais)
     _ds_par7_composicao_vta(doc, dados)
+    _secao_valores_unitarios_por_ciclo(doc, dados)
     _ds_par8_aditivos(doc, dados)
     _ds_par9_adequacao(doc, campos_manuais)
     _ds_par10_regularidade(doc, campos_manuais)
@@ -585,6 +588,43 @@ def _montar_linhas_vta(dados: dict) -> list[list[str]]:
     if vta_total is not None:
         linhas.append(["Valor Total Atualizado Estimado (VTA)", formatar_moeda(vta_total)])
     return linhas
+
+
+def _secao_valores_unitarios_por_ciclo(doc: Document, dados: dict) -> None:
+    """Etapa 7: tabela 'Valores Unitarios por Ciclo' (Saneador e Apostila).
+
+    Estrutura canonica unica (dados["historico_vu"]): C0 sempre e os ciclos ate
+    o ultimo efetivamente analisado. Ciclos futuros nao entram. Nao inventa zeros:
+    celula sem valor sai vazia. Uma linha por item; valores em R$ com 2 casas.
+    """
+    hvu = dados.get("historico_vu") or {}
+    itens = hvu.get("itens") or []
+    ciclos = hvu.get("ciclos") or []
+    if not itens or not ciclos:
+        return
+
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    run = p.add_run("Valores Unitários por Ciclo")
+    run.bold = True
+    run.font.name = "Calibri"
+    run.font.size = Pt(10)
+
+    cabecalho = ["Item", "Descrição"] + [f"VU {c}" for c in ciclos]
+    linhas: list[list[str]] = []
+    for reg in itens:
+        vus = reg.get("vus") or {}
+        linha = [
+            str(reg.get("item") or ""),
+            str(reg.get("descricao") or ""),
+        ]
+        for c in ciclos:
+            valor = vus.get(c)
+            # Sem valor -> celula vazia (nunca zero artificial).
+            linha.append(formatar_moeda(valor) if valor is not None else "")
+        linhas.append(linha)
+    _adicionar_tabela(doc, cabecalho, linhas)
+    doc.add_paragraph()
 
 
 def _ds_par7_composicao_vta(doc: Document, dados: dict) -> None:
@@ -912,6 +952,9 @@ def _ta_clausulas(doc: Document, dados: dict, cm: dict) -> None:
 
     # Tabela composicao VTA
     _ta_tabela2_vta(doc, dados)
+
+    # Etapa 7: historico de Valores Unitarios por ciclo (C0..ultimo analisado).
+    _secao_valores_unitarios_por_ciclo(doc, dados)
 
     # Clausula 4: residual
     p4 = doc.add_paragraph()

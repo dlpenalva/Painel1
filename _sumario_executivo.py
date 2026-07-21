@@ -28,9 +28,18 @@ from _objeto_processo_reajuste import (
     montar_objeto_processo_reajuste,
     obter_objeto_processo_reajuste,
 )
+from _reconciliacao_xls_python import campos_nao_confiaveis_para_documentos
 
 NAO_INFORMADO = "Não informado"
 NAO_APLICAVEL = "Não aplicável"
+
+# Etapa 5b: quando ha divergencia relevante XLS x Python, o campo divergente e
+# seus dependentes diretos NAO sao exibidos (nem XLS nem Python sao adotados);
+# ficam vazios, mas a divergencia permanece sinalizada no sistema.
+MOTIVO_DIVERGENCIA_XLS_PYTHON = (
+    "Valor não exibido: divergência relevante XLS × Python pendente de "
+    "equalização antes da formalização."
+)
 
 ROTULO_METODO = {
     "financeiro": "Financeiro",
@@ -77,22 +86,126 @@ def montar_dados_sumario_executivo(
     metodologia = objeto.get("metodologia") or {}
     pendencias = objeto.get("pendencias") or {}
 
+    # Etapa 5b: campos nao-confiaveis por divergencia relevante XLS x Python.
+    # A secao financeira e montada uma unica vez e mascarada antes de alimentar
+    # tanto a sintese quanto o topo, para que os 3 documentos herdem o mesmo
+    # mascaramento (VTA e retroativo).
+    campos_nc = campos_nao_confiaveis_para_documentos(
+        leitura.get("reconciliacao_xls_python")
+    )
+    financeiro_sec = _montar_secao_financeira(resultados, memoria_ciclo)
+    _mascarar_financeiro_por_divergencia(financeiro_sec, campos_nc)
+    sintese = _montar_sintese(
+        objeto, resultados, memoria_ciclo, metodologia, financeiro_sec
+    )
+    _mascarar_sintese_por_divergencia(sintese, campos_nc)
+
+    ciclos_sec = _montar_secao_ciclos(parametros, resultados, identificacao)
+
     return {
         "disponivel": True,
         "identificacao": _montar_identificacao(
             objeto, metodologia, memoria_calculo, identificacao
         ),
-        "sintese": _montar_sintese(
-            objeto, resultados, memoria_ciclo, metodologia,
-            _montar_secao_financeira(resultados, memoria_ciclo),
-        ),
-        "ciclos": _montar_secao_ciclos(parametros, resultados, identificacao),
-        "financeiro": _montar_secao_financeira(resultados, memoria_ciclo),
+        "sintese": sintese,
+        "ciclos": ciclos_sec,
+        "financeiro": financeiro_sec,
         "itens": _montar_secao_itens(memoria_ciclo, parametros),
+        # Etapa 7: historico de VU por ciclo (C0 sempre; ate o ultimo analisado).
+        # Fonte canonica unica: leitura["historico_vu"] (aba historico_VU).
+        "historico_vu": _montar_secao_historico_vu(
+            leitura.get("historico_vu") or {}, ciclos_sec
+        ),
         "memoria_calculo": _montar_secao_memoria(memoria_calculo),
         "aditivos": _montar_secao_aditivos(dados_op, parametros),
         "observacoes": _montar_observacoes(objeto, pendencias),
+        "campos_nao_confiaveis": sorted(campos_nc),
     }
+
+
+def _ultimo_ciclo_analisado(ciclos: list[dict[str, Any]]) -> int:
+    """Indice (0..4) do ultimo ciclo efetivamente analisado nesta apuracao.
+
+    C0 e sempre a base (indice 0). Cada C1..C4 conta como analisado quando
+    marcado para computar nesta apuracao (computar == "Sim"). Retorna o maior
+    indice analisado; se nenhum reajuste foi computado, retorna 0 (so C0).
+    """
+    ultimo = 0
+    for reg in ciclos or []:
+        nome = str(reg.get("ciclo") or "").upper()
+        if nome in ("C1", "C2", "C3", "C4") and str(reg.get("computar")) == "Sim":
+            ultimo = max(ultimo, int(nome[1]))
+    return ultimo
+
+
+def _montar_secao_historico_vu(
+    historico_vu: dict[str, Any], ciclos: list[dict[str, Any]]
+) -> dict[str, Any]:
+    """Historico de Valores Unitarios por ciclo para Saneador e Apostila.
+
+    Estrutura canonica unica (sem segundo parser): consome leitura["historico_vu"]
+    (aba historico_VU, colunas VU_C0..VU_C4). Exibe C0 sempre e os ciclos ate o
+    ultimo efetivamente analisado; ciclos futuros fisicamente presentes na
+    planilha NAO sao carregados. Nao inventa zeros para celulas sem valor.
+
+    Observacao (Etapa 5): o VU por item e dimensao propria; nenhum campo de
+    reconciliacao XLS x Python corresponde a um VU, portanto historico_VU nunca
+    e mascarado pelo mapa de dependencia atual.
+    """
+    ultimo = _ultimo_ciclo_analisado(ciclos)
+    colunas = [f"C{i}" for i in range(ultimo + 1)]  # C0..C{ultimo}
+    itens_saida: list[dict[str, Any]] = []
+    for reg in historico_vu.get("itens") or []:
+        vu_ciclos = reg.get("vu_ciclos") or {}
+        vus: dict[str, float | None] = {}
+        for i in range(ultimo + 1):
+            valor = vu_ciclos.get(f"VU_C{i}")
+            if i == 0 and valor is None:
+                valor = reg.get("vu_original")  # C0 = VU original
+            vus[f"C{i}"] = _num_ou_none(valor)
+        itens_saida.append({
+            "item": reg.get("item"),
+            "descricao": reg.get("descricao"),
+            "vus": vus,
+        })
+    return {
+        "disponivel": bool(itens_saida),
+        "ultimo_ciclo": f"C{ultimo}",
+        "ciclos": colunas,
+        "itens": itens_saida,
+    }
+
+
+def _mascarar_sintese_por_divergencia(sintese: dict[str, Any], campos_nc: set[str]) -> None:
+    """Esvazia VTA e retroativo total quando o campo oficial e nao-confiavel.
+
+    VTA_FINAL cobre a cadeia de remanescente (qtd/base/atualizado) via mapa de
+    dependencia; RETRO_OFICIAL cobre os retroativos por metodo. Nenhum valor
+    (XLS ou Python) e adotado: o campo fica vazio com motivo explicito.
+    """
+    if "VTA_FINAL" in campos_nc:
+        sintese["vta"] = None
+        sintese["vta_motivo"] = MOTIVO_DIVERGENCIA_XLS_PYTHON
+    if "RETRO_OFICIAL" in campos_nc:
+        sintese["retroativo_total"] = None
+        sintese["retroativo_estado"] = MOTIVO_DIVERGENCIA_XLS_PYTHON
+
+
+def _mascarar_financeiro_por_divergencia(financeiro: dict[str, Any], campos_nc: set[str]) -> None:
+    """Esvazia os totais de retroativo da secao financeira sob divergencia.
+
+    RETRO_FIN -> delta_total_financeiro; RETRO_PC -> delta_total_pc;
+    RETRO_OFICIAL -> retroativo consolidado (e ambos os deltas, pois os
+    documentos derivam o retroativo do documento a partir deles). Os valores
+    por ciclo (componentes) permanecem, pois nao sao dependentes do total.
+    """
+    if "RETRO_FIN" in campos_nc or "RETRO_OFICIAL" in campos_nc:
+        financeiro["delta_total_financeiro"] = None
+    if "RETRO_PC" in campos_nc or "RETRO_OFICIAL" in campos_nc:
+        financeiro["delta_total_pc"] = None
+    if "RETRO_OFICIAL" in campos_nc:
+        financeiro["retroativo_total"] = None
+        financeiro["retroativo_estado"] = MOTIVO_DIVERGENCIA_XLS_PYTHON
 
 
 def _montar_identificacao(

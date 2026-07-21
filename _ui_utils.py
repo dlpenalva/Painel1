@@ -154,7 +154,7 @@ def render_alerta_ist_local():
 
 
 
-@st.cache_data(ttl=60 * 60)
+@st.cache_data(ttl=60 * 60, show_spinner=False)
 def _obter_ultima_competencia_icti_cache():
     from _indice_utils import obter_ultima_competencia_icti_ipeadata
     return obter_ultima_competencia_icti_ipeadata(timeout=15)

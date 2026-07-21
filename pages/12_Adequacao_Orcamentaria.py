@@ -534,7 +534,7 @@ render_cabecalho_pagina(
     "Adequação Orçamentária",
     "Estimativa simplificada do delta orçamentário do reajuste: retroativo apurado + diferença futura projetada.",
 )
-if st.button("← Voltar para Valor Global"):
+if st.button("← Voltar para Central", key="voltar_central_adequacao"):
     st.switch_page("pages/03_Valor_Global.py")
 
 ctx = extrair_contexto_valores()
