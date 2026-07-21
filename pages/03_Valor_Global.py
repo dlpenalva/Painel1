@@ -17,6 +17,7 @@ from _coleta_oficial import (
     gerar_coleta_oficial_preenchida,
 )
 from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
+from _estado_apuracao_upload import apuracao_persistida_valida
 from _capacidades_apuracao import SEIS_DOCUMENTOS_CANONICOS
 from _sumario_executivo import gerar_sumario_executivo
 from _templates_documentos import gerar_despacho_saneador, gerar_termo_apostila
@@ -4915,29 +4916,36 @@ with st.container(border=True):
     )
 
 if arquivo is None:
-    st.stop()
+    # Reidratação pós-navegação: o file_uploader perde o arquivo ao voltar de outra
+    # página (o Streamlit descarta o estado de widgets não renderizados). A fonte de
+    # verdade após o processamento é o session_state: se já existe uma apuração
+    # processada e válida, recupera-a em vez de exigir novo upload/reprocessamento.
+    if apuracao_persistida_valida(st.session_state):
+        assinatura_upload = st.session_state["assinatura_processada_upload_docs"]
+    else:
+        st.stop()
+else:
+    conteudo_upload = arquivo.getvalue()
+    assinatura_upload = hashlib.sha256(conteudo_upload).hexdigest()
+    if st.session_state.get("assinatura_upload_docs") != assinatura_upload:
+        st.session_state["assinatura_upload_docs"] = assinatura_upload
+        st.session_state.pop("assinatura_processada_upload_docs", None)
+        st.session_state.pop("resultado_valor_global", None)
+        st.session_state.pop("diagnostico_coleta_v2", None)
 
-conteudo_upload = arquivo.getvalue()
-assinatura_upload = hashlib.sha256(conteudo_upload).hexdigest()
-if st.session_state.get("assinatura_upload_docs") != assinatura_upload:
-    st.session_state["assinatura_upload_docs"] = assinatura_upload
-    st.session_state.pop("assinatura_processada_upload_docs", None)
-    st.session_state.pop("resultado_valor_global", None)
-    st.session_state.pop("diagnostico_coleta_v2", None)
+    st.caption(f"Arquivo enviado: {arquivo.name}")
 
-st.caption(f"Arquivo enviado: {arquivo.name}")
-
-if st.button("Processar", type="primary", use_container_width=False, key="processar_coleta_upload_docs"):
-    st.session_state.pop("resultado_valor_global", None)
-    st.session_state.pop("diagnostico_coleta_v2", None)
-    st.session_state.pop("assinatura_processada_upload_docs", None)
-    try:
-        resultado_processado, diagnostico_processado = processar_coleta_oficial_runtime(conteudo_upload)
-        st.session_state["diagnostico_coleta_v2"] = diagnostico_processado
-        st.session_state["resultado_valor_global"] = resultado_processado
-        st.session_state["assinatura_processada_upload_docs"] = assinatura_upload
-    except Exception as exc:
-        st.error(f"Não foi possível processar o arquivo: {exc}")
+    if st.button("Processar", type="primary", use_container_width=False, key="processar_coleta_upload_docs"):
+        st.session_state.pop("resultado_valor_global", None)
+        st.session_state.pop("diagnostico_coleta_v2", None)
+        st.session_state.pop("assinatura_processada_upload_docs", None)
+        try:
+            resultado_processado, diagnostico_processado = processar_coleta_oficial_runtime(conteudo_upload)
+            st.session_state["diagnostico_coleta_v2"] = diagnostico_processado
+            st.session_state["resultado_valor_global"] = resultado_processado
+            st.session_state["assinatura_processada_upload_docs"] = assinatura_upload
+        except Exception as exc:
+            st.error(f"Não foi possível processar o arquivo: {exc}")
 
 if st.session_state.get("assinatura_processada_upload_docs") != assinatura_upload:
     st.stop()
