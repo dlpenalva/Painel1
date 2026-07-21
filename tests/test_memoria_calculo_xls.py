@@ -198,7 +198,7 @@ def test_geracao_simples_grava_datas_reais_com_formato_mm_aaaa():
     assert ws["M2"].value == datetime(2023, 11, 1)
     assert ws["M2"].number_format == "mm/yyyy"
     assert ws["N2"].number_format == "0.0000%"
-    assert ws["Q14"].number_format == "0.0000%"
+    assert ws["Q14"].number_format == "0.00%"
 
 
 def test_geracao_simples_sgs_e_ist():

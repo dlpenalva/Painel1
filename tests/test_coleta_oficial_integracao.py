@@ -19,7 +19,7 @@ from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SHA256_TEMPLATE_ESPERADO = "750d62a1865677396ec0a0d4bc85434fc3c186838dfb061ac26633d0fd09cea4"
+SHA256_TEMPLATE_ESPERADO = "b5c838003568a7d0a091f62876bab70269a172bdce75f0da9e357974e177d075"
 
 
 def _dados_calculadora() -> dict:
@@ -184,7 +184,7 @@ def test_financeiro_comeca_em_c0_na_linha_2_multiciclo() -> None:
 def test_template_tem_72_competencias_e_resultados_alcanca_linha_73() -> None:
     wb = load_workbook(TEMPLATE_COLETA_OFICIAL, data_only=False)
     financeiro = wb["financeiro"]
-    assert financeiro.max_row == 73
+    assert financeiro.max_row == 74  # linha 74 = TOTAL (B74=TOTAL, C74/E74/F74=SUM)
     for linha in range(2, 74):
         assert str(financeiro[f"B{linha}"].value).startswith("=")
         assert str(financeiro[f"D{linha}"].value).startswith("=")
