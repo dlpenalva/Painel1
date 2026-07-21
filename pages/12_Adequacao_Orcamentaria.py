@@ -7,7 +7,7 @@ import re
 import pandas as pd
 import streamlit as st
 
-from _ui_utils import render_marca_topo, render_aviso_privacidade
+from _ui_utils import render_marca_topo, render_aviso_privacidade, render_cabecalho_pagina
 
 st.set_page_config(page_title="TLB · cl8us - Adequação Orçamentária", layout="wide")
 
@@ -530,10 +530,12 @@ def _metodologia_valor_importado_html(resultado_valor_global):
     """
 # <<< METODOLOGIA_VALOR_IMPORTADO_CORTE_OPERACIONAL
 
-render_marca_topo()
-st.title("Adequação Orçamentária")
-st.caption("Estimativa simplificada do delta orçamentário do reajuste: retroativo apurado + diferença futura projetada.")
-render_aviso_privacidade(tem_download=True)
+render_cabecalho_pagina(
+    "Adequação Orçamentária",
+    "Estimativa simplificada do delta orçamentário do reajuste: retroativo apurado + diferença futura projetada.",
+)
+if st.button("← Voltar para Valor Global"):
+    st.switch_page("pages/03_Valor_Global.py")
 
 ctx = extrair_contexto_valores()
 resultado = ctx["resultado"]

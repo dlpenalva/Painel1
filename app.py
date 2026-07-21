@@ -354,6 +354,14 @@ def _render_css() -> None:
             .cl8us-hero h1 { font-size: 1.48rem; }
             .home-card { min-height: auto; }
         }
+        [data-baseweb="calendar"] [aria-selected="true"] {
+            background-color: rgba(18, 59, 99, 0.18) !important;
+            color: var(--cl8us-navy) !important;
+            border-radius: 50% !important;
+        }
+        [data-baseweb="calendar"] [aria-selected="true"] > div {
+            color: var(--cl8us-navy) !important;
+        }
         </style>
         """,
         unsafe_allow_html=True,

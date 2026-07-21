@@ -76,13 +76,13 @@ class TestFluxoUploadDocs(unittest.TestCase):
         self.assertEqual(trecho.count(".metric("), 4)
         rotulos = (
             'metric("Índice"',
-            'metric("Ciclo vigente"',
-            'metric("Meses com valor"',
-            'metric("Itens remanescentes"',
+            'metric("Ciclos analisados"',
+            'metric("Retroativo reconhecido"',
+            'metric("Percentual acumulado"',
         )
         posicoes = [trecho.index(rotulo) for rotulo in rotulos]
         self.assertEqual(posicoes, sorted(posicoes))
-        self.assertIn('contagens.get("competencias_com_valor", 0)', trecho)
+        self.assertIn('metadados.get("indice"', trecho)
 
     def test_pendencias_multiplas_usam_chaves_semanticas_unicas(self):
         inicio = PAGINA.index("def _render_pendencia_documento")

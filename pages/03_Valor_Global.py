@@ -4951,11 +4951,20 @@ render_avisos_override_efeito_financeiro(diagnostico_coleta)
 if resultado:
     metadados = diagnostico_coleta.get("metadados", {})
     contagens = diagnostico_coleta.get("contagens", {})
-    resumo_indice, resumo_ciclo, resumo_meses, resumo_itens = st.columns(4)
+    _ciclos_str = ", ".join(metadados.get("ciclos_em_analise", [])) or "—"
+    _st_res = (metadados.get("status_resultados") or {})
+    _retro_val = (_st_res.get("valores") or {}).get("retroativo_oficial")
+    _retro_str = (
+        "R$ " + f"{_retro_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        if isinstance(_retro_val, (int, float)) else "—"
+    )
+    _acum_val = resultado.get("variacao_acumulada")
+    _acum_str = f"{_acum_val * 100:.2f}%".replace(".", ",") if isinstance(_acum_val, (int, float)) else "—"
+    resumo_indice, resumo_ciclos, resumo_retro, resumo_acum = st.columns(4)
     resumo_indice.metric("Índice", metadados.get("indice", "—"))
-    resumo_ciclo.metric("Ciclo vigente", metadados.get("ciclo_vigente", "—"))
-    resumo_meses.metric("Meses com valor", contagens.get("competencias_com_valor", 0))
-    resumo_itens.metric("Itens remanescentes", contagens.get("itens_remanescentes", 0))
+    resumo_ciclos.metric("Ciclos analisados", _ciclos_str)
+    resumo_retro.metric("Retroativo reconhecido", _retro_str)
+    resumo_acum.metric("Percentual acumulado", _acum_str)
     render_documentos_funcionais_upload(resultado)
     st.stop()
 
