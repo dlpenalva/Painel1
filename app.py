@@ -354,13 +354,15 @@ def _render_css() -> None:
             .cl8us-hero h1 { font-size: 1.48rem; }
             .home-card { min-height: auto; }
         }
-        [data-baseweb="calendar"] [aria-selected="true"] {
-            background-color: rgba(18, 59, 99, 0.18) !important;
-            color: var(--cl8us-navy) !important;
-            border-radius: 50% !important;
+        /* Dia selecionado no calendário: o BaseWeb desenha o círculo no ::after do
+           [role="gridcell"] com aria-label contendo "Selected". Clareamos esse
+           círculo (bordô a 20%) e mantemos o número legível na cor da marca. */
+        [data-baseweb="calendar"] [role="gridcell"][aria-label*="Selected"]::after {
+            background-color: rgba(122, 23, 51, 0.20) !important;
         }
-        [data-baseweb="calendar"] [aria-selected="true"] > div {
-            color: var(--cl8us-navy) !important;
+        [data-baseweb="calendar"] [role="gridcell"][aria-label*="Selected"],
+        [data-baseweb="calendar"] [role="gridcell"][aria-label*="Selected"] * {
+            color: var(--cl8us-action) !important;
         }
         </style>
         """,
