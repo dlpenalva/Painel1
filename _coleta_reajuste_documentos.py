@@ -45,6 +45,29 @@ def _retroativo_python(memoria: dict[str, Any], metodo: str) -> float | None:
     return round(total, 2) if evidencias else None
 
 
+def _rotulo_origem_coleta(conteudo: bytes) -> str:
+    """Identifica a origem real da Coleta para registro documental.
+
+    Não altera cálculo nem processamento — apenas rotula a fonte de forma fiel.
+    Reutiliza o detector canônico ``eh_layout_coleta_oficial`` para reconhecer o
+    layout oficial (aba posicao_contratual); dentro dele, distingue o Arquivo
+    Oficial (Modelo B) do legado (Modelo A) pelo marcador ``SEM_ADITIVO`` no
+    cabeçalho de itens_Remanesc.
+    """
+    from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, eh_layout_coleta_oficial
+
+    wb_fmt = load_workbook(BytesIO(conteudo), data_only=False)
+    try:
+        if not eh_layout_coleta_oficial(wb_fmt):
+            return "Coleta (layout legado, sem posicao_contratual)"
+        cabecalho = str(wb_fmt["itens_Remanesc"]["E1"].value or "")
+        if "SEM_ADITIVO" in cabecalho:
+            return "Coleta_Reajuste.xlsx (layout legado - Modelo A)"
+        return NOME_ARQUIVO_COLETA_OFICIAL
+    finally:
+        wb_fmt.close()
+
+
 def adaptar_coleta_reajuste_para_documentos(
     conteudo: bytes,
     *,
@@ -67,6 +90,7 @@ def adaptar_coleta_reajuste_para_documentos(
     posicao = wb["posicao_contratual"] if "posicao_contratual" in wb.sheetnames else None
     itens_rc = wb["itens_RC"]
     resultados = wb["RESULTADOS"]
+    origem_label = _rotulo_origem_coleta(conteudo)
 
     ciclos_rows = []
     fatores: dict[str, float] = {}
@@ -278,7 +302,7 @@ def adaptar_coleta_reajuste_para_documentos(
 
     resultado_documental = {
         "ok": True,
-        "origem_coleta": "Coleta_Reajuste.xlsx",
+        "origem_coleta": origem_label,
         "data_processamento": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "modo_apuracao": "Processamento progressivo pelo XLS",
         "base_execucao_mensal_disponivel": bool(financeiro_rows),
@@ -288,7 +312,7 @@ def adaptar_coleta_reajuste_para_documentos(
         "config_ciclo_em_execucao": {},
         "corte_operacional_solicitado": False,
         "corte_operacional_aplicado": False,
-        "origem_ciclos": "Coleta_Reajuste.xlsx",
+        "origem_ciclos": origem_label,
         "indice": controle["B7"].value or "Não informado",
         "fator_acumulado": fator_final,
         "variacao_acumulada": fator_final - 1.0,

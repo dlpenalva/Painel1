@@ -1,3 +1,17 @@
+"""Teste de COMPATIBILIDADE LEGADO — layout antigo `Coleta_Reajuste.xlsx` (MODELO A).
+
+ESTE TESTE NÃO DEFINE A REGRA ATUAL. A regra normativa vigente do Claus está em
+`tests/test_posicao_contratual_oficial.py` (COLETA_REAJUSTE_OFICIAL.xlsx, MODELO B).
+
+Finalidade única: garantir que o layout histórico (Modelo A, gerado via
+`_coleta_reajuste.gerar_coleta_reajuste`/`CAMINHO_MODELO_COLETA` =
+`templates/Coleta_Reajuste.xlsx`) continua reconhecível e legível, sem quebrar
+arquivos antigos já existentes. A existência desta cobertura **não** autoriza a
+geração de novas Coletas pelo Modelo A — isso é vedado e coberto por
+`tests/test_fonte_coleta_normativa.py`. A semântica do Modelo A permanece
+congelada (não corrigir, não aproximar do Modelo B, não expandir).
+"""
+
 import io
 import json
 import unittest
