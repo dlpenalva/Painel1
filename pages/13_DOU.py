@@ -336,6 +336,8 @@ def gerar_docx_dou(texto):
 # ============================================================
 
 render_marca_topo()
+if st.button("← Voltar para Central", key="voltar_central_dou"):
+    st.switch_page("pages/03_Valor_Global.py")
 st.title("DOU")
 st.caption("Geração simples de DOCX pré-preenchido para extrato de publicação de Termo de Apostila.")
 render_aviso_privacidade(tem_download=True)

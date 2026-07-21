@@ -17,6 +17,7 @@ from openpyxl import load_workbook
 from _coleta_reajuste import ler_coleta_reajuste
 from _leitor_masterfile_v10 import ler_masterfile_v10
 from _politica_entrega_segura import avaliar_entrega_segura
+from _reconciliacao_xls_python import campos_nao_confiaveis_para_documentos
 
 
 def _numero(valor: Any, padrao: float = 0.0) -> float:
@@ -376,6 +377,50 @@ def adaptar_coleta_reajuste_para_documentos(
     return resultado_documental
 
 
+# Etapa 5: os tres documentos que permanecem disponiveis mesmo diante de uma
+# divergencia relevante XLS x Python. Liberacao documental != validacao formal:
+# pode_confirmar/pode_formalizar continuam False e o alerta permanece visivel.
+DOCS_LIBERADOS_APESAR_DIVERGENCIA = (
+    "sumario_executivo",
+    "despacho_saneador",
+    "termo_apostila",
+)
+_PREFIXO_BLOQUEIO_DIVERGENCIA = "Divergência relevante XLS × Python"
+
+
+def aplicar_bloqueio_documental(capacidades: dict[str, Any], bloqueios: list[str]) -> dict[str, Any]:
+    """Distingue bloqueio de formalizacao de disponibilidade documental.
+
+    Regra da Etapa 5: uma divergencia relevante XLS x Python NAO pode tornar
+    indisponiveis para download os tres documentos nominais liberados; ela
+    apenas mantem a formalizacao condicionada e o alerta visivel. Qualquer
+    outro bloqueio (inclusive coleta estruturalmente invalida, ja tratada a
+    montante) continua bloqueando todos os documentos, como hoje.
+    """
+    if not bloqueios:
+        return capacidades
+    bloqueios_sem_divergencia = [
+        b for b in bloqueios if not str(b).startswith(_PREFIXO_BLOQUEIO_DIVERGENCIA)
+    ]
+    for chave, documento in (capacidades.get("documentos") or {}).items():
+        # Documentos liberados so sao bloqueados por motivos que NAO sejam a
+        # divergencia XLS x Python. Se a divergencia for o unico motivo, seguem
+        # disponiveis (com mascaramento de campos divergentes na Etapa 5b).
+        aplicaveis = (
+            bloqueios_sem_divergencia
+            if chave in DOCS_LIBERADOS_APESAR_DIVERGENCIA
+            else bloqueios
+        )
+        if not aplicaveis:
+            continue
+        documento["habilitado"] = False
+        documento["estado"] = "bloqueado"
+        documento["rotulo"] = "Bloqueado para formalização"
+        documento["classificacao"] = "BLOQUEADO PARA FORMALIZAÇÃO"
+        documento["motivo"] = aplicaveis[0]
+    return capacidades
+
+
 def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], dict[str, Any]]:
     """Entry point único usado pelo upload real e pelos testes de integração."""
     leitura = ler_masterfile_v10(conteudo, exigir_modelo_oficial=True)
@@ -396,27 +441,27 @@ def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], d
     politica = avaliar_entrega_segura(leitura)
     bloqueios = list(politica.get("bloqueios") or [])
 
+    # Etapa 5b: campos oficiais nao-confiaveis (divergentes + dependentes) que os
+    # 3 documentos liberados devem deixar em branco, sem adotar XLS nem Python.
+    campos_nao_confiaveis = sorted(campos_nao_confiaveis_para_documentos(reconciliacao))
+
     diagnostico["reconciliacao_xls_python"] = reconciliacao
     diagnostico["politica_entrega_segura"] = politica
+    diagnostico["campos_nao_confiaveis_documentos"] = campos_nao_confiaveis
     diagnostico["avisos"] = list(diagnostico.get("avisos") or []) + list(leitura.get("avisos") or [])
     diagnostico["bloqueios_criticos"] = list(diagnostico.get("bloqueios_criticos") or []) + bloqueios
     if bloqueios:
         diagnostico["pronto_para_consolidar"] = False
 
     capacidades = resultado.get("capacidades") or {}
-    if bloqueios:
-        for documento in (capacidades.get("documentos") or {}).values():
-            documento["habilitado"] = False
-            documento["estado"] = "bloqueado"
-            documento["rotulo"] = "Bloqueado para formalização"
-            documento["classificacao"] = "BLOQUEADO PARA FORMALIZAÇÃO"
-            documento["motivo"] = bloqueios[0]
+    aplicar_bloqueio_documental(capacidades, bloqueios)
 
     resultado.update({
         "capacidades": capacidades,
         "diagnostico_coleta": diagnostico,
         "reconciliacao_xls_python": reconciliacao,
         "politica_entrega_segura": politica,
+        "campos_nao_confiaveis_documentos": campos_nao_confiaveis,
         "formalizacao_bloqueada": bool(bloqueios),
         "bloqueios_formalizacao": bloqueios,
     })

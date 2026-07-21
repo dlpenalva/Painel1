@@ -738,6 +738,8 @@ def gerar_pdf_garantia_delta(dados):
 
 css()
 render_marca_topo()
+if st.button("← Voltar para Central", key="voltar_central_garantia"):
+    st.switch_page("pages/03_Valor_Global.py")
 st.title("Garantia Contratual")
 st.write("Escolha o método de cálculo da garantia. O Método Delta calcula o reforço do evento atual; a Linha do Tempo Completa serve para conferência histórica.")
 

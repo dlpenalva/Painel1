@@ -19,7 +19,13 @@ from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
 
 
 ROOT = Path(__file__).resolve().parents[1]
-SHA256_TEMPLATE_ESPERADO = "b5c838003568a7d0a091f62876bab70269a172bdce75f0da9e357974e177d075"
+# Atualizado na Etapa 4 do hotfix: restauracao da formula VLOOKUP ausente em
+# aditivos!F5 via Excel COM (re-save nativo). Layout visual preservado; apenas
+# os bytes do template mudaram, por isso o pin de SHA-256 foi reancorado.
+# Reancorado novamente no ajuste final: remocao da opcao "Decrescimo" do
+# dropdown de aditivos!D2:D200 (Acrescimo,Supressao) via Excel COM (re-save
+# nativo, sem reparo). Layout/formulas F2:F200 preservados.
+SHA256_TEMPLATE_ESPERADO = "5f25215a06baa2db805d2686b86d40518c6c0f857f6cde10f3e97f1a9a50a101"
 
 
 def _dados_calculadora() -> dict:

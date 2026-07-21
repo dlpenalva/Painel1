@@ -1800,7 +1800,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             ws_ad.write_formula(row, 8, f'=IF(C{excel_row}="","",IFERROR(VLOOKUP(C{excel_row},{ciclo_range},11,FALSE),1))', fmt_factor_auto)
             ws_ad.write_formula(row, 9, f'=IF(G{excel_row}="","",ROUND(IF(OR(UPPER(D{excel_row})="DECRÉSCIMO",UPPER(D{excel_row})="DECRESCIMO",UPPER(D{excel_row})="SUPRESSÃO",UPPER(D{excel_row})="SUPRESSAO"),-ABS(G{excel_row}),ABS(G{excel_row}))*IF(OR(UPPER(H{excel_row})="NÃO",UPPER(H{excel_row})="NAO"),1,I{excel_row}),2))', fmt_money_auto)
             ws_ad.write(row, 10, 'Computar nesta análise', fmt_input)
-        ws_ad.data_validation(1, 3, 199, 3, {'validate': 'list', 'source': ['Acréscimo', 'Decréscimo']})
+        ws_ad.data_validation(1, 3, 199, 3, {'validate': 'list', 'source': ['Acréscimo', 'Supressão']})
         ws_ad.data_validation(1, 7, 199, 7, {'validate': 'list', 'source': ['Sim', 'Não']})
         ws_ad.data_validation(1, 10, 199, 10, {'validate': 'list', 'source': ['Computar nesta análise', 'Informativo - já incluído no valor formalizado']})
         # Coluna C: cor discreta por ciclo para facilitar a leitura quando houver mudança de marco.
@@ -2388,6 +2388,8 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
                         f"**Índice final:** {res_c['i_fim']}"
                     )
                     _render_equacao_ist(res_c)
+                    st.caption("Série mensal do IST no período analisado (memória de cálculo):")
+                    st.dataframe(res_c['dados'], use_container_width=True)
                 elif "ICTI" in idx_sel:
                     st.write(f"**Competência da proposta/âncora:** {res_c['p_ini'].strftime('%m/%Y')}")
                     st.write(f"**Competência do índice-base utilizada:** {pd.to_datetime(res_c.get('d_indice_base')).strftime('%m/%Y')}")
