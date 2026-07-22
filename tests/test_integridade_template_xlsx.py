@@ -31,10 +31,11 @@ FORMULAS_POR_ABA = {
     "itens_Consumidos": 1806,
     "itens_PC": 834,
     "aditivos": 1393,
+    "posicao_referencia": 2595,
     "posicao_contratual": 4776,
     "itens_RC": 3200,
     "historico_VU": 3592,
-    "RESULTADOS": 3344,
+    "RESULTADOS": 3353,
 }
 
 
@@ -194,7 +195,7 @@ def test_abertura_e_reabertura_sem_reparo_no_excel_real():
     try:
         for rodada in range(2):
             wb = excel.Workbooks.Open(str(TEMPLATE), UpdateLinks=0, ReadOnly=True)
-            assert wb.Worksheets.Count == 11, f"rodada {rodada}"
+            assert wb.Worksheets.Count == 12, f"rodada {rodada}"  # +remanescente_atual (Etapa 3)
             wb.Close(False)
     finally:
         excel.Quit()

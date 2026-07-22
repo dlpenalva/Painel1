@@ -47,6 +47,7 @@ ABAS_COLETA_OFICIAL = [
     "itens_Consumidos",
     "itens_PC",
     "aditivos",
+    "posicao_referencia",
     "posicao_contratual",
     "itens_RC",
     "historico_VU",

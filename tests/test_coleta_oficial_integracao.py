@@ -25,7 +25,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # Reancorado novamente no ajuste final: remocao da opcao "Decrescimo" do
 # dropdown de aditivos!D2:D200 (Acrescimo,Supressao) via Excel COM (re-save
 # nativo, sem reparo). Layout/formulas F2:F200 preservados.
-SHA256_TEMPLATE_ESPERADO = "cc197fac223001db65bfab29ff97033e3c848de9e34616d51c1b28af6c82ad2e"
+# Reancorado na Etapa 3 (Posicao de Referencia): nova aba posicao_referencia
+# (com fallback para a ultima fotografia historica valida), formato de
+# CONTROLE!B3 e bloco de referencia em RESULTADOS, tudo via Excel COM (sem
+# reparo). Estrutura existente e VTA oficial (B23/B26) preservados.
+SHA256_TEMPLATE_ESPERADO = "79615b4d6fc8ac1e920ecf390a5622000a1b3fa775dc1cfc9e9db1e9c4ad8846"
 
 
 def _dados_calculadora() -> dict:
