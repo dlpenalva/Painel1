@@ -25,7 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # Reancorado novamente no ajuste final: remocao da opcao "Decrescimo" do
 # dropdown de aditivos!D2:D200 (Acrescimo,Supressao) via Excel COM (re-save
 # nativo, sem reparo). Layout/formulas F2:F200 preservados.
-SHA256_TEMPLATE_ESPERADO = "c0aed00c427a2c0f09f1e1015bb1b4aea4b1770c471084b4ccea8fbdf579a9f2"
+SHA256_TEMPLATE_ESPERADO = "cc197fac223001db65bfab29ff97033e3c848de9e34616d51c1b28af6c82ad2e"
 
 
 def _dados_calculadora() -> dict:

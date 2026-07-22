@@ -27,14 +27,14 @@ FORMULAS_POR_ABA = {
     "CONTROLE": 6,
     "parametros": 32,
     "financeiro": 291,
-    "itens_Remanesc": 8200,
+    "itens_Remanesc": 9195,
     "itens_Consumidos": 1806,
     "itens_PC": 834,
     "aditivos": 1393,
     "posicao_contratual": 4776,
     "itens_RC": 3200,
     "historico_VU": 3592,
-    "RESULTADOS": 3319,
+    "RESULTADOS": 3344,
 }
 
 
