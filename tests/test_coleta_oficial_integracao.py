@@ -29,7 +29,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # (com fallback para a ultima fotografia historica valida), formato de
 # CONTROLE!B3 e bloco de referencia em RESULTADOS, tudo via Excel COM (sem
 # reparo). Estrutura existente e VTA oficial (B23/B26) preservados.
-SHA256_TEMPLATE_ESPERADO = "79615b4d6fc8ac1e920ecf390a5622000a1b3fa775dc1cfc9e9db1e9c4ad8846"
+# Reancorado na rodada de homologacao UX: dropdown Sim/Nao via OPCOES_SIM_NAO,
+# limpeza de CONTROLE!C1 e itens_Consumidos!Q, mensagem de aditivos, painel
+# posicao_referencia, EIXO 2 padronizado e NOTAS TECNICAS ao fim de RESULTADOS.
+# Tudo via Excel COM (sem reparo); matematica e VTA (B23/B25/B26) preservados.
+# Reancorado no ajuste pontual de identificacao de novos itens (N001, N002...):
+# orientacao em itens_Remanesc!A1/aditivos!A1 e mensagem do check em aditivos!M.
+SHA256_TEMPLATE_ESPERADO = "866b36cdba2fe98a79214d8ae57f34daa15902f6093e1ac05e22da72f2ff4add"
 
 
 def _dados_calculadora() -> dict:

@@ -54,6 +54,9 @@ class ColetaReajusteTests(unittest.TestCase):
         self.assertIn("B20+B21+B22", resultados["B23"].value)
         self.assertIn("CONTROLE!$B$1", resultados["B35"].value)
         self.assertIn("CÁLCULO MANUAL REQUERIDO", resultados["F36"].value)
+        # Modelo legado (Coleta_Reajuste.xlsx) NAO foi alterado nesta rodada; a
+        # nota permanece em A48 (a movimentacao para NOTAS TECNICAS ocorreu apenas
+        # no COLETA_REAJUSTE_OFICIAL.xlsx).
         self.assertIn("fator-base praticado", resultados["A48"].value)
 
         ws = wb["parametros"]
