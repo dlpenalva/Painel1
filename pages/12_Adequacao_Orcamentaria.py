@@ -744,35 +744,71 @@ if modo_reduzido_estoque and ultimos_6.empty:
     }])
 
 diferenca_futura = float(df_projecao["Diferença futura a adequar"].sum()) if not df_projecao.empty else 0.0
-complementacao = round(float(retroativo or 0) + diferenca_futura, 2)
+complementacao = _round2(float(retroativo or 0) + diferenca_futura)
+referencia_reajustada = _round2(media_ref * fator_reajuste)
 qtd_meses = 0 if modo_reduzido_estoque and ultimos_6.empty else len(df_projecao)
+cronograma = cronograma_por_exercicio(df_projecao, retroativo)
 
-col_p1, col_p2, col_p3 = st.columns(3)
-with col_p1:
-    render_card_valor("Meses projetados", qtd_meses, nota=periodo_projecao_txt, formato="inteiro")
-with col_p2:
-    render_card_valor("Diferença futura projetada", diferenca_futura)
-with col_p3:
-    render_card_valor("COMPLEMENTAÇÃO NECESSÁRIA", complementacao, destaque=True)
+# --- Referência mensal (comum as duas origens; calculada pelo motor) ---
+st.subheader("Referência mensal")
+col_r1, col_r2, col_r3 = st.columns(3)
+with col_r1:
+    render_card_valor("Média histórica", media_ref)
+with col_r2:
+    render_card_valor("Percentual aplicado", pct(percentual_reajuste), formato="texto")
+with col_r3:
+    render_card_valor("Referência mensal reajustada", referencia_reajustada, destaque=True)
 
-with st.expander("Ver resultado mensal da projeção", expanded=False):
-    if df_projecao.empty:
-        st.info("Não há projeção mensal calculada.")
-    else:
+# --- Detalhe da projeção mês a mês (sem tabela vazia) ---
+if not str(data_final_vigencia).strip():
+    st.info("Informe a data final da vigência para calcular a projeção futura.")
+elif df_projecao.empty:
+    st.info("Não há competências futuras a projetar com os dados informados.")
+else:
+    with st.expander(f"Ver projeção mês a mês ({qtd_meses} meses · {periodo_projecao_txt})", expanded=False):
         df_proj_vis = df_projecao.copy()
         for col in ["Valor base considerado", "Valor reajustado estimado", "Diferença futura a adequar"]:
             if col in df_proj_vis.columns:
                 df_proj_vis[col] = df_proj_vis[col].apply(moeda)
         st.dataframe(df_proj_vis, use_container_width=True, hide_index=True)
 
-cronograma = cronograma_por_exercicio(df_projecao, retroativo)
+# --- Bloco 6: Resultado da adequação ---
+st.subheader("Resultado da adequação")
+col_a1, col_a2, col_a3, col_a4 = st.columns(4)
+with col_a1:
+    render_card_valor("Referência mensal reajustada", referencia_reajustada)
+with col_a2:
+    render_card_valor("Diferença futura projetada", diferenca_futura, nota=f"{qtd_meses} meses")
+with col_a3:
+    render_card_valor("Retroativo já apurado", retroativo)
+with col_a4:
+    render_card_valor("COMPLEMENTAÇÃO NECESSÁRIA", complementacao, destaque=True)
+st.caption("Complementação necessária = retroativo oficial + diferença futura projetada.")
+
+# --- Bloco 7: Programação por exercício ---
+st.subheader("Programação por exercício")
+if isinstance(cronograma, pd.DataFrame) and not cronograma.empty:
+    total_cron = float(pd.to_numeric(cronograma["Valor"], errors="coerce").sum())
+    df_cron = cronograma.copy()
+    df_cron["Valor"] = df_cron["Valor"].apply(moeda)
+    df_cron = pd.concat(
+        [df_cron, pd.DataFrame([{"Exercício": "TOTAL", "Valor": moeda(total_cron)}])],
+        ignore_index=True)
+    st.dataframe(df_cron, use_container_width=True, hide_index=True)
+    if abs(total_cron - complementacao) < 0.01:
+        st.caption("A soma dos exercícios confere com a complementação necessária.")
+    else:
+        st.warning("A soma dos exercícios não confere com a complementação — verificar.")
+else:
+    st.info("A programação por exercício depende de projeção futura calculada.")
+
+# --- Bloco 8: Arquivos da adequação (ação secundária) ---
 resumo_xlsx = [
     ("Origem histórica", origem_hist_rotulo),
     ("Retroativo apurado", retroativo),
     ("Média mensal histórica", media_ref),
     ("Percentual de reajuste", pct(percentual_reajuste)),
-    ("Média mensal reajustada", media_ref * fator_reajuste),
-    ("Delta mensal estimado", (media_ref * fator_reajuste) - media_ref),
+    ("Referência mensal reajustada", referencia_reajustada),
     ("Quantidade de meses projetados", str(qtd_meses)),
     ("Diferença futura projetada", diferenca_futura),
     ("Complementação necessária", complementacao),
@@ -789,38 +825,10 @@ if origem_hist == "Pedidos de compra" and janela_meses_pc is not None:
         ("Meses sem PCs", str(_base_pc_exp["meses_sem_pedido"])),
         ("Total histórico dos PCs", _base_pc_exp["total_historico"]),
     ]
-
-with st.expander("Baixar planilha de validação da projeção", expanded=False):
+st.subheader("Arquivos da adequação")
+with st.expander("Baixar planilha de validação da adequação (XLSX)", expanded=False):
     xlsx_bytes = gerar_xlsx_projecao(ultimos_6, df_projecao, resumo_xlsx)
-    st.download_button("Baixar XLSX da projeção", data=xlsx_bytes,
-        file_name="adequacao_orcamentaria_delta_reajuste.xlsx",
+    st.download_button("Baixar XLSX", data=xlsx_bytes,
+        file_name="adequacao_orcamentaria.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=False)
-
-st.subheader("Memorando")
-col_doc1, col_doc2 = st.columns(2)
-with col_doc1:
-    contrato = st.text_input("Contrato para o memorando", value="", placeholder="Ex.: TLB-CTR-2022/00067")
-with col_doc2:
-    ciclos_reajuste = st.text_input("Reajustes/ciclos para o memorando", value="", placeholder="Ex.: C1, C2 e C3")
-
-dados_doc = {
-    "contrato": contrato, "ciclos_reajuste": ciclos_reajuste,
-    "retroativo": retroativo, "diferenca_futura": diferenca_futura,
-    "complementacao": complementacao, "periodo_projecao": periodo_projecao_txt,
-    "cronograma": cronograma,
-}
-
-texto_memorando = montar_texto_memorando(dados_doc)
-with st.expander("Prévia do texto do memorando", expanded=False):
-    st.text_area("Texto gerado", value=texto_memorando, height=300)
-
-try:
-    docx_bytes = gerar_docx_memorando(dados_doc)
-    st.session_state["arquivo_previsao_orcamentaria_docx"] = docx_bytes
-    st.download_button("Baixar memorando em DOCX", data=docx_bytes,
-        file_name="memorando_adequacao_orcamentaria.docx",
-        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-        type="primary")
-except Exception as exc:
-    st.warning(f"Não foi possível gerar DOCX: {exc}")
