@@ -23,6 +23,16 @@ NIVEL_CRITICO = "critico"
 NIVEL_ATENCAO = "atencao"
 NIVEL_OK = "ok"
 
+# Apontamentos do calendário de ciclos (linha temporal) já são exibidos, uma
+# única vez, no Assistente operacional (topo da página). Para não repetir a
+# mesma mensagem no bloco "Pendências e alertas" do Painel detalhado, esses
+# códigos são omitidos APENAS na apresentação do Painel. A validação, o
+# semáforo e a "próxima ação" continuam intactos (view-model inalterado).
+CODIGOS_CALENDARIO_NO_ASSISTENTE = frozenset({
+    "LINHA_TEMPORAL_INVALIDA",
+    "LINHA_TEMPORAL_INCOMPLETA",
+})
+
 _TRADUCAO_ALERTAS_NEGOCIO = {
     "LINHA_TEMPORAL_INVALIDA": (
         "O calendario de ciclos da aba parametros esta incompleto ou com datas "
@@ -75,6 +85,20 @@ def _mensagem_alerta_negocio(alerta: dict[str, Any]) -> str:
                 "da aba parametros.")
         return mensagem
     return _TRADUCAO_ALERTAS_NEGOCIO.get(codigo, mensagem)
+
+
+def _alertas_visiveis_painel(alertas: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Alertas a exibir no bloco "Pendências e alertas" do Painel detalhado.
+
+    Presentation-only: remove os apontamentos de calendário de ciclos (linha
+    temporal) porque o Assistente operacional já os mostra no topo — evita a
+    mensagem repetida. Não altera a lista de alertas do view-model nem o
+    semáforo; a validação permanece integral.
+    """
+    return [
+        a for a in alertas
+        if str(a.get("codigo") or "") not in CODIGOS_CALENDARIO_NO_ASSISTENTE
+    ]
 
 
 # --------------------------------------------------------------------------- #
@@ -474,8 +498,10 @@ def render_painel_executivo(leitura: dict[str, Any]) -> None:
         # --- Alertas ---
         with st.container(border=True):
             st.markdown(f"**Pendências e alertas** — {resumo_niveis}")
-            if painel["alertas"]:
-                for a in painel["alertas"]:
+            alertas_visiveis = _alertas_visiveis_painel(painel["alertas"])
+            omitidos_calendario = len(painel["alertas"]) - len(alertas_visiveis)
+            if alertas_visiveis:
+                for a in alertas_visiveis:
                     nivel = str(a.get("nivel") or "INFO").upper()
                     texto = str(a.get("mensagem_negocio") or a.get("mensagem") or "")
                     if a.get("identificador"):
@@ -486,5 +512,9 @@ def render_painel_executivo(leitura: dict[str, Any]) -> None:
                         st.warning(texto)
                     else:
                         st.caption(texto)
+            elif omitidos_calendario:
+                st.caption(
+                    "Apontamento do calendário de ciclos exibido no Assistente "
+                    "operacional, no topo da página.")
             else:
                 st.caption("Nenhum alerta.")
