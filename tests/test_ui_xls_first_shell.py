@@ -178,7 +178,10 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn('CAPACIDADES.get("estruturalmente_valido", True)', CENTRAL)
         self.assertIn('"Corrigir XLS para continuar"', CENTRAL)
         self.assertIn('st.session_state["arquivo_garantia_pdf"] = pdf_bytes', GARANTIA)
-        self.assertIn('st.session_state["arquivo_previsao_orcamentaria_docx"] = docx_bytes', PREVISAO)
+        # Etapa 4 alinhou a Adequacao ao metodo normativo: a saida passou a ser
+        # somente a planilha de validacao (XLSX), sem o memorando DOCX antigo.
+        self.assertIn("gerar_xlsx_projecao(", PREVISAO)
+        self.assertIn('"Baixar XLSX"', PREVISAO)
         self.assertIn('st.session_state["arquivo_saneador_docx"] = docx_bytes', SANEADOR)
         self.assertIn("[campo a preencher]", SANEADOR)
 
