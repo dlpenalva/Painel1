@@ -75,28 +75,32 @@ def render_marca_topo():
 
 
 def render_cabecalho_pagina(titulo, descricao=""):
-    """Cabeçalho operacional em box, alinhado à casca enxuta do Cl8us 3.0.
+    """Cabeçalho global do Cl8us: marca + título funcional + aviso de privacidade.
 
-    O parágrafo de descrição só é renderizado quando `descricao` tem conteúdo.
-    Passar "" (ou apenas espaços) mantém o cabeçalho compacto — sem `<p>` vazio
-    e sem espaço vertical residual —, preservando marca, título e aviso.
+    Contrato global (hotfix): a descrição NUNCA é renderizada. O parâmetro
+    `descricao` é mantido apenas por compatibilidade temporária com call-sites
+    legados e é intencionalmente ignorado — por isso todo cabeçalho passa a
+    exibir exclusivamente a marca Cl8us, o título e o aviso de privacidade, sem
+    qualquer frase descritiva intermediária.
+
+    O HTML é montado como um bloco íntegro, em uma única string sem indentação
+    nem linha em branco dinâmica. Isso evita o bug pós-reboot em que a linha
+    vazia (descrição ausente) fechava o bloco HTML no CommonMark do Streamlit e
+    fazia o `<div class="cl8us-page-privacy">` ser renderizado literalmente como
+    bloco de código.
     """
+    # `descricao` recebido apenas por compatibilidade; nunca é renderizado.
     titulo_seguro = html_lib.escape(str(titulo))
-    descricao_txt = str(descricao).strip()
-    descricao_html = f"<p>{html_lib.escape(descricao_txt)}</p>" if descricao_txt else ""
-    st.markdown(
-        f"""
-        <section class="cl8us-page-header" aria-label="{titulo_seguro}">
-            <img class="cl8us-brand-img" src="{_header_data_uri()}"
-                 alt="TLB cl8us - apoio à gestão de contratos"
-                 style="width:min(420px,100%);height:auto;object-fit:contain;display:block;margin:0 0 0.55rem 0;" />
-            <h1>{titulo_seguro}</h1>
-            {descricao_html}
-            <div class="cl8us-page-privacy">Use apenas para documentos não sigilosos e de livre acesso.</div>
-        </section>
-        """,
-        unsafe_allow_html=True,
+    html = (
+        f'<section class="cl8us-page-header" aria-label="{titulo_seguro}">'
+        f'<img class="cl8us-brand-img" src="{_header_data_uri()}" '
+        f'alt="TLB cl8us - apoio à gestão de contratos" '
+        f'style="width:min(420px,100%);height:auto;object-fit:contain;display:block;margin:0 0 0.55rem 0;" />'
+        f'<h1>{titulo_seguro}</h1>'
+        f'<div class="cl8us-page-privacy">Use apenas para documentos não sigilosos e de livre acesso.</div>'
+        f'</section>'
     )
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def render_versao_sidebar():

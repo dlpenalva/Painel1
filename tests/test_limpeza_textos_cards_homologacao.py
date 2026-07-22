@@ -47,10 +47,14 @@ def test_helper_omite_paragrafo_quando_descricao_vazia():
     assert "documentos" in html and "acesso" in html      # aviso de privacidade
 
 
-def test_helper_ainda_renderiza_paragrafo_quando_ha_descricao():
+def test_helper_nunca_renderiza_descricao():
+    # Contrato global (hotfix): mesmo recebendo descricao nao-vazia (call-site
+    # legado), o helper jamais a renderiza — nem como <p>, nem como texto cru.
     import _ui_utils
     html = _captura_markdown(_ui_utils.render_cabecalho_pagina, "T", "Descricao real")
-    assert "<p>Descricao real</p>" in html                # retrocompativel
+    assert "Descricao real" not in html                  # descricao suprimida
+    assert "<p>" not in html                              # sem paragrafo
+    assert "cl8us-page-privacy" in html                  # aviso preservado
 
 
 def test_helper_trata_espacos_como_vazio():

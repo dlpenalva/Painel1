@@ -33,7 +33,8 @@ def test_render_cabecalho_pagina_usa_imagem_sem_marca_textual():
     assert "cl8us-brand-img" in html
     assert "min(420px" in html and "100%)" in html   # dimensionamento responsivo
     assert "<strong>TLB</strong>" not in html    # marca textual antiga removida
-    assert "Titulo Funcional" in html and "Descricao Funcional" in html  # funcional preservado
+    assert "Titulo Funcional" in html            # titulo funcional preservado
+    assert "Descricao Funcional" not in html     # contrato global: descricao nunca renderiza
 
 
 def test_render_marca_topo_usa_imagem():
