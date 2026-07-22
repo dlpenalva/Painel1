@@ -81,10 +81,9 @@ def render_cabecalho_pagina(titulo, descricao):
     st.markdown(
         f"""
         <section class="cl8us-page-header" aria-label="{titulo_seguro}">
-            <div class="cl8us-page-brand">
-                <strong>TLB</strong><span>· cl8us</span>
-                <small>apoio à gestão de contratos</small>
-            </div>
+            <img class="cl8us-brand-img" src="{_header_data_uri()}"
+                 alt="TLB cl8us - apoio à gestão de contratos"
+                 style="width:min(420px,100%);height:auto;object-fit:contain;display:block;margin:0 0 0.55rem 0;" />
             <h1>{titulo_seguro}</h1>
             <p>{descricao_segura}</p>
             <div class="cl8us-page-privacy">Use apenas para documentos não sigilosos e de livre acesso.</div>
