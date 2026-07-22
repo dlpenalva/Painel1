@@ -4,7 +4,7 @@ from io import BytesIO
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-st.set_page_config(page_title="TLB · cl8us - Aditivos: 25%", layout="wide")
+st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="TLB · cl8us - Aditivos: 25%", layout="wide")
 
 
 

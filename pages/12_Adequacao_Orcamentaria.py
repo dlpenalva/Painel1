@@ -17,7 +17,7 @@ from _adequacao_orcamentaria import (
     OverrideMes,
 )
 
-st.set_page_config(page_title="TLB · cl8us - Adequação Orçamentária", layout="wide")
+st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="TLB · cl8us - Adequação Orçamentária", layout="wide")
 
 
 def moeda(valor, com_prefixo=True):

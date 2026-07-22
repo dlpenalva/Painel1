@@ -24,7 +24,7 @@ except Exception:
     def render_aviso_privacidade(tem_upload=False, tem_download=False):
         return
 
-st.set_page_config(page_title="TLB · cl8us - DOU", layout="wide")
+st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="TLB · cl8us - DOU", layout="wide")
 
 DOU_VERSAO = "20260516_botao_laranja_dados_auto"
 

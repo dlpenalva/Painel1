@@ -3,7 +3,7 @@ import streamlit as st
 
 from _ui_utils import render_marca_topo
 
-st.set_page_config(page_title="TLB · cl8us - Cl8us Orienta", layout="wide")
+st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="TLB · cl8us - Cl8us Orienta", layout="wide")
 
 render_marca_topo()
 

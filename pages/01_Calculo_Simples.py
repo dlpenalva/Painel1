@@ -10,7 +10,7 @@ from dateutil.relativedelta import relativedelta
 from io import BytesIO
 
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
-    st.set_page_config(page_title="Análises de Reajustes - Reajuste Simples", layout="wide")
+    st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="Análises de Reajustes - Reajuste Simples", layout="wide")
 
 
 # >>> UX_ADITIVOS_25_COMPACTO

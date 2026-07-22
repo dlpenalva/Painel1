@@ -13,7 +13,7 @@ from _ui_utils import render_cabecalho_pagina
 
 st.set_page_config(
     page_title="TLB · cl8us — Início",
-    page_icon="CL",
+    page_icon="assets/cl8us_favicon_512.png",
     layout="wide",
 )
 
