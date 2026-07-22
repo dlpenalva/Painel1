@@ -562,7 +562,7 @@ def _metodologia_valor_importado_html(resultado_valor_global):
 
 render_cabecalho_pagina(
     "Adequação Orçamentária",
-    "Estimativa simplificada do delta orçamentário do reajuste: retroativo apurado + diferença futura projetada.",
+    "",
 )
 if st.button("← Voltar para Central", key="voltar_central_adequacao"):
     st.switch_page("pages/03_Valor_Global.py")

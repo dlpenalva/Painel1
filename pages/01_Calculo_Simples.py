@@ -1992,7 +1992,7 @@ def _gerar_email_fornecedor(historico_coleta, adm=None):
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
     render_cabecalho_pagina(
         "Calculadora 1 ciclo",
-        "Ferramenta para análise contratual de um único ciclo de reajuste.",
+        "",
     )
 
 # A web não coleta histórico contratual. Essa memória pertence exclusivamente

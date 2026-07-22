@@ -74,10 +74,16 @@ def render_marca_topo():
     )
 
 
-def render_cabecalho_pagina(titulo, descricao):
-    """Cabeçalho operacional em box, alinhado à casca enxuta do Cl8us 3.0."""
+def render_cabecalho_pagina(titulo, descricao=""):
+    """Cabeçalho operacional em box, alinhado à casca enxuta do Cl8us 3.0.
+
+    O parágrafo de descrição só é renderizado quando `descricao` tem conteúdo.
+    Passar "" (ou apenas espaços) mantém o cabeçalho compacto — sem `<p>` vazio
+    e sem espaço vertical residual —, preservando marca, título e aviso.
+    """
     titulo_seguro = html_lib.escape(str(titulo))
-    descricao_segura = html_lib.escape(str(descricao))
+    descricao_txt = str(descricao).strip()
+    descricao_html = f"<p>{html_lib.escape(descricao_txt)}</p>" if descricao_txt else ""
     st.markdown(
         f"""
         <section class="cl8us-page-header" aria-label="{titulo_seguro}">
@@ -85,7 +91,7 @@ def render_cabecalho_pagina(titulo, descricao):
                  alt="TLB cl8us - apoio à gestão de contratos"
                  style="width:min(420px,100%);height:auto;object-fit:contain;display:block;margin:0 0 0.55rem 0;" />
             <h1>{titulo_seguro}</h1>
-            <p>{descricao_segura}</p>
+            {descricao_html}
             <div class="cl8us-page-privacy">Use apenas para documentos não sigilosos e de livre acesso.</div>
         </section>
         """,

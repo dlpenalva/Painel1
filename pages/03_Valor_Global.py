@@ -4722,22 +4722,22 @@ DOCUMENTOS_FUNCIONAIS_UPLOAD = SEIS_DOCUMENTOS_CANONICOS
 
 _CSS_DOCS_GRID = """
 <style>
+/* Marcador invisivel: apenas ancora o :has() para uniformizar os 6 cards. */
+.upload-doc-card { display:none; }
+/* Altura minima uniforme + coluna flex em cada card documental. */
 div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]:has(.upload-doc-card) {
     display:flex;
     flex-direction:column;
-    min-height:10rem;
+    min-height:7rem;
 }
 div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-card) {
     display:flex;
     flex-direction:column;
     height:100%;
 }
-.upload-doc-card {
-    font-size:.85rem;
-    color:#52667A;
-    line-height:1.35;
-    margin-bottom:.5rem;
-    flex:1;
+/* Acao (ultimo elemento) alinhada a base — mesma posicao vertical nos 6 cards. */
+div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-card) > div:last-child {
+    margin-top:auto;
 }
 </style>
 """
@@ -4745,13 +4745,14 @@ div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-c
 
 def _render_pendencia_documento(chave, documento):
     rotulo = documento.get("rotulo") or "Aguardando dados"
+    # Card enxuto: mantém o botão desabilitado como bloqueio funcional visível,
+    # sem a legenda descritiva de motivo (removida na limpeza da homologação).
     st.button(
         rotulo,
         disabled=True,
         use_container_width=True,
         key=f"upload_docs_{chave}_pendencia",
     )
-    st.caption(documento.get("motivo") or "Complete os dados necessários para liberar este documento.")
 
 
 def _render_acao_documento_upload(chave, documento, resultado):
@@ -4847,6 +4848,7 @@ def render_documentos_funcionais_upload(resultado):
         documento = documentos.get(chave) or {}
         with colunas[indice]:
             with st.container(border=True):
+                st.markdown('<span class="upload-doc-card"></span>', unsafe_allow_html=True)
                 st.markdown(f"#### {titulo}")
                 try:
                     _render_acao_documento_upload(chave, documento, resultado)
@@ -4861,13 +4863,7 @@ def render_documentos_funcionais_upload(resultado):
 aplicar_css_responsivo_telebras()
 render_cabecalho_pagina(
     "Painel da Apuração Contratual",
-    "Envie o Arquivo Coleta Oficial preenchido para validar cada bloco, acompanhar os resultados disponíveis e gerar documentos.",
-)
-
-st.markdown(
-    '<div class="cl8us-docs-note">O Arquivo Coleta Oficial reúne os dados da apuração. '
-    'A web lê o novo modelo, calcula em Python e reconcilia os resultados com a aba RESULTADOS.</div>',
-    unsafe_allow_html=True,
+    "",
 )
 
 
