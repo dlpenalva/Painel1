@@ -8,6 +8,14 @@ import pandas as pd
 import streamlit as st
 
 from _ui_utils import render_marca_topo, render_aviso_privacidade, render_cabecalho_pagina
+# Etapa 4: toda a matematica da Adequacao Orcamentaria vive no motor de dominio
+# (_adequacao_orcamentaria), reproduzindo o golden normativo com paridade Excel.
+from _adequacao_orcamentaria import (
+    _round2,
+    calcular_adequacao_orcamentaria,
+    Pedido,
+    OverrideMes,
+)
 
 st.set_page_config(page_title="TLB · cl8us - Adequação Orçamentária", layout="wide")
 
@@ -256,6 +264,25 @@ def gerar_periodos_projecao(ultima_competencia, data_final_vigencia):
     return list(pd.period_range(inicio, fim, freq="M"))
 
 
+def carregar_itens_pc_da_sessao(resultado):
+    """Reutiliza os Pedidos de Compra ja estruturados (itens_PC) lidos da Coleta,
+    sem redigitacao de NUMERO_PC/DATA_PC/VALOR_PC. Procura os registros no
+    resultado e no diagnostico da Coleta ja disponivel em sessao."""
+    fontes = []
+    if isinstance(resultado, dict):
+        fontes.append(resultado)
+    diag = st.session_state.get("diagnostico_coleta_v2")
+    if isinstance(diag, dict):
+        fontes.append(diag)
+    for fonte in fontes:
+        ipc = fonte.get("itens_pc_v10")
+        if isinstance(ipc, dict) and isinstance(ipc.get("itens"), list) and ipc["itens"]:
+            return ipc["itens"]
+        if isinstance(fonte.get("itens_pc"), list) and fonte["itens_pc"]:
+            return fonte["itens_pc"]
+    return []
+
+
 def montar_base_editor(periodos, media_mensal):
     return pd.DataFrame([{
         "Competência": periodo_para_label(p),
@@ -276,47 +303,50 @@ def calcular_projecao(df_editor, media_mensal, fator_reajuste):
         informado = parse_moeda_br(informado_raw)
         premissa = texto_seguro(row.get("Premissa do valor informado"), "Valor sem reajuste")
         observacao = texto_seguro(row.get("Observação"), "")
+        # Base G, valor reajustado H = ROUND(G*fator,2) e diferenca I = ROUND(H-G,2)
+        # seguem o golden; o arredondamento e o do motor (_round2, paridade Excel).
         if abs(informado) > 0.004:
             origem = "Valor informado pelo fiscal"
             if premissa == "Valor já reajustado":
-                valor_reajustado = informado
                 base_considerada = informado / fator_reajuste if fator_reajuste else informado
-                diferenca = valor_reajustado - base_considerada
                 premissa_usada = "Valor já reajustado"
             else:
                 base_considerada = informado
-                valor_reajustado = informado * fator_reajuste
-                diferenca = valor_reajustado - informado
                 premissa_usada = "Valor sem reajuste"
         else:
             origem = "Média dos últimos 6 meses"
             base_considerada = media_mensal
-            valor_reajustado = media_mensal * fator_reajuste
-            diferenca = valor_reajustado - media_mensal
             premissa_usada = "Média sem reajuste"
+        valor_reajustado = _round2(base_considerada * fator_reajuste)
+        diferenca = _round2(valor_reajustado - base_considerada)
         linhas.append({
             "Competência": competencia, "Origem": origem, "Premissa usada": premissa_usada,
-            "Valor base considerado": round(base_considerada, 2),
-            "Valor reajustado estimado": round(valor_reajustado, 2),
-            "Diferença futura a adequar": round(diferenca, 2),
+            "Valor base considerado": _round2(base_considerada),
+            "Valor reajustado estimado": valor_reajustado,
+            "Diferença futura a adequar": diferenca,
             "Observação": observacao,
         })
     return pd.DataFrame(linhas)
 
 
 def cronograma_por_exercicio(df_projecao, retroativo):
+    # Programacao por exercicio (golden): diferencas futuras de cada ano + o
+    # retroativo somente no PRIMEIRO exercicio da projecao (nao no ano corrente).
     linhas = {}
-    ano_atual = date.today().year
-    linhas[ano_atual] = linhas.get(ano_atual, 0.0) + float(retroativo or 0)
+    anos = []
     if isinstance(df_projecao, pd.DataFrame) and not df_projecao.empty:
         for _, row in df_projecao.iterrows():
             periodo = normalizar_competencia(row.get("Competência"))
             if periodo is None:
                 continue
             ano = int(periodo.year)
+            anos.append(ano)
             linhas[ano] = linhas.get(ano, 0.0) + parse_moeda_br(row.get("Diferença futura a adequar", 0))
+    if anos:
+        primeiro_exercicio = min(anos)
+        linhas[primeiro_exercicio] = linhas.get(primeiro_exercicio, 0.0) + float(retroativo or 0)
     return pd.DataFrame([
-        {"Exercício": str(ano), "Valor": round(valor, 2)}
+        {"Exercício": str(ano), "Valor": _round2(valor)}
         for ano, valor in sorted(linhas.items()) if abs(valor) > 0.004
     ])
 
@@ -583,25 +613,95 @@ with col3:
     data_final_vigencia = st.text_input("Data final da vigência contratual", value=st.session_state.get("adequacao_v2_data_final_vigencia", ""),
         placeholder="Ex.: 30/11/2026", key="adequacao_v2_data_final_vigencia")
 
-st.subheader("Base automática pela média financeira")
-col_m1, col_m2, col_m3, col_m4 = st.columns(4)
-with col_m1:
-    render_card_valor("Média dos últimos 6 meses", media_6)
-with col_m2:
-    render_card_valor("Última competência financeira", ultima_comp_txt, formato="texto", destaque=True)
-with col_m3:
-    render_card_valor("Média mensal reajustada", media_6 * fator_reajuste)
-with col_m4:
-    render_card_valor("Delta mensal estimado", (media_6 * fator_reajuste) - media_6)
+st.subheader("Origem histórica")
+origem_hist = st.radio(
+    "Base histórica para a projeção da adequação",
+    ["Financeiro", "Pedidos de compra"], horizontal=True, key="adequacao_v2_origem")
 
-with st.expander("Ver competências usadas no cálculo da média", expanded=False):
-    st.caption(f"Base de execução mensal detectada: {origem_financeira}")
-    if ultimos_6.empty:
-        st.warning("Não foram localizadas competências financeiras válidas para cálculo da média.")
+# A matematica vive no motor (_adequacao_orcamentaria); aqui apenas escolhemos a
+# referencia mensal (media_ref) conforme a origem. O restante do fluxo (projecao,
+# programacao, exports) e comum as duas origens.
+media_ref = media_6
+origem_hist_rotulo = "Financeiro mensal"
+janela_meses_pc = None
+
+if origem_hist == "Pedidos de compra":
+    origem_hist_rotulo = "Pedidos de compra"
+    registros_pc = carregar_itens_pc_da_sessao(resultado)
+    ultima_comp_data = ultima_comp.to_timestamp().date() if ultima_comp is not None else None
+    if not registros_pc:
+        st.warning("NÃO HÁ PEDIDOS DE COMPRA DISPONÍVEIS PARA ESTA ADEQUAÇÃO. "
+                   "Utilize a origem Financeiro ou carregue uma Coleta com itens_PC.")
+        media_ref = 0.0
+    elif ultima_comp_data is None:
+        st.warning("Base financeira ausente: informe/di sponibilize a última competência "
+                   "para delimitar a janela histórica dos Pedidos de Compra.")
+        media_ref = 0.0
     else:
-        df_ultimos_vis = ultimos_6[["Competência", "Valor pago/medido"]].copy()
-        df_ultimos_vis["Valor pago/medido"] = df_ultimos_vis["Valor pago/medido"].apply(moeda)
-        st.dataframe(df_ultimos_vis, use_container_width=True, hide_index=True)
+        janela_meses_pc = st.slider("Janela histórica dos pedidos (meses)", 1, 60,
+            value=int(st.session_state.get("adequacao_v2_janela", 39)), key="adequacao_v2_janela")
+        ids_disponiveis = [
+            str(r.get("numero_pc") or r.get("NUMERO_PC") or r.get("id") or "")
+            for r in registros_pc]
+        exclusoes = st.multiselect(
+            "Excluir Pedidos de Compra desta adequação (opcional)",
+            options=[i for i in ids_disponiveis if i], key="adequacao_v2_exclusoes_pc")
+        peds_pc = pedidos_de_itens_pc(registros_pc, exclusoes=exclusoes)
+        base_pc = media_pedidos_compra(peds_pc, ultima_comp_data, janela_meses_pc)
+        media_ref = base_pc["media_mensal"]
+        st.subheader("Resumo histórico dos Pedidos de Compra")
+        cA, cB, cC, cD = st.columns(4)
+        with cA:
+            render_card_valor(
+                "Período histórico",
+                f"{base_pc['inicio_janela'].strftime('%d/%m/%Y')} a "
+                f"{base_pc['fim_janela'].strftime('%d/%m/%Y')}", formato="texto")
+        with cB:
+            render_card_valor("Meses da janela", janela_meses_pc, formato="inteiro")
+        with cC:
+            render_card_valor("PCs considerados", base_pc["pedidos_considerados"], formato="inteiro")
+        with cD:
+            render_card_valor("Média mensal (PCs)", media_ref, destaque=True)
+        cE, cF, cG = st.columns(3)
+        with cE:
+            render_card_valor("Meses com PCs", base_pc["meses_com_pedido"], formato="inteiro")
+        with cF:
+            render_card_valor("Meses sem PCs", base_pc["meses_sem_pedido"], formato="inteiro")
+        with cG:
+            render_card_valor("Total histórico", base_pc["total_historico"])
+        if base_pc["pedidos_considerados"] == 0:
+            st.info("0 PCs considerados na janela escolhida. A janela permanece soberana "
+                    "(não é movida para encaixar pedidos).")
+        with st.expander("Ver Pedidos de Compra e situação na janela", expanded=False):
+            cl = classificar_pedidos(peds_pc, ultima_comp_data, janela_meses_pc)
+            df_pc = pd.DataFrame([{
+                "PC": x["identificacao"],
+                "Data": x["data"].strftime("%d/%m/%Y") if x["data"] else "",
+                "Valor": moeda(x["valor"]), "Situação": x["situacao"]} for x in cl["pedidos"]])
+            st.dataframe(df_pc, use_container_width=True, hide_index=True)
+            st.caption("Apenas PCs 'Considerado' entram na média; 'Fora da janela' e "
+                       "'Excluído' não participam do cálculo.")
+
+if origem_hist == "Financeiro":
+    st.subheader("Base automática pela média financeira")
+    col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+    with col_m1:
+        render_card_valor("Média dos últimos 6 meses", media_ref)
+    with col_m2:
+        render_card_valor("Última competência financeira", ultima_comp_txt, formato="texto", destaque=True)
+    with col_m3:
+        render_card_valor("Média mensal reajustada", media_ref * fator_reajuste)
+    with col_m4:
+        render_card_valor("Delta mensal estimado", (media_ref * fator_reajuste) - media_ref)
+
+    with st.expander("Ver competências usadas no cálculo da média", expanded=False):
+        st.caption(f"Base de execução mensal detectada: {origem_financeira}")
+        if ultimos_6.empty:
+            st.warning("Não foram localizadas competências financeiras válidas para cálculo da média.")
+        else:
+            df_ultimos_vis = ultimos_6[["Competência", "Valor pago/medido"]].copy()
+            df_ultimos_vis["Valor pago/medido"] = df_ultimos_vis["Valor pago/medido"].apply(moeda)
+            st.dataframe(df_ultimos_vis, use_container_width=True, hide_index=True)
 
 periodos = gerar_periodos_projecao(ultima_comp, data_final_vigencia)
 periodo_inicio_txt = periodo_para_label(periodos[0]) if periodos else "[campo a preencher]"
@@ -614,8 +714,8 @@ if not data_final_vigencia.strip():
 elif not periodos:
     st.info("Não há competências futuras a projetar com os dados informados.")
 
-base_editor = montar_base_editor(periodos, media_6)
-editor_key = f"adequacao_v2_editor_{ultima_comp_txt}_{data_final_vigencia}_{round(media_6, 2)}_{round(fator_reajuste, 6)}"
+base_editor = montar_base_editor(periodos, media_ref)
+editor_key = f"adequacao_v2_editor_{origem_hist}_{ultima_comp_txt}_{data_final_vigencia}_{round(media_ref, 2)}_{round(fator_reajuste, 6)}"
 
 with st.expander("Ajustar projeção por competência, se necessário", expanded=False):
     df_editor = st.data_editor(
@@ -630,7 +730,7 @@ with st.expander("Ajustar projeção por competência, se necessário", expanded
         },
     )
 
-df_projecao = calcular_projecao(df_editor, media_6, fator_reajuste)
+df_projecao = calcular_projecao(df_editor, media_ref, fator_reajuste)
 if modo_reduzido_estoque and ultimos_6.empty:
     rem_original = parse_moeda_br(resultado.get("remanescente_original", 0)) if isinstance(resultado, dict) else 0.0
     rem_atualizado = parse_moeda_br(resultado.get("remanescente_reajustado", 0)) if isinstance(resultado, dict) else 0.0
@@ -667,15 +767,28 @@ with st.expander("Ver resultado mensal da projeção", expanded=False):
 
 cronograma = cronograma_por_exercicio(df_projecao, retroativo)
 resumo_xlsx = [
+    ("Origem histórica", origem_hist_rotulo),
     ("Retroativo apurado", retroativo),
-    ("Média dos últimos 6 meses", media_6),
+    ("Média mensal histórica", media_ref),
     ("Percentual de reajuste", pct(percentual_reajuste)),
-    ("Média mensal reajustada", media_6 * fator_reajuste),
-    ("Delta mensal estimado", (media_6 * fator_reajuste) - media_6),
+    ("Média mensal reajustada", media_ref * fator_reajuste),
+    ("Delta mensal estimado", (media_ref * fator_reajuste) - media_ref),
     ("Quantidade de meses projetados", str(qtd_meses)),
     ("Diferença futura projetada", diferenca_futura),
     ("Complementação necessária", complementacao),
 ]
+if origem_hist == "Pedidos de compra" and janela_meses_pc is not None:
+    _base_pc_exp = media_pedidos_compra(
+        pedidos_de_itens_pc(carregar_itens_pc_da_sessao(resultado),
+                            exclusoes=st.session_state.get("adequacao_v2_exclusoes_pc", [])),
+        ultima_comp.to_timestamp().date(), janela_meses_pc)
+    resumo_xlsx[3:3] = [
+        ("Janela histórica (meses)", str(janela_meses_pc)),
+        ("PCs considerados", str(_base_pc_exp["pedidos_considerados"])),
+        ("Meses com PCs", str(_base_pc_exp["meses_com_pedido"])),
+        ("Meses sem PCs", str(_base_pc_exp["meses_sem_pedido"])),
+        ("Total histórico dos PCs", _base_pc_exp["total_historico"]),
+    ]
 
 with st.expander("Baixar planilha de validação da projeção", expanded=False):
     xlsx_bytes = gerar_xlsx_projecao(ultimos_6, df_projecao, resumo_xlsx)
