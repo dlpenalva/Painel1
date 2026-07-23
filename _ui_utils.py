@@ -277,7 +277,6 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
             index=index,
             key=key,
             label_visibility="collapsed",
-            help="Confirme o índice contratual antes de gerar cálculos, arquivo de coleta ou relatórios.",
         )
 
         if selecionado == options[index]:

@@ -1918,7 +1918,6 @@ with st.sidebar:
         "Data-base/âncora inicial da análise atual: 🔹",
         value=default_dt_base_original,
         format="DD/MM/YYYY",
-        help="Informe a data-base original do contrato ou a âncora a partir da qual os ciclos devem ser contados.",
     )
 
     st.markdown(

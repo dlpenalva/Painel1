@@ -63,3 +63,36 @@ def test_controles_nativos_nao_alterados():
     assert '[data-testid="stSidebar"] [data-testid="stRadio"] label:has(input:checked)' in APP
     assert '[role="radio"]' not in APP           # nao mexemos no marcador nativo do radio
     assert "stRadio\"] [role=\"radio\"]" not in APP
+
+
+def _bloco_date_input_data_base():
+    # Extrai o corpo da chamada st.date_input do campo Data-base, do rotulo ate
+    # o primeiro parentese de fechamento.
+    rotulo = f"Data-base/âncora inicial da análise atual: {MARCADOR}"
+    ini = MULTI.index(rotulo)
+    fim = MULTI.index(")", ini)
+    return MULTI[ini:fim]
+
+
+def test_date_input_data_base_sem_help():
+    # O icone de ajuda nativo (parametro help=) foi removido do date_input da
+    # Data-base; a causa raiz era esse help=, nao CSS/pseudo-elemento.
+    bloco = _bloco_date_input_data_base()
+    assert "help=" not in bloco
+    assert "Informe a data-base original do contrato" not in MULTI
+
+
+def test_selectbox_indice_sem_help():
+    # O selectbox do Indice do contrato nao possui mais o parametro help=.
+    assert "help=" not in UI
+    assert "Confirme o índice contratual" not in UI
+
+
+def test_nenhuma_regra_css_para_ocultar_icones():
+    # A correcao foi pela causa (remocao do help=), nao por CSS escondendo o
+    # icone nativo de ajuda/tooltip do Streamlit.
+    for fonte in (APP, UI, MULTI):
+        assert "stTooltip" not in fonte
+        assert "TooltipIcon" not in fonte
+        assert "TooltipHoverTarget" not in fonte
+        assert "data-baseweb=\"tooltip\"" not in fonte
