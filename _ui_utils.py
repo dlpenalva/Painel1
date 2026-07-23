@@ -149,15 +149,50 @@ def obter_ultima_competencia_ist(caminho="ist.csv"):
     return melhor
 
 
+def _status_ist_atual():
+    """(fonte, descricao, indice_str) da ultima competencia da serie IST vigente.
+
+    Usa a MESMA serie que alimenta o calculo (carregar_ist_atual): Anatel oficial
+    quando disponivel, senao a base local. Nao inventa competencia.
+    """
+    import pandas as pd
+    from _indice_utils import carregar_ist_atual, MESES_PT_EXTENSO
+    df, fonte = carregar_ist_atual()
+    ult = df.iloc[-1]
+    data = pd.to_datetime(ult["data"])
+    descricao = f"{MESES_PT_EXTENSO[data.month]}/{data.year}"
+    indice = f"{float(ult['indice']):.3f}".replace(".", ",")
+    return fonte, descricao, indice
+
+
 def render_alerta_ist_local():
-    ultima = obter_ultima_competencia_ist()
-    if ultima:
-        texto = f"IST local: última competência constante no sistema: <strong>{ultima['descricao']}</strong>"
-        if ultima.get("indice"):
-            texto += f" — índice em nível: <strong>{ultima['indice']}</strong>"
-        texto += ". Confira se a data-base necessária já está coberta."
+    try:
+        fonte, descricao, indice = _status_ist_atual()
+    except Exception:
+        fonte = descricao = indice = None
+
+    if fonte == "anatel":
+        texto = (
+            f"IST/Anatel: última competência disponível: <strong>{descricao}</strong>"
+            f" — índice em nível: <strong>{indice}</strong>."
+            " Confira se a data-base necessária já está coberta."
+        )
+    elif fonte == "local" and descricao:
+        texto = (
+            f"IST/base local: última competência disponível: <strong>{descricao}</strong>"
+            f" — índice em nível: <strong>{indice}</strong>."
+            " Fonte oficial da Anatel indisponível neste momento."
+        )
     else:
-        texto = "IST local: não foi possível identificar a última competência no arquivo <code>ist.csv</code>. Confira a base antes de prosseguir."
+        # Fallback total: comportamento anterior baseado no ist.csv.
+        ultima = obter_ultima_competencia_ist()
+        if ultima:
+            texto = f"IST/base local: última competência disponível: <strong>{ultima['descricao']}</strong>"
+            if ultima.get("indice"):
+                texto += f" — índice em nível: <strong>{ultima['indice']}</strong>"
+            texto += ". Fonte oficial da Anatel indisponível neste momento."
+        else:
+            texto = "IST: não foi possível identificar a última competência. Confira a base antes de prosseguir."
 
     st.markdown(
         f"""

@@ -1,3 +1,5 @@
+import time
+
 from dateutil.relativedelta import relativedelta
 
 import pandas as pd
@@ -64,9 +66,76 @@ def carregar_ist_local(caminho="ist.csv"):
     return df[["data", "indice"]]
 
 
+FONTE_IST_ANATEL = (
+    "https://www.gov.br/anatel/pt-br/regulado/competicao/"
+    "tarifas-e-precos/valores-do-ist"
+)
+
+# Cache compartilhado da serie IST vigente (coerente com o TTL de 1h dos demais
+# indices). Serve tanto ao calculo quanto ao aviso da UI, evitando consultar a
+# Anatel a cada rerun.
+_IST_TTL_SEGUNDOS = 60 * 60
+_ist_cache: dict = {"expira_em": 0.0, "df": None, "fonte": None}
+
+
+def _resetar_cache_ist() -> None:
+    """Zera o cache do IST (uso em testes)."""
+    _ist_cache.update(expira_em=0.0, df=None, fonte=None)
+
+
+def carregar_ist_anatel(timeout=15):
+    """Baixa a serie oficial do IST na Anatel e devolve DataFrame [data, indice].
+
+    Reutiliza o parser homologado de tools/atualizar_ist_anatel.py (identificacao
+    semantica das tabelas: coluna Referencia e coluna IST; a Variacao serve apenas
+    de conferencia). Datas no primeiro dia da competencia, numero-indice em float,
+    ordenado e sem duplicidades. Lanca excecao em falha de rede/estrutura.
+    """
+    from tools.atualizar_ist_anatel import baixar_registros_ist
+
+    registros = baixar_registros_ist(timeout=timeout)
+    df = pd.DataFrame(
+        [{"data": pd.Timestamp(r.competencia), "indice": float(r.indice)} for r in registros]
+    )
+    df = (
+        df.dropna(subset=["data", "indice"])
+        .drop_duplicates(subset=["data"], keep="last")
+        .sort_values("data")
+        .reset_index(drop=True)
+    )
+    if df.empty:
+        raise ValueError("A serie IST/Anatel retornou vazia.")
+    return df[["data", "indice"]]
+
+
+def carregar_ist_atual(caminho="ist.csv", *, ttl=_IST_TTL_SEGUNDOS, timeout=15, _agora=None):
+    """Serie IST vigente com fonte: Anatel (primaria, cache TTL) -> ist.csv (fallback).
+
+    Retorna (df, fonte) com fonte em {'anatel', 'local'}. Nunca quebra por rede:
+    qualquer falha ao consultar a Anatel (timeout, HTTP, HTML inesperado) cai para
+    a base local. Nao inventa nem extrapola competencias.
+    """
+    agora = time.monotonic() if _agora is None else _agora
+    if _ist_cache["df"] is not None and agora < _ist_cache["expira_em"]:
+        return _ist_cache["df"], _ist_cache["fonte"]
+    try:
+        df = carregar_ist_anatel(timeout=timeout)
+        fonte = "anatel"
+    except Exception:
+        df = carregar_ist_local(caminho)
+        fonte = "local"
+    _ist_cache.update(df=df, fonte=fonte, expira_em=agora + ttl)
+    return df, fonte
+
+
 def calcular_ist_numero_indice(data_inicio, caminho="ist.csv"):
-    """Calcula IST por divisão de número-índice entre o mês-base e o mesmo mês 12 meses depois."""
-    df = carregar_ist_local(caminho)
+    """Calcula IST por divisão de número-índice entre o mês-base e o mesmo mês 12 meses depois.
+
+    Fonte da série: Anatel (oficial, quando disponível) com fallback para ist.csv.
+    A metodologia matemática (v_fim / v_ini) e a memória mensal REAL permanecem
+    inalteradas — muda apenas a origem/atualização da série.
+    """
+    df, fonte = carregar_ist_atual(caminho)
 
     r_ini = pd.Timestamp(data_inicio.year, data_inicio.month, 1).normalize()
     marco_final = data_inicio + relativedelta(years=1)
@@ -91,13 +160,18 @@ def calcular_ist_numero_indice(data_inicio, caminho="ist.csv"):
         .reset_index(drop=True)
     )
 
+    metodo = (
+        "Divisão de Número-Índice (IST/Anatel)" if fonte == "anatel"
+        else "Divisão de Número-Índice (IST/base local)"
+    )
     return {
         "variacao": (v_fim / v_ini) - 1,
         "i_ini": v_ini,
         "i_fim": v_fim,
         "d_ini": r_ini,
         "d_fim": r_fim,
-        "metodo": "Divisão de Número-Índice (Série Local)",
+        "fonte": fonte,
+        "metodo": metodo,
         "dados": serie_periodo,
     }
 
