@@ -2549,5 +2549,6 @@ if historico_coleta:
     render_email_contratada(
         historico_coleta,
         numero_contrato=st.session_state.get("dados_admissibilidade", {}).get("contrato"),
+        indice=st.session_state.get("dados_admissibilidade", {}).get("indice"),
         key="baixar_email_contratada_multiciclo",
     )

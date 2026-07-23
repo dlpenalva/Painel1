@@ -180,8 +180,11 @@ class TestDocumentoFinalEndToEnd(unittest.TestCase):
         self.assertNotIn("999,99", texto)
         self.assertNotIn("888,88", texto)
 
-    def test_saneador_final_contem_vu(self):
-        self._assert_documento(gerar_despacho_saneador(self._leitura_c2()))
+    def test_saneador_final_nao_contem_vu(self):
+        # §7.13: a tabela de Valores Unitarios NAO pertence ao Saneador;
+        # ela fica exclusivamente no Termo de Apostila (secao 5).
+        cab, _ = self._tabela_vu(gerar_despacho_saneador(self._leitura_c2()))
+        self.assertIsNone(cab, "Saneador nao deve conter tabela de VU")
 
     def test_apostila_final_contem_vu(self):
         self._assert_documento(gerar_termo_apostila(self._leitura_c2()))

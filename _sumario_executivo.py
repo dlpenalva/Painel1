@@ -305,6 +305,12 @@ def _montar_secao_ciclos(
             "data_inicio": _fmt_data(reg.get("data_inicio")),
             "data_fim": _fmt_data(reg.get("data_fim")),
             "data_pedido": _fmt_data(pedidos.get(nome)),
+            # Apresentacao documental: inicio real do efeito financeiro do ciclo
+            # (INICIO_EFEITO_FINANCEIRO). Nunca cai para data_inicio por conveniencia.
+            "inicio_efeito_financeiro": _fmt_data(
+                reg.get("inicio_efeito_financeiro")
+                or reg.get("inicio_efeito_financeiro_parametros")
+            ),
             "situacao": _texto_ou_nao_informado(reg.get("situacao")),
             "percentual_reajuste": (
                 NAO_APLICAVEL if nome == "C0"
@@ -556,7 +562,9 @@ def _num_ou_none(valor: Any) -> float | None:
 
 
 def _texto_ou_nao_informado(valor: Any) -> str:
-    texto = str(valor or "").strip()
+    # Sanitiza emoji/pictograma: o Sumario Executivo e um ARQUIVO entregue.
+    from _sanitizacao_documental import remover_emojis_leve
+    texto = remover_emojis_leve(str(valor or "")).strip()
     return texto or NAO_INFORMADO
 
 

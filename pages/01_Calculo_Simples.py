@@ -48,7 +48,7 @@ from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
 from _reajuste_utils import _competencias_mensais, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br
 from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, NOME_DOWNLOAD_COLETA, gerar_coleta_oficial_preenchida
 from _memoria_calculo import normalizar_memoria_calculo
-from _email_contratada import gerar_rascunho_email_contratada
+from _email_contratada import gerar_rascunho_email_contratada, render_email_contratada
 # Imports dos blocos auxiliares de orientação/coleta fiscal
 # ICTI/IPEADATA_LOCAL_FALLBACK_V1
 ICTI_SERCODIGO_LOCAL = "DIMAC_ICTI2"
@@ -1866,128 +1866,9 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
     output.seek(0)
     return output.getvalue()
 
-def _gerar_email_fornecedor(historico_coleta, adm=None):
-    import re as _re_em
-    adm = adm or {}
-    contrato   = adm.get("contrato", "[número do contrato]") or "[número do contrato]"
-    contratada = adm.get("contratada", "[nome da contratada]") or "[nome da contratada]"
-    indice     = adm.get("indice", "[índice]") or "[índice]"
-
-    # Metodologia por índice
-    _ind_norm = indice.upper()
-    if "IST" in _ind_norm:
-        metodologia = (
-            "Divisão do número-índice da Série Local, "
-            "apurando a variação pela fórmula — índice final da janela contratual dividido pelo índice "
-            "inicial, menos 1."
-        )
-    elif "ICTI" in _ind_norm:
-        metodologia = (
-            "Variação acumulada do índice no "
-            "período contratual de 12 meses aplicável ao ciclo, observada a série oficial disponível "
-            "para o índice, dividindo o número-índice final pelo inicial, menos 1."
-        )
-    elif "IGP" in _ind_norm:
-        metodologia = (
-            "Divisão do número-índice do mês de aplicação "
-            "pelo do mês de referência inicial, resultando na variação que engloba o atacado, o "
-            "consumidor e a construção civil."
-        )
-    elif "IPCA" in _ind_norm or "INPC" in _ind_norm:
-        ind_label = "IPCA (Índice Nacional de Preços ao Consumidor Amplo)" if "IPCA" in _ind_norm else "INPC (Índice Nacional de Preços ao Consumidor)"
-        metodologia = (
-            "Variação acumulada do índice no período contratual de 12 meses "
-            "aplicável ao ciclo, considerando as competências da janela de reajuste definida pela "
-            "data-base contratual."
-        )
-    else:
-        metodologia = (
-            "Divisão do número-índice final da janela contratual pelo índice inicial, "
-            "apurando a variação percentual aplicável ao ciclo."
-        )
-
-    ciclos = historico_coleta or []
-    linhas_ciclos = []
-    tem_precluso = tem_tardio = False
-    for c in ciclos:
-        nome_c = str(c.get("ciclo","")).strip().upper()
-        if nome_c == "C0": continue
-        sit_raw = str(c.get("situacao_aplicada", c.get("situacao","")) or "").strip()
-        sit_limpa = _re_em.sub(r"[^\w\s\-.,;:/()ãáàâäéèêëíìîïóòôöúùûüçñÃÁÀÂÄÉÈÊËÍÌÎÏÓÒÔÖÚÙÛÜÇÑ]", "", sit_raw).strip(" —").strip()
-        sit = sit_limpa.capitalize()
-        pct_fmt = str(c.get("variacao_formatada","") or "").strip()
-        if not pct_fmt:
-            pct_raw = float(c.get("percentual_aplicado", 0) or 0)
-            pct_val = pct_raw * 100 if abs(pct_raw) < 1 else pct_raw
-            pct_fmt = f"{pct_val:.2f}%".replace(".", ",")
-        ini_fin = str(c.get("financeiro_inicio", c.get("inicio_financeiro","")) or "").strip()
-        eh_precluso = "preclu" in sit.lower()
-        if eh_precluso:
-            efeito_txt = "sem efeitos financeiros"
-            tem_precluso = True
-        elif ini_fin and ini_fin not in ("Sem efeitos financeiros automáticos",""):
-            efeito_txt = f"com efeitos financeiros a partir de {ini_fin}"
-        else:
-            efeito_txt = "efeitos financeiros a verificar"
-        if "tardio" in sit.lower(): tem_tardio = True
-        linhas_ciclos.append(f"- {nome_c}: {sit}. Percentual: {pct_fmt}; {efeito_txt}.")
-    ciclos_txt = "\n".join(linhas_ciclos) if linhas_ciclos else "- [ciclos a preencher]"
-    par_precluso = ""
-    if tem_precluso:
-        _prec = [str(c.get("ciclo","")).upper() for c in ciclos
-                 if "preclu" in _re_em.sub(r"[^\w\s]","",str(c.get("situacao_aplicada",c.get("situacao","")) or "")).lower()]
-        for cp in _prec:
-            par_precluso += (
-                f"\nRessaltamos que o ciclo {cp} foi identificado como precluso para fins de "
-                "efeitos financeiros de reajuste, razão pela qual não gera retroativo próprio. "
-                "Tal ciclo permanece registrado para fins de memória contratual e composição "
-                "histórica da execução.\n"
-            )
-    par_tardio = ""
-    if tem_tardio:
-        for c in ciclos:
-            sit_c = _re_em.sub(r"[^\w\s]","",str(c.get("situacao_aplicada",c.get("situacao","")) or "")).lower()
-            if "tardio" in sit_c:
-                ini = str(c.get("financeiro_inicio",c.get("inicio_financeiro","")) or "").strip()
-                dp  = str(c.get("data_pedido","") or "").strip()
-                if ini:
-                    par_tardio += (
-                        f"\nConsiderando que o pedido foi apresentado em {dp}, os efeitos "
-                        f"financeiros foram considerados a partir de {ini}, conforme a regra "
-                        "contratual aplicável, sem retroação automática a competências anteriores.\n"
-                    )
-    assunto = f"Análise Preliminar de Reajuste Contratual — Contrato {contrato} — Solicitação de Manifestação"
-    corpo = f"""Prezados,
-
-Em atenção ao pedido de reajuste contratual apresentado, informamos que foi realizada análise preliminar de admissibilidade e de apuração dos percentuais aplicáveis, conforme a metodologia contratual e o índice previsto no instrumento.
-
-A análise considerou o índice {indice}, com a seguinte metodologia de apuração: {metodologia}
-
-De forma preliminar, foram apurados os seguintes resultados:
-
-Contrato: {contrato}
-Contratada: {contratada}
-Índice aplicado: {indice}
-
-Ciclos analisados:
-{ciclos_txt}
-{par_tardio}{par_precluso}
-Destacamos que esta comunicação trata da etapa preliminar de admissibilidade e apuração do percentual de reajuste, não representando ainda a apuração final dos valores devidos. Após a manifestação de concordância quanto aos critérios acima, será dado prosseguimento ao levantamento financeiro junto à área técnica, para apuração dos valores eventualmente retroativos, saldos remanescentes e demais impactos necessários à formalização.
-
-Dessa forma, solicitamos manifestação de acordo quanto aos critérios, ciclos, percentuais e efeitos financeiros acima indicados, para que possamos prosseguir com a etapa financeira da análise.
-
-Atenciosamente,"""
-    return assunto, corpo
-
-
-# A comunicação vigente ocorre depois da validação fiscal. Mantém-se o nome
-# interno por compatibilidade com o fluxo já publicado da calculadora simples.
-def _gerar_email_fornecedor(historico_coleta, adm=None):
-    adm = adm or {}
-    return gerar_rascunho_email_contratada(
-        historico_coleta,
-        numero_contrato=adm.get("contrato"),
-    )
+# A Comunicacao a Contratada agora usa exclusivamente o gerador comum
+# gerar_rascunho_email_contratada (_email_contratada.py), aplicado tambem
+# ao multiciclo. Nao ha mais versao textual antiga nesta pagina.
 
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
     render_cabecalho_pagina(
@@ -2294,37 +2175,22 @@ if res:
             file_name=NOME_DOWNLOAD_COLETA,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             help="Baixa o Arquivo Coleta Oficial pré-preenchido com os dados desta apuração.",
+            type="primary",
             key="btn_baixar_coleta_reajuste_estavel_simples_v1",
         )
     except Exception as _e_coleta_estavel:
         st.warning(f"Não foi possível gerar o Arquivo Coleta Oficial: {_e_coleta_estavel}")
     # <<< BOTAO_COLETA_SIMPLES_ESTAVEL_V1
 
-    # ── Botão de email ao fornecedor ──────────────────────────────────────
+    # ── Comunicação à Contratada (pré-apuração) ───────────────────────────
+    # Mesmo gerador/estilo do multiciclo: botao primary global e texto novo.
     try:
-        _assunto_email, _corpo_email = _gerar_email_fornecedor(
+        _adm_email = st.session_state.get("dados_admissibilidade", {}) or {}
+        render_email_contratada(
             [ciclo_unico],
-            adm=st.session_state.get("dados_admissibilidade", {})
-        )
-        st.markdown(
-            '<div style="background:#FFFBEB;border:1.5px solid #FCD34D;border-radius:12px;'
-            'padding:14px 16px;margin:12px 0 4px 0;">'
-            '<div style="font-size:0.72rem;font-weight:700;color:#92400E;letter-spacing:.06em;'
-            'text-transform:uppercase;margin-bottom:6px;">&#x2709;&#xFE0F;&nbsp; Comunicação à contratada</div>'
-            '<div style="font-size:0.84rem;color:#78350F;line-height:1.5;">'
-            'Rascunho pré-redigido com os percentuais desta análise.'
-            '&nbsp; <span style="opacity:.75;font-size:0.78rem;">Complete os valores entre colchetes e envie somente após a validação do fiscal.</span></div>'
-            f'<div style="font-size:0.78rem;color:#92400E;margin-top:8px;">'
-            f'<strong>Assunto:</strong>&nbsp;{_assunto_email}</div>'
-            '</div>',
-            unsafe_allow_html=True
-        )
-        st.download_button(
-            label="Baixar rascunho (.txt)",
-            data=f"ASSUNTO: {_assunto_email}\n\n{_corpo_email}".encode("utf-8-sig"),
-            file_name="Comunicacao_Contratada_Reajuste.txt",
-            mime="text/plain; charset=utf-8",
-            help="Revise contrato e valores validados antes do envio à contratada.",
+            numero_contrato=_adm_email.get("contrato"),
+            indice=_adm_email.get("indice"),
+            key="btn_baixar_email_contratada_simples_v1",
         )
     except Exception:
         pass

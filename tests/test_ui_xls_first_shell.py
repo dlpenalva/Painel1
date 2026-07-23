@@ -89,13 +89,21 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn('st.caption(f"Arquivo enviado: {arquivo.name}")', DOCUMENTOS)
         self.assertIn('"assinatura_processada_upload_docs"', DOCUMENTOS)
 
-    def test_modo_um_usa_botoes_de_download_na_cor_padrao(self):
+    def test_modo_um_usa_botoes_no_padrao_global(self):
+        # Pacote documental: a Calculadora 1 ciclo passa a usar o mesmo padrao
+        # visual homologado nas demais calculadoras (download de acao = primary).
         coleta = SIMPLES[SIMPLES.index('label="Baixar Arquivo Coleta Oficial"'):]
         coleta = coleta[:coleta.index(")")]
-        rascunho = SIMPLES[SIMPLES.index('label="Baixar rascunho (.txt)"'):]
-        rascunho = rascunho[:rascunho.index(")")]
-        self.assertNotIn('type="primary"', coleta)
-        self.assertNotIn('type="primary"', rascunho)
+        self.assertIn('type="primary"', coleta)
+        # O mesmo botao no multiciclo tambem e primary (consistencia global).
+        coleta_multi = MULTI[MULTI.index('label="Baixar Arquivo Coleta Oficial"'):]
+        coleta_multi = coleta_multi[:coleta_multi.index(")")]
+        self.assertIn('type="primary"', coleta_multi)
+        # A Comunicacao a Contratada usa o componente comum (botao primary global),
+        # sem "botao" HTML local com paleta divergente.
+        self.assertIn("render_email_contratada(", SIMPLES)
+        self.assertNotIn("stButton > button", SIMPLES)
+        self.assertNotIn("stDownloadButton > button", SIMPLES)
 
     def test_upload_nao_exibe_textos_excluidos(self):
         self.assertNotIn("render_aviso_privacidade", DOCUMENTOS)

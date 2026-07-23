@@ -304,6 +304,9 @@ def _add_texto_com_destaque(paragraph, texto, bold=False):
 def gerar_docx_dou(texto):
     if not DOCX_OK:
         raise RuntimeError("python-docx não está disponível neste ambiente.")
+    # Nenhum arquivo entregue pode conter emoji/pictograma (a web pode).
+    from _sanitizacao_documental import remover_emojis_leve
+    texto = remover_emojis_leve(str(texto))
     doc = Document()
     styles = doc.styles
     styles["Normal"].font.name = "Arial"
