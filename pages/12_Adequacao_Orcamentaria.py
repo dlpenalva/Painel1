@@ -13,6 +13,9 @@ from _ui_utils import render_marca_topo, render_aviso_privacidade, render_cabeca
 from _adequacao_orcamentaria import (
     _round2,
     calcular_adequacao_orcamentaria,
+    media_pedidos_compra,
+    pedidos_de_itens_pc,
+    classificar_pedidos,
     Pedido,
     OverrideMes,
 )
