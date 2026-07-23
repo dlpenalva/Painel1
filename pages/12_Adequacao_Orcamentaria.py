@@ -14,6 +14,9 @@ from _adequacao_orcamentaria import (
     _round2,
     calcular_adequacao_orcamentaria,
     media_pedidos_compra,
+    media_financeiro,
+    valor_original_foi_informado,
+    janela_financeira_competencias,
     pedidos_de_itens_pc,
     classificar_pedidos,
     Pedido,
@@ -224,35 +227,82 @@ def extrair_contexto_valores():
     }
 
 
-def financeiro_mensal_consolidado(resultado):
+_COLS_JANELA_FIN = ["_periodo", "Competência", "Valor pago/medido", "Situação", "valor"]
+
+
+def financeiro_por_competencia(resultado):
+    """Consolida o historico financeiro por competencia preservando ZERO x VAZIO.
+
+    Cada competencia vira uma linha com:
+      - valor: soma dos registros EFETIVAMENTE informados (None se nenhum foi);
+      - Situação: "Informado", "Zero informado" ou "Sem informação".
+    Multiplos registros na mesma competencia sao somados (apenas os informados).
+    Nao elimina zeros e nao inventa meses ausentes.
+    """
+    cols = ["_periodo", "valor", "Situação"]
     if not isinstance(resultado, dict):
-        return pd.DataFrame(columns=["Competência", "Valor pago/medido"]), "resultado_valor_global.df_financeiro_mensal indisponível"
+        return pd.DataFrame(columns=cols), "resultado_valor_global.df_financeiro_mensal indisponível"
     df = resultado.get("df_financeiro_mensal")
     origem = "resultado_valor_global.df_financeiro_mensal"
     if not isinstance(df, pd.DataFrame) or df.empty:
-        return pd.DataFrame(columns=["Competência", "Valor pago/medido"]), origem + " indisponível"
+        return pd.DataFrame(columns=cols), origem + " indisponível"
     col_comp = localizar_coluna(df, ["Competência", "Competencia", "Mês/Ano", "Mes/Ano", "Mês", "Mes"])
     col_valor = localizar_coluna(df, ["Valor bruto medido/aprovado por competência", "Valor bruto medido", "Valor medido/aprovado", "Valor pago/faturado", "Valor bruto faturado", "Valor faturado", "Valor pago", "Valor medido", "Valor"])
     if col_comp is None or col_valor is None:
-        return pd.DataFrame(columns=["Competência", "Valor pago/medido"]), origem + " sem colunas reconhecidas"
-    temp = df[[col_comp, col_valor]].copy()
-    temp["_periodo"] = temp[col_comp].apply(normalizar_competencia)
-    temp["_valor"] = temp[col_valor].apply(parse_moeda_br)
-    temp = temp[temp["_periodo"].notna()].copy()
-    temp = temp[temp["_valor"].abs() > 0.004].copy()
-    if temp.empty:
-        return pd.DataFrame(columns=["Competência", "Valor pago/medido"]), origem
-    mensal = (temp.groupby("_periodo", as_index=False)["_valor"].sum()
-              .sort_values("_periodo").reset_index(drop=True))
-    mensal["Competência"] = mensal["_periodo"].apply(periodo_para_label)
-    mensal["Valor pago/medido"] = mensal["_valor"].round(2)
-    return mensal[["_periodo", "Competência", "Valor pago/medido"]], origem
+        return pd.DataFrame(columns=cols), origem + " sem colunas reconhecidas"
+    reg = {}
+    for _, row in df.iterrows():
+        periodo = normalizar_competencia(row.get(col_comp))
+        if periodo is None:
+            continue
+        bruto = row.get(col_valor)
+        d = reg.setdefault(periodo, {"soma": 0.0, "tem_informado": False})
+        if valor_original_foi_informado(bruto):
+            d["tem_informado"] = True
+            d["soma"] += parse_moeda_br(bruto)
+    linhas = []
+    for periodo in sorted(reg):
+        d = reg[periodo]
+        if d["tem_informado"]:
+            valor = round(d["soma"], 2)
+            situacao = "Zero informado" if abs(valor) < 0.005 else "Informado"
+        else:
+            valor = None
+            situacao = "Sem informação"
+        linhas.append({"_periodo": periodo, "valor": valor, "Situação": situacao})
+    return pd.DataFrame(linhas), origem
 
 
-def ultimos_meses_para_media(mensal, n=6):
-    if not isinstance(mensal, pd.DataFrame) or mensal.empty:
-        return pd.DataFrame(columns=["_periodo", "Competência", "Valor pago/medido"])
-    return mensal.sort_values("_periodo").tail(n).reset_index(drop=True)
+def janela_6_competencias(por_comp, n=6):
+    """Adaptador de apresentacao: delega a janela ao motor
+    (janela_financeira_competencias) e devolve um DataFrame pronto para a UI.
+
+    A logica normativa (n competencias-calendario terminando na ultima informada,
+    ZERO x VAZIO, sem puxar competencia anterior) vive e e testada no motor.
+    """
+    if not isinstance(por_comp, pd.DataFrame) or por_comp.empty:
+        return pd.DataFrame(columns=_COLS_JANELA_FIN)
+    pares = [
+        (p.year, p.month, (None if pd.isna(v) else float(v)))
+        for p, v in zip(por_comp["_periodo"], por_comp["valor"])
+    ]
+    janela = janela_financeira_competencias(pares, n)
+    linhas = []
+    for c in janela["competencias"]:
+        periodo = pd.Period(year=c["ano"], month=c["mes"], freq="M")
+        linhas.append({
+            "_periodo": periodo,
+            "Competência": periodo_para_label(periodo),
+            "Valor pago/medido": c["valor"],
+            "Situação": c["situacao"],
+            "valor": c["valor"],
+        })
+    df = pd.DataFrame(linhas, columns=_COLS_JANELA_FIN)
+    # Mantem "Sem informação" como None (nao NaN): evita que o mes vazio vire
+    # NaN no float64 e contamine media/exports.
+    for col in ("Valor pago/medido", "valor"):
+        df[col] = df[col].astype(object).where(df[col].notna(), None)
+    return df
 
 
 def gerar_periodos_projecao(ultima_competencia, data_final_vigencia):
@@ -308,7 +358,9 @@ def calcular_projecao(df_editor, media_mensal, fator_reajuste):
         observacao = texto_seguro(row.get("Observação"), "")
         # Base G, valor reajustado H = ROUND(G*fator,2) e diferenca I = ROUND(H-G,2)
         # seguem o golden; o arredondamento e o do motor (_round2, paridade Excel).
-        if abs(informado) > 0.004:
+        # ZERO != VAZIO: existencia do override e decidida pelo valor ORIGINAL
+        # (0 informado significa execucao zero; vazio => projecao automatica).
+        if valor_original_foi_informado(informado_raw):
             origem = "Valor informado pelo fiscal"
             if premissa == "Valor já reajustado":
                 base_considerada = informado / fator_reajuste if fator_reajuste else informado
@@ -379,13 +431,22 @@ def gerar_xlsx_projecao(df_ultimos, df_projecao, resumo):
                 ws.write(r, 1, valor, fmt_text)
         ws.set_column("A:A", 42)
         ws.set_column("B:B", 26)
-        df_ult = df_ultimos[["Competência", "Valor pago/medido"]].copy() if isinstance(df_ultimos, pd.DataFrame) and not df_ultimos.empty else pd.DataFrame(columns=["Competência", "Valor pago/medido"])
+        # MEDIA: as competencias de referencia com a mesma transparencia da WEB
+        # (valor informado / zero informado / sem informacao) — WEB e XLSX contam
+        # a mesma historia. "Sem informação" fica em branco (nao vira zero).
+        _tem_situacao = isinstance(df_ultimos, pd.DataFrame) and "Situação" in getattr(df_ultimos, "columns", [])
+        _cols_media = ["Competência", "Valor pago/medido"] + (["Situação"] if _tem_situacao else [])
+        df_ult = df_ultimos[_cols_media].copy() if isinstance(df_ultimos, pd.DataFrame) and not df_ultimos.empty else pd.DataFrame(columns=_cols_media)
+        # "Sem informação" => celula em branco (nunca zero); evita NaN no xlsxwriter.
+        df_ult = df_ult.astype(object).where(pd.notna(df_ult), None)
         df_ult.to_excel(writer, sheet_name="MEDIA", index=False)
         ws_m = writer.sheets["MEDIA"]
         for c, col in enumerate(df_ult.columns):
             ws_m.write(0, c, col, fmt_header)
         ws_m.set_column("A:A", 18)
         ws_m.set_column("B:B", 22, fmt_money)
+        if _tem_situacao:
+            ws_m.set_column("C:C", 18)
         df_proj = df_projecao.copy() if isinstance(df_projecao, pd.DataFrame) else pd.DataFrame()
         df_proj.to_excel(writer, sheet_name="PROJECAO", index=False)
         ws_p = writer.sheets["PROJECAO"]
@@ -596,25 +657,73 @@ elif modo_reduzido_estoque:
         unsafe_allow_html=True,
     )
 
-mensal, origem_financeira = financeiro_mensal_consolidado(resultado)
-ultimos_6 = ultimos_meses_para_media(mensal, 6)
-media_6 = float(ultimos_6["Valor pago/medido"].mean()) if not ultimos_6.empty else 0.0
+# Base financeira por competencia (ZERO x VAZIO preservados) e janela de 6
+# competencias-calendario terminando na ultima competencia INFORMADA.
+fin_por_comp, origem_financeira = financeiro_por_competencia(resultado)
+ultimos_6 = janela_6_competencias(fin_por_comp, 6)
+_vals_informados = [float(v) for v in ultimos_6["valor"].tolist() if pd.notna(v)] if not ultimos_6.empty else []
+media_6 = media_financeiro(_vals_informados)["media_mensal"]
+comp_informadas = len(_vals_informados)
+comp_total_janela = len(ultimos_6)
+comp_sem_info = comp_total_janela - comp_informadas
 ultima_comp = ultimos_6["_periodo"].iloc[-1] if not ultimos_6.empty else None
 ultima_comp_txt = periodo_para_label(ultima_comp) if ultima_comp is not None else "[campo a preencher]"
 
+# Dados importados da apuracao (nunca inventar: so marca como importado o que existe).
+tem_apuracao = bool(ctx["disponivel"])
+registros_pc_ctx = carregar_itens_pc_da_sessao(resultado)
+
+# --- Bloco 1: DADOS IMPORTADOS DA APURACAO (somente leitura) ---
+st.subheader("Dados importados da apuração")
+di1, di2, di3, di4, di5 = st.columns(5)
+with di1:
+    render_card_valor("Retroativo apurado", ctx["valor_represado"],
+                      nota="Importado da apuração" if tem_apuracao else "Não localizado")
+with di2:
+    render_card_valor("Percentual do reajuste", pct(ctx["variacao"]), formato="texto",
+                      nota="Importado da apuração" if tem_apuracao else "Não localizado")
+with di3:
+    render_card_valor("Última competência financeira", ultima_comp_txt, formato="texto",
+                      nota="Do histórico financeiro" if ultima_comp is not None else "Não localizada")
+with di4:
+    render_card_valor("Histórico financeiro",
+                      f"{comp_informadas} de {comp_total_janela}" if comp_total_janela else "Não localizado",
+                      formato="texto", nota="Competências com valor informado")
+with di5:
+    render_card_valor("Pedidos de Compra",
+                      f"{len(registros_pc_ctx)} registros" if registros_pc_ctx else "Não localizados",
+                      formato="texto", nota="Importados da Coleta (itens_PC)")
+
+# --- Bloco 2: parametros (importados em leitura; manual explicito quando ausentes) ---
 st.subheader("Parâmetros principais")
 col1, col2, col3 = st.columns(3)
 with col1:
     label_retroativo = "Retroativo (itens consumidos/ciclo)" if modo_consumo_itens_ciclo else ("Retroativo estimado por itens/estoque" if modo_reduzido_estoque else "Retroativo apurado")
-    retroativo = input_moeda(label_retroativo, ctx["valor_represado"], "adequacao_v2_retroativo")
+    if tem_apuracao:
+        render_card_valor(label_retroativo, ctx["valor_represado"], nota="Importado da apuração")
+        retroativo = ctx["valor_represado"]
+        with st.expander("Ajustar retroativo manualmente, se necessário", expanded=False):
+            retroativo = input_moeda(label_retroativo, ctx["valor_represado"], "adequacao_v2_retroativo")
+    else:
+        st.caption("Valor não localizado na apuração — informar manualmente.")
+        retroativo = input_moeda(label_retroativo, ctx["valor_represado"], "adequacao_v2_retroativo")
 with col2:
-    percentual_txt = st.text_input("Percentual de reajuste aplicado", value=pct(ctx["variacao"]), key="adequacao_v2_percentual")
+    if tem_apuracao:
+        render_card_valor("Percentual do reajuste aplicado", pct(ctx["variacao"]), formato="texto", nota="Importado da apuração")
+        percentual_txt = pct(ctx["variacao"])
+        with st.expander("Ajustar percentual manualmente, se necessário", expanded=False):
+            percentual_txt = st.text_input("Percentual de reajuste aplicado", value=pct(ctx["variacao"]), key="adequacao_v2_percentual")
+    else:
+        st.caption("Percentual não localizado na apuração — informar manualmente.")
+        percentual_txt = st.text_input("Percentual de reajuste aplicado", value=pct(ctx["variacao"]), key="adequacao_v2_percentual")
     percentual_reajuste = parse_moeda_br(percentual_txt) / 100
     fator_reajuste = 1 + percentual_reajuste
     st.caption(f"Fator usado: {fator_reajuste:.6f}".replace(".", ","))
 with col3:
+    st.markdown("**Informação a ser preenchida**")
     data_final_vigencia = st.text_input("Data final da vigência contratual", value=st.session_state.get("adequacao_v2_data_final_vigencia", ""),
-        placeholder="Ex.: 30/11/2026", key="adequacao_v2_data_final_vigencia")
+        placeholder="Ex.: 30/11/2026", key="adequacao_v2_data_final_vigencia",
+        help="Não há data final de vigência canônica na apuração; informe manualmente (dd/mm/aaaa).")
 
 st.subheader("Origem histórica")
 origem_hist = st.radio(
@@ -632,13 +741,26 @@ if origem_hist == "Pedidos de compra":
     origem_hist_rotulo = "Pedidos de compra"
     registros_pc = carregar_itens_pc_da_sessao(resultado)
     ultima_comp_data = ultima_comp.to_timestamp().date() if ultima_comp is not None else None
+    if ultima_comp_data is None:
+        # Sem historico financeiro para delimitar a janela: pedir explicitamente a
+        # competencia de referencia (nao inventar corte a partir de ciclos/datas).
+        comp_ref_txt = st.text_input(
+            "Competência de referência dos Pedidos de Compra (mm/aaaa)",
+            value=st.session_state.get("adequacao_v2_comp_ref_pc", ""),
+            placeholder="Ex.: 06/2026", key="adequacao_v2_comp_ref_pc",
+            help="Não há competência de corte canônica na apuração; informe a competência final da janela.")
+        comp_ref = normalizar_competencia(comp_ref_txt)
+        if comp_ref is not None:
+            ultima_comp = comp_ref
+            ultima_comp_data = comp_ref.to_timestamp().date()
+            ultima_comp_txt = periodo_para_label(comp_ref)
     if not registros_pc:
         st.warning("NÃO HÁ PEDIDOS DE COMPRA DISPONÍVEIS PARA ESTA ADEQUAÇÃO. "
                    "Utilize a origem Financeiro ou carregue uma Coleta com itens_PC.")
         media_ref = 0.0
     elif ultima_comp_data is None:
-        st.warning("Base financeira ausente: informe/di sponibilize a última competência "
-                   "para delimitar a janela histórica dos Pedidos de Compra.")
+        st.warning("Informe a competência de referência (mm/aaaa) para delimitar a "
+                   "janela histórica dos Pedidos de Compra.")
         media_ref = 0.0
     else:
         janela_meses_pc = st.slider("Janela histórica dos pedidos (meses)", 1, 60,
@@ -686,25 +808,34 @@ if origem_hist == "Pedidos de compra":
                        "'Excluído' não participam do cálculo.")
 
 if origem_hist == "Financeiro":
-    st.subheader("Base automática pela média financeira")
+    st.subheader("Referência financeira importada")
+    st.caption("Dados provenientes do histórico financeiro da apuração. "
+               "A média considera apenas as competências com valor informado (zero informado entra; sem informação não entra).")
     col_m1, col_m2, col_m3, col_m4 = st.columns(4)
     with col_m1:
-        render_card_valor("Média dos últimos 6 meses", media_ref)
+        render_card_valor("Média das competências informadas", media_ref, destaque=True)
     with col_m2:
-        render_card_valor("Última competência financeira", ultima_comp_txt, formato="texto", destaque=True)
+        render_card_valor("Competências informadas",
+                          f"{comp_informadas} de {comp_total_janela}" if comp_total_janela else "0",
+                          formato="texto")
     with col_m3:
-        render_card_valor("Média mensal reajustada", media_ref * fator_reajuste)
+        render_card_valor("Última competência", ultima_comp_txt, formato="texto")
     with col_m4:
-        render_card_valor("Delta mensal estimado", (media_ref * fator_reajuste) - media_ref)
+        render_card_valor("Média mensal reajustada", media_ref * fator_reajuste)
 
-    with st.expander("Ver competências usadas no cálculo da média", expanded=False):
+    with st.expander("Ver competências utilizadas", expanded=False):
         st.caption(f"Base de execução mensal detectada: {origem_financeira}")
         if ultimos_6.empty:
-            st.warning("Não foram localizadas competências financeiras válidas para cálculo da média.")
+            st.warning("Não foram localizadas competências financeiras informadas para cálculo da média.")
         else:
-            df_ultimos_vis = ultimos_6[["Competência", "Valor pago/medido"]].copy()
-            df_ultimos_vis["Valor pago/medido"] = df_ultimos_vis["Valor pago/medido"].apply(moeda)
+            df_ultimos_vis = ultimos_6[["Competência", "Valor pago/medido", "Situação"]].copy()
+            df_ultimos_vis["Valor financeiro"] = [
+                "—" if v is None else moeda(v) for v in ultimos_6["valor"].tolist()]
+            df_ultimos_vis = df_ultimos_vis[["Competência", "Valor financeiro", "Situação"]]
             st.dataframe(df_ultimos_vis, use_container_width=True, hide_index=True)
+            st.caption(
+                f"Competências da janela: {comp_total_janela} · "
+                f"com valor informado: {comp_informadas} · sem informação: {comp_sem_info}.")
 
 periodos = gerar_periodos_projecao(ultima_comp, data_final_vigencia)
 periodo_inicio_txt = periodo_para_label(periodos[0]) if periodos else "[campo a preencher]"

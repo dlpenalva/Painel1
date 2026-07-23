@@ -32,6 +32,7 @@ somas preservam o comportamento binario do Excel (nao re-arredondam).
 """
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal
@@ -170,6 +171,73 @@ def media_financeiro(valores_mensais: Iterable[Any]) -> dict:
         "meses_com_valor": len(nums),
         "total_historico": sum(nums),
         "media_mensal": media,
+    }
+
+
+def valor_original_foi_informado(valor: Any) -> bool:
+    """True se o valor ORIGINAL foi informado, INCLUINDO zero explicito.
+
+    Regra da Adequacao: ZERO != VAZIO. Nao deve usar conversao numerica
+    (parse) para decidir preenchimento, pois vazio viraria 0.0. Aqui olhamos
+    o valor cru:
+      None / "" / "   " / NaN / pd.NA / pd.NaT / "—" -> False (sem informacao)
+      0 / 0.0 / "0" / "0,00" / "R$ 0,00" / "1000" -> True (informado)
+    Pandas nao e importado aqui: pd.NA/pd.NaT sao detectados por str().
+    """
+    if valor is None or isinstance(valor, bool):
+        return False
+    if isinstance(valor, (int, float)):
+        return not (isinstance(valor, float) and math.isnan(valor))
+    texto = str(valor).strip()
+    if not texto:
+        return False
+    if texto.lower() in ("nan", "none", "null", "nat", "<na>", "—", "-", "–"):
+        return False
+    return any(ch.isdigit() for ch in texto)
+
+
+def janela_financeira_competencias(por_competencia: Iterable[Any], n: int = 6) -> dict:
+    """Janela financeira de n competencias-CALENDARIO terminando na ULTIMA
+    competencia INFORMADA (zero informado conta como informada).
+
+    Entrada: iteravel de (ano, mes, valor) onde valor e float (inclui 0.0) ou
+    None (sem informacao). Meses ausentes/None entram como "Sem informação" e
+    NAO puxam competencia anterior para completar a janela. A media considera
+    apenas as competencias com valor informado.
+
+    Saida: {competencias:[{ano,mes,valor,situacao}], media_mensal,
+            competencias_informadas, competencias_sem_info, total}.
+    """
+    mapa: dict[tuple[int, int], float | None] = {}
+    for ano, mes, valor in por_competencia:
+        mapa[(int(ano), int(mes))] = None if valor is None else float(valor)
+    informadas_ord = [a * 12 + (m - 1) for (a, m), v in mapa.items() if v is not None]
+    if not informadas_ord:
+        return {"competencias": [], "media_mensal": 0.0,
+                "competencias_informadas": 0, "competencias_sem_info": 0, "total": 0}
+    fim = max(informadas_ord)
+    inicio = fim - (n - 1)
+    competencias = []
+    valores_informados = []
+    for ordinal in range(inicio, fim + 1):
+        ano, mes0 = divmod(ordinal, 12)
+        mes = mes0 + 1
+        valor = mapa.get((ano, mes))
+        if valor is None:
+            competencias.append({"ano": ano, "mes": mes, "valor": None,
+                                 "situacao": "Sem informação"})
+        else:
+            situacao = "Zero informado" if abs(valor) < 0.005 else "Informado"
+            competencias.append({"ano": ano, "mes": mes, "valor": valor,
+                                 "situacao": situacao})
+            valores_informados.append(valor)
+    media = (sum(valores_informados) / len(valores_informados)) if valores_informados else 0.0
+    return {
+        "competencias": competencias,
+        "media_mensal": media,
+        "competencias_informadas": len(valores_informados),
+        "competencias_sem_info": sum(1 for c in competencias if c["valor"] is None),
+        "total": len(competencias),
     }
 
 
