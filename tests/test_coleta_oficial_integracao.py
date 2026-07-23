@@ -35,7 +35,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # Tudo via Excel COM (sem reparo); matematica e VTA (B23/B25/B26) preservados.
 # Reancorado no ajuste pontual de identificacao de novos itens (N001, N002...):
 # orientacao em itens_Remanesc!A1/aditivos!A1 e mensagem do check em aditivos!M.
-SHA256_TEMPLATE_ESPERADO = "866b36cdba2fe98a79214d8ae57f34daa15902f6093e1ac05e22da72f2ff4add"
+# Atualizado apos ajuste visual cirurgico (Excel COM): harmonizacao da cor das
+# bordas da coluna A (NUMERO_PC) em itens_PC A2:A100 para D9D9D9, igual a B/C/D.
+# Nenhuma mudanca de layout/formula/validacao (demais asserts deste teste seguem).
+SHA256_TEMPLATE_ESPERADO = "c53de87f719ea171e35e7ae36071691f0632970a1b0fc2fe76500af9118fb2c2"
 
 
 def _dados_calculadora() -> dict:
