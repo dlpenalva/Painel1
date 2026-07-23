@@ -262,6 +262,39 @@ def test_saneador_softblock_nao_afirma_inexistencia():
     assert "consolidados para análise" in texto
 
 
+def test_saneador_conclusao_numerada_13_sem_docs_desatualizados():
+    texto = _texto_docx(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR))
+    # Sem docs_desatualizados: 12 (garantia) -> 13 (conclusao) -> Quadro 4
+    assert "13. Diante do exposto" in texto
+    assert "14. " not in texto
+    assert "mostram-se desatualizados" not in texto  # item 13 de docs ausente
+
+
+def test_saneador_conclusao_numerada_14_com_docs_desatualizados():
+    cm = dict(CAMPOS_SANEADOR, docs_desatualizados=["SEI 999/2026", "SEI 888/2026"])
+    texto = _texto_docx(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=cm))
+    # Com docs_desatualizados: 13 (documentos) -> 14 (conclusao)
+    assert "13. Após atualizações" in texto
+    assert "mostram-se desatualizados, devendo ser desconsiderados" in texto
+    assert "14. Diante do exposto" in texto
+    assert "13. Diante do exposto" not in texto
+
+
+def test_saneador_conclusao_numerada_respeita_softblock():
+    # Numeracao correta mesmo sob soft-block, sem afirmar inexistencia de pendencia.
+    cm_sem = dict(CAMPOS_SANEADOR, pendencia_critica=True)
+    texto_sem = _texto_docx(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=cm_sem))
+    assert "13. Diante do exposto" in texto_sem
+    assert "permanecendo pendentes" in texto_sem
+    assert "inexistindo pendência crítica" not in texto_sem
+
+    cm_com = dict(CAMPOS_SANEADOR, pendencia_critica=True, docs_desatualizados=["SEI 999/2026"])
+    texto_com = _texto_docx(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=cm_com))
+    assert "14. Diante do exposto" in texto_com
+    assert "permanecendo pendentes" in texto_com
+    assert "inexistindo pendência crítica" not in texto_com
+
+
 def test_saneador_sem_termos_tecnicos_e_sem_emoji():
     for leit in (leitura_simples_financeiro, leitura_multiciclo_pc):
         texto = _texto_docx(gerar_despacho_saneador(leit(), campos_manuais=CAMPOS_SANEADOR))

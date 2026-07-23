@@ -1119,8 +1119,13 @@ def _tem_pendencia_critica(dados: dict, cm: dict) -> bool:
 
 
 def _ds_conclusao(doc: Document, dados: dict, cm: dict) -> None:
+    # Numeracao final: o item de documentos desatualizados (13) so existe quando
+    # ha docs_desatualizados. A conclusao vem logo apos — 14 nesse caso, 13 caso
+    # contrario. A logica de soft-block do texto permanece inalterada.
+    numero = "14" if _campo(cm, "docs_desatualizados") else "13"
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    _adicionar_run(p, f"{numero}. ", negrito=True)
     if _tem_pendencia_critica(dados, cm):
         _adicionar_run(p,
             "Diante do exposto, os elementos disponíveis encontram-se "
