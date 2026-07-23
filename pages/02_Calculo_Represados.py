@@ -1915,7 +1915,7 @@ default_dt_base_original = datetime(2022, 10, 10)
 
 with st.sidebar:
     dt_base_original = st.date_input(
-        "Data-base/âncora inicial da análise atual:",
+        "Data-base/âncora inicial da análise atual: 🔹",
         value=default_dt_base_original,
         format="DD/MM/YYYY",
         help="Informe a data-base original do contrato ou a âncora a partir da qual os ciclos devem ser contados.",

@@ -267,7 +267,7 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
     with st.container(border=True):
         st.markdown(
             '<span class="cl8us-index-marker"></span>'
-            '<div class="cl8us-index-title">Índice do contrato</div>',
+            '<div class="cl8us-index-title">Índice do contrato 🔹</div>',
             unsafe_allow_html=True,
         )
 

@@ -269,20 +269,10 @@ def _render_css() -> None:
             font-weight: 800;
             margin: .08rem 0 .55rem;
         }
-        /* Bolinha a DIREITA do titulo "Indice do contrato": circulo PRETO e
-           PREENCHIDO, no mesmo peso visual dos marcadores solidos dos campos do
-           formulario (nao o circulo contornado do menu lateral).
-           O marker tecnico .cl8us-index-marker segue invisivel para o :has(). */
-        .cl8us-index-title::after {
-            content: "";
-            display: inline-block;
-            width: .72rem;
-            height: .72rem;
-            margin-left: .55rem;
-            border-radius: 50%;
-            background: #1A1A1A;
-            vertical-align: middle;
-        }
+        /* O marcador decorativo do titulo "Indice do contrato" agora e o
+           caractere 🔹 no proprio texto do titulo (render_indice_contrato_selectbox).
+           Nao ha mais pseudo-elemento circular. O marker tecnico
+           .cl8us-index-marker segue invisivel apenas para o :has() do container. */
         [data-baseweb="select"] > div,
         [data-testid="stDateInput"] input,
         [data-testid="stTextInput"] input {
