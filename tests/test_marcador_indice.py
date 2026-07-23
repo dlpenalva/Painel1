@@ -1,5 +1,8 @@
-"""§11 — A bolinha do 'Índice do contrato' segue o mesmo padrao do marcador
-ja existente no menu lateral (stPageLink ::before), sem criar novo padrao.
+"""Marcador do 'Índice do contrato': circulo PRETO e PREENCHIDO (mesmo peso
+visual dos marcadores solidos dos campos do formulario), a DIREITA do titulo.
+
+Nao deve replicar o marcador contornado de navegacao do menu lateral
+(stPageLink ::before), que e branco/contornado.
 """
 from pathlib import Path
 
@@ -12,26 +15,26 @@ def _bloco(seletor: str) -> str:
     return APP[ini: APP.index("}", ini)]
 
 
-def test_marcador_indice_reutiliza_dimensao_do_menu_lateral():
-    ref = _bloco("[data-testid=\"stSidebar\"] [data-testid=\"stPageLink\"] a::before")
+def test_marcador_indice_e_preto_e_preenchido():
     idx = _bloco(".cl8us-index-title::after")
-    for prop in ("width: .72rem", "height: .72rem", "border-radius: 999px",
-                 "border: 1.5px solid rgba(18, 59, 99, .36)",
-                 "background: rgba(255, 255, 255, .84)", "vertical-align: -.06rem"):
-        assert prop in ref, f"referencia perdeu {prop!r}"
-        assert prop in idx, f"marcador do indice nao reutiliza {prop!r}"
+    assert "background: #1A1A1A" in idx        # preto
+    assert "border-radius: 50%" in idx          # circulo
+    assert "border:" not in idx                 # preenchido (sem contorno)
+    assert "content: \"\"" in idx
+
+
+def test_marcador_indice_nao_replica_stpagelink():
+    idx = _bloco(".cl8us-index-title::after")
+    # Nao pode usar o padrao contornado do menu lateral (branco + borda).
+    assert "rgba(255, 255, 255, .84)" not in idx
+    assert "border-radius: 999px" not in idx
+    assert "1.5px solid" not in idx
 
 
 def test_marcador_indice_fica_a_direita():
     idx = _bloco(".cl8us-index-title::after")
     assert "margin-left" in idx      # espacamento a esquerda da bolinha => fica a direita do texto
     assert "margin-right" not in idx
-
-
-def test_marcador_indice_nao_usa_padrao_antigo_pequeno():
-    idx = _bloco(".cl8us-index-title::after")
-    assert "width: .5rem" not in idx
-    assert "#1A1A1A" not in idx
 
 
 def test_marker_tecnico_invisivel_preservado():

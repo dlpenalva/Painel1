@@ -269,9 +269,9 @@ def _render_css() -> None:
             font-weight: 800;
             margin: .08rem 0 .55rem;
         }
-        /* Bolinha a DIREITA do titulo "Indice do contrato", padronizada com o
-           mesmo marcador dos itens do menu lateral (stPageLink ::before):
-           mesma dimensao, forma, borda, preenchimento e alinhamento vertical.
+        /* Bolinha a DIREITA do titulo "Indice do contrato": circulo PRETO e
+           PREENCHIDO, no mesmo peso visual dos marcadores solidos dos campos do
+           formulario (nao o circulo contornado do menu lateral).
            O marker tecnico .cl8us-index-marker segue invisivel para o :has(). */
         .cl8us-index-title::after {
             content: "";
@@ -279,10 +279,9 @@ def _render_css() -> None:
             width: .72rem;
             height: .72rem;
             margin-left: .55rem;
-            border: 1.5px solid rgba(18, 59, 99, .36);
-            border-radius: 999px;
-            background: rgba(255, 255, 255, .84);
-            vertical-align: -.06rem;
+            border-radius: 50%;
+            background: #1A1A1A;
+            vertical-align: middle;
         }
         [data-baseweb="select"] > div,
         [data-testid="stDateInput"] input,
