@@ -4,6 +4,7 @@ import streamlit as st
 
 from _coleta_oficial import (
     NOME_ARQUIVO_COLETA_OFICIAL,
+    NOME_DOWNLOAD_COLETA,
     TEMPLATE_COLETA_OFICIAL,
     assinatura_template_coleta,
     gerar_coleta_oficial_preenchida,
@@ -61,7 +62,7 @@ with linha_1[0]:
             st.download_button(
                 "Baixar Arquivo Coleta Oficial",
                 data=_ler_modelo(assinatura_template_coleta()),
-                file_name=NOME_ARQUIVO_COLETA_OFICIAL,
+                file_name=NOME_DOWNLOAD_COLETA,
                 mime=MIME_XLSX,
                 type="primary",
                 use_container_width=True,

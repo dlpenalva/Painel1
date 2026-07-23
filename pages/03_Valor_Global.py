@@ -12,6 +12,7 @@ import streamlit.components.v1 as components
 
 from _coleta_oficial import (
     NOME_ARQUIVO_COLETA_OFICIAL,
+    NOME_DOWNLOAD_COLETA,
     TEMPLATE_COLETA_OFICIAL,
     assinatura_template_coleta,
     gerar_coleta_oficial_preenchida,
@@ -4835,8 +4836,26 @@ def _render_acao_documento_upload(chave, documento, resultado):
         _render_pendencia_documento(chave, documento)
 
 
+def render_status_base_coleta(diagnostico):
+    """§5: mensagem de destaque conforme o status global da base analisada."""
+    status = (diagnostico or {}).get("status_base")
+    if status == "ANALISE_PARCIAL_INFORMACOES_INSUFICIENTES":
+        st.warning(
+            "Este arquivo contém informações insuficientes para uma análise segura. "
+            "O upload foi aceito para diagnóstico, mas os resultados afetados não devem "
+            "ser utilizados como definitivos até a complementação das informações."
+        )
+    elif status == "ANALISE_COM_INCONSISTENCIAS":
+        st.warning(
+            "Este arquivo contém inconsistências que exigem revisão. O upload foi aceito "
+            "para diagnóstico; os blocos afetados permanecem indisponíveis para "
+            "formalização até a correção ou validação responsável."
+        )
+
+
 def render_documentos_funcionais_upload(resultado):
     """Renderiza os seis destinos documentais após processamento explícito."""
+    render_status_base_coleta(resultado.get("diagnostico_coleta"))
 
     st.markdown(_CSS_DOCS_GRID, unsafe_allow_html=True)
     documentos = (resultado.get("capacidades") or {}).get("documentos") or {}
@@ -4886,7 +4905,7 @@ with st.container(border=True):
             st.download_button(
                 "Baixar Arquivo Coleta Oficial",
                 data=_coleta_oficial_cacheada(_assinatura_coleta, _dados_calculadora_coleta),
-                file_name=NOME_ARQUIVO_COLETA_OFICIAL,
+                file_name=NOME_DOWNLOAD_COLETA,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary",
                 key="download_coleta_documentos",

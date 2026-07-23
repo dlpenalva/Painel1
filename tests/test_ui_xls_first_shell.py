@@ -54,7 +54,7 @@ class TestCascaXlsFirst(unittest.TestCase):
     def test_modelo_xls_e_a_fonte_do_download_inicial(self):
         self.assertIn("TEMPLATE_COLETA_OFICIAL", INICIO)
         self.assertIn("assinatura_template_coleta", INICIO)
-        self.assertIn('file_name=NOME_ARQUIVO_COLETA_OFICIAL', INICIO)
+        self.assertIn('file_name=NOME_DOWNLOAD_COLETA', INICIO)
         self.assertIn('"Baixar Arquivo Coleta Oficial"', INICIO)
         self.assertNotIn("CAMINHO_MODELO_COLETA", INICIO)
 

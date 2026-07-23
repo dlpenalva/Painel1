@@ -182,7 +182,12 @@ def test_formulas_pc_separam_nominal_reconhecido_analise_e_delta():
     assert "$J$2:$J$100" in ws["S2"].value
 
 
-def _workbook_upload(inicio_h: date | None, inicio_meta: date | None) -> bytes:
+def _workbook_upload(
+    inicio_h: date | None,
+    inicio_meta: date | None,
+    *,
+    metadado_removido: bool = False,
+) -> bytes:
     wb = load_workbook(TEMPLATE, data_only=False)
     ws = wb["itens_PC"]
     ws["A2"] = "PC-UPLOAD"
@@ -194,26 +199,61 @@ def _workbook_upload(inicio_h: date | None, inicio_meta: date | None) -> bytes:
     wb["parametros"]["D3"] = date(2024, 9, 30)
     wb["parametros"]["A3"] = "Sim"
     wb["parametros"]["H3"] = inicio_h
-    partes = [] if inicio_meta is None else [f"C1={inicio_meta.isoformat()}"]
-    wb.properties.keywords = "CL8US_INICIO_EFEITO:" + ",".join(partes)
+    if metadado_removido:
+        # §8.2: simula editor de XLSX que removeu a propriedade tecnica.
+        wb.properties.keywords = None
+    else:
+        partes = [] if inicio_meta is None else [f"C1={inicio_meta.isoformat()}"]
+        wb.properties.keywords = "CL8US_INICIO_EFEITO:" + ",".join(partes)
     saida = BytesIO()
     wb.save(saida)
     return saida.getvalue()
 
 
-def test_upload_bloqueia_fonte_ausente_e_inconsistente_com_pc_e_ciclo():
+def test_upload_fonte_ausente_vira_lacuna_e_nao_rejeita():
+    # §14: sem inicio de efeito para o ciclo ativo -> INSUFICIENCIA (lacuna),
+    # nao inconsistencia. Upload continua valido; nada e inventado.
     ausente = ler_coleta_reajuste(_workbook_upload(None, None))
+    assert ausente["valido"] is True
+    assert not ausente["pronto_para_consolidar"]
     assert any(
         "PC-UPLOAD" in msg and "C1" in msg
-        for msg in ausente["bloqueios_criticos"]
+        for msg in ausente["lacunas_apuracao"]
     )
+    assert not any(
+        "PC-UPLOAD" in msg for msg in ausente["bloqueios_criticos"]
+    )
+    assert ausente["status_base"] in (
+        "ANALISE_PARCIAL_INFORMACOES_INSUFICIENTES",
+        "ANALISE_COM_INCONSISTENCIAS",
+    )
+
+
+def test_upload_fontes_divergentes_e_inconsistencia_soft_nao_rejeita():
+    # §8.1: ambos existem e divergem -> bloqueia calculo dependente e a
+    # formalizacao, mas NAO rejeita o upload global.
     divergente = ler_coleta_reajuste(
         _workbook_upload(date(2024, 4, 18), date(2024, 4, 19))
     )
+    assert divergente["valido"] is True
+    assert not divergente["pronto_para_consolidar"]
+    assert divergente["status_base"] == "ANALISE_COM_INCONSISTENCIAS"
     assert any(
         "inconsistente" in msg.lower() and "C1" in msg
-        for msg in divergente["bloqueios_criticos"]
+        for msg in divergente["inconsistencias"]
     )
+
+
+def test_upload_visivel_sem_metadado_passa_com_aviso():
+    # §8.2 (teste obrigatorio): remover SOMENTE o metadado CL8US_INICIO_EFEITO,
+    # manter parametros!H. O upload DEVE passar (aviso tecnico nao bloqueante).
+    payload = _workbook_upload(date(2024, 4, 18), None, metadado_removido=True)
+    diag = ler_coleta_reajuste(payload)
+    assert diag["valido"] is True
+    assert not any(
+        "PC-UPLOAD" in msg for msg in diag["bloqueios_criticos"]
+    )
+    assert any("CL8US_INICIO_EFEITO" in aviso for aviso in diag["avisos"])
 
 
 def test_fontes_parametros_e_metadado_reconciliam_sem_terceira_fonte():

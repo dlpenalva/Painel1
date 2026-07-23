@@ -22,7 +22,6 @@ from zipfile import ZIP_DEFLATED, ZipFile
 from openpyxl import load_workbook
 
 from _coleta_reajuste import CAMINHO_MODELO_COLETA, gerar_coleta_reajuste, ler_coleta_reajuste
-from _coleta_reajuste_documentos import adaptar_coleta_reajuste_para_documentos
 
 
 FIXTURE = Path(__file__).parent / "fixtures" / "posicao_contratual.json"
@@ -112,7 +111,11 @@ class PosicaoContratualTests(unittest.TestCase):
         self.assertIn("Q2+T2", posicao["U2"].value)
         self.assertEqual(wb["aditivos"]["L2"].number_format, "#,##0.00")
 
-    def test_alertas_criticos_invalidam_upload_consolidacao_e_oito_documentos(self):
+    def test_alertas_criticos_sao_inconsistencia_soft_sem_rejeitar_upload(self):
+        # §13: POSICAO_NEGATIVA / REMANESCENTE_SUPERA_POSICAO sao inconsistencias
+        # reais (mantidas), mas NAO rejeitam o upload nem tornam a estrutura
+        # invalida. Relaxa apenas o BLOQUEIO GLOBAL: upload aceito p/ diagnostico,
+        # formalizacao bloqueada, validacao matematica preservada.
         base = gerar_coleta_reajuste(
             {
                 "indice": "INDICE SINTETICO",
@@ -124,17 +127,16 @@ class PosicaoContratualTests(unittest.TestCase):
                 alerta = self.fixture["casos"][chave]["alerta_esperado"]
                 payload = _injetar_cache_formula(base, "posicao_contratual", "X2", alerta)
                 diagnostico = ler_coleta_reajuste(payload)
-                self.assertFalse(diagnostico["valido"])
+                # Upload aceito (nao ha bloqueio ESTRUTURAL).
+                self.assertTrue(diagnostico["valido"])
+                # Formalizacao permanece protegida.
                 self.assertFalse(diagnostico["pronto_para_consolidar"])
+                # A inconsistencia continua registrada (validacao matematica intacta).
+                self.assertTrue(any(alerta in item for item in diagnostico["inconsistencias"]))
                 self.assertTrue(any(alerta in item for item in diagnostico["bloqueios_criticos"]))
-                self.assertFalse(diagnostico["capacidades"]["estruturalmente_valido"])
-                for documento in (
-                    "planilha_executiva", "valores_unitarios", "relatorio_executivo", "mapa_marcos",
-                    "minuta_apostilamento", "garantia_contratual", "dou", "checklist_processual",
-                ):
-                    self.assertFalse(diagnostico["capacidades"]["documentos"][documento]["habilitado"])
-                with self.assertRaisesRegex(ValueError, "não pode liberar documentos"):
-                    adaptar_coleta_reajuste_para_documentos(payload)
+                self.assertEqual(diagnostico["status_base"], "ANALISE_COM_INCONSISTENCIAS")
+                # Inconsistencia de negocio nao torna a estrutura invalida.
+                self.assertTrue(diagnostico["capacidades"]["estruturalmente_valido"])
 
 
 if __name__ == "__main__":

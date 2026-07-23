@@ -423,25 +423,20 @@ def aplicar_bloqueio_documental(capacidades: dict[str, Any], bloqueios: list[str
     """
     if not bloqueios:
         return capacidades
-    bloqueios_sem_divergencia = [
-        b for b in bloqueios if not str(b).startswith(_PREFIXO_BLOQUEIO_DIVERGENCIA)
-    ]
     for chave, documento in (capacidades.get("documentos") or {}).items():
-        # Documentos liberados so sao bloqueados por motivos que NAO sejam a
-        # divergencia XLS x Python. Se a divergencia for o unico motivo, seguem
-        # disponiveis (com mascaramento de campos divergentes na Etapa 5b).
-        aplicaveis = (
-            bloqueios_sem_divergencia
-            if chave in DOCS_LIBERADOS_APESAR_DIVERGENCIA
-            else bloqueios
-        )
-        if not aplicaveis:
+        # Documentos diagnosticos (Sumario, Saneador, Apostila) permanecem
+        # DISPONIVEIS diante de QUALQUER bloqueio de FORMALIZACAO — divergencia
+        # XLS x Python, insuficiencia, inconsistencia ou campo nao confiavel.
+        # Disponibilidade documental != aptidao para formalizar: a formalizacao
+        # segue condicionada e o alerta permanece visivel. Coleta estruturalmente
+        # invalida ja foi barrada a montante (nao chega aqui).
+        if chave in DOCS_LIBERADOS_APESAR_DIVERGENCIA:
             continue
         documento["habilitado"] = False
         documento["estado"] = "bloqueado"
         documento["rotulo"] = "Bloqueado para formalização"
         documento["classificacao"] = "BLOQUEADO PARA FORMALIZAÇÃO"
-        documento["motivo"] = aplicaveis[0]
+        documento["motivo"] = bloqueios[0]
     return capacidades
 
 

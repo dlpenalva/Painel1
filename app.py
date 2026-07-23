@@ -269,6 +269,18 @@ def _render_css() -> None:
             font-weight: 800;
             margin: .08rem 0 .55rem;
         }
+        /* §16: bolinha discreta escura a DIREITA do titulo "Indice do contrato".
+           O marker tecnico .cl8us-index-marker segue invisivel para o :has(). */
+        .cl8us-index-title::after {
+            content: "";
+            display: inline-block;
+            width: .5rem;
+            height: .5rem;
+            margin-left: .4rem;
+            border-radius: 50%;
+            background: #1A1A1A;
+            vertical-align: middle;
+        }
         [data-baseweb="select"] > div,
         [data-testid="stDateInput"] input,
         [data-testid="stTextInput"] input {
@@ -373,7 +385,7 @@ def _render_css() -> None:
 def _render_sidebar() -> None:
     with st.sidebar:
         st.markdown(
-            '<div class="cl8us-side-brand"><strong>TLB<span>·</span>cl8us</strong></div>'
+            '<div class="cl8us-side-brand"><strong><span>·</span>cl8us<span>·</span></strong></div>'
             '<div class="cl8us-side-caption">apoio à gestão de contratos</div>',
             unsafe_allow_html=True,
         )

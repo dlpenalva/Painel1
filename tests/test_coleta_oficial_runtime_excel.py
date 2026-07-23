@@ -151,14 +151,34 @@ def _excel_editar_e_inspecionar(caminho: Path, editar, inspecionar):
         pythoncom.CoUninitialize()
 
 
+def _arquivo_sheet_por_nome(caminho: Path, nome_aba: str) -> str:
+    """Resolve xl/worksheets/sheetN.xml da aba pelo nome (§26: sem hard-code).
+
+    A numeracao sheetN.xml segue a ordem interna de criacao, nao a ordem das
+    guias; com posicao_referencia adicionada, RESULTADOS deixou de ser sheet11.
+    """
+    with zipfile.ZipFile(caminho, "r") as z:
+        wbxml = z.read("xl/workbook.xml").decode("utf-8")
+        rels = z.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+    rid = None
+    for nome, ident in re.findall(r'<sheet name="([^"]+)"[^>]*r:id="([^"]+)"', wbxml):
+        if nome == nome_aba:
+            rid = ident
+            break
+    assert rid is not None, f"aba {nome_aba} nao encontrada em workbook.xml"
+    alvo = dict(re.findall(r'Id="([^"]+)"[^>]*Target="([^"]+)"', rels))[rid]
+    return alvo if alvo.startswith("xl/") else "xl/" + alvo.lstrip("/")
+
+
 def _alterar_cache_resultados(caminho: Path, celula: str, valor: float) -> None:
+    arquivo_resultados = _arquivo_sheet_por_nome(caminho, "RESULTADOS")
     temporario = caminho.with_suffix(".tmp.xlsx")
     with zipfile.ZipFile(caminho, "r") as origem, zipfile.ZipFile(
         temporario, "w", zipfile.ZIP_DEFLATED
     ) as destino:
         for item in origem.infolist():
             dados = origem.read(item.filename)
-            if item.filename == "xl/worksheets/sheet11.xml":
+            if item.filename == arquivo_resultados:
                 texto = dados.decode("utf-8")
                 padrao = re.compile(
                     rf'(<c r="{re.escape(celula)}"[^>]*>.*?<v>)([^<]*)(</v>)',
@@ -312,11 +332,15 @@ def test_excel_com_runtime_financeiro_pc_reconciliacao_e_bloqueio(tmp_path: Path
     _alterar_cache_resultados(caminho_pc, "C15", 9999.0)
     divergente, _ = processar_coleta_oficial_runtime(caminho_pc.read_bytes())
     assert divergente["reconciliacao_xls_python"]["divergencias_relevantes"]
+    # Formalizacao permanece bloqueada pela divergencia XLS x Python...
     assert divergente["formalizacao_bloqueada"]
-    assert not any(
-        doc.get("habilitado")
-        for doc in (divergente.get("capacidades") or {}).get("documentos", {}).values()
-    )
+    documentos = (divergente.get("capacidades") or {}).get("documentos", {})
+    # ...mas §7: os 3 documentos diagnosticos seguem DISPONIVEIS (disponibilidade
+    # documental != aptidao para formalizar). Os demais formais ficam bloqueados.
+    for chave in ("sumario_executivo", "despacho_saneador", "termo_apostila"):
+        assert documentos[chave]["habilitado"], chave
+    for chave in ("garantia_contratual", "dou", "relatorio_executivo"):
+        assert not documentos[chave]["habilitado"], chave
 
 
 def test_excel_com_pcs_multiciclo_ignora_fator_historico_fora_do_objeto(tmp_path: Path) -> None:

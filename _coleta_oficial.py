@@ -36,7 +36,10 @@ from dateutil.relativedelta import relativedelta
 
 ROOT = Path(__file__).resolve().parent
 TEMPLATE_COLETA_OFICIAL = ROOT / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
+# Nome de referencia interno do template (nao renomear o arquivo fisico).
 NOME_ARQUIVO_COLETA_OFICIAL = "COLETA_REAJUSTE_OFICIAL.xlsx"
+# Nome user-facing entregue nos botoes de download da interface (§15).
+NOME_DOWNLOAD_COLETA = "Coleta_Reajuste.xlsx"
 
 # Ordem oficial das abas do novo modelo (fonte de verdade: o proprio XLS)
 ABAS_COLETA_OFICIAL = [

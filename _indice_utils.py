@@ -123,6 +123,39 @@ def coletar_sgs_produtorio(serie_codigo, data_inicio, data_fim, timeout=15):
     }
 
 
+SGS_IPCA = 433
+SGS_IGPM = 189
+
+
+def obter_ultima_competencia_sgs(serie_codigo, timeout=15):
+    """Última competência de uma série mensal do SGS/BCB (mesma fonte do cálculo).
+
+    Usada por IPCA (SGS 433) e IGP-M (SGS 189). Consulta o endpoint oficial
+    ``.../dados/ultimos/1`` e devolve a competência mais recente sem hard-code de
+    mês/ano. Levanta excecao em falha de rede/parse; o chamador decide o fallback.
+    """
+    url = (
+        f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{int(serie_codigo)}/"
+        "dados/ultimos/1?formato=json"
+    )
+    resp = requests.get(url, timeout=timeout)
+    resp.raise_for_status()
+    dados = resp.json()
+    if not dados:
+        raise RuntimeError(f"A série SGS {serie_codigo} retornou vazia.")
+    data_raw = dados[-1].get("data")
+    data = pd.to_datetime(data_raw, dayfirst=True, errors="coerce")
+    if pd.isna(data):
+        raise RuntimeError(f"Competência inválida na série SGS {serie_codigo}: {data_raw!r}.")
+    data = pd.Timestamp(year=int(data.year), month=int(data.month), day=1).normalize()
+    return {
+        "data": data,
+        "mes_ano": f"{data.month:02d}/{data.year}",
+        "descricao": f"{data.month:02d}/{data.year}",
+        "serie": int(serie_codigo),
+    }
+
+
 def _ipeadata_get_json(endpoint, timeout=20):
     ultimo_erro = None
     headers = {

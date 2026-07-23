@@ -179,6 +179,25 @@ def _obter_ultima_competencia_icti_cache():
     return obter_ultima_competencia_icti_ipeadata(timeout=15)
 
 
+@st.cache_data(ttl=60 * 60, show_spinner=False)
+def _obter_ultima_competencia_sgs_cache(serie_codigo):
+    from _indice_utils import obter_ultima_competencia_sgs
+    return obter_ultima_competencia_sgs(serie_codigo, timeout=15)
+
+
+def _texto_ultima_competencia_sgs(serie_codigo):
+    """§18: 'Última competência disponível: mm/aaaa.' para IPCA(433)/IGP-M(189).
+
+    Consulta a MESMA fonte oficial do cálculo (SGS/BCB) com cache leve. Em falha
+    de rede não bloqueia o usuário: exibe aviso discreto sem inventar data.
+    """
+    try:
+        ultima = _obter_ultima_competencia_sgs_cache(serie_codigo)
+        return f"Última competência disponível: {ultima['descricao']}."
+    except Exception:
+        return "Última competência disponível: não foi possível consultar neste momento."
+
+
 def render_alerta_icti_ipeadata():
     """Mostra alerta discreto sobre a última competência ICTI disponível no Ipeadata."""
     try:
@@ -236,6 +255,11 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
             render_alerta_ist_local()
         elif selecionado_norm.startswith("ICTI"):
             render_alerta_icti_ipeadata()
+        elif selecionado_norm.startswith("IPCA"):
+            # §18: mesma fonte oficial do cálculo (SGS 433); IST/ICTI intactos.
+            st.caption(_texto_ultima_competencia_sgs(433))
+        elif selecionado_norm.startswith("IGP-M") or selecionado_norm.startswith("IGPM"):
+            st.caption(_texto_ultima_competencia_sgs(189))
 
     return selecionado
 

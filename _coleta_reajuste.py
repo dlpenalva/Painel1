@@ -428,10 +428,12 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         return {
             "valido": False,
             "pronto_para_consolidar": False,
+            "status_base": "ARQUIVO_ESTRUTURALMENTE_INVALIDO",
             "processamento_progressivo": True,
             "pendencias": bloqueios_estruturais,
             "bloqueios_estruturais": bloqueios_estruturais,
             "bloqueios_criticos": bloqueios_criticos,
+            "inconsistencias": bloqueios_criticos,
             "lacunas_apuracao": [],
             "avisos": avisos,
             "contagens": {},
@@ -540,6 +542,14 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
     bloqueios_criticos.extend(
         f"Inicio dos efeitos inconsistente: {erro}" for erro in erros_inicios_pc
     )
+    # Fonte visivel (parametros!INICIO_EFEITO_FINANCEIRO) e canonica. O metadado
+    # CL8US_INICIO_EFEITO e apenas copia de integridade: se desaparecer apos o
+    # fiscal abrir/salvar o XLS em editores legitimos, o arquivo continua valido.
+    if tem_inicio_visivel and not tem_inicio_metadado:
+        avisos.append(
+            "Metadado tecnico CL8US_INICIO_EFEITO ausente; adotada a fonte "
+            "visivel parametros!INICIO_EFEITO_FINANCEIRO como canonica."
+        )
     ativos_nome = {f"C{numero}" for numero in ativos}
     ws_pc = wb["itens_PC"]
     layout_pc_numero = str(_header_a1).strip().upper() == "NUMERO_PC"
@@ -578,9 +588,13 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         efeito_esperado = efeito_financeiro_pc(data_pc, ciclo_pc, reg_pc)
         ciclo_ativo = ciclo_pc in ativos_nome
         if ciclo_ativo and efeito_esperado is None:
-            bloqueios_criticos.append(
-                "INICIO_EFEITO_FINANCEIRO ausente ou inconsistente: "
-                f"PC {numero_pc} - {ciclo_pc}."
+            # Sem inicio de efeito para o ciclo: insuficiencia, nao inconsistencia.
+            # O efeito daquele PC fica indeterminado; upload segue aceito e o
+            # calculo dependente e barrado pela politica de capacidades/lacunas.
+            lacunas_apuracao.append(
+                "INICIO_EFEITO_FINANCEIRO ausente para ciclo ativo: "
+                f"PC {numero_pc} - {ciclo_pc}. Efeito financeiro indeterminado "
+                "ate a complementacao do inicio do efeito."
             )
             continue
         marcador = ws_pc[f"L{row}"].value if _modelo_pc_etapa3 else None
@@ -599,13 +613,9 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
                     "EFEITO_FINANCEIRO_PC divergente da data canonica: "
                     f"PC {numero_pc} - {ciclo_pc}."
                 )
-        if _modelo_pc_etapa3 and ciclo_ativo and (
-            not tem_inicio_visivel or not tem_inicio_metadado
-        ):
-            bloqueios_criticos.append(
-                "Fonte dupla obrigatoria incompleta para INICIO_EFEITO_FINANCEIRO: "
-                f"PC {numero_pc} - {ciclo_pc}."
-            )
+        # NOTA: a exigencia historica de "fonte dupla" (visivel + metadado) foi
+        # removida. O metadado tecnico pode ser legitimamente apagado por editores
+        # de XLSX; a fonte visivel em parametros e suficiente e canonica.
 
     financeiro = wb["financeiro"]
     divergencias_manuais: list[str] = []
@@ -775,23 +785,48 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         "status_resultados": status_resultados,
         "arquitetura_posicao_contratual": "canonica" if possui_posicao_contratual else "legada",
     }
-    bloqueios = bloqueios_estruturais + bloqueios_criticos
+    # HARD BLOCK: somente falhas estruturais tornam o arquivo invalido e barram
+    # a leitura dos blocos. SOFT BLOCK: inconsistencias de negocio e lacunas de
+    # informacao NAO rejeitam o upload; barram apenas o bloco dependente e a
+    # formalizacao. Por isso somente bloqueios_estruturais alimentam capacidades.
+    inconsistencias = bloqueios_criticos
     capacidades = avaliar_capacidades_apuracao(
         contagens,
         metadados,
-        bloqueios,
+        bloqueios_estruturais,
         lacunas_apuracao,
     )
     possui_base = capacidades["resumo"]["tem_alguma_evidencia"]
     resultados_seguros = capacidades["resumo"]["apuracao_integral"]
-    pendencias = bloqueios + lacunas_apuracao
+    estruturalmente_invalido = bool(bloqueios_estruturais)
+    tem_inconsistencias = bool(inconsistencias)
+    tem_insuficiencia = bool(lacunas_apuracao) or not resultados_seguros
+    if estruturalmente_invalido:
+        status_base = "ARQUIVO_ESTRUTURALMENTE_INVALIDO"
+    elif tem_inconsistencias:
+        status_base = "ANALISE_COM_INCONSISTENCIAS"
+    elif tem_insuficiencia or not possui_base:
+        status_base = "ANALISE_PARCIAL_INFORMACOES_INSUFICIENTES"
+    else:
+        status_base = "APTO_PARA_ANALISE"
+    # Formalizacao permanece protegida: exige estrutura integra, ausencia de
+    # inconsistencias, base presente e apuracao integral.
+    formalizacao_liberada = (
+        not estruturalmente_invalido
+        and not tem_inconsistencias
+        and possui_base
+        and resultados_seguros
+    )
+    pendencias = bloqueios_estruturais + inconsistencias + lacunas_apuracao
     return {
-        "valido": not bloqueios,
-        "pronto_para_consolidar": not bloqueios and possui_base and resultados_seguros,
+        "valido": not estruturalmente_invalido,
+        "pronto_para_consolidar": formalizacao_liberada,
+        "status_base": status_base,
         "processamento_progressivo": True,
         "pendencias": pendencias,
         "bloqueios_estruturais": bloqueios_estruturais,
         "bloqueios_criticos": bloqueios_criticos,
+        "inconsistencias": inconsistencias,
         "lacunas_apuracao": lacunas_apuracao,
         "avisos": avisos,
         "contagens": contagens,

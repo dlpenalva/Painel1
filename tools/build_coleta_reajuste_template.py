@@ -532,8 +532,12 @@ def _reset_aditivos(wb) -> None:
         "I": '=IFERROR(VLOOKUP(C{r},parametros!$B:$F,5,0),"")',
         # L e a unica regra de sinal quantitativo. J apenas monetiza esse delta.
         "J": '=IF(OR(L{r}="",F{r}=""),"",ROUND(L{r}*F{r}*IF(AND(UPPER(H{r})="SIM",ISNUMBER(I{r})),I{r},1),2))',
-        "L": '=IF(OR(A{r}="",C{r}="",D{r}="",NOT(ISNUMBER(E{r}))),"",IF(LEFT(UPPER(D{r}),5)="ACRES",ROUND(ABS(E{r}),2),IF(OR(LEFT(UPPER(D{r}),6)="SUPRES",LEFT(UPPER(D{r}),4)="DECR"),ROUND(-ABS(E{r}),2),"")))',
-        "M": '=IF(A{r}="","",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{r})=0,"ALERTA: ITEM_AUSENTE",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{r})>1,"ALERTA: ITEM_DUPLICADO",IF(OR(C{r}="",C{r}="Fora dos ciclos"),"ALERTA: CICLO_INVALIDO",IF(NOT(ISNUMBER(E{r})),"ALERTA: QTD_INVALIDA",IF(AND(LEFT(UPPER(D{r}),5)<>"ACRES",LEFT(UPPER(D{r}),6)<>"SUPRES",LEFT(UPPER(D{r}),4)<>"DECR"),"ALERTA: TIPO_INVALIDO","OK"))))))',
+        # §12: prefixos tolerantes a acento. UPPER("Acréscimo")="ACRÉSCIMO" e o
+        # acento (É) fica na posicao 4, entao LEFT(...,5)="ACRES" falhava. Usamos
+        # LEFT(...,3)="ACR" (cobre Acréscimo/Acrescimo) e LEFT(...,4)="SUPR"
+        # (cobre Supressão/Supressao). DECR (legado) mantido para leitura.
+        "L": '=IF(OR(A{r}="",C{r}="",D{r}="",NOT(ISNUMBER(E{r}))),"",IF(LEFT(UPPER(D{r}),3)="ACR",ROUND(ABS(E{r}),2),IF(OR(LEFT(UPPER(D{r}),4)="SUPR",LEFT(UPPER(D{r}),4)="DECR"),ROUND(-ABS(E{r}),2),"")))',
+        "M": '=IF(A{r}="","",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{r})=0,"ALERTA: ITEM_AUSENTE",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{r})>1,"ALERTA: ITEM_DUPLICADO",IF(OR(C{r}="",C{r}="Fora dos ciclos"),"ALERTA: CICLO_INVALIDO",IF(NOT(ISNUMBER(E{r})),"ALERTA: QTD_INVALIDA",IF(AND(LEFT(UPPER(D{r}),3)<>"ACR",LEFT(UPPER(D{r}),4)<>"SUPR",LEFT(UPPER(D{r}),4)<>"DECR"),"ALERTA: TIPO_INVALIDO","OK"))))))',
     }
     for row in range(2, 201):
         for col in ("A", "B", "D", "E", "H", "K"):
@@ -549,13 +553,17 @@ def _reset_aditivos(wb) -> None:
         ws[f"L{row}"].number_format = QTY
         ws[f"I{row}"].number_format = FACTOR
     ws.data_validations.dataValidation.clear()
+    # §12: dropdown mantido sem acento ("Acrescimo,Supressao") para preservar a
+    # validacao legivel por openpyxl (Excel embrulha listas re-salvas via COM em
+    # mc:AlternateContent -> formula1=None). As formulas L/M aceitam a ENTRADA
+    # acentuada ("Acréscimo"/"Supressão") via prefixos ACR/SUPR.
     for rng, values in (("D2:D200", "Acrescimo,Supressao"), ("H2:H200", "Sim,Nao"), ("K2:K200", "Sim,Nao")):
         dv = DataValidation(type="list", formula1=f'"{values}"', allow_blank=True)
         ws.add_data_validation(dv)
         dv.add(rng)
     red_fill = PatternFill("solid", fgColor="FFFFC7CE")
     red_font = Font(color="FF9C0006")
-    ws.conditional_formatting.add("A2:K200", FormulaRule(formula=['OR(LEFT(UPPER($D2),6)="SUPRES",LEFT(UPPER($D2),4)="DECR")'], fill=red_fill, font=red_font))
+    ws.conditional_formatting.add("A2:K200", FormulaRule(formula=['OR(LEFT(UPPER($D2),4)="SUPR",LEFT(UPPER($D2),4)="DECR")'], fill=red_fill, font=red_font))
     ws["L1"] = "DELTA_QTD_CONTRATUAL"
     ws["M1"] = "CHECK_POSICAO_CONTRATUAL"
     for col in ("L", "M"):
