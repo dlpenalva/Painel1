@@ -63,6 +63,66 @@ def _achar_valor(ws, rotulo_norm: str, max_lin: int = 60) -> Any:
     return None
 
 
+def _valor_por_prefixo(ws, prefixo: str, max_lin: int = 40) -> Any:
+    """Valor em col B da 1a linha cujo rotulo (col A) COMECA com `prefixo`.
+
+    Leitura semantica por rotulo (tolerante a sufixos como "(GCC, opcional)"),
+    sem depender de coordenada fixa.
+    """
+    alvo = _norm(prefixo)
+    for r in range(1, max_lin + 1):
+        rot = _norm(ws.cell(r, 1).value)
+        if rot and rot.startswith(alvo):
+            return ws.cell(r, 2).value
+    return None
+
+
+def _norm_data(valor: Any):
+    """Normaliza um valor de celula para datetime.date; caso contrario None.
+
+    NUNCA transforma vazio, numero solto ou texto em data (fail-closed): apenas
+    datas reais (date/datetime) sao aceitas.
+    """
+    from datetime import date as _date, datetime as _dt
+    if isinstance(valor, _dt):
+        return valor.date()
+    if isinstance(valor, _date):
+        return valor
+    return None
+
+
+# Rotulos canonicos da aba cobertura_temporal (leitura por prefixo).
+_ROTULOS_COBERTURA_TEMPORAL = {
+    "data_analise": "data da analise",
+    "financeiro_confirmado_completo_ate": "financeiro confirmado completo ate",
+    "pc_confirmado_completo_ate": "pc confirmado completo ate",
+}
+
+
+def _ler_cobertura_temporal(wb) -> dict[str, Any]:
+    """Le a aba de diagnostico cobertura_temporal (GCC) por rotulo.
+
+    Le SOMENTE as declaracoes GCC (Data da analise, Financeiro/PC confirmado
+    completo ate). NAO recalcula formula e NAO le a ultima evidencia (MAX): a
+    ultima evidencia continua sendo derivada pelo motor a partir de
+    financeiro/itens_PC. Aba ausente => estrutura vazia compativel (sem
+    excecao, sem bloquear arquivos oficiais anteriores).
+    """
+    vazio = {
+        "ok": False,
+        "data_analise": None,
+        "financeiro_confirmado_completo_ate": None,
+        "pc_confirmado_completo_ate": None,
+    }
+    if "cobertura_temporal" not in wb.sheetnames:
+        return vazio
+    ws = wb["cobertura_temporal"]
+    saida: dict[str, Any] = {"ok": True}
+    for chave, prefixo in _ROTULOS_COBERTURA_TEMPORAL.items():
+        saida[chave] = _norm_data(_valor_por_prefixo(ws, prefixo))
+    return saida
+
+
 def _mapear_colunas_por_cabecalho(ws, linha_header: int = 1) -> dict[str, int]:
     mapa: dict[str, int] = {}
     for cell in ws[linha_header]:
@@ -2922,6 +2982,18 @@ def ler_masterfile_v10(
         "ciclo_vigente": str(ciclo or "").strip(),
         "data_corte":    corte,
         "versao":        res["versao_detectada"],
+    }
+
+    # Integracao cobertura_temporal (aba de diagnostico GCC). Expoe a fonte
+    # canonica para o motor: data_analise em controle e confirmacoes GCC em
+    # confirmacao_gcc. Ausencia da aba => campos None (compativel com arquivos
+    # oficiais anteriores; ver ABAS_OPCIONAIS_COMPAT). MAX nunca vira aqui.
+    cobertura = _ler_cobertura_temporal(wb)
+    res["cobertura_temporal"] = cobertura
+    res["controle"]["data_analise"] = cobertura.get("data_analise")
+    res["confirmacao_gcc"] = {
+        "financeiro_ate": cobertura.get("financeiro_confirmado_completo_ate"),
+        "pc_ate":         cobertura.get("pc_confirmado_completo_ate"),
     }
 
     if "historico" in wb.sheetnames:
