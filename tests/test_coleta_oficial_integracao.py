@@ -41,7 +41,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # mudanca de layout/validacao; mensagens e demais estilos preservados.
 # Atualizado nesta etapa (Excel COM): nova aba cobertura_temporal (diagnostico
 # GCC/automatico) inserida antes de RESULTADOS; VTA oficial inalterado.
-SHA256_TEMPLATE_ESPERADO = "60c5aee67552a33656ef41bb917f30d64b15604299dfa9dda73e1c883af72cd7"
+# Hotfix evidencia x cobertura: BLOCO B separa ultima evidencia de confirmacao
+# GCC (2 campos novos) e projecao fail-closed; template re-salvo via Excel COM.
+SHA256_TEMPLATE_ESPERADO = "b645d662fcadb093252898f90e278a0bd99222c94859f8a73d260593e8b0f2d4"
 
 
 def _dados_calculadora() -> dict:

@@ -2,37 +2,41 @@
 
 Camada de DIAGNOSTICO (sombra/auditoria) que CONSOME a leitura ja materializada
 e responde, sem tocar o VTA oficial nem duplicar conceito existente, a pergunta
-central do eixo "cobertura temporal / remanescente no ciclo em execucao":
+central do eixo "cobertura temporal / remanescente no ciclo em execucao".
 
-  - Qual a DATA da posicao fisica efetivamente utilizada?
-  - Ate quando cada fonte (fisica / Financeiro / PC) tem evidencia concreta?
-  - A partir de quando qualquer leitura seria PROJECAO (nao fato observado)?
-  - Qual o MODO TEMPORAL e qual a FONTE PRINCIPAL, sem dupla contagem?
+DISTINCAO OBRIGATORIA (hotfix): ULTIMA EVIDENCIA != COBERTURA COMPLETA.
+  * ULTIMA EVIDENCIA = automatica, derivada dos dados que existem (MAX da data).
+    NUNCA e "completo ate": pode haver registros anteriores nao informados.
+  * COBERTURA CONFIRMADA = informacao GCC (nunca inferida por simples MAX).
+  * COBERTURA INFERIDA (somente Financeiro) = quando a grade de competencias
+    demonstra continuidade rigorosa (todos os meses do intervalo informados,
+    inclusive os meses com valor zero; vazio != zero).
+  * PC NAO admite inferencia automatica de completude: MAX(DATA_PC) e apenas
+    ultima evidencia; "PC confirmado completo ate" e exclusivamente GCC.
 
-REUSO (nao reinventa):
-  * `enquadrar_data_pc` (motor temporal) para enquadrar QUALQUER data na linha
-    temporal C0-C4 — mesma fonte unica usada por PC/financeiro/posicao.
-  * A regra homologada da aba `posicao_referencia`: a posicao fisica de
-    referencia e a posicao ATUAL quando o fiscal a informa de forma COMPLETA
-    (data de corte + remanescente para todos os itens); caso contrario faz
-    FALLBACK global para a ultima fotografia historica valida (abertura do
-    ciclo). Sem posicao hibrida item a item.
-  * A hierarquia de prevalencia Financeiro > PC > Consumo (motor de
-    reconciliacao) para eleger FONTE PRINCIPAL e marcar as demais como
-    CONFERENCIA — jamais somando fontes diferentes para a mesma execucao.
+PRIORIDADE da cobertura adotada:
+  Financeiro: confirmada_gcc > inferida (grade continua) > (so ultima evidencia).
+  PC:         confirmada_gcc > (so ultima evidencia).
+
+PROJECAO fail-closed: a projecao so e autorizada a partir do periodo seguinte a
+cobertura ADOTADA (fisica + confirmadas/inferidas), NUNCA a partir da ultima
+evidencia de uma fonte cuja completude nao esteja confirmada/inferida.
+
+REUSO (nao reinventa): `enquadrar_data_pc` (motor temporal) para enquadramento;
+a regra homologada de `posicao_referencia` (posicao atual completa vs. fallback
+global para a fotografia historica); a hierarquia Financeiro > PC > Consumo
+(motor de reconciliacao) para fonte principal vs. conferencia.
 
 REGRAS PERMANENTES honradas:
-  * Posicao FISICA != cobertura FINANCEIRA != evidencia PC. Sao datas distintas.
-  * Financeiro/PC posteriores NAO reduzem a quantidade fisica automaticamente:
-    estabelecem cobertura/evidencia ate uma data, nao nova fotografia.
-  * Projecao e DIAGNOSTICO: nunca vira fato observado nem cria retroativo a
-    pagar. A posicao observada usa exclusivamente a fotografia disponivel.
+  * Posicao FISICA != cobertura FINANCEIRA != evidencia PC. Datas distintas.
+  * Financeiro/PC posteriores NAO reduzem a quantidade fisica automaticamente.
+  * Projecao e DIAGNOSTICO: nunca vira fato observado nem cria retroativo.
   * Nao le/escreve Excel; nao altera B23/B25/B26; nao gera documentos.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any
 
 from _motor_temporal import enquadrar_data_pc
@@ -73,6 +77,10 @@ def _como_float(valor: Any) -> float | None:
 
 def _iso(valor: date | None) -> str | None:
     return valor.isoformat() if isinstance(valor, date) else None
+
+
+def _mes_seguinte(ano: int, mes: int) -> tuple[int, int]:
+    return (ano + 1, 1) if mes == 12 else (ano, mes + 1)
 
 
 def _extrair_por_ciclo(res: dict[str, Any]) -> dict[str, dict[str, Any]]:
@@ -141,14 +149,21 @@ def _remanescente_atual(res: dict[str, Any]) -> dict[str, float]:
     return saida
 
 
+def _confirmacao_gcc(res: dict[str, Any]) -> tuple[date | None, date | None]:
+    """Datas de cobertura CONFIRMADA pela GCC (nunca inferida por MAX)."""
+    bloco = res.get("confirmacao_gcc") or {}
+    fin = _como_data(bloco.get("financeiro_ate") or bloco.get("financeiro_confirmada_ate"))
+    pc = _como_data(bloco.get("pc_ate") or bloco.get("pc_confirmada_ate"))
+    return fin, pc
+
+
 def _ciclo_por_data(data_ref: date | None, por_ciclo: dict[str, dict[str, Any]]) -> str | None:
     """Enquadra uma data na linha temporal C0-C4.
 
     Fonte primaria: `enquadrar_data_pc` (canonica). Ela exige o calendario
     completo (C0-C4) e rejeita linhas parciais; como `por_ciclo` do leitor pode
     omitir ciclos ainda vazios, mantemos um fallback tolerante que apenas
-    localiza a data no intervalo [data_inicio, data_fim] de um ciclo definido —
-    sem aplicar fator, formalizacao ou efeito financeiro (mesma semantica).
+    localiza a data no intervalo [data_inicio, data_fim] de um ciclo definido.
     """
     if data_ref is None:
         return None
@@ -164,17 +179,62 @@ def _ciclo_por_data(data_ref: date | None, por_ciclo: dict[str, dict[str, Any]])
 
 
 def _fotografias_ciclo(res: dict[str, Any], por_ciclo: dict[str, dict]) -> list[str]:
-    """Ciclos que possuem fotografia historica (QTD_REM_BASE preenchida).
-
-    Aceita ``fotografias_ciclo`` como lista de ciclos, dict ciclo->bool, ou
-    deriva de ``por_ciclo`` marcando os ciclos com data de inicio definida.
-    """
+    """Ciclos que possuem fotografia historica (QTD_REM_BASE preenchida)."""
     bloco = res.get("fotografias_ciclo")
     if isinstance(bloco, dict):
         return [c for c in CICLOS if bloco.get(c)]
     if isinstance(bloco, list):
         return [str(c).strip().upper() for c in bloco if str(c).strip().upper() in CICLOS]
     return [c for c in CICLOS if _como_data((por_ciclo.get(c) or {}).get("data_inicio"))]
+
+
+def _grade_competencias(financeiro: list[dict[str, Any]]) -> tuple[
+        list[date], dict[tuple[int, int], date]]:
+    """Competencias financeiras efetivamente informadas (vazio != zero).
+
+    Considera informada apenas a linha que EXISTE com competencia valida — um
+    valor zero conta como informado; a AUSENCIA de linha e lacuna, nunca zero.
+    Retorna (datas ordenadas, mapa (ano,mes)->maior data do mes).
+    """
+    datas = [_como_data(f.get("competencia") or f.get("COMPETENCIA")) for f in financeiro]
+    datas = sorted(d for d in datas if d is not None)
+    por_mes: dict[tuple[int, int], date] = {}
+    for d in datas:
+        chave = (d.year, d.month)
+        por_mes[chave] = max(por_mes.get(chave, d), d)
+    return datas, por_mes
+
+
+def _cobertura_inferida_financeiro(por_mes: dict[tuple[int, int], date]) -> date | None:
+    """Ultima data da MAIOR sequencia contigua de meses a partir do primeiro.
+
+    Continuidade rigorosa: exige que cada mes seguinte esteja presente. Uma
+    lacuna (mes ausente) interrompe a inferencia — a cobertura inferida vai
+    apenas ate o fim do trecho continuo inicial. NAO extrapola a lacuna.
+    """
+    if not por_mes:
+        return None
+    meses = sorted(por_mes)
+    fim = meses[0]
+    for atual in meses[1:]:
+        if atual == _mes_seguinte(*fim):
+            fim = atual
+        else:
+            break
+    return por_mes[fim]
+
+
+def _tem_lacuna_ate(por_mes: dict[tuple[int, int], date], alvo: date) -> bool:
+    """Ha algum mes ausente entre o primeiro informado e o mes de `alvo`?"""
+    if not por_mes:
+        return False
+    y, m = sorted(por_mes)[0]
+    alvo_ym = (alvo.year, alvo.month)
+    while (y, m) <= alvo_ym:
+        if (y, m) not in por_mes:
+            return True
+        y, m = _mes_seguinte(y, m)
+    return False
 
 
 # --------------------------------------------------------------------------- #
@@ -188,12 +248,17 @@ class ResultadoCoberturaTemporal:
     inicio_ciclo_atual: date | None
     data_fotografia_corte: date | None
     data_fotografia_recente: date | None
-    # Bloco B — Cobertura das fontes.
+    # Bloco B — Ultima evidencia vs. cobertura confirmada/inferida.
     posicao_fisica_conhecida_ate: date | None
-    financeiro_conhecido_ate: date | None
-    pc_conhecido_ate: date | None
+    financeiro_ultima_evidencia: date | None
+    financeiro_cobertura_inferida_ate: date | None
+    financeiro_cobertura_confirmada_ate: date | None
+    financeiro_cobertura_adotada_ate: date | None
+    pc_ultima_evidencia: date | None
+    pc_cobertura_confirmada_ate: date | None
+    pc_cobertura_adotada_ate: date | None
     ultima_evidencia_por_fonte: dict[str, str | None]
-    projecao_necessaria_a_partir_de: date | None
+    projecao_autorizada_a_partir_de: date | None
     # Bloco C — Decisao.
     modo_temporal: str
     fonte_principal: str | None
@@ -220,10 +285,15 @@ class ResultadoCoberturaTemporal:
             },
             "bloco_b_cobertura": {
                 "posicao_fisica_conhecida_ate": _iso(self.posicao_fisica_conhecida_ate),
-                "financeiro_conhecido_ate": _iso(self.financeiro_conhecido_ate),
-                "pc_conhecido_ate": _iso(self.pc_conhecido_ate),
+                "financeiro_ultima_evidencia": _iso(self.financeiro_ultima_evidencia),
+                "financeiro_cobertura_inferida_ate": _iso(self.financeiro_cobertura_inferida_ate),
+                "financeiro_cobertura_confirmada_ate": _iso(self.financeiro_cobertura_confirmada_ate),
+                "financeiro_cobertura_adotada_ate": _iso(self.financeiro_cobertura_adotada_ate),
+                "pc_ultima_evidencia": _iso(self.pc_ultima_evidencia),
+                "pc_cobertura_confirmada_ate": _iso(self.pc_cobertura_confirmada_ate),
+                "pc_cobertura_adotada_ate": _iso(self.pc_cobertura_adotada_ate),
                 "ultima_evidencia_por_fonte": dict(self.ultima_evidencia_por_fonte),
-                "projecao_necessaria_a_partir_de": _iso(self.projecao_necessaria_a_partir_de),
+                "projecao_autorizada_a_partir_de": _iso(self.projecao_autorizada_a_partir_de),
             },
             "bloco_c_decisao": {
                 "modo_temporal": self.modo_temporal,
@@ -261,6 +331,7 @@ def montar_cobertura_temporal(res_leitor: dict[str, Any]) -> ResultadoCoberturaT
       itens_base: [{item}] ou [item]                (itens_Remanesc)
       remanescente_atual: {item: qtd} ou [{item, qtd}]  (posicao_referencia!B)
       fotografias_ciclo: [ciclos] / {ciclo: bool}   (QTD_REM_BASE preenchida)
+      confirmacao_gcc: {financeiro_ate: date, pc_ate: date}  (cobertura GCC)
     """
     if not isinstance(res_leitor, dict):
         raise TypeError("res_leitor deve ser o dict retornado pelo leitor v10.")
@@ -274,19 +345,16 @@ def montar_cobertura_temporal(res_leitor: dict[str, Any]) -> ResultadoCoberturaT
     itens_base = _itens_base(res_leitor)
     remanescente = _remanescente_atual(res_leitor)
     fotos = _fotografias_ciclo(res_leitor, por_ciclo)
+    fin_conf_gcc, pc_conf_gcc = _confirmacao_gcc(res_leitor)
 
     # ---- Posicao fisica de referencia (regra homologada posicao_referencia) --
     ciclo_corte = _ciclo_por_data(data_corte, por_ciclo)
-    # Posicao ATUAL completa: data de corte valida + remanescente para TODOS os
-    # itens da base. Parcial => NAO ha hibrido item a item => fallback global.
     completa = bool(
         data_corte is not None
         and ciclo_corte in CICLOS
         and itens_base
         and all(item in remanescente for item in itens_base)
     )
-
-    # Fallback global: ultima fotografia historica valida (maior ciclo com foto).
     ciclo_fallback = next((c for c in reversed(CICLOS) if c in fotos), None)
 
     if completa:
@@ -317,32 +385,44 @@ def montar_cobertura_temporal(res_leitor: dict[str, Any]) -> ResultadoCoberturaT
         ciclo_atual = ciclo_referencia
     inicio_ciclo_atual = _como_data((por_ciclo.get(ciclo_atual) or {}).get("data_inicio"))
 
-    # ---- Cobertura das fontes (Bloco B): datas de ultima evidencia concreta --
-    comp_datas = [
-        _como_data(f.get("competencia") or f.get("COMPETENCIA")) for f in _financeiro(res_leitor)
-    ]
-    comp_datas = [d for d in comp_datas if d is not None]
-    financeiro_ate = max(comp_datas) if comp_datas else None
+    # ---- FINANCEIRO: ultima evidencia, inferida, confirmada, adotada --------
+    _fin_datas, fin_por_mes = _grade_competencias(_financeiro(res_leitor))
+    financeiro_ultima = _fin_datas[-1] if _fin_datas else None
+    financeiro_inferida = _cobertura_inferida_financeiro(fin_por_mes)
+    if fin_conf_gcc is not None:
+        financeiro_adotada = fin_conf_gcc
+        # A confirmacao GCC prevalece, mas a lacuna conhecida vira conferencia.
+        if _tem_lacuna_ate(fin_por_mes, fin_conf_gcc):
+            alertas.append(_alerta(
+                "FINANCEIRO_LACUNA_SOB_CONFIRMACAO",
+                "Cobertura financeira confirmada pela GCC abrange meses ausentes "
+                "na grade (lacuna preservada para conferencia).", "ALERTA"))
+    else:
+        financeiro_adotada = financeiro_inferida
 
+    # ---- PC: ultima evidencia e confirmada (SEM inferencia automatica) ------
     pc_datas = [_como_data(p.get("data_pc") or p.get("DATA_PC")) for p in _itens_pc(res_leitor)]
     pc_datas = [d for d in pc_datas if d is not None]
-    pc_ate = max(pc_datas) if pc_datas else None
+    pc_ultima = max(pc_datas) if pc_datas else None
+    pc_adotada = pc_conf_gcc  # PC nao admite inferencia de completude por ausencia.
 
     ultima_evidencia = {
         "fisica": _iso(posicao_fisica_ate),
-        "financeiro": _iso(financeiro_ate),
-        "pc": _iso(pc_ate),
+        "financeiro": _iso(financeiro_ultima),
+        "pc": _iso(pc_ultima),
     }
-    evidencias = [d for d in (posicao_fisica_ate, financeiro_ate, pc_ate) if d is not None]
-    ultima_evidencia_geral = max(evidencias) if evidencias else None
-    # Projecao necessaria SOMENTE se a analise vai alem da ultima evidencia.
-    projecao_a_partir = None
-    if data_analise and ultima_evidencia_geral and data_analise > ultima_evidencia_geral:
-        projecao_a_partir = ultima_evidencia_geral
 
-    # ---- Decisao (Bloco C): modo temporal -----------------------------------
-    posterior_fin = bool(financeiro_ate and posicao_fisica_ate and financeiro_ate > posicao_fisica_ate)
-    posterior_pc = bool(pc_ate and posicao_fisica_ate and pc_ate > posicao_fisica_ate)
+    # ---- PROJECAO fail-closed: a partir da cobertura ADOTADA, nunca da MAX ---
+    adotadas = [d for d in (posicao_fisica_ate, financeiro_adotada, pc_adotada) if d is not None]
+    cobertura_adotada_geral = max(adotadas) if adotadas else None
+    projecao_autorizada = None
+    if (data_analise and cobertura_adotada_geral
+            and data_analise > cobertura_adotada_geral):
+        projecao_autorizada = cobertura_adotada_geral + timedelta(days=1)
+
+    # ---- Decisao (Bloco C): modo temporal (pela ULTIMA EVIDENCIA) -----------
+    posterior_fin = bool(financeiro_ultima and posicao_fisica_ate and financeiro_ultima > posicao_fisica_ate)
+    posterior_pc = bool(pc_ultima and posicao_fisica_ate and pc_ultima > posicao_fisica_ate)
 
     if completa and not (posterior_fin or posterior_pc):
         modo = MODO_POSICAO_ATUAL
@@ -357,15 +437,13 @@ def montar_cobertura_temporal(res_leitor: dict[str, Any]) -> ResultadoCoberturaT
 
     # ---- Fonte principal vs conferencia (hierarquia; sem dupla contagem) -----
     fontes_presentes = []
-    if financeiro_ate is not None:
+    if financeiro_ultima is not None:
         fontes_presentes.append("financeiro")
-    if pc_ate is not None:
+    if pc_ultima is not None:
         fontes_presentes.append("pc")
     ordenadas = [f for f in HIERARQUIA_PREVALENCIA if f in fontes_presentes]
     fonte_principal = ordenadas[0] if ordenadas else None
     fontes_conferencia = tuple(f for f in ordenadas[1:])
-    # A prova anti-dupla-contagem: somente a fonte principal e somavel; as
-    # demais sao apenas conferencia (nunca somadas para a mesma execucao).
     fontes_somadas = (fonte_principal,) if fonte_principal else ()
 
     # ---- Posicao observada x projetada --------------------------------------
@@ -375,24 +453,20 @@ def montar_cobertura_temporal(res_leitor: dict[str, Any]) -> ResultadoCoberturaT
         "origem": origem,
         "base": "fotografia atual" if completa else "fotografia historica (abertura)",
     }
-    # Projecao e diagnostico: nunca substitui o observado nem cria fato/retroativo.
     posicao_projetada = None
-    if projecao_a_partir is not None:
+    if projecao_autorizada is not None:
         posicao_projetada = {
-            "a_partir_de": _iso(projecao_a_partir),
+            "a_partir_de": _iso(projecao_autorizada),
             "ate": _iso(data_analise),
             "natureza": "ESTIMATIVA - nao observada, nao cria retroativo a pagar",
         }
         alertas.append(_alerta(
-            "PROJECAO_NECESSARIA",
-            f"Ha intervalo sem evidencia concreta a partir de {_iso(projecao_a_partir)}; "
-            f"posicao observada mantida na fotografia disponivel ({_iso(posicao_fisica_ate)})."))
+            "PROJECAO_AUTORIZADA",
+            f"Projecao autorizada a partir de {_iso(projecao_autorizada)} (periodo "
+            f"seguinte a cobertura adotada {_iso(cobertura_adotada_geral)}); posicao "
+            f"observada mantida na fotografia ({_iso(posicao_fisica_ate)})."))
 
     # ---- Reconciliacao fisica (VTA sombra ao nivel da posicao) ---------------
-    # No fallback a referencia E a abertura: execucao desde o corte = 0, logo a
-    # posicao observada reconcilia exatamente com a fotografia (identidade de
-    # conservacao). Com posicao atual completa, reconcilia contra a fotografia
-    # informada. Reuso do conceito ponte fotografia<->cascata.
     base_fotografia = sum(remanescente.values()) if (completa and remanescente) else None
     reconciliacao_fisica = {
         "reconciliado": ciclo_referencia is not None,
@@ -413,10 +487,15 @@ def montar_cobertura_temporal(res_leitor: dict[str, Any]) -> ResultadoCoberturaT
         data_fotografia_corte=data_fotografia_corte,
         data_fotografia_recente=data_fotografia_recente,
         posicao_fisica_conhecida_ate=posicao_fisica_ate,
-        financeiro_conhecido_ate=financeiro_ate,
-        pc_conhecido_ate=pc_ate,
+        financeiro_ultima_evidencia=financeiro_ultima,
+        financeiro_cobertura_inferida_ate=financeiro_inferida,
+        financeiro_cobertura_confirmada_ate=fin_conf_gcc,
+        financeiro_cobertura_adotada_ate=financeiro_adotada,
+        pc_ultima_evidencia=pc_ultima,
+        pc_cobertura_confirmada_ate=pc_conf_gcc,
+        pc_cobertura_adotada_ate=pc_adotada,
         ultima_evidencia_por_fonte=ultima_evidencia,
-        projecao_necessaria_a_partir_de=projecao_a_partir,
+        projecao_autorizada_a_partir_de=projecao_autorizada,
         modo_temporal=modo,
         fonte_principal=fonte_principal,
         fontes_conferencia=fontes_conferencia,

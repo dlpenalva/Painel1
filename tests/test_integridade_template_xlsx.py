@@ -35,7 +35,7 @@ FORMULAS_POR_ABA = {
     "posicao_contratual": 4776,
     "itens_RC": 3200,
     "historico_VU": 3592,
-    "cobertura_temporal": 15,
+    "cobertura_temporal": 14,
     "RESULTADOS": 3353,
 }
 

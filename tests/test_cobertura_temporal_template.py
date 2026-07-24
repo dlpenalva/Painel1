@@ -1,10 +1,10 @@
 """Etapa — aba de diagnostico "cobertura_temporal" no template oficial.
 
-Testes estaticos (openpyxl) validam a estrutura da aba (marcos / cobertura /
-decisao), o reuso do painel homologado de posicao_referencia, o esquema de
-cores reutilizado, a categoria nova de PROJECAO e a INVARIANCIA do VTA oficial
-(RESULTADOS!B23/B25/B26). O teste de integracao (RUN_EXCEL_INTEGRATION=1)
-recalcula no Excel real um cenario e confere o modo temporal e as datas.
+Hotfix: o BLOCO B separa ULTIMA EVIDENCIA (auto, MAX) de COBERTURA CONFIRMADA
+COMPLETA (entrada GCC). Testes estaticos (openpyxl) validam a estrutura, o reuso
+do painel homologado de posicao_referencia, as cores reutilizadas, os dois novos
+campos GCC e a INVARIANCIA do VTA oficial. O teste de integracao
+(RUN_EXCEL_INTEGRATION=1) recalcula a projecao fail-closed no Excel real.
 """
 from __future__ import annotations
 
@@ -38,6 +38,7 @@ def test_aba_existe_e_visivel():
     wb = _wb()
     assert ABA in wb.sheetnames
     assert wb[ABA].sheet_state == "visible"
+    assert wb.sheetnames[-1] == "RESULTADOS"           # RESULTADOS continua ultima
 
 
 def test_titulo_e_banners():
@@ -45,54 +46,74 @@ def test_titulo_e_banners():
     assert "COBERTURA TEMPORAL" in str(ws["A1"].value)
     assert "NAO altera o VTA" in str(ws["A1"].value)
     assert "BLOCO A" in str(ws["A3"].value)
-    assert "BLOCO B" in str(ws["A10"].value)
-    assert "BLOCO C" in str(ws["A17"].value)
-    # cabecalho reutilizado (azul FF1F4E79).
+    assert "ULTIMA EVIDENCIA" in str(ws["A10"].value)  # BLOCO B renomeado
+    assert "BLOCO C" in str(ws["A18"].value)
     assert ws["A1"].fill.fgColor.rgb == "FF1F4E79"
 
 
 def test_reusa_painel_posicao_referencia():
     ws = _wb()[ABA]
-    assert ws["B7"].value == "=posicao_referencia!$I$6"      # abertura do corte
+    assert ws["B7"].value == "=posicao_referencia!$I$6"
     assert ws["B8"].value == '=IF(posicao_referencia!$I$2,posicao_referencia!$I$5,"")'
-    assert ws["B11"].value == "=posicao_referencia!$I$5"     # posicao fisica ate
-    assert ws["B21"].value == "=posicao_referencia!$I$5"     # observada (data)
-    assert ws["B22"].value == "=posicao_referencia!$I$8"     # observada (origem)
+    assert ws["B11"].value == "=posicao_referencia!$I$5"
+    assert ws["B22"].value == "=posicao_referencia!$I$5"     # observada (data)
+    assert ws["B23"].value == "=posicao_referencia!$I$8"     # observada (origem)
 
 
-def test_fronteiras_financeiro_e_pc():
+def test_ultima_evidencia_nao_e_completo_ate():
     ws = _wb()[ABA]
-    assert "MAX(financeiro!$A$2:$A$200)" in ws["B12"].value   # financeiro ate
-    assert "MAX(itens_PC!$B$2:$B$200)" in ws["B13"].value     # PC ate (DATA_PC)
+    # rotulos deixam claro que MAX e ultima evidencia, nao "completo ate".
+    assert "Ultima evidencia Financeiro" in str(ws["A12"].value)
+    assert "completo ate" not in str(ws["A12"].value).lower().replace("nao e completo ate", "")
+    assert "Ultima evidencia PC" in str(ws["A14"].value)
+    assert "MAX(financeiro!$A$2:$A$200)" in ws["B12"].value
+    assert "MAX(itens_PC!$B$2:$B$200)" in ws["B14"].value
+
+
+def test_campos_gcc_confirmacao_completa():
+    ws = _wb()[ABA]
+    # dois novos campos GCC (amarelo de entrada), SEM formula.
+    assert "Financeiro confirmado completo ate" in str(ws["A13"].value)
+    assert "PC confirmado completo ate" in str(ws["A15"].value)
+    assert ws["B13"].value in (None, "")
+    assert ws["B15"].value in (None, "")
+    assert ws["B13"].fill.fgColor.rgb == "FFFEF9C3"
+    assert ws["B15"].fill.fgColor.rgb == "FFFEF9C3"
+
+
+def test_projecao_fail_closed_usa_cobertura_confirmada():
+    """Projecao ancora em MAX(fisica, confirmadas GCC B13/B15), nunca no MAX(evidencia)."""
+    f = _wb()[ABA]["B16"].value
+    assert "MAX($B$11,$B$13,$B$15)" in f          # fisica + confirmadas GCC
+    assert "$B$12" not in f and "$B$14" not in f  # NAO usa ultima evidencia
+    assert _wb()[ABA]["B16"].fill.fgColor.rgb == "FFFCE4D6"
 
 
 def test_modo_temporal_seis_estados():
-    f = _wb()[ABA]["B18"].value
+    f = _wb()[ABA]["B19"].value
     for estado in ("POSICAO_ATUAL", "HIBRIDO_TEMPORAL", "FINANCEIRO_POSTERIOR",
                    "PC_POSTERIOR", "POSICAO_DE_CORTE"):
         assert estado in f
-    assert "posicao_referencia!$I$2" in f   # completa reutiliza o painel
+    assert "posicao_referencia!$I$2" in f
 
 
-def test_entrada_gcc_unica_amarela():
+def test_entradas_gcc_amarelas():
     ws = _wb()[ABA]
-    assert ws["B4"].fill.fgColor.rgb == "FFFEF9C3"           # amarelo de entrada
-    # nao ha entrada fiscal nova: apenas B4 (GCC) e amarela na coluna B.
-    amarelas = [r for r in range(4, 24) if ws.cell(r, 2).fill.fgColor.rgb == "FFFEF9C3"]
-    assert amarelas == [4]
+    amarelas = [r for r in range(4, 25) if ws.cell(r, 2).fill.fgColor.rgb == "FFFEF9C3"]
+    assert amarelas == [4, 13, 15]     # data analise + 2 confirmacoes GCC
 
 
 def test_projecao_categoria_nova_laranja():
     ws = _wb()[ABA]
-    assert ws["B15"].fill.fgColor.rgb == "FFFCE4D6"          # projecao a partir de
-    assert ws["B23"].fill.fgColor.rgb == "FFFCE4D6"          # posicao projetada
-    assert "nao cria retroativo" in ws["B23"].value
+    assert ws["B16"].fill.fgColor.rgb == "FFFCE4D6"
+    assert ws["B24"].fill.fgColor.rgb == "FFFCE4D6"
+    assert "nao cria retroativo" in ws["B24"].value
 
 
 def test_legenda_quatro_categorias():
     ws = _wb()[ABA]
-    assert "LEGENDA" in str(ws["A25"].value)
-    rotulos = [str(ws.cell(r, 1).value) for r in range(26, 30)]
+    assert "LEGENDA" in str(ws["A26"].value)
+    rotulos = [str(ws.cell(r, 1).value) for r in range(27, 31)]
     assert rotulos == ["FISCAL", "GCC", "AUTOMATICO", "PROJECAO"]
 
 
@@ -155,10 +176,7 @@ def _recalc(caminho: Path, inspecionar):
             pass
 
 
-@pytest_com
-def test_com_pc_posterior_nao_move_fisica(tmp_path):
-    """Foto marco (fallback) + PC maio -> PC_POSTERIOR; fisica continua marco."""
-    dest = tmp_path / "COLETA_REAJUSTE_OFICIAL.xlsx"
+def _montar_cenario(dest, *, gcc_pc=None):
     shutil.copy2(TEMPLATE, dest)
     wb = load_workbook(dest, data_only=False)
     p = wb["parametros"]
@@ -174,21 +192,45 @@ def test_com_pc_posterior_nao_move_fisica(tmp_path):
     wb["CONTROLE"]["B2"] = "C3"
     pc = wb["itens_PC"]
     pc["A2"], pc["B2"], pc["D2"] = "PC-1", date(2026, 5, 20), 2000.0
+    cob = wb[ABA]
+    cob["B4"] = date(2026, 6, 30)             # data da analise
+    if gcc_pc is not None:
+        cob["B15"] = gcc_pc                    # PC confirmado completo ate (GCC)
     wb.save(dest)
+    return dest
 
-    def ler(w):
-        cv = w.Worksheets(ABA)
-        r = w.Worksheets("RESULTADOS")
-        return {
-            "modo": cv.Range("B18").Value,
-            "fisica": cv.Range("B11").Value,
-            "pc_ate": cv.Range("B13").Value,
-            "b23": r.Range("B23").Value,
-            "b26": r.Range("B26").Value,
-        }
 
-    d = _recalc(dest, ler)
+def _ler(w):
+    cv = w.Worksheets(ABA)
+    r = w.Worksheets("RESULTADOS")
+    return {
+        "modo": cv.Range("B19").Value,
+        "fisica": cv.Range("B11").Value,
+        "pc_ultima": cv.Range("B14").Value,
+        "pc_conf": cv.Range("B15").Value,
+        "proj": cv.Range("B16").Value,
+        "b23": r.Range("B23").Value,
+        "b26": r.Range("B26").Value,
+    }
+
+
+@pytest_com
+def test_com_projecao_fail_closed_sem_gcc(tmp_path):
+    """PC maio sem confirmacao GCC: projecao ancora na fisica (marco), nao junho."""
+    dest = _montar_cenario(tmp_path / "COLETA_REAJUSTE_OFICIAL.xlsx", gcc_pc=None)
+    d = _recalc(dest, _ler)
     assert d["modo"] == "PC_POSTERIOR"
-    # posicao fisica = abertura C3 (jan/2026), NAO maio.
-    assert (d["fisica"].year, d["fisica"].month) == (2026, 1)
-    assert (d["pc_ate"].year, d["pc_ate"].month) == (2026, 5)
+    assert (d["fisica"].year, d["fisica"].month) == (2026, 1)   # abertura C3
+    assert (d["pc_ultima"].year, d["pc_ultima"].month) == (2026, 5)
+    # projecao = dia seguinte a fisica (jan/2026), NAO junho por causa do PC.
+    assert (d["proj"].year, d["proj"].month) == (2026, 1)
+
+
+@pytest_com
+def test_com_projecao_autorizada_com_gcc(tmp_path):
+    """PC maio + GCC confirma ate 31/05: projecao autorizada a partir de 01/06."""
+    dest = _montar_cenario(tmp_path / "COLETA_REAJUSTE_OFICIAL.xlsx",
+                           gcc_pc=date(2026, 5, 31))
+    d = _recalc(dest, _ler)
+    assert (d["pc_conf"].year, d["pc_conf"].month, d["pc_conf"].day) == (2026, 5, 31)
+    assert (d["proj"].year, d["proj"].month, d["proj"].day) == (2026, 6, 1)

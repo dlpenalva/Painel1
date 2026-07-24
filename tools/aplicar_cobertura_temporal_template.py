@@ -1,33 +1,38 @@
 """Aplicador da Etapa — aba de diagnostico "cobertura_temporal" ao template.
 
-Alteracao estritamente ADITIVA e GOVERNADA: cria UMA nova aba diagnostica
-(GCC/automatica) que consolida os marcos temporais ja existentes e adiciona as
-duas fronteiras que faltavam (Financeiro-completo-ate / PC-completo-ate), SEM
-tocar o VTA oficial (B23/B25/B26), sem alterar itens_Remanesc e sem criar campo
-fiscal novo. Reutiliza integralmente:
+Alteracao estritamente ADITIVA e GOVERNADA: (re)cria UMA aba diagnostica
+(GCC/automatica) que consolida os marcos temporais e separa, no BLOCO B,
+ULTIMA EVIDENCIA (automatica, MAX da data) de COBERTURA CONFIRMADA COMPLETA
+(entrada GCC). SEM tocar o VTA oficial (B23/B25/B26), sem alterar itens_Remanesc
+nem posicao_referencia e sem criar campo fiscal novo. Idempotente: se a aba ja
+existir, e substituida (hotfix re-aplicavel).
 
+Reutiliza integralmente:
   * a decisao homologada de `posicao_referencia` (painel I2/I5/I6/I8): posicao
     atual completa vs. fallback global para a fotografia historica;
   * a linha temporal canonica (parametros!C2:C6) para o inicio do ciclo atual;
   * as fontes concretas ja lidas: financeiro (COMPETENCIA, col A) e itens_PC
-    (DATA_PC, col B) para as datas de ultima evidencia.
+    (DATA_PC, col B) — apenas para a ULTIMA EVIDENCIA (nunca "completo ate").
 
-BLOCO A (marcos), BLOCO B (cobertura das fontes), BLOCO C (decisao) + legenda
-FISCAL / GCC / AUTOMATICO / PROJECAO. Um unico campo de entrada (GCC, opcional):
-"Data da analise" (B4). Tudo o mais e formula (AUTOMATICO) ou diagnostico de
-PROJECAO. Projecao e sempre estimativa: nunca vira fato observado.
+BLOCO B (hotfix): ultima evidencia (auto) x confirmado completo ate (GCC).
+  Posicao fisica conhecida ate      (auto)
+  Ultima evidencia Financeiro       (auto = MAX competencia)
+  Financeiro confirmado completo ate (GCC, opcional)
+  Ultima evidencia PC               (auto = MAX DATA_PC)
+  PC confirmado completo ate        (GCC, opcional)
+  Projecao autorizada a partir de   (auto, FAIL-CLOSED: dia seguinte a
+                                     max(fisica, confirmadas GCC); NUNCA a partir
+                                     da ultima evidencia nao confirmada)
 
-Cores REUTILIZADAS do template (nao inventa tonalidade para categoria existente):
-  * cabecalho/banda        = formato de CONTROLE!A6 (azul FF1F4E79, fonte branca);
-  * rotulo (coluna A)      = formato de CONTROLE!A7 (azul claro);
-  * valor automatico (B)   = formato de CONTROLE!B9 (azul muito claro / formula);
-  * entrada GCC (B4)       = formato de CONTROLE!B3 (amarelo de entrada).
-Unica categoria NOVA (permitida pela etapa p/ projecao): PROJECAO = laranja
-claro FCE4D6 — tonalidade clara e distinta, sem confundir com entrada manual.
+Legenda FISCAL / GCC / AUTOMATICO / PROJECAO. Entradas GCC (amarelo de entrada):
+B4 (data da analise), B13 (financeiro confirmado), B15 (PC confirmado). Tudo o
+mais e formula (AUTOMATICO) ou diagnostico de PROJECAO.
 
-Gravador unico: Microsoft Excel real via COM (copia temporaria; promove so se
-salvar sem erros de formula). FAIL-CLOSED: recusa reaplicacao. NAO usa openpyxl
-para salvar.
+Cores REUTILIZADAS (nao inventa tonalidade para categoria existente):
+  cabecalho/banda = CONTROLE!A6; rotulo = CONTROLE!A7; valor auto = CONTROLE!B9;
+  entrada GCC = CONTROLE!B3 (amarelo). Categoria PROJECAO = laranja claro FCE4D6.
+
+Gravador unico: Microsoft Excel real via COM. NAO usa openpyxl para salvar.
 """
 from __future__ import annotations
 
@@ -67,15 +72,24 @@ INICIO_CICLO_ATUAL = (
     'IF($B$5="C2",parametros!$C$4,IF($B$5="C1",parametros!$C$3,'
     'IF($B$5="C0",parametros!$C$2,"")))))'
 )
-# MAX das competencias financeiras (col A) e das datas de PC (col B).
-FIN_ATE = ('=IF(COUNT(financeiro!$A$2:$A$200)=0,"",MAX(financeiro!$A$2:$A$200))')
-PC_ATE = ('=IF(COUNT(itens_PC!$B$2:$B$200)=0,"",MAX(itens_PC!$B$2:$B$200))')
+# Ultima evidencia (MAX). NUNCA rotular como "completo ate".
+FIN_ULTIMA = ('=IF(COUNT(financeiro!$A$2:$A$200)=0,"",MAX(financeiro!$A$2:$A$200))')
+PC_ULTIMA = ('=IF(COUNT(itens_PC!$B$2:$B$200)=0,"",MAX(itens_PC!$B$2:$B$200))')
 
-# Posterioridade (fonte alem da posicao fisica). B11 = posicao fisica ate,
-# B12 = financeiro ate, B13 = PC ate.
+# Cobertura ADOTADA (fail-closed): posicao fisica (B11) + confirmadas GCC
+# (B13 financeiro, B15 PC). NAO usa a ultima evidencia nao confirmada.
+COB_ADOTADA = "MAX($B$11,$B$13,$B$15)"
+# Projecao autorizada = dia seguinte a cobertura adotada, se a analise (B4)
+# ultrapassa essa cobertura. Caso contrario, vazio.
+PROJ_AUTORIZADA = (
+    f'=IF(OR($B$4="",NOT(ISNUMBER($B$4))),"",'
+    f'IF({COB_ADOTADA}=0,"",'
+    f'IF($B$4>{COB_ADOTADA},{COB_ADOTADA}+1,"")))'
+)
+
+# Posterioridade da ULTIMA EVIDENCIA em relacao a posicao fisica (B11).
 POST_FIN = '(AND($B$12<>"",$B$11<>"",$B$12>$B$11))'
-POST_PC = '(AND($B$13<>"",$B$11<>"",$B$13>$B$11))'
-
+POST_PC = '(AND($B$14<>"",$B$11<>"",$B$14>$B$11))'
 MODO = (
     f'=IF(AND({I_COMPLETA},NOT({POST_FIN}),NOT({POST_PC})),"POSICAO_ATUAL",'
     f'IF(AND({POST_FIN},{POST_PC}),"HIBRIDO_TEMPORAL",'
@@ -91,8 +105,6 @@ def _dstr(ref: str) -> str:
 
 def _validar_layout(wb) -> None:
     nomes = [ws.Name for ws in wb.Worksheets]
-    if ABA in nomes:
-        raise ValueError("Aba cobertura_temporal ja existe; bloco ja aplicado?")
     for aba in ("CONTROLE", "parametros", "financeiro", "itens_PC",
                 "posicao_referencia", "RESULTADOS"):
         if aba not in nomes:
@@ -102,10 +114,40 @@ def _validar_layout(wb) -> None:
         raise ValueError("posicao_referencia!H5 nao e o painel de referencia esperado.")
 
 
+def _remover_aba_existente(wb, excel) -> None:
+    """Idempotencia: remove a aba antiga antes de recriar (hotfix)."""
+    for ws in wb.Worksheets:
+        if ws.Name == ABA:
+            alertas = excel.DisplayAlerts
+            excel.DisplayAlerts = False
+            ws.Delete()
+            excel.DisplayAlerts = alertas
+            break
+
+
 def _fmt(ws, modelo, origem_addr, destino_addr, excel) -> None:
     modelo.Range(origem_addr).Copy()
     ws.Range(destino_addr).PasteSpecial(XL_PASTE_FORMATS)
     excel.CutCopyMode = False
+
+
+def _validacao_data(ws, addr, titulo, msg) -> None:
+    cel = ws.Range(addr)
+    cel.NumberFormatLocal = FMT_DATA
+    val = cel.Validation
+    try:
+        val.Delete()
+    except Exception:
+        pass
+    base = _dt.date(1899, 12, 30)
+    lo = (_dt.date(1990, 1, 1) - base).days
+    hi = (_dt.date(2199, 12, 31) - base).days
+    val.Add(Type=XL_VALIDATE_DATE, AlertStyle=XL_VALID_ALERT_STOP,
+            Operator=XL_BETWEEN, Formula1=lo, Formula2=hi)
+    val.IgnoreBlank = True
+    val.InputTitle = titulo
+    val.InputMessage = msg
+    val.ErrorMessage = "Informe uma data valida (dd/mm/aaaa)."
 
 
 def _criar_aba(wb, excel):
@@ -130,40 +172,36 @@ def _criar_aba(wb, excel):
         (7, "Data da fotografia fisica do corte (abertura)", f"={I_ABERTURA}", FMT_DATA, "auto"),
         (8, "Data da fotografia fisica mais recente",
          f'=IF({I_COMPLETA},{I_DATA_REF},"")', FMT_DATA, "auto"),
-        (10, "BLOCO B - COBERTURA DAS FONTES", None, None, "banner"),
+        (10, "BLOCO B - ULTIMA EVIDENCIA x COBERTURA CONFIRMADA", None, None, "banner"),
         (11, "Posicao fisica conhecida ate", f"={I_DATA_REF}", FMT_DATA, "auto"),
-        (12, "Financeiro conhecido/completo ate", FIN_ATE, FMT_DATA, "auto"),
-        (13, "PC conhecido/completo ate", PC_ATE, FMT_DATA, "auto"),
-        (14, "Ultima evidencia concreta (geral)",
-         '=IF(COUNT($B$11:$B$13)=0,"",MAX($B$11:$B$13))', FMT_DATA, "auto"),
-        (15, "Projecao necessaria a partir de",
-         '=IF(AND(ISNUMBER($B$4),$B$14<>"",$B$4>$B$14),$B$14,"")', FMT_DATA, "proj"),
-        (17, "BLOCO C - DECISAO", None, None, "banner"),
-        (18, "Modo temporal", MODO, None, "auto"),
-        (19, "Fonte principal",
-         '=IF($B$12<>"","Financeiro",IF($B$13<>"","PC",""))', None, "auto"),
-        (20, "Fontes de conferencia",
-         '=IF(AND($B$12<>"",$B$13<>""),"PC","")', None, "auto"),
-        (21, "Posicao observada (data)", f"={I_DATA_REF}", FMT_DATA, "auto"),
-        (22, "Posicao observada (origem)", f"={I_ORIGEM}", None, "auto"),
-        (23, "Posicao projetada",
-         f'=IF($B$15="","NAO PROJETADO (posicao observada mantida)",'
-         f'"ESTIMATIVA a partir de "&{_dstr("$B$15")}&'
+        (12, "Ultima evidencia Financeiro (nao e completo ate)", FIN_ULTIMA, FMT_DATA, "auto"),
+        (13, "Financeiro confirmado completo ate (GCC, opcional)", None, FMT_DATA, "gcc"),
+        (14, "Ultima evidencia PC (nao e completo ate)", PC_ULTIMA, FMT_DATA, "auto"),
+        (15, "PC confirmado completo ate (GCC, opcional)", None, FMT_DATA, "gcc"),
+        (16, "Projecao autorizada a partir de", PROJ_AUTORIZADA, FMT_DATA, "proj"),
+        (18, "BLOCO C - DECISAO", None, None, "banner"),
+        (19, "Modo temporal", MODO, None, "auto"),
+        (20, "Fonte principal",
+         '=IF($B$12<>"","Financeiro",IF($B$14<>"","PC",""))', None, "auto"),
+        (21, "Fontes de conferencia",
+         '=IF(AND($B$12<>"",$B$14<>""),"PC","")', None, "auto"),
+        (22, "Posicao observada (data)", f"={I_DATA_REF}", FMT_DATA, "auto"),
+        (23, "Posicao observada (origem)", f"={I_ORIGEM}", None, "auto"),
+        (24, "Posicao projetada",
+         f'=IF($B$16="","NAO PROJETADO (posicao observada mantida)",'
+         f'"ESTIMATIVA a partir de "&{_dstr("$B$16")}&'
          '" - nao observada, nao cria retroativo a pagar")', None, "proj"),
     ]
 
     for lin, rot, formula, fmt, cat in linhas:
-        cel_rot = ws.Range(f"A{lin}")
         cel_val = ws.Range(f"B{lin}")
         if cat == "banner":
             ws.Range(f"A{lin}:C{lin}").Merge()
             _fmt(ws, ctrl, "A6", f"A{lin}", excel)
-            cel_rot.Value = rot
+            ws.Range(f"A{lin}").Value = rot
             continue
-        # rotulo (coluna A) — azul claro de CONTROLE!A7
-        _fmt(ws, ctrl, "A7", f"A{lin}", excel)
-        cel_rot.Value = rot
-        # valor (coluna B)
+        _fmt(ws, ctrl, "A7", f"A{lin}", excel)      # rotulo (azul claro)
+        ws.Range(f"A{lin}").Value = rot
         if cat == "gcc":
             _fmt(ws, ctrl, "B3", f"B{lin}", excel)  # amarelo de entrada
         else:
@@ -175,34 +213,29 @@ def _criar_aba(wb, excel):
         if fmt:
             cel_val.NumberFormatLocal = fmt
 
-    # Entrada GCC (B4): data opcional, validacao de data.
-    b4 = ws.Range("B4")
-    b4.NumberFormatLocal = FMT_DATA
-    val = b4.Validation
-    try:
-        val.Delete()
-    except Exception:
-        pass
-    base = _dt.date(1899, 12, 30)
-    lo = (_dt.date(1990, 1, 1) - base).days
-    hi = (_dt.date(2199, 12, 31) - base).days
-    val.Add(Type=XL_VALIDATE_DATE, AlertStyle=XL_VALID_ALERT_STOP,
-            Operator=XL_BETWEEN, Formula1=lo, Formula2=hi)
-    val.IgnoreBlank = True
-    val.InputTitle = "Data da analise (GCC, opcional)"
-    val.InputMessage = ("Data de referencia da analise. Opcional; se vazia, nao "
-                        "ha diagnostico de projecao. NAO altera a posicao observada.")
-    val.ErrorMessage = "Informe uma data valida (dd/mm/aaaa)."
+    # Entradas GCC (datas opcionais).
+    _validacao_data(
+        ws, "B4", "Data da analise (GCC, opcional)",
+        "Data de referencia da analise. Opcional; se vazia, nao ha diagnostico "
+        "de projecao. NAO altera a posicao observada.")
+    _validacao_data(
+        ws, "B13", "Financeiro confirmado (GCC)",
+        "Data ate a qual a cobertura FINANCEIRA e CONFIRMADA completa (GCC). "
+        "Vazio = cobertura completa NAO confirmada; usa-se so a ultima evidencia.")
+    _validacao_data(
+        ws, "B15", "PC confirmado (GCC)",
+        "Data ate a qual a cobertura de PCs e CONFIRMADA completa (GCC). PC nao "
+        "admite inferencia automatica: vazio = completude NAO confirmada.")
 
     # Legenda — reutiliza a banda de banner e amostra as cores por categoria.
-    _fmt(ws, ctrl, "A6", "A25", excel)
-    ws.Range("A25:C25").Merge()
-    ws.Range("A25").Value = "LEGENDA - QUEM PREENCHE O QUE"
+    _fmt(ws, ctrl, "A6", "A26", excel)
+    ws.Range("A26:C26").Merge()
+    ws.Range("A26").Value = "LEGENDA - QUEM PREENCHE O QUE"
     legenda = [
-        (26, "FISCAL", "B3", "Amarelo: itens_Remanesc, posicao_referencia (QTD_REM_ATUAL) e CONTROLE!B3."),
-        (27, "GCC", "B3", "Amarelo: Data da analise (B4) desta aba; confirmacao de cobertura."),
-        (28, "AUTOMATICO", "B9", "Derivado de CONTROLE/parametros/posicao_referencia/financeiro/itens_PC."),
-        (29, "PROJECAO", None, "Laranja claro: estimativa (nunca fato observado; nao cria retroativo)."),
+        (27, "FISCAL", "B3", "Amarelo: itens_Remanesc, posicao_referencia (QTD_REM_ATUAL) e CONTROLE!B3."),
+        (28, "GCC", "B3", "Amarelo: Data da analise (B4) e as confirmacoes de cobertura completa (B13/B15)."),
+        (29, "AUTOMATICO", "B9", "Derivado de CONTROLE/parametros/posicao_referencia/financeiro/itens_PC (MAX = ultima evidencia)."),
+        (30, "PROJECAO", None, "Laranja claro: estimativa (nunca fato observado; so a partir da cobertura confirmada/fisica)."),
     ]
     for lin, rotulo, modelo_fmt, desc in legenda:
         if modelo_fmt:
@@ -214,7 +247,7 @@ def _criar_aba(wb, excel):
         ws.Range(f"B{lin}:C{lin}").Merge()
         ws.Range(f"B{lin}").Value = desc
 
-    ws.Columns("A").ColumnWidth = 42
+    ws.Columns("A").ColumnWidth = 46
     ws.Columns("B").ColumnWidth = 26
     ws.Columns("C").ColumnWidth = 40
     return ws
@@ -255,11 +288,13 @@ def aplicar(origem: Path, destino: Path) -> None:
         excel.Calculation = XL_CALC_MANUAL
         aba_ativa = wb.ActiveSheet.Name
         _validar_layout(wb)
+        _remover_aba_existente(wb, excel)
         _criar_aba(wb, excel)
         excel.Calculation = XL_CALC_AUTOMATIC
         excel.CalculateFullRebuild()
         _verificar_sem_erros(wb)
-        wb.Worksheets(aba_ativa).Activate()
+        if aba_ativa != ABA:
+            wb.Worksheets(aba_ativa).Activate()
         wb.Save()
         salvo = True
     finally:
