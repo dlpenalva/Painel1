@@ -2,7 +2,7 @@
 
 Abre o template real e confirma:
   - abre SEM reparo (nenhum dialogo de recuperacao);
-  - 12 abas na ordem oficial;
+  - 13 abas na ordem oficial (inclui cobertura_temporal);
   - itens_PC!B e aditivos!B com NumberFormat dd/mm/yyyy;
   - formulas aditivos L2/M2 com prefixos ACR/SUPR;
   - uma DATA REAL em itens_PC!B2 exibe dd/mm/aaaa (Range.Text).
@@ -25,7 +25,7 @@ TEMPLATE = ROOT / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
 ABAS_ESPERADAS = [
     "CONTROLE", "parametros", "financeiro", "itens_Remanesc", "itens_Consumidos",
     "itens_PC", "aditivos", "posicao_referencia", "posicao_contratual",
-    "itens_RC", "historico_VU", "RESULTADOS",
+    "itens_RC", "historico_VU", "cobertura_temporal", "RESULTADOS",
 ]
 
 

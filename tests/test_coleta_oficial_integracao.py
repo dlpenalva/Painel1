@@ -39,7 +39,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # itens_PC!B2:B100 e aditivos!B2:B200; borda 'thin' na coluna B do itens_PC; §12
 # prefixos ACR/SUPR (tolerantes a acento) em aditivos L2:L200 e M2:M200. Sem
 # mudanca de layout/validacao; mensagens e demais estilos preservados.
-SHA256_TEMPLATE_ESPERADO = "eea24bb3703a81824d9ae2a8fd62ded2f49d656ad8e046fd643b03b6721f1102"
+# Atualizado nesta etapa (Excel COM): nova aba cobertura_temporal (diagnostico
+# GCC/automatico) inserida antes de RESULTADOS; VTA oficial inalterado.
+SHA256_TEMPLATE_ESPERADO = "60c5aee67552a33656ef41bb917f30d64b15604299dfa9dda73e1c883af72cd7"
 
 
 def _dados_calculadora() -> dict:

@@ -150,8 +150,9 @@ def test_vta_invariante():
 
 
 # ---- T integridade basica ----
-def test_doze_abas():
-    assert len(_wb().sheetnames) == 12
+def test_treze_abas():
+    # 12 abas + cobertura_temporal (diagnostico da etapa de cobertura temporal).
+    assert len(_wb().sheetnames) == 13
 
 
 # ================================================================ COM
@@ -209,7 +210,7 @@ def test_com_reabertura_sem_reparo(tmp_path):
         xl.Visible = False; xl.DisplayAlerts = True
         try:
             wb = xl.Workbooks.Open(str(dest.resolve()), UpdateLinks=0, CorruptLoad=0)
-            assert wb.Sheets.Count == 12, f"rodada {rodada}"
+            assert wb.Sheets.Count == 13, f"rodada {rodada}"  # +cobertura_temporal
             wb.Close(False)
         finally:
             xl.Quit(); gc.collect(); pythoncom.CoUninitialize()

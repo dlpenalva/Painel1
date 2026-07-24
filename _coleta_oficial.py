@@ -54,6 +54,7 @@ ABAS_COLETA_OFICIAL = [
     "posicao_contratual",
     "itens_RC",
     "historico_VU",
+    "cobertura_temporal",
     "RESULTADOS",
 ]
 

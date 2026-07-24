@@ -2856,8 +2856,9 @@ def ler_masterfile_v10(
         # Etapa 3: posicao_referencia e OPCIONAL para leitura — Coletas oficiais
         # geradas antes da Etapa 3 nao a possuem e devem continuar sendo lidas
         # (compatibilidade retroativa; a aba pertence ao layout novo, mas sua
-        # ausencia nao descaracteriza o modelo oficial).
-        ABAS_OPCIONAIS_COMPAT = {"posicao_referencia"}
+        # ausencia nao descaracteriza o modelo oficial). cobertura_temporal
+        # (diagnostico desta etapa) segue a mesma politica de opcionalidade.
+        ABAS_OPCIONAIS_COMPAT = {"posicao_referencia", "cobertura_temporal"}
         res["abas_ausentes"] = [
             a for a in ABAS_COLETA_OFICIAL
             if a.lower() not in abas_lower and a not in ABAS_OPCIONAIS_COMPAT
