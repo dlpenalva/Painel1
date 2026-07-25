@@ -24,6 +24,28 @@ def test_duas_origens_radio_v3():  # Secao 7 (controle clean testavel)
     assert 'key="adequacao_v3_origem"' in PAGINA
 
 
+def test_seletor_origem_unico_e_na_base():  # Secao 6, E, L
+    assert PAGINA.count('key="adequacao_v3_origem"') == 1          # existe apenas um seletor
+    idx_sel = PAGINA.index('key="adequacao_v3_origem"')
+    idx_tab2 = PAGINA.index("TAB 2 — HISTORICO")
+    assert idx_sel < idx_tab2, "o seletor de origem deve estar na aba Base (antes da TAB 2)"
+
+
+def test_historico_consome_origem_sem_reofertar_seletor():  # Secao 6, F
+    assert "Histórico utilizado:" in PAGINA
+
+
+def test_pc_separa_elegibilidade_de_exclusao_manual():  # Secao 3/4/G
+    assert "atualizar_exclusoes_manuais_pc(" in PAGINA
+    # o editor de PC recria por competencia/janela (nao persiste "fora da janela")
+    assert 'key=f"adequacao_v3_pc_editor_' in PAGINA
+
+
+def test_financeiro_situacao_considerada_derivada():  # Secao 7/8
+    assert "situacao_financeira_considerada(" in PAGINA
+    assert '"Situação considerada"' in PAGINA
+
+
 def test_usa_o_motor_e_o_view_model_sem_matematica_na_ui():  # Secao 2, 39
     assert "from _adequacao_orcamentaria import" in PAGINA
     assert "from _adequacao_ui import" in PAGINA

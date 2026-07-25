@@ -310,6 +310,44 @@ def valores_informados_da_janela(ultimos):
     return [float(v) for v in ultimos["valor"].tolist() if pd.notna(v)]
 
 
+def situacao_financeira_considerada(valor):
+    """Situacao do valor EFETIVAMENTE considerado na adequacao (coerencia visual
+    ZERO x VAZIO): vazio -> "Sem informação"; 0 -> "Zero informado";
+    valor != 0 -> "Informado". Delega a distincao ao motor
+    (valor_original_foi_informado); nunca converte vazio em zero."""
+    if not valor_original_foi_informado(valor):
+        return "Sem informação"
+    return "Zero informado" if abs(parse_moeda_br(valor)) < 0.005 else "Informado"
+
+
+def atualizar_exclusoes_manuais_pc(linhas, exclusoes_anteriores):
+    """Estado V3 dos PCs: separa ELEGIBILIDADE TEMPORAL de EXCLUSAO MANUAL.
+
+    `linhas`: iteravel de dict {"pc": str, "eligivel": bool, "usar": bool}.
+      - eligivel = PC dentro da janela historica ATUAL (situacao "Considerado");
+      - usar = estado do checkbox USAR na linha.
+    Retorna o conjunto de exclusoes MANUAIS (voluntarias) atualizado:
+      - PC elegivel e usar=False -> exclusao manual (add);
+      - PC elegivel e usar=True  -> remove exclusao manual (discard);
+      - PC fora da janela        -> PRESERVA o estado manual anterior. Um PC nao
+        vira exclusao so por estar fora da janela, nem volta so por entrar nela.
+    A janela permanece soberana; a media e calculada pelo motor com estas
+    exclusoes voluntarias (pedidos_de_itens_pc(exclusoes=...)).
+    """
+    manual = set(str(e) for e in (exclusoes_anteriores or []))
+    for linha in linhas:
+        pc = str(linha.get("pc", ""))
+        if not pc:
+            continue
+        if linha.get("eligivel"):
+            if linha.get("usar"):
+                manual.discard(pc)
+            else:
+                manual.add(pc)
+        # fora da janela: preserva o estado anterior (nao mexe em `manual`)
+    return manual
+
+
 # ---------------------------------------------------------------- projecao
 
 def gerar_periodos_projecao(ultima_competencia, data_final_vigencia):

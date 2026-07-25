@@ -52,6 +52,8 @@ from _adequacao_ui import (
     calcular_projecao,
     cronograma_por_exercicio,
     gerar_xlsx_projecao,
+    situacao_financeira_considerada,
+    atualizar_exclusoes_manuais_pc,
 )
 
 st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="TLB · cl8us - Adequação Orçamentária", layout="wide")
@@ -221,6 +223,23 @@ with tab_base:
     if not str(data_final_vigencia).strip():
         st.caption("Informe a data final da vigência para gerar a projeção (aba 3).")
 
+    # Base historica para a projecao (Seção 6: o seletor de origem vive na Base).
+    # Escolha orientada, com sugestao automatica pela fonte encontrada. Usamos
+    # st.radio (controle clean testavel via AppTest — o segmented_control desta
+    # versao do Streamlit nao e dirigivel entre reruns). A matematica de cada
+    # origem nao muda; a aba Historico apenas consome a origem escolhida aqui.
+    st.markdown("**Base histórica para a projeção**")
+    st.caption(f"Método sugerido: {metodo_sugerido}. Fontes encontradas: {fontes_txt}.")
+    _opcoes_origem = ["Financeiro", "Pedidos de Compra"]
+    origem_hist = st.radio(
+        "Base histórica para a projeção",
+        _opcoes_origem, horizontal=True,
+        index=(0 if metodo_sugerido != "Pedidos de Compra" else 1),
+        key="adequacao_v3_origem", label_visibility="collapsed")
+    if origem_hist not in _opcoes_origem:
+        origem_hist = metodo_sugerido if metodo_sugerido in _opcoes_origem else "Financeiro"
+    origem_pc = origem_hist == "Pedidos de Compra"
+
     # Valores efetivamente usados no calculo (importados por padrao; ajustaveis
     # apenas em Opcoes avancadas, sem contaminar o fluxo normal).
     retroativo = ctx["valor_represado"]
@@ -251,21 +270,11 @@ with tab_base:
 # ================================================================ TAB 2 — HISTORICO
 with tab_hist:
     st.subheader("2. Histórico utilizado")
-    st.caption(f"Método sugerido: {metodo_sugerido}. Fontes encontradas: {fontes_txt}.")
-    # Escolha orientada da fonte historica. Usamos st.radio (horizontal, aparencia
-    # de seletor de metodo) por ser o controle "clean" testavel via AppTest: o
-    # st.segmented_control desta versao do Streamlit nao e dirigivel pelo AppTest
-    # entre reruns (serializa o valor escalar como lista), o que inviabilizaria os
-    # testes de estado/golden exigidos. A regra matematica de cada metodo nao muda.
-    _opcoes_origem = ["Financeiro", "Pedidos de Compra"]
-    origem_hist = st.radio(
-        "Base histórica para a projeção",
-        _opcoes_origem, horizontal=True,
-        index=(0 if metodo_sugerido != "Pedidos de Compra" else 1),
-        key="adequacao_v3_origem")
-    if origem_hist not in _opcoes_origem:
-        origem_hist = metodo_sugerido if metodo_sugerido in _opcoes_origem else "Financeiro"
-    origem_pc = origem_hist == "Pedidos de Compra"
+    # O seletor de origem vive na aba Base (Seção 6). Aqui apenas consumimos a
+    # escolha ja feita — sem oferecer novamente o seletor (estado unico:
+    # adequacao_v3_origem).
+    st.caption(f"Histórico utilizado: {origem_hist}. Método sugerido: {metodo_sugerido}. "
+               f"Fontes encontradas: {fontes_txt}.")
 
     # A matematica vive no motor; aqui apenas escolhemos a referencia mensal
     # (media_ref) conforme a origem. O restante do fluxo e comum as duas origens.
@@ -299,9 +308,10 @@ with tab_hist:
                                     for v in ultimos_6["valor"].tolist()],
                 "Valor considerado": ["" if v is None else moeda(v, com_prefixo=False)
                                      for v in ultimos_6["valor"].tolist()],
-                "Situação": ultimos_6["Situação"].tolist(),
                 "Observação": [""] * len(ultimos_6),
             })
+            # O editor NAO exibe a "Situação" IMPORTADA (que contradiria o valor
+            # considerado). O valor importado permanece intacto (coluna disabled).
             df_fin_ed = st.data_editor(
                 base_fin_editor, hide_index=True, use_container_width=True, num_rows="fixed",
                 key="adequacao_v3_fin_editor",
@@ -309,19 +319,31 @@ with tab_hist:
                     "Competência": st.column_config.TextColumn("Competência", disabled=True),
                     "Valor importado": st.column_config.TextColumn("Valor importado", disabled=True),
                     "Valor considerado": st.column_config.TextColumn("Valor considerado"),
-                    "Situação": st.column_config.TextColumn("Situação", disabled=True),
                     "Observação": st.column_config.TextColumn("Observação"),
                 })
-            # ZERO x VAZIO preservado: vazio => sem informação (fora do denominador);
-            # 0 => zero informado (entra). Nunca converter vazio em zero.
+            # Situacao CONSIDERADA derivada do valor EFETIVAMENTE usado (coerencia
+            # ZERO x VAZIO): vazio => Sem informação; 0 => Zero informado; !=0 =>
+            # Informado. Nunca converte vazio em zero; so o informado entra na media.
             considerados = []
-            for bruto in df_fin_ed["Valor considerado"].tolist():
-                if valor_original_foi_informado(bruto):
+            linhas_sit = []
+            for comp_lbl, importado, bruto, obs in zip(
+                    df_fin_ed["Competência"].tolist(), df_fin_ed["Valor importado"].tolist(),
+                    df_fin_ed["Valor considerado"].tolist(), df_fin_ed["Observação"].tolist()):
+                informado = valor_original_foi_informado(bruto)
+                linhas_sit.append({
+                    "Competência": comp_lbl,
+                    "Valor importado": str(importado) if str(importado).strip() else "—",
+                    "Valor considerado": moeda(parse_moeda_br(bruto)) if informado else "—",
+                    "Situação considerada": situacao_financeira_considerada(bruto),
+                    "Observação": obs,
+                })
+                if informado:
                     considerados.append(parse_moeda_br(bruto))
+            st.dataframe(pd.DataFrame(linhas_sit), use_container_width=True, hide_index=True)
             media_ref = media_financeiro(considerados)["media_mensal"]
             comp_informadas = len(considerados)
             st.caption("O valor importado (fiscal) permanece intacto; o valor considerado ajusta "
-                       "apenas esta adequação.")
+                       "apenas esta adequação. A situação considerada reflete o valor usado.")
 
         st.markdown(f"**Média das competências informadas:** {moeda(media_ref)}")
         cA, cB, cC = st.columns(3)
@@ -363,25 +385,32 @@ with tab_hist:
             media_ref = 0.0
         else:
             janela_meses_pc = int(st.session_state.get("adequacao_v3_janela", 39))
-            # Classificacao e exclusoes via checkbox USAR (nova UX; mesma matematica).
+            # ELEGIBILIDADE TEMPORAL (janela) e' separada de EXCLUSAO MANUAL. A
+            # classificacao PURA (sem exclusoes) da a situacao temporal de cada PC.
             cl_prev = classificar_pedidos(pedidos_de_itens_pc(registros_pc),
                                           ultima_comp_data, janela_meses_pc)
             excl_state = st.session_state.get("adequacao_v3_exclusoes_pc", set())
             if not isinstance(excl_state, (set, list, tuple)):
                 excl_state = set()
             excl_state = set(str(e) for e in excl_state)
+            # USAR seed: dentro da janela E nao excluido manualmente. Um PC "Fora da
+            # janela" aparece desmarcado (nao usavel), mas isso NAO e exclusao manual.
             base_pc_editor = pd.DataFrame([{
-                "USAR": (str(x["identificacao"]) not in excl_state) and x["situacao"] == "Considerado",
+                "USAR": (x["situacao"] == "Considerado") and (str(x["identificacao"]) not in excl_state),
                 "PC": str(x["identificacao"]),
                 "Data": x["data"].strftime("%d/%m/%Y") if x["data"] else "",
                 "Valor": moeda(x["valor"]),
                 "Situação": x["situacao"],
             } for x in cl_prev["pedidos"]])
-            st.caption("Marque em USAR os Pedidos de Compra que entram na média. "
-                       "Desmarcar equivale a excluir o PC desta adequação.")
+            st.caption("Marque em USAR os Pedidos de Compra (dentro da janela) que entram na "
+                       "média. Desmarcar um PC elegível o exclui manualmente; PCs 'Fora da "
+                       "janela' não entram e não viram exclusão manual.")
+            # Editor recria (key com competencia/janela) quando a janela muda: o USAR
+            # e re-semeado a partir das exclusoes MANUAIS persistidas — um PC que
+            # volta a ser elegivel e nunca foi excluido reaparece marcado.
             df_pc_ed = st.data_editor(
                 base_pc_editor, hide_index=True, use_container_width=True, num_rows="fixed",
-                key="adequacao_v3_pc_editor",
+                key=f"adequacao_v3_pc_editor_{ultima_comp_txt}_{janela_meses_pc}",
                 column_config={
                     "USAR": st.column_config.CheckboxColumn("USAR"),
                     "PC": st.column_config.TextColumn("PC", disabled=True),
@@ -389,12 +418,15 @@ with tab_hist:
                     "Valor": st.column_config.TextColumn("Valor", disabled=True),
                     "Situação": st.column_config.TextColumn("Situação", disabled=True),
                 })
-            # Exclusoes = PCs desmarcados (dentro da janela). Fora da janela ja nao
-            # entram; a janela permanece soberana.
-            exclusoes = [str(r["PC"]) for _, r in df_pc_ed.iterrows()
-                         if (not bool(r["USAR"])) and str(r["PC"])]
-            st.session_state["adequacao_v3_exclusoes_pc"] = set(exclusoes)
-            peds_pc = pedidos_de_itens_pc(registros_pc, exclusoes=exclusoes)
+            # Atualiza SOMENTE as exclusoes MANUAIS (voluntarias). PC fora da janela
+            # preserva seu estado anterior; nao vira exclusao por (in)elegibilidade.
+            exclusoes_manuais = atualizar_exclusoes_manuais_pc(
+                [{"pc": str(r["PC"]), "eligivel": (str(r["Situação"]) == "Considerado"),
+                  "usar": bool(r["USAR"])} for _, r in df_pc_ed.iterrows()],
+                excl_state)
+            st.session_state["adequacao_v3_exclusoes_pc"] = exclusoes_manuais
+            # A janela permanece soberana; a media vem do motor com as exclusoes manuais.
+            peds_pc = pedidos_de_itens_pc(registros_pc, exclusoes=exclusoes_manuais)
             base_pc = media_pedidos_compra(peds_pc, ultima_comp_data, janela_meses_pc)
             media_ref = base_pc["media_mensal"]
 

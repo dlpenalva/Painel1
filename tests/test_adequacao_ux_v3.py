@@ -18,9 +18,11 @@ from datetime import date, datetime
 import pandas as pd
 import pytest
 
-from _adequacao_ui import calcular_projecao
+from _adequacao_ui import (
+    calcular_projecao, situacao_financeira_considerada, atualizar_exclusoes_manuais_pc,
+)
 from _adequacao_orcamentaria import (
-    pedidos_de_itens_pc, media_pedidos_compra, media_financeiro,
+    pedidos_de_itens_pc, media_pedidos_compra, media_financeiro, classificar_pedidos,
     valor_original_foi_informado,
     calcular_adequacao_orcamentaria as calc, Pedido,
 )
@@ -168,3 +170,76 @@ def test_web_reset_limpa_somente_v3():  # Secao 26, T
            if "adequacao_v3_data_final_vigencia" in at.session_state else "")
     assert vig == ""
     assert "resultado_valor_global" in at.session_state
+
+
+# --------------------------------------------- Secao 3/5/13 (PC janela x exclusao manual)
+
+# Reproduz o ESTADO da camada V3 do editor de PCs (sem Streamlit): elegibilidade
+# temporal (classificar_pedidos) + seed do USAR + transicao das exclusoes MANUAIS.
+def _simular_render_pc(regs, comp_date, janela, exclusoes_anteriores, toggles=None):
+    cl = classificar_pedidos(pedidos_de_itens_pc(regs), comp_date, janela)
+    excl = set(str(e) for e in (exclusoes_anteriores or []))
+    linhas = []
+    for x in cl["pedidos"]:
+        pc = str(x["identificacao"])
+        eligivel = x["situacao"] == "Considerado"
+        usar_seed = eligivel and pc not in excl           # seed = pagina
+        usar = (toggles or {}).get(pc, usar_seed)         # override manual do usuario
+        linhas.append({"pc": pc, "eligivel": eligivel, "usar": usar})
+    manual = atualizar_exclusoes_manuais_pc(linhas, excl)
+    base = media_pedidos_compra(pedidos_de_itens_pc(regs, exclusoes=manual), comp_date, janela)
+    return manual, base
+
+
+_REGS_PC = [{"numero_pc": "PC-A", "data_pc": date(2026, 5, 10), "valor_pc": 3000.0},
+            {"numero_pc": "PC-B", "data_pc": date(2026, 1, 10), "valor_pc": 6000.0}]
+_COMP_PC = date(2026, 6, 1)   # janela 3 => [04..06] (PC-B fora); janela 6 => [01..06] (ambos)
+
+
+def test_pc_bug_janela_x_exclusao_manual_ponta_a_ponta():  # 13 A,B,C,D
+    # PASSO 1: janela curta -> PC-A considerado, PC-B fora (NAO vira exclusao manual)
+    m1, b1 = _simular_render_pc(_REGS_PC, _COMP_PC, 3, set())
+    assert "PC-B" not in m1 and "PC-A" not in m1          # A
+    assert b1["pedidos_considerados"] == 1
+    assert b1["media_mensal"] == pytest.approx(3000 / 3)  # 1000  (J: media)
+
+    # PASSO 2: amplia a janela -> PC-B passa a elegivel/considerado AUTOMATICAMENTE
+    m2, b2 = _simular_render_pc(_REGS_PC, _COMP_PC, 6, m1)
+    assert "PC-B" not in m2                                # B
+    assert b2["pedidos_considerados"] == 2
+    assert b2["media_mensal"] == pytest.approx(9000 / 6)  # 1500
+
+    # PASSO 3: desmarca PC-B manualmente -> vira exclusao manual
+    m3, b3 = _simular_render_pc(_REGS_PC, _COMP_PC, 6, m2, toggles={"PC-B": False})
+    assert "PC-B" in m3
+    assert b3["pedidos_considerados"] == 1
+    assert b3["media_mensal"] == pytest.approx(3000 / 6)  # 500
+
+    # PASSO 4: muda a janela (PC-B fora) e volta -> exclusao MANUAL preservada
+    m4a, _ = _simular_render_pc(_REGS_PC, _COMP_PC, 3, m3)   # fora da janela: preserva
+    assert "PC-B" in m4a
+    m4b, b4 = _simular_render_pc(_REGS_PC, _COMP_PC, 6, m4a)  # volta elegivel: segue excluido
+    assert "PC-B" in m4b                                    # C, I
+    assert b4["pedidos_considerados"] == 1
+    assert b4["media_mensal"] == pytest.approx(3000 / 6)   # 500
+
+
+def test_pc_fora_da_janela_nunca_entra_em_exclusoes_manuais():  # A (isolado)
+    # PC-B fora, mesmo se o usuario "tocar" no checkbox, nao vira exclusao manual.
+    m, _ = _simular_render_pc(_REGS_PC, _COMP_PC, 3, set(), toggles={"PC-B": True})
+    assert "PC-B" not in m
+    m2, _ = _simular_render_pc(_REGS_PC, _COMP_PC, 3, set(), toggles={"PC-B": False})
+    assert "PC-B" not in m2
+
+
+# --------------------------------------------- Secao 7/8/13 (Financeiro situacao considerada)
+
+def test_situacao_financeira_considerada_zero_vazio():  # G, H, I
+    assert situacao_financeira_considerada("") == "Sem informação"          # G vazio
+    assert situacao_financeira_considerada("   ") == "Sem informação"
+    assert situacao_financeira_considerada(None) == "Sem informação"
+    assert situacao_financeira_considerada("0") == "Zero informado"          # H zero
+    assert situacao_financeira_considerada("0,00") == "Zero informado"
+    assert situacao_financeira_considerada("R$ 0,00") == "Zero informado"
+    assert situacao_financeira_considerada("15000") == "Informado"           # I >0
+    assert situacao_financeira_considerada("1.000,00") == "Informado"
