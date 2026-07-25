@@ -34,8 +34,12 @@ pytest_com = pytest.mark.skipif(
 
 
 def _preencher(wb, *, gcc_fin=None, gcc_pc=None, data_analise=date(2026, 6, 30),
-               com_aba=True):
-    """Preenche calendario + PC + declaracoes GCC (via openpyxl, valores diretos)."""
+               com_aba=True, financeiro=None):
+    """Preenche calendario + PC + declaracoes GCC (via openpyxl, valores diretos).
+
+    financeiro: lista opcional de (competencia: date, valor) na aba financeiro
+    (COMPETENCIA col A, VALOR_PAGO col C).
+    """
     p = wb["parametros"]
     for num, (ini, fim) in enumerate([
             (date(2023, 1, 1), date(2023, 12, 31)),
@@ -52,6 +56,11 @@ def _preencher(wb, *, gcc_fin=None, gcc_pc=None, data_analise=date(2026, 6, 30),
     ir["E2"] = ir["G2"] = ir["I2"] = 100.0
     pc = wb["itens_PC"]
     pc["A2"], pc["B2"], pc["D2"] = "PC-1", date(2026, 5, 20), 2000.0
+    if financeiro:
+        fin = wb["financeiro"]
+        for i, (comp, valor) in enumerate(financeiro, start=2):
+            fin.cell(i, 1).value = comp     # COMPETENCIA
+            fin.cell(i, 3).value = valor    # VALOR_PAGO
     if com_aba:
         cob = wb[ABA]
         cob["B4"] = data_analise
@@ -122,6 +131,28 @@ def test_cenario3_compatibilidade_sem_aba():
     assert r.data_analise is None
     assert r.pc_cobertura_adotada_ate is None
     assert r.projecao_autorizada_a_partir_de is None          # sem analise, sem projecao
+
+
+def test_cenario_financeiro_continuo_eomonth():
+    """XLS -> leitor -> motor: financeiro continuo (marco/abril=0/maio) sem GCC.
+
+    Prova a fronteira mensal no payload real: ultima evidencia = competencia
+    maio; cobertura inferida = 31/05; projecao = 01/06.
+    """
+    res = ler_masterfile_v10(_bytes(financeiro=[
+        (date(2026, 3, 1), 10000.0),
+        (date(2026, 4, 1), 0.0),        # zero conta como competencia informada
+        (date(2026, 5, 1), 12000.0),
+    ]))
+    # XLS -> leitor: competencias financeiras expostas no payload.
+    comps = [row["competencia"] for row in res["financeiro"]]
+    assert date(2026, 3, 1) in comps and date(2026, 4, 1) in comps and date(2026, 5, 1) in comps
+    # leitor -> motor
+    r = montar_cobertura_temporal(res)
+    assert r.financeiro_ultima_evidencia == date(2026, 5, 1)          # competencia
+    assert r.financeiro_cobertura_inferida_ate == date(2026, 5, 31)   # EOMONTH
+    assert r.financeiro_cobertura_adotada_ate == date(2026, 5, 31)
+    assert r.projecao_autorizada_a_partir_de == date(2026, 6, 1)
 
 
 def test_vazio_nunca_vira_data():

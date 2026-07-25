@@ -83,6 +83,18 @@ def _mes_seguinte(ano: int, mes: int) -> tuple[int, int]:
     return (ano + 1, 1) if mes == 12 else (ano, mes + 1)
 
 
+def _fim_competencia(d: date) -> date:
+    """Ultimo dia do mes da competencia (EOMONTH).
+
+    Financeiro e MENSAL: a competencia 01/05 cobre o mes inteiro, logo a
+    fronteira coberta e 31/05 — nao 01/05. Aplica-se SO a cobertura inferida
+    (cuja origem e uma competencia mensal), nunca a datas diarias (PC/fisica)
+    nem a confirmacao GCC (data explicita).
+    """
+    ano_seg, mes_seg = _mes_seguinte(d.year, d.month)
+    return date(ano_seg, mes_seg, 1) - timedelta(days=1)
+
+
 def _extrair_por_ciclo(res: dict[str, Any]) -> dict[str, dict[str, Any]]:
     """Recupera por_ciclo tolerando os aninhamentos usuais do leitor v10."""
     bloco = res.get("ciclos")
@@ -221,7 +233,8 @@ def _cobertura_inferida_financeiro(por_mes: dict[tuple[int, int], date]) -> date
             fim = atual
         else:
             break
-    return por_mes[fim]
+    # Financeiro e mensal: a cobertura vai ate o FIM da competencia (EOMONTH).
+    return _fim_competencia(por_mes[fim])
 
 
 def _tem_lacuna_ate(por_mes: dict[tuple[int, int], date], alvo: date) -> bool:

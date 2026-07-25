@@ -221,9 +221,10 @@ def test_caso_k_financeiro_continuo_com_zero():
         {"competencia": date(2026, 5, 1), "ciclo": "C3", "valor": 12000.0},
     ]
     r = montar_cobertura_temporal(_res(financeiro=fin))
-    assert r.financeiro_ultima_evidencia == date(2026, 5, 1)
-    assert r.financeiro_cobertura_inferida_ate == date(2026, 5, 1)   # continuidade ate maio
-    assert r.financeiro_cobertura_adotada_ate == date(2026, 5, 1)
+    assert r.financeiro_ultima_evidencia == date(2026, 5, 1)         # competencia (dia 1)
+    assert r.financeiro_cobertura_inferida_ate == date(2026, 5, 31)  # EOMONTH de maio
+    assert r.financeiro_cobertura_adotada_ate == date(2026, 5, 31)
+    assert r.projecao_autorizada_a_partir_de == date(2026, 6, 1)     # 01/06, nao 02/05
 
 
 # --------------------------------------------------------------------------- #
@@ -238,11 +239,11 @@ def test_caso_l_financeiro_com_lacuna():
         {"competencia": date(2026, 5, 1), "ciclo": "C3", "valor": 12000.0},
     ]
     r = montar_cobertura_temporal(_res(financeiro=fin))
-    assert r.financeiro_ultima_evidencia == date(2026, 5, 1)
-    assert r.financeiro_cobertura_inferida_ate == date(2026, 3, 1)   # so ate marco
-    assert r.financeiro_cobertura_adotada_ate == date(2026, 3, 1)
-    # projecao nao salta para junho por causa do MAX(maio).
-    assert r.projecao_autorizada_a_partir_de.month == 3
+    assert r.financeiro_ultima_evidencia == date(2026, 5, 1)         # ultima competencia vista
+    assert r.financeiro_cobertura_inferida_ate == date(2026, 3, 31)  # EOMONTH de marco (para na lacuna)
+    assert r.financeiro_cobertura_adotada_ate == date(2026, 3, 31)
+    # projecao = 01/04 (fim de marco + 1), NAO junho por causa do MAX(maio).
+    assert r.projecao_autorizada_a_partir_de == date(2026, 4, 1)
 
 
 # --------------------------------------------------------------------------- #
@@ -258,10 +259,49 @@ def test_caso_m_confirmacao_gcc_supera_lacuna():
     ]
     r = montar_cobertura_temporal(_res(
         financeiro=fin, confirmacao_gcc={"financeiro_ate": date(2026, 5, 31)}))
-    assert r.financeiro_cobertura_confirmada_ate == date(2026, 5, 31)
+    assert r.financeiro_cobertura_confirmada_ate == date(2026, 5, 31)  # GCC: data explicita
     assert r.financeiro_cobertura_adotada_ate == date(2026, 5, 31)  # GCC prevalece
-    assert r.financeiro_cobertura_inferida_ate == date(2026, 3, 1)  # lacuna preservada
+    assert r.financeiro_cobertura_inferida_ate == date(2026, 3, 31)  # EOMONTH marco (lacuna)
     assert any(a["codigo"] == "FINANCEIRO_LACUNA_SOB_CONFIRMACAO" for a in r.alertas)
+
+
+# --------------------------------------------------------------------------- #
+# CASO N — virada de ano: competencias continuas ate dezembro/2026.
+# inferida = 31/12/2026; projecao = 01/01/2027.
+# --------------------------------------------------------------------------- #
+def test_caso_n_virada_de_ano():
+    fin = [
+        {"competencia": date(2026, 11, 1), "ciclo": "C3", "valor": 8000.0},
+        {"competencia": date(2026, 12, 1), "ciclo": "C3", "valor": 9000.0},
+    ]
+    r = montar_cobertura_temporal(_res(financeiro=fin, data_analise=date(2027, 1, 15)))
+    assert r.financeiro_cobertura_inferida_ate == date(2026, 12, 31)   # EOMONTH dezembro
+    assert r.financeiro_cobertura_adotada_ate == date(2026, 12, 31)
+    assert r.projecao_autorizada_a_partir_de == date(2027, 1, 1)       # vira o ano
+
+
+# --------------------------------------------------------------------------- #
+# CASO PC diario — confirmacao GCC de PC preserva o DIA exato (sem EOMONTH).
+# PC confirmado ate 20/05 -> projecao 21/05 (dia seguinte, granularidade diaria).
+# --------------------------------------------------------------------------- #
+def test_pc_confirmado_preserva_dia_exato():
+    pcs = [{"numero_pc": "PC-1", "data_pc": date(2026, 5, 20), "valor_pc": 1.0}]
+    r = montar_cobertura_temporal(_res(
+        itens_pc=pcs, confirmacao_gcc={"pc_ate": date(2026, 5, 20)}))
+    assert r.pc_cobertura_confirmada_ate == date(2026, 5, 20)     # dia exato, nao 31/05
+    assert r.pc_cobertura_adotada_ate == date(2026, 5, 20)
+    assert r.projecao_autorizada_a_partir_de == date(2026, 5, 21)  # 21/05, nao 01/06
+
+
+# --------------------------------------------------------------------------- #
+# CASO fisico diario — a fotografia fisica mantem a data EXATA (sem EOMONTH).
+# --------------------------------------------------------------------------- #
+def test_fisico_preserva_dia_exato():
+    r = montar_cobertura_temporal(_res(
+        data_corte=date(2026, 5, 20), remanescente={"ITEM-1": 40.0}))
+    assert r.posicao_atual_completa is True
+    assert r.posicao_fisica_conhecida_ate == date(2026, 5, 20)    # dia exato, nao 31/05
+    assert r.data_fotografia_recente == date(2026, 5, 20)
 
 
 # --------------------------------------------------------------------------- #

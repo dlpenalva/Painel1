@@ -123,6 +123,30 @@ def _ler_cobertura_temporal(wb) -> dict[str, Any]:
     return saida
 
 
+def _ler_financeiro_competencias(wb) -> list[dict[str, Any]]:
+    """Competencias financeiras (mensais) para o motor de cobertura temporal.
+
+    Fonte mensal: COMPETENCIA (col A), CICLO (col B), VALOR_PAGO (col C). Apenas
+    linhas cuja competencia e uma DATA real entram; zero conta como competencia
+    informada, a AUSENCIA de linha e lacuna. Nao interpreta valor nem infere
+    continuidade aqui — o motor decide. Compat: aba ausente => lista vazia.
+    """
+    if "financeiro" not in wb.sheetnames:
+        return []
+    ws = wb["financeiro"]
+    linhas: list[dict[str, Any]] = []
+    for r in range(2, min(ws.max_row or 2, 200) + 1):
+        comp = _norm_data(ws.cell(r, 1).value)
+        if comp is None:
+            continue
+        linhas.append({
+            "competencia": comp,
+            "ciclo": str(ws.cell(r, 2).value or "").strip().upper(),
+            "valor": ws.cell(r, 3).value,
+        })
+    return linhas
+
+
 def _mapear_colunas_por_cabecalho(ws, linha_header: int = 1) -> dict[str, int]:
     mapa: dict[str, int] = {}
     for cell in ws[linha_header]:
@@ -2995,6 +3019,8 @@ def ler_masterfile_v10(
         "financeiro_ate": cobertura.get("financeiro_confirmado_completo_ate"),
         "pc_ate":         cobertura.get("pc_confirmado_completo_ate"),
     }
+    # Competencias financeiras (mensais) para o motor de cobertura temporal.
+    res["financeiro"] = _ler_financeiro_competencias(wb)
 
     if "historico" in wb.sheetnames:
         try:
