@@ -432,22 +432,26 @@ def test_pagina_importa_o_motor_unico():  # E (motor), X (sem 2o motor)
     assert "def media_pedidos_compra" not in PAGINA
 
 
-def test_pagina_oferece_duas_origens():  # A, B, M, N
-    assert 'st.radio(' in PAGINA and '"Financeiro"' in PAGINA and '"Pedidos de compra"' in PAGINA
-    assert 'key="adequacao_v2_origem"' in PAGINA  # estado estavel na alternancia
+def test_pagina_oferece_duas_origens():  # A, B, M, N — UX V3 (radio clean, v3)
+    assert 'st.radio(' in PAGINA and '"Financeiro"' in PAGINA and '"Pedidos de Compra"' in PAGINA
+    assert 'key="adequacao_v3_origem"' in PAGINA  # estado estavel na alternancia (V3)
+    assert 'st.tabs(' in PAGINA  # arquitetura de abas (planilha guiada)
 
 
-def test_pagina_reutiliza_itens_pc_sem_redigitacao():  # C, D, H
+def test_pagina_reutiliza_itens_pc_sem_redigitacao():  # C, D, H — checkbox USAR (V3)
     assert "carregar_itens_pc_da_sessao" in PAGINA
     assert "pedidos_de_itens_pc(" in PAGINA
-    assert "itens_pc_v10" in PAGINA
-    assert 'st.multiselect(' in PAGINA  # exclusoes explicitas (Considerar/Excluir)
+    # UX V3 substitui o multiselect de exclusoes pela coluna checkbox USAR.
+    assert 'st.multiselect(' not in PAGINA
+    assert 'CheckboxColumn("USAR")' in PAGINA
 
 
-def test_pagina_expoe_janela_e_resumo():  # J (janela), K resumo PCs
+def test_pagina_expoe_janela_e_resumo():  # J (janela em Opcoes avancadas), K resumo PCs
     assert 'st.slider("Janela histórica dos pedidos (meses)", 1, 60' in PAGINA
-    for card in ("Período histórico", "PCs considerados", "Meses com PCs",
-                 "Meses sem PCs", "Total histórico", "Média mensal (PCs)"):
+    # slider da janela sai do fluxo normal e vive em "Opcoes avancadas do historico"
+    assert 'with st.expander("Opções avançadas do histórico"' in PAGINA
+    for card in ("Período utilizado", "PCs considerados", "Meses com PCs",
+                 "Meses sem PCs", "Total histórico", "Média mensal"):
         assert card in PAGINA
 
 

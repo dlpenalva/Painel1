@@ -46,8 +46,10 @@ def _run_pagina_pc():
     at = AppTest.from_file("pages/12_Adequacao_Orcamentaria.py", default_timeout=120)
     at.session_state["resultado_valor_global"] = _sessao_golden()
     at.run()
-    at.radio(key="adequacao_v2_origem").set_value("Pedidos de compra")
-    at.text_input(key="adequacao_v2_data_final_vigencia").set_value("05/05/2027")
+    # UX V3: seletor de origem (radio v3) na aba Historico e data de vigencia na
+    # aba Base. Os NUMEROS do golden permanecem identicos (motor inalterado).
+    at.radio(key="adequacao_v3_origem").set_value("Pedidos de Compra")
+    at.text_input(key="adequacao_v3_data_final_vigencia").set_value("05/05/2027")
     at.run()
     return at
 

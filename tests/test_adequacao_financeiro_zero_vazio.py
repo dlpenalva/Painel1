@@ -126,10 +126,11 @@ def test_web_financeiro_media_e_dados_importados():
     assert not at.exception, at.exception
     blob = "\n".join(str(m.value) for m in at.markdown)
     assert "9.800,00" in blob                    # media das competencias informadas
-    assert "Importado da apuração" in blob       # retroativo/percentual importados
-    assert "16.888,59" in blob                   # retroativo importado
-    assert "12,01%" in blob                      # percentual importado
-    assert "5 de 6" in blob                      # competencias informadas
+    assert "Fontes encontradas" in blob          # leitura compacta da Base (UX V3)
+    assert "16.888,59" in blob                   # retroativo importado (leitura Base)
+    assert "12,01%" in blob                      # percentual importado (leitura Base)
+    # UX V3 mostra as contagens em cards separados (Com informacao / utilizadas),
+    # nao mais a string "5 de 6"; a media 9.800,00 ja prova as 5 informadas de 6.
 
 
 def test_web_financeiro_situacao_zero_e_sem_info():
