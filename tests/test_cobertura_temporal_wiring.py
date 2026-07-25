@@ -155,6 +155,34 @@ def test_cenario_financeiro_continuo_eomonth():
     assert r.projecao_autorizada_a_partir_de == date(2026, 6, 1)
 
 
+def test_cenario_financeiro_vazio_versus_zero():
+    """Prova principal do hotfix: abril VAZIO (lacuna) x abril ZERO (informado).
+
+    Mesmas competencias na coluna A (03/04/05); muda apenas o valor de abril.
+    """
+    comps = lambda abril_valor: [
+        (date(2026, 3, 1), 10000.0),
+        (date(2026, 4, 1), abril_valor),
+        (date(2026, 5, 1), 12000.0),
+    ]
+    # --- abril VAZIO: competencia existe, mas sem informacao => lacuna ---
+    res_v = ler_masterfile_v10(_bytes(financeiro=comps(None)))
+    abril_v = next(x for x in res_v["financeiro"] if x["competencia"] == date(2026, 4, 1))
+    assert abril_v["informado"] is False                     # linha existe, sem informacao
+    r_v = montar_cobertura_temporal(res_v)
+    assert r_v.financeiro_ultima_evidencia == date(2026, 5, 1)       # maio tem valor
+    assert r_v.financeiro_cobertura_inferida_ate == date(2026, 3, 31)  # abril corta
+    assert r_v.projecao_autorizada_a_partir_de == date(2026, 4, 1)
+
+    # --- abril ZERO: 0 e dado => sequencia continua ---
+    res_z = ler_masterfile_v10(_bytes(financeiro=comps(0.0)))
+    abril_z = next(x for x in res_z["financeiro"] if x["competencia"] == date(2026, 4, 1))
+    assert abril_z["informado"] is True                      # zero informado
+    r_z = montar_cobertura_temporal(res_z)
+    assert r_z.financeiro_cobertura_inferida_ate == date(2026, 5, 31)
+    assert r_z.projecao_autorizada_a_partir_de == date(2026, 6, 1)
+
+
 def test_vazio_nunca_vira_data():
     """Celula GCC vazia jamais e coagida a data (fail-closed)."""
     res = ler_masterfile_v10(_bytes(gcc_fin=None, gcc_pc=date(2026, 5, 31)))

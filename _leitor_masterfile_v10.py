@@ -133,16 +133,22 @@ def _ler_financeiro_competencias(wb) -> list[dict[str, Any]]:
     """
     if "financeiro" not in wb.sheetnames:
         return []
+    # Semantica homologada da Adequacao Rev.2 (fonte unica): ZERO != VAZIO.
+    from _adequacao_orcamentaria import valor_original_foi_informado
     ws = wb["financeiro"]
     linhas: list[dict[str, Any]] = []
     for r in range(2, min(ws.max_row or 2, 200) + 1):
         comp = _norm_data(ws.cell(r, 1).value)
         if comp is None:
             continue
+        valor_bruto = ws.cell(r, 3).value
+        # informado=True inclui zero explicito; None/vazio/NaN/traco => False.
+        # Linha vazia PERMANECE no payload (diagnostico da lacuna), mas sinalizada.
         linhas.append({
             "competencia": comp,
             "ciclo": str(ws.cell(r, 2).value or "").strip().upper(),
-            "valor": ws.cell(r, 3).value,
+            "valor": valor_bruto,
+            "informado": valor_original_foi_informado(valor_bruto),
         })
     return linhas
 

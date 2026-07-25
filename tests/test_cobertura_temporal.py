@@ -305,6 +305,66 @@ def test_fisico_preserva_dia_exato():
 
 
 # --------------------------------------------------------------------------- #
+# CASO O — competencia existe na grade, mas VALOR vazio (abril) => lacuna.
+# marco=10.000, abril=vazio (linha existe), maio=12.000.
+# --------------------------------------------------------------------------- #
+def test_caso_o_competencia_existe_valor_vazio():
+    fin = [
+        {"competencia": date(2026, 3, 1), "valor": 10000.0},
+        {"competencia": date(2026, 4, 1), "valor": None},   # linha existe, valor vazio
+        {"competencia": date(2026, 5, 1), "valor": 12000.0},
+    ]
+    r = montar_cobertura_temporal(_res(financeiro=fin))
+    assert r.financeiro_ultima_evidencia == date(2026, 5, 1)          # maio tem valor
+    assert r.financeiro_cobertura_inferida_ate == date(2026, 3, 31)   # abril vazio corta
+    assert r.projecao_autorizada_a_partir_de == date(2026, 4, 1)      # 01/04
+
+
+# --------------------------------------------------------------------------- #
+# CASO P — zero explicito no meio (abril=0) mantem a continuidade.
+# --------------------------------------------------------------------------- #
+def test_caso_p_zero_explicito_continua():
+    fin = [
+        {"competencia": date(2026, 3, 1), "valor": 10000.0},
+        {"competencia": date(2026, 4, 1), "valor": 0.0},    # zero informado
+        {"competencia": date(2026, 5, 1), "valor": 12000.0},
+    ]
+    r = montar_cobertura_temporal(_res(financeiro=fin))
+    assert r.financeiro_ultima_evidencia == date(2026, 5, 1)
+    assert r.financeiro_cobertura_inferida_ate == date(2026, 5, 31)   # continua
+    assert r.projecao_autorizada_a_partir_de == date(2026, 6, 1)
+
+
+# --------------------------------------------------------------------------- #
+# CASO Q — competencias posteriores vazias: MAX(A) nao pode virar ultima evidencia.
+# marco=10.000, abril=vazio, maio=vazio.
+# --------------------------------------------------------------------------- #
+def test_caso_q_competencias_posteriores_vazias():
+    fin = [
+        {"competencia": date(2026, 3, 1), "valor": 10000.0},
+        {"competencia": date(2026, 4, 1), "valor": None},
+        {"competencia": date(2026, 5, 1), "valor": ""},     # vazio (string) tambem
+    ]
+    r = montar_cobertura_temporal(_res(financeiro=fin))
+    assert r.financeiro_ultima_evidencia == date(2026, 3, 1)          # marco, nao maio
+    assert r.financeiro_cobertura_inferida_ate == date(2026, 3, 31)
+
+
+# --------------------------------------------------------------------------- #
+# CASO R — zero na ULTIMA competencia conta como evidencia concreta.
+# --------------------------------------------------------------------------- #
+def test_caso_r_zero_na_ultima_competencia():
+    fin = [
+        {"competencia": date(2026, 3, 1), "valor": 10000.0},
+        {"competencia": date(2026, 4, 1), "valor": 8000.0},
+        {"competencia": date(2026, 5, 1), "valor": 0.0},    # zero e informacao
+    ]
+    r = montar_cobertura_temporal(_res(financeiro=fin))
+    assert r.financeiro_ultima_evidencia == date(2026, 5, 1)          # maio (zero conta)
+    assert r.financeiro_cobertura_inferida_ate == date(2026, 5, 31)
+
+
+# --------------------------------------------------------------------------- #
 # Invariantes gerais
 # --------------------------------------------------------------------------- #
 def test_datas_de_fontes_nao_se_confundem():

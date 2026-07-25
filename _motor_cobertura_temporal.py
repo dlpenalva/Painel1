@@ -200,16 +200,35 @@ def _fotografias_ciclo(res: dict[str, Any], por_ciclo: dict[str, dict]) -> list[
     return [c for c in CICLOS if _como_data((por_ciclo.get(c) or {}).get("data_inicio"))]
 
 
+def _financeiro_informado(reg: dict[str, Any]) -> bool:
+    """Uma competencia foi FINANCEIRAMENTE informada? (ZERO != VAZIO).
+
+    Prioriza a flag `informado` ja resolvida pelo leitor; na ausencia dela
+    (dicts sinteticos), deriva do valor cru pela MESMA semantica homologada da
+    Adequacao Rev.2 (zero informado conta; None/vazio/NaN/traco nao).
+    """
+    if "informado" in reg:
+        return bool(reg["informado"])
+    from _adequacao_orcamentaria import valor_original_foi_informado
+    return valor_original_foi_informado(reg.get("valor"))
+
+
 def _grade_competencias(financeiro: list[dict[str, Any]]) -> tuple[
         list[date], dict[tuple[int, int], date]]:
-    """Competencias financeiras efetivamente informadas (vazio != zero).
+    """Competencias financeiras efetivamente INFORMADAS (vazio != zero).
 
-    Considera informada apenas a linha que EXISTE com competencia valida — um
-    valor zero conta como informado; a AUSENCIA de linha e lacuna, nunca zero.
-    Retorna (datas ordenadas, mapa (ano,mes)->maior data do mes).
+    Uma competencia so participa da grade (ultima evidencia + continuidade) se
+    o VALOR foi informado — zero conta como informado; competencia com valor
+    vazio/None permanece como lacuna e NAO preenche a sequencia, nem vira
+    ultima evidencia. Retorna (datas informadas ordenadas, (ano,mes)->maior data).
     """
-    datas = [_como_data(f.get("competencia") or f.get("COMPETENCIA")) for f in financeiro]
-    datas = sorted(d for d in datas if d is not None)
+    datas: list[date] = []
+    for reg in financeiro:
+        comp = _como_data(reg.get("competencia") or reg.get("COMPETENCIA"))
+        if comp is None or not _financeiro_informado(reg):
+            continue
+        datas.append(comp)
+    datas.sort()
     por_mes: dict[tuple[int, int], date] = {}
     for d in datas:
         chave = (d.year, d.month)
