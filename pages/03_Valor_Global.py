@@ -73,7 +73,11 @@ def aplicar_css_aditivos25_compacto():
         unsafe_allow_html=True,
     )
 # <<< UX_ADITIVOS_25_COMPACTO
-from _ui_utils import render_avisos_override_efeito_financeiro, render_cabecalho_pagina
+from _ui_utils import (
+    render_avisos_override_efeito_financeiro,
+    render_cabecalho_pagina,
+    render_cobertura_temporal,
+)
 
 def agora_brasilia():
     return datetime.now(ZoneInfo("America/Sao_Paulo"))
@@ -4988,6 +4992,7 @@ if resultado:
     resumo_ciclos.metric("Ciclos analisados", _ciclos_str)
     resumo_retro.metric("Retroativo reconhecido", _retro_str)
     resumo_acum.metric("Percentual acumulado", _acum_str)
+    render_cobertura_temporal(diagnostico_coleta.get("cobertura_temporal"))
     render_documentos_funcionais_upload(resultado)
     st.stop()
 

@@ -123,6 +123,34 @@ def _ler_cobertura_temporal(wb) -> dict[str, Any]:
     return saida
 
 
+def _ler_posicao_fisica_fiscal(wb):
+    """Itens da base (itens_Remanesc!A) e a fotografia recente do fiscal.
+
+    Fornece ao motor de cobertura temporal os dois insumos da posicao fisica
+    ATUAL: a lista de itens e o remanescente informado manualmente em
+    posicao_referencia!B (QTD_REM_ATUAL), alinhado por LINHA a itens_Remanesc.
+    Zero conta como informado; celula vazia nao entra (a fotografia so e
+    completa quando TODOS os itens tem quantidade). Nao le formula nem inventa.
+    """
+    if "itens_Remanesc" not in wb.sheetnames:
+        return [], {}
+    ir = wb["itens_Remanesc"]
+    pr = wb["posicao_referencia"] if "posicao_referencia" in wb.sheetnames else None
+    itens_base: list[str] = []
+    remanescente: dict[str, float] = {}
+    for r in range(2, 202):
+        item = ir.cell(r, 1).value
+        cod = str(item).strip() if item not in (None, "") else ""
+        if not cod:
+            continue
+        itens_base.append(cod)
+        if pr is not None:
+            q = pr.cell(r, 2).value
+            if isinstance(q, (int, float)) and not isinstance(q, bool):
+                remanescente[cod] = float(q)
+    return itens_base, remanescente
+
+
 def _ler_financeiro_competencias(wb) -> list[dict[str, Any]]:
     """Competencias financeiras (mensais) para o motor de cobertura temporal.
 
@@ -3027,6 +3055,8 @@ def ler_masterfile_v10(
     }
     # Competencias financeiras (mensais) para o motor de cobertura temporal.
     res["financeiro"] = _ler_financeiro_competencias(wb)
+    # Posicao fisica do fiscal (itens + fotografia recente posicao_referencia!B).
+    res["itens_base"], res["remanescente_atual"] = _ler_posicao_fisica_fiscal(wb)
 
     if "historico" in wb.sheetnames:
         try:

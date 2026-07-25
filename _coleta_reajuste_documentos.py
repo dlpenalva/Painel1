@@ -472,6 +472,16 @@ def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], d
     if bloqueios:
         diagnostico["pronto_para_consolidar"] = False
 
+    # Cobertura temporal (camada diagnostica/sombra). Fonte UNICA: o mesmo
+    # payload do leitor (sem reler o Excel). Fail-safe: erro do motor temporal
+    # NAO derruba o upload nem os demais resultados; vira indisponibilidade do
+    # eixo temporal. Nao altera o VTA e nao bloqueia documentos.
+    try:
+        from _motor_cobertura_temporal import montar_cobertura_temporal
+        diagnostico["cobertura_temporal"] = montar_cobertura_temporal(leitura).to_dict()
+    except Exception as exc:  # diagnostico e sombra; nunca hard-reject estrutural
+        diagnostico["cobertura_temporal"] = {"ok": False, "erro": str(exc)}
+
     capacidades = resultado.get("capacidades") or {}
     aplicar_bloqueio_documental(capacidades, bloqueios)
 

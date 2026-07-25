@@ -298,6 +298,145 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
     return selecionado
 
 
+_ROTULO_FONTE = {"financeiro": "Financeiro", "pc": "PC", "consumo": "Consumo"}
+
+
+def _data_br_iso(iso, vazio="Não informado"):
+    """ISO (YYYY-MM-DD) -> dd/mm/aaaa. Vazio/None/nan -> texto de ausencia.
+
+    Nunca exibe 0, 01/01/1900, None ou nan como se fosse data valida.
+    """
+    if iso in (None, "", "None") or str(iso).strip().lower() in ("nan", "nat", "none"):
+        return vazio
+    try:
+        ano, mes, dia = str(iso)[:10].split("-")
+        return f"{int(dia):02d}/{int(mes):02d}/{int(ano):04d}"
+    except (ValueError, TypeError):
+        return vazio
+
+
+def _competencia_br_iso(iso, vazio="Não informado"):
+    """ISO -> mm/aaaa (rotulo de competencia mensal do Financeiro)."""
+    if iso in (None, "", "None") or str(iso).strip().lower() in ("nan", "nat", "none"):
+        return vazio
+    try:
+        ano, mes, _ = str(iso)[:10].split("-")
+        return f"{int(mes):02d}/{int(ano):04d}"
+    except (ValueError, TypeError):
+        return vazio
+
+
+def resumo_cobertura_temporal(cobertura):
+    """Formata o diagnostico de cobertura temporal para exibicao (funcao pura).
+
+    Preserva a terminologia rigorosa: ULTIMA EVIDENCIA != COBERTURA. Datas em
+    dd/mm/aaaa (competencia Financeiro em mm/aaaa). Ausencias viram "Nao
+    informado"/"Nao confirmado"/"Nao aplicavel" — nunca 0/1900/None/nan.
+    Retorna {"disponivel": bool, ...campos..., "alertas": [(nivel, texto)]}.
+    """
+    if not isinstance(cobertura, dict):
+        return {"disponivel": False, "erro": None}
+    # Fail-safe do runtime: {"ok": False, "erro": ...} quando o motor falhou.
+    if "bloco_a_marcos" not in cobertura:
+        return {"disponivel": False, "erro": str(cobertura.get("erro") or "") or None}
+
+    b = cobertura.get("bloco_b_cobertura", {})
+    c = cobertura.get("bloco_c_decisao", {})
+    completa = bool(cobertura.get("posicao_atual_completa"))
+    ciclo_ref = cobertura.get("ciclo_referencia")
+    origem = str(cobertura.get("origem_posicao") or "")
+
+    if completa:
+        fisica_label = "Fotografia atual informada"
+    elif "INCOMPLETA" in origem.upper():
+        fisica_label = f"Fotografia atual incompleta — utilizada abertura do {ciclo_ref or 'ciclo'}"
+    elif ciclo_ref:
+        fisica_label = f"Abertura do {ciclo_ref}"
+    else:
+        fisica_label = "Posição de referência indisponível"
+
+    fin_conf = b.get("financeiro_cobertura_confirmada_ate")
+    fin_adot = b.get("financeiro_cobertura_adotada_ate")
+    if fin_conf:
+        fin_origem = "Confirmada pela GCC"
+    elif fin_adot:
+        fin_origem = "Inferida pela sequência mensal"
+    else:
+        fin_origem = "Não confirmada"
+
+    fonte_principal = c.get("fonte_principal")
+    conferencia = [_ROTULO_FONTE.get(x, x) for x in (c.get("fontes_conferencia") or [])]
+
+    # Alertas deduplicados (codigo+mensagem), com nivel para escolha visual.
+    alertas, vistos = [], set()
+    for al in cobertura.get("alertas") or []:
+        if not isinstance(al, dict):
+            continue
+        chave = (al.get("codigo"), al.get("mensagem"))
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        texto = f"{al.get('codigo')}: {al.get('mensagem')}".strip(": ")
+        alertas.append((str(al.get("nivel") or "INFO"), texto))
+
+    return {
+        "disponivel": True,
+        "erro": None,
+        "posicao_fisica_utilizada": fisica_label,
+        "data_posicao_fisica": _data_br_iso(b.get("posicao_fisica_conhecida_ate")),
+        "financeiro_ultima_competencia": _competencia_br_iso(b.get("financeiro_ultima_evidencia")),
+        "financeiro_cobertura_adotada": _data_br_iso(fin_adot, "Não confirmada"),
+        "financeiro_origem_cobertura": fin_origem,
+        "pc_ultima_evidencia": _data_br_iso(b.get("pc_ultima_evidencia")),
+        "pc_cobertura_confirmada": _data_br_iso(b.get("pc_cobertura_confirmada_ate"), "Não confirmado"),
+        "projecao_a_partir_de": _data_br_iso(b.get("projecao_autorizada_a_partir_de"), "Não aplicável"),
+        "fonte_principal": _ROTULO_FONTE.get(fonte_principal, "Não aplicável"),
+        "fontes_conferencia": ", ".join(conferencia) if conferencia else "Não aplicável",
+        "modo_temporal": str(c.get("modo_temporal") or "—"),
+        "alertas": alertas,
+    }
+
+
+def render_cobertura_temporal(cobertura):
+    """Bloco compacto (expander) de Posicao e cobertura temporal.
+
+    Camada diagnostica/sombra: NAO altera o VTA nem bloqueia documentos. Usa o
+    resumo puro `resumo_cobertura_temporal` para garantir terminologia e datas.
+    """
+    r = resumo_cobertura_temporal(cobertura)
+    with st.expander("Posição e cobertura temporal", expanded=False):
+        if not r.get("disponivel"):
+            st.caption("Diagnóstico temporal indisponível para esta coleta"
+                       + (f": {r['erro']}" if r.get("erro") else "."))
+            return
+        col_fis, col_fin, col_pc = st.columns(3)
+        with col_fis:
+            st.markdown("**Posição física**")
+            st.markdown(f"Utilizada: **{r['posicao_fisica_utilizada']}**")
+            st.markdown(f"Data: **{r['data_posicao_fisica']}**")
+        with col_fin:
+            st.markdown("**Financeiro**")
+            st.markdown(f"Última competência informada: **{r['financeiro_ultima_competencia']}**")
+            st.markdown(f"Cobertura adotada até: **{r['financeiro_cobertura_adotada']}**")
+            st.caption(f"Origem da cobertura: {r['financeiro_origem_cobertura']}")
+        with col_pc:
+            st.markdown("**Pedidos de Compra (PC)**")
+            st.markdown(f"Última evidência: **{r['pc_ultima_evidencia']}**")
+            st.markdown(f"Confirmado completo até: **{r['pc_cobertura_confirmada']}**")
+        st.markdown(
+            f"Modo temporal: **{r['modo_temporal']}**  |  "
+            f"Fonte principal: **{r['fonte_principal']}**  |  "
+            f"Conferência: **{r['fontes_conferencia']}**"
+        )
+        st.caption(f"Projeção temporal possível a partir de: {r['projecao_a_partir_de']} "
+                   "(diagnóstico; não é execução realizada e não altera o VTA).")
+        for nivel, texto in r.get("alertas", ()):
+            if nivel in ("ERRO_GRAVE", "ALERTA"):
+                st.warning(texto)
+            else:
+                st.info(texto)
+
+
 def render_aviso_privacidade(tem_upload=False, tem_download=False):
     """Aviso resumido de privacidade para páginas com upload e/ou download."""
     if not tem_upload and not tem_download:
