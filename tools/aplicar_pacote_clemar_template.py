@@ -229,10 +229,13 @@ def _comparativo_vta(wb, excel) -> None:
     P = "posicao_contratual"
     ws.Range("A4:A203").Formula = f'=IF({P}!A2="","",{P}!A2)'
     ws.Range("B4:B203").Formula = f'=IF({P}!A2="","",{P}!B2)'
-    # VU_ORIGINAL x QTD_REM_AJUSTADA_Cn (G,K,O,S,W).
+    # VU_ORIGINAL x QTD_REM_AJUSTADA_Cn (G,K,O,S,W). Ciclo ausente
+    # (QTD_REM_AJUSTADA vazia/string) ou VU nao numerico -> vazio (nunca
+    # #VALUE!). QTD=0 NUMERICO -> R$ 0,00 (zero != ausencia).
     for col, qcol in (("C", "G"), ("D", "K"), ("E", "O"), ("F", "S"), ("G", "W")):
         ws.Range(f"{col}4:{col}203").Formula = (
-            f'=IF({P}!A2="","",ROUND({P}!B2*{P}!{qcol}2,2))')
+            f'=IF(OR({P}!A2="",NOT(ISNUMBER({P}!B2)),NOT(ISNUMBER({P}!{qcol}2))),'
+            f'"",ROUND({P}!B2*{P}!{qcol}2,2))')
     ws.Cells(204, 1).Value = "TOTAL"
     for col in ("C", "D", "E", "F", "G"):
         ws.Range(f"{col}204").Formula = f"=ROUND(SUM({col}4:{col}203),2)"

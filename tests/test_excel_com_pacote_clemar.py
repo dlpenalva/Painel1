@@ -137,3 +137,90 @@ def test_vta_pc_b26_reproduz_golden():
         v = _recalcular(p)
     assert round(float(v["RESULTADOS!T25"]), 2) == 920.00
     assert round(float(v["RESULTADOS!B26"]), 2) == 920.00
+
+
+def test_comparativo_guard_source():
+    """Etapa 24B (rapido, sem Excel): o Bloco 1 do comparativo_VTA protege
+    todas as colunas com ISNUMBER de VU_ORIGINAL e da QTD do ciclo — nunca
+    multiplica por celula vazia/string (evita #VALUE! em ciclo inexistente).
+    """
+    from pathlib import Path
+    tool = (Path(__file__).resolve().parents[1] / "tools"
+            / "aplicar_pacote_clemar_template.py").read_text(encoding="utf-8")
+    assert "NOT(ISNUMBER({P}!B2))" in tool          # VU_ORIGINAL numerico
+    assert "NOT(ISNUMBER({P}!{qcol}2))" in tool      # QTD_REM_AJUSTADA_Cn numerica
+
+
+def _recalc_ret(path, cells):
+    import pythoncom
+    import win32com.client
+    pythoncom.CoInitialize()
+    xl = win32com.client.DispatchEx("Excel.Application")
+    xl.Visible = False
+    xl.DisplayAlerts = False
+    try:
+        wb = xl.Workbooks.Open(str(path), UpdateLinks=0)
+        xl.CalculateFullRebuild()
+        cv = wb.Worksheets("comparativo_VTA")
+        out = {a: cv.Range(a).Value for a in cells}
+        # varre erros em toda a aba
+        import pywintypes
+        erros = []
+        for t in (-4123, 2):
+            try:
+                erros.append(cv.UsedRange.SpecialCells(t, 16).Address)
+            except pywintypes.com_error:
+                pass
+        out["_erros"] = erros
+        wb.Close(SaveChanges=False)
+        return out
+    finally:
+        xl.Quit()
+        pythoncom.CoUninitialize()
+
+
+@com
+def test_comparativo_ignora_ciclo_inexistente():
+    """Bloco 1 do comparativo_VTA: ciclo inexistente -> vazio (nao #VALUE!);
+    QTD=0 numerico -> R$ 0,00; ITEM vazio -> vazio. Recalculo Excel real.
+
+    posicao_contratual (A=ITEM, B=VU_ORIGINAL, G/K/O/S/W=QREM_C0..C4):
+      linha2 ITEM-1: C3-vigente (W vazio)            -> comparativo linha4
+      linha3 ITEM-2: C2-vigente (S e W vazios)       -> comparativo linha5
+      linha4 ITEM-3: todas QTD = 0 numerico          -> comparativo linha6
+      linha5: ITEM vazio                              -> comparativo linha7
+    """
+    from openpyxl import Workbook
+    wb = Workbook()
+    p = wb.active
+    p.title = "posicao_contratual"
+    p["A1"] = "ITEM"
+    # ITEM-1 (C3-vigente): C4 (W) vazio
+    p["A2"], p["B2"], p["G2"], p["K2"], p["O2"], p["S2"] = "IT-1", 100, 10, 8, 5, 3
+    # ITEM-2 (C2-vigente): C3 (S) e C4 (W) vazios
+    p["A3"], p["B3"], p["G3"], p["K3"], p["O3"] = "IT-2", 50, 20, 15, 10
+    # ITEM-3: QTD 0 numerico em todos os ciclos
+    p["A4"], p["B4"] = "IT-3", 200
+    for c in ("G", "K", "O", "S", "W"):
+        p[f"{c}4"] = 0
+    cv = wb.create_sheet("comparativo_VTA")
+    Pn = "posicao_contratual"
+    for row, pr in ((4, 2), (5, 3), (6, 4), (7, 5)):
+        for col, qcol in (("C", "G"), ("D", "K"), ("E", "O"), ("F", "S"), ("G", "W")):
+            cv[f"{col}{row}"] = (
+                f'=IF(OR({Pn}!A{pr}="",NOT(ISNUMBER({Pn}!B{pr})),'
+                f'NOT(ISNUMBER({Pn}!{qcol}{pr}))),"",ROUND({Pn}!B{pr}*{Pn}!{qcol}{pr},2))')
+    with tempfile.TemporaryDirectory() as d:
+        fp = Path(d) / "comp.xlsx"
+        wb.save(fp)
+        v = _recalc_ret(fp, ["C4", "D4", "E4", "F4", "G4",
+                             "C5", "F5", "G5", "C6", "G6", "C7"])
+    assert v["_erros"] == []                       # ZERO #VALUE! na aba
+    assert round(float(v["C4"]), 2) == 1000.0      # ITEM-1 C0
+    assert round(float(v["F4"]), 2) == 300.0       # ITEM-1 C3
+    assert v["G4"] in (None, "")                    # ITEM-1 C4 inexistente -> vazio
+    assert round(float(v["C5"]), 2) == 1000.0      # ITEM-2 C0
+    assert v["F5"] in (None, "") and v["G5"] in (None, "")  # ITEM-2 C3/C4 vazios
+    assert round(float(v["C6"]), 2) == 0.0         # ITEM-3 QTD 0 -> R$ 0,00
+    assert round(float(v["G6"]), 2) == 0.0         # zero real, nao vazio
+    assert v["C7"] in (None, "")                    # ITEM vazio -> vazio

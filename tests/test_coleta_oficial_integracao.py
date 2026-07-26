@@ -43,7 +43,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # GCC/automatico) inserida antes de RESULTADOS; VTA oficial inalterado.
 # Hotfix evidencia x cobertura: BLOCO B separa ultima evidencia de confirmacao
 # GCC (2 campos novos) e projecao fail-closed; template re-salvo via Excel COM.
-SHA256_TEMPLATE_ESPERADO = "ba56cf591ecf935743a45827ad2bf918cf39a4b16032778e812e4bf954740271"
+SHA256_TEMPLATE_ESPERADO = "8babf938f8198ebd01fcc68eba2235d1872773e04174455ee453122d181ecd60"
 
 
 def _dados_calculadora() -> dict:
