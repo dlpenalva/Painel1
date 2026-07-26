@@ -41,8 +41,12 @@ NOME_ARQUIVO_COLETA_OFICIAL = "COLETA_REAJUSTE_OFICIAL.xlsx"
 # Nome user-facing entregue nos botoes de download da interface (§15).
 NOME_DOWNLOAD_COLETA = "Coleta_Reajuste.xlsx"
 
-# Ordem oficial das abas do novo modelo (fonte de verdade: o proprio XLS)
+# Ordem oficial das abas do novo modelo (fonte de verdade: o proprio XLS).
+# comparativo_VTA (aba de referencia adicionada via Excel COM) fica na 1a
+# posicao fisica que o Excel produz ao inseri-la; nao aparece na web e a aba
+# ativa original e preservada.
 ABAS_COLETA_OFICIAL = [
+    "comparativo_VTA",
     "CONTROLE",
     "parametros",
     "financeiro",

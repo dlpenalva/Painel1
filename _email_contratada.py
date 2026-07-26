@@ -37,14 +37,15 @@ def _percentual(valor: Any) -> str:
 def _indice_amigavel(indice: Any) -> str:
     """Nome amigavel do indice, sem expor codigos tecnicos (433/189/DIMAC).
 
-    §3.3: IST (Série Local), ICTI (Ipeadata), IPCA, IGP-M.
+    §3.3: IST (Anatel), ICTI (Ipeadata), IPCA, IGP-M, INPC.
+    Legado "IST (Série Local)" continua reconhecido como IST.
     """
     texto = remover_emojis(indice).strip()
     if not texto:
         return "[ÍNDICE]"
     norm = texto.upper()
     if norm.startswith("IST"):
-        return "IST (Série Local)"
+        return "IST (Anatel)"
     if norm.startswith("ICTI"):
         return "ICTI (Ipeadata)"
     if norm.startswith("IPCA"):
@@ -139,8 +140,9 @@ def gerar_rascunho_email_contratada(
         f"índice {indice_txt}:\n\n"
         + "\n".join(linhas)
         + "\n\n"
-        "Os ciclos preclusos permanecem registrados para fins de histórico e "
-        "memória contratual, sem geração de efeitos financeiros retroativos.\n\n"
+        "Eventuais ciclos preclusos permanecem registrados para fins de "
+        "histórico e memória contratual, sem geração de efeitos financeiros "
+        "retroativos.\n\n"
         "Esta comunicação refere-se exclusivamente à apuração dos ciclos e "
         "percentuais aplicáveis. Após a concordância da Contratada, será dado "
         "prosseguimento à apuração dos valores financeiros correspondentes e às "

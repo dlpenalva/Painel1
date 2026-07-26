@@ -72,19 +72,33 @@ INICIO_CICLO_ATUAL = (
     'IF($B$5="C2",parametros!$C$4,IF($B$5="C1",parametros!$C$3,'
     'IF($B$5="C0",parametros!$C$2,"")))))'
 )
-# Ultima evidencia (MAX). NUNCA rotular como "completo ate".
-FIN_ULTIMA = ('=IF(COUNT(financeiro!$A$2:$A$200)=0,"",MAX(financeiro!$A$2:$A$200))')
+# Ultima evidencia (NUNCA rotular como "completo ate").
+# Financeiro: a grade de competencias (coluna A) pode existir ate o termino
+# contratual sem valor pago. Evidencia = ultima linha cujo VALOR (financeiro!C)
+# esteja efetivamente informado. Zero explicito CONTA (ISNUMBER(0)=TRUE); vazio,
+# traco ou competencia futura pre-montada NAO contam. LOOKUP(2,1/...) retorna a
+# ultima posicao verdadeira do vetor booleano.
+FIN_ULTIMA = (
+    '=IFERROR(LOOKUP(2,1/ISNUMBER(financeiro!$C$2:$C$200),'
+    'financeiro!$A$2:$A$200),"")'
+)
+# PC: itens_PC!B (DATA_PC) sao datas de PCs reais (sem grade futura vazia).
 PC_ULTIMA = ('=IF(COUNT(itens_PC!$B$2:$B$200)=0,"",MAX(itens_PC!$B$2:$B$200))')
+# Metodo de apuracao (fonte unica CONTROLE!B1); read-only, derivado.
+METODO_APURACAO = (
+    '=IF(OR(CONTROLE!$B$1="SELECIONE AQUI",CONTROLE!$B$1=""),'
+    '"SELECIONE O METODO EM CONTROLE!B1",CONTROLE!$B$1)'
+)
 
-# Cobertura ADOTADA (fail-closed): posicao fisica (B11) + confirmadas GCC
-# (B13 financeiro, B15 PC). NAO usa a ultima evidencia nao confirmada.
+# Cobertura ADOTADA (fail-closed): maior marco valido — posicao fisica (B11) +
+# confirmadas GCC (B13 financeiro, B15 PC). NAO usa a ultima evidencia nao
+# confirmada.
 COB_ADOTADA = "MAX($B$11,$B$13,$B$15)"
-# Projecao autorizada = dia seguinte a cobertura adotada, se a analise (B4)
-# ultrapassa essa cobertura. Caso contrario, vazio.
+# Inicio da projecao temporal = dia seguinte ao maior marco seguro (automatico,
+# independe da data de analise). Sem marco seguro: vazio. Nao desloca o corte
+# oficial do VTA nem cria retroativo.
 PROJ_AUTORIZADA = (
-    f'=IF(OR($B$4="",NOT(ISNUMBER($B$4))),"",'
-    f'IF({COB_ADOTADA}=0,"",'
-    f'IF($B$4>{COB_ADOTADA},{COB_ADOTADA}+1,"")))'
+    f'=IF({COB_ADOTADA}=0,"",{COB_ADOTADA}+1)'
 )
 
 # Posterioridade da ULTIMA EVIDENCIA em relacao a posicao fisica (B11).
@@ -164,6 +178,7 @@ def _criar_aba(wb, excel):
     # categoria: "auto" | "gcc" | "proj" | "banner"
     linhas = [
         (1, titulo, None, None, "banner"),
+        (2, "Metodo de apuracao (CONTROLE!B1)", METODO_APURACAO, None, "auto"),
         (3, "BLOCO A - MARCOS", None, None, "banner"),
         (4, "Data da analise (GCC, opcional)", None, FMT_DATA, "gcc"),
         (5, "Ciclo atual (em execucao)",
@@ -178,12 +193,12 @@ def _criar_aba(wb, excel):
         (13, "Financeiro confirmado completo ate (GCC, opcional)", None, FMT_DATA, "gcc"),
         (14, "Ultima evidencia PC (nao e completo ate)", PC_ULTIMA, FMT_DATA, "auto"),
         (15, "PC confirmado completo ate (GCC, opcional)", None, FMT_DATA, "gcc"),
-        (16, "Projecao autorizada a partir de", PROJ_AUTORIZADA, FMT_DATA, "proj"),
+        (16, "Inicio da projecao temporal", PROJ_AUTORIZADA, FMT_DATA, "proj"),
         (18, "BLOCO C - DECISAO", None, None, "banner"),
         (19, "Modo temporal", MODO, None, "auto"),
-        (20, "Fonte principal",
+        (20, "Fonte temporal principal",
          '=IF($B$12<>"","Financeiro",IF($B$14<>"","PC",""))', None, "auto"),
-        (21, "Fontes de conferencia",
+        (21, "Fonte temporal de conferencia",
          '=IF(AND($B$12<>"",$B$14<>""),"PC","")', None, "auto"),
         (22, "Posicao observada (data)", f"={I_DATA_REF}", FMT_DATA, "auto"),
         (23, "Posicao observada (origem)", f"={I_ORIGEM}", None, "auto"),

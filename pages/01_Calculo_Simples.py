@@ -44,7 +44,8 @@ def aplicar_css_aditivos25_compacto():
     )
 # <<< UX_ADITIVOS_25_COMPACTO
 from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox
-from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
+from _indice_utils import (calcular_ist_numero_indice, coletar_sgs_produtorio,
+                           serie_sgs_do_indice)
 from _reajuste_utils import _competencias_mensais, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br
 from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, NOME_DOWNLOAD_COLETA, gerar_coleta_oficial_preenchida
 from _memoria_calculo import normalizar_memoria_calculo
@@ -1948,7 +1949,7 @@ if "IST" in tipo_idx:
 elif "ICTI" in tipo_idx:
     res = get_icti_ipeadata(dt_base, dt_fim_ap)
 else:
-    res = get_index_data("433" if "IPCA" in tipo_idx else "189", dt_base, dt_fim_ap)
+    res = get_index_data(serie_sgs_do_indice(tipo_idx), dt_base, dt_fim_ap)
 
 validacao_indice = _validar_indice_disponivel(res, dt_base, dt_fim_ap, tipo_idx)
 if not validacao_indice.get("ok", False):

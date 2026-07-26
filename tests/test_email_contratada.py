@@ -76,10 +76,11 @@ def test_tempestivo_sem_data_segura_fica_pendente():
         [{"ciclo": "C1", "situacao_aplicada": "Tempestivo",
           "variacao_formatada": "3,27%", "financeiro_inicio": ""}],
         numero_contrato="CT-1/2026",
-        indice="IST (Série Local)",
+        indice="IST (Série Local)",  # rotulo legado ainda aceito na entrada
     )
     assert "efeitos financeiros pendentes de definição" in corpo
-    assert "IST (Série Local)" in corpo
+    # user-facing renomeado: IST (Anatel), preservando reconhecimento do legado
+    assert "IST (Anatel)" in corpo
     _sem_valores_financeiros(corpo)
 
 

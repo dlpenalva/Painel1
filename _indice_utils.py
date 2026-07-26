@@ -199,6 +199,21 @@ def coletar_sgs_produtorio(serie_codigo, data_inicio, data_fim, timeout=15):
 
 SGS_IPCA = 433
 SGS_IGPM = 189
+SGS_INPC = 188
+
+
+def serie_sgs_do_indice(tipo_idx: str) -> str:
+    """Codigo da serie SGS/BCB a partir do rotulo do indice selecionado.
+
+    IPCA -> 433, IGP-M -> 189, INPC -> 188. Fonte unica para as calculadoras
+    (1 ciclo e multiciclo) — evita o dispatch binario que confundia INPC/IGP-M.
+    """
+    t = str(tipo_idx or "").upper()
+    if "IPCA" in t:
+        return str(SGS_IPCA)
+    if "INPC" in t:
+        return str(SGS_INPC)
+    return str(SGS_IGPM)  # IGP-M (padrao dos SGS restantes)
 
 
 def obter_ultima_competencia_sgs(serie_codigo, timeout=15):

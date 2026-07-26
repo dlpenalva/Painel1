@@ -35,7 +35,7 @@ class TestCiclosC2EStamp(unittest.TestCase):
         self.assertIn("Houve ciclo anterior concedido/formalizado", MULTI)
         self.assertIn("Situação desconhecida", MULTI)
         self.assertIn("Último ciclo concedido/formalizado:", MULTI)
-        self.assertIn("Marco temporal do último ciclo concedido/formalizado:", MULTI)
+        self.assertIn("Marco temporal do último ciclo concedido/formalizado 🔹", MULTI)
         self.assertIn("'contexto_contratual_anterior': contexto_contratual", MULTI)
         self.assertNotIn("Situação anterior à análise:", SIMPLES)
 

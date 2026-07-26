@@ -208,18 +208,13 @@ def _normalizar_data(valor: Any) -> Any:
     return valor
 
 
-_MODOS_AMIGAVEIS = {
-    "itens consumidos": "d",
-    "pedidos de compras": "pc",
-    "pedido de compra": "pc",
-    "principal": "principal",
-}
-
-
 def _normalizar_modo(valor_bruto: str) -> str:
+    # Fonte unica de verdade do metodo (CONTROLE!B1): normalizador canonico
+    # compartilhado, com aliases legados e novos rotulos do dropdown.
+    from _metodo_apuracao import normalizar_metodo
     if not valor_bruto:
         return ""
-    return _MODOS_AMIGAVEIS.get(_norm(valor_bruto), _norm(valor_bruto))
+    return normalizar_metodo(valor_bruto)
 
 
 # ---------------------------------------------------------------------------
@@ -2976,7 +2971,11 @@ def ler_masterfile_v10(
         # (compatibilidade retroativa; a aba pertence ao layout novo, mas sua
         # ausencia nao descaracteriza o modelo oficial). cobertura_temporal
         # (diagnostico desta etapa) segue a mesma politica de opcionalidade.
-        ABAS_OPCIONAIS_COMPAT = {"posicao_referencia", "cobertura_temporal"}
+        # comparativo_VTA e aba de saida/referencia (nao aparece na web e nao
+        # e necessaria para leitura); Coletas geradas antes dela devem seguir
+        # sendo lidas (compatibilidade retroativa).
+        ABAS_OPCIONAIS_COMPAT = {
+            "posicao_referencia", "cobertura_temporal", "comparativo_VTA"}
         res["abas_ausentes"] = [
             a for a in ABAS_COLETA_OFICIAL
             if a.lower() not in abas_lower and a not in ABAS_OPCIONAIS_COMPAT

@@ -262,7 +262,8 @@ def render_alerta_icti_ipeadata():
 def render_indice_contrato_selectbox(key=None, index=0, options=None):
     """Renderiza o campo de índice com destaque visual consistente entre os fluxos."""
     if options is None:
-        options = ["IST (Série Local)", "ICTI (Ipeadata)", "IPCA (433)", "IGP-M (189)"]
+        options = ["IST (Anatel)", "ICTI (Ipeadata)", "IPCA (433)",
+                   "IGP-M (189)", "INPC (188)"]
 
     with st.container(border=True):
         st.markdown(
@@ -294,6 +295,9 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
             st.caption(_texto_ultima_competencia_sgs(433))
         elif selecionado_norm.startswith("IGP-M") or selecionado_norm.startswith("IGPM"):
             st.caption(_texto_ultima_competencia_sgs(189))
+        elif selecionado_norm.startswith("INPC"):
+            # INPC/SGS-BCB serie 188 (mesma infra generica de IPCA/IGP-M).
+            st.caption(_texto_ultima_competencia_sgs(188))
 
     return selecionado
 

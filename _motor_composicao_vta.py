@@ -159,6 +159,180 @@ def _aditivos(
     return computados, nao_computados
 
 
+def _ciclo_num(ciclo: Any) -> int | None:
+    s = str(ciclo or "").strip().upper()
+    if s.startswith("C") and s[1:].isdigit():
+        return int(s[1:])
+    return None
+
+
+def _entra_no_calculo(item: dict[str, Any]) -> bool:
+    return str(item.get("entra_no_calculo") or "Sim").strip().lower() in (
+        "sim", "s", "true", "1"
+    )
+
+
+def _composicao_vta_pc(
+    leitura: dict[str, Any],
+    por_ciclo: dict[str, Any],
+    alertas: list[str],
+) -> dict[str, Any]:
+    """Composicao automatica do VTA pelo metodo Pedidos de Compra (PC).
+
+    VTA_PC = execucao historica atualizada pelo metodo PC
+             + remanescente fisico atualizado no MESMO corte de referencia.
+
+    - C0 executado: quando nao ha PC confiavel para C0, deriva da movimentacao
+      fisica (QTD_REM_AJUSTADA_C0 - QTD_REM_AJUSTADA_C1) valorada ao VU_C0.
+    - Cn (1<=n<vigente): soma de itens_PC.VALOR_ATUALIZADO do ciclo (regra
+      itens_PC ja homologada; nao reaplica reajuste a ciclos preclusos).
+    - Remanescente no ciclo vigente: item a item, VU atualizado do ciclo
+      vigente arredondado a centavos, multiplicado pela QTD_REM_AJUSTADA do
+      ciclo vigente, total do item arredondado, entao somado.
+
+    Regra petrea (mesmo corte temporal): execucao e remanescente pertencem ao
+    mesmo corte. PCs no ciclo vigente ou posteriores NAO entram na execucao
+    (seriam dupla contagem contra o remanescente integral daquele corte).
+    Base insuficiente -> CALCULO MANUAL REQUERIDO (nunca fabrica resultado).
+    """
+    controle = leitura.get("controle") or {}
+    vigente = str(controle.get("ciclo_vigente") or "").strip().upper()
+    n_vig = _ciclo_num(vigente)
+    posc = ((leitura.get("posicao_contratual") or {}).get("itens")) or []
+    hist = ((leitura.get("historico_vu") or {}).get("itens")) or []
+    itens_pc = ((leitura.get("itens_pc_v10") or {}).get("itens")) or []
+
+    if not posc or not hist or n_vig is None:
+        return {
+            "disponivel": False,
+            "motivo": (
+                "CALCULO MANUAL REQUERIDO: base itemizada (posicao_contratual / "
+                "historico_VU) ou ciclo vigente ausente para compor o VTA pelo "
+                "metodo PC."
+            ),
+        }
+
+    vu_por_item = {h.get("item"): (h.get("vu_ciclos") or {}) for h in hist}
+
+    # Execucao PC por ciclo (VALOR_ATUALIZADO ja itemizado e arredondado).
+    pc_atual: dict[int, float] = {}
+    pc_base: dict[int, float] = {}
+    posteriores = 0
+    for it in itens_pc:
+        n = _ciclo_num(it.get("ciclo"))
+        if n is None or not _entra_no_calculo(it):
+            continue
+        if n >= n_vig:
+            # PC no corte vigente ou posterior: cobertura posterior e projecao,
+            # nao desloca silenciosamente o corte oficial do VTA.
+            posteriores += 1
+            continue
+        pc_atual[n] = pc_atual.get(n, 0.0) + _tofl(it.get("valor_atualizado"))
+        pc_base[n] = pc_base.get(n, 0.0) + _tofl(it.get("valor_pc"))
+    if posteriores:
+        alertas.append(
+            f"Composicao VTA-PC: {posteriores} PC(s) no ciclo vigente ({vigente}) "
+            "ou posteriores nao entram na execucao (mesmo corte temporal; evita "
+            "dupla contagem contra o remanescente). Seguem como diagnostico/projecao."
+        )
+
+    execucao: list[dict[str, Any]] = []
+
+    # C0 executado: PC confiavel se houver; senao movimentacao fisica ao VU_C0.
+    if 0 in pc_atual:
+        execucao.append({
+            "ciclo": "C0",
+            "descricao": "C0 executado (PC)",
+            "valor_base": round(pc_base.get(0, 0.0), 2),
+            "fator_acumulado": _fator_do_ciclo(por_ciclo, "C0"),
+            "valor_atualizado": round(pc_atual[0], 2),
+            "fonte": "pc",
+        })
+    else:
+        c0_fisico = 0.0
+        for p in posc:
+            item = p.get("ITEM")
+            vu_c0 = _tofl((vu_por_item.get(item) or {}).get("VU_C0"))
+            mov = _tofl(p.get("QTD_REM_AJUSTADA_C0")) - _tofl(
+                p.get("QTD_REM_AJUSTADA_C1")
+            )
+            c0_fisico += mov * vu_c0
+        c0_fisico = round(c0_fisico, 2)
+        if c0_fisico:
+            execucao.append({
+                "ciclo": "C0",
+                "descricao": "C0 executado (movimentacao fisica x VU_C0)",
+                "valor_base": c0_fisico,
+                "fator_acumulado": 1.0,
+                "valor_atualizado": c0_fisico,
+                "fonte": "fisico",
+            })
+
+    # Cn executado por PC (1 <= n < vigente).
+    for n in sorted(k for k in pc_atual if 1 <= k < n_vig):
+        execucao.append({
+            "ciclo": f"C{n}",
+            "descricao": f"C{n} executado atualizado (PC)",
+            "valor_base": round(pc_base.get(n, 0.0), 2),
+            "fator_acumulado": _fator_do_ciclo(por_ciclo, f"C{n}"),
+            "valor_atualizado": round(pc_atual[n], 2),
+            "fonte": "pc",
+        })
+
+    # Remanescente fisico atualizado no ciclo vigente (item a item).
+    col_qtd = f"QTD_REM_AJUSTADA_C{n_vig}"
+    vu_key = f"VU_C{n_vig}"
+    rem = 0.0
+    rem_base = 0.0
+    for p in posc:
+        item = p.get("ITEM")
+        vu = _tofl((vu_por_item.get(item) or {}).get(vu_key))
+        vu_orig = _tofl(p.get("VU_ORIGINAL"))
+        qtd = _tofl(p.get(col_qtd))
+        rem += round(round(vu, 2) * qtd, 2)
+        rem_base += round(round(vu_orig, 2) * qtd, 2)
+    rem = round(rem, 2)
+    rem_base = round(rem_base, 2)
+    saldo = None
+    if rem:
+        fator_vig = _fator_do_ciclo(por_ciclo, vigente)
+        saldo = {
+            "descricao": f"{vigente} remanescente atualizado (por item)",
+            "valor_base": rem_base,
+            "fator_acumulado": fator_vig,
+            "valor_atualizado": rem,
+            "ciclo": vigente,
+            "fonte": "remanescente",
+        }
+
+    if not execucao and saldo is None:
+        return {
+            "disponivel": False,
+            "motivo": (
+                "CALCULO MANUAL REQUERIDO: sem execucao PC nem remanescente "
+                "itemizado computavel no corte vigente."
+            ),
+        }
+
+    total_exec = round(sum(l["valor_atualizado"] for l in execucao), 2)
+    total_base = round(sum(l["valor_base"] for l in execucao), 2)
+    valor_saldo = saldo["valor_atualizado"] if saldo else 0.0
+    return {
+        "disponivel": True,
+        "motivo": "",
+        "metodo": "pc",
+        "execucao_por_ciclo": execucao,
+        "saldo_remanescente": saldo,
+        "aditivos": [],
+        "aditivos_nao_computados": [],
+        "total_execucao_atualizada": total_exec,
+        "total_execucao_base": total_base,
+        "retroativo_implicito": round(total_exec - total_base, 2),
+        "total_aditivos_atualizados": 0.0,
+        "vta_composicao": round(total_exec + valor_saldo, 2),
+    }
+
+
 def _cenario_teorico(
     leitura: dict[str, Any],
     por_ciclo: dict[str, Any],
@@ -194,6 +368,58 @@ def montar_composicao_vta(leitura: dict[str, Any]) -> dict[str, Any]:
     """
     alertas: list[str] = []
     por_ciclo = (leitura.get("parametros_v10") or {}).get("por_ciclo") or {}
+
+    # Metodo Pedidos de Compra (PC): composicao automatica dedicada, itemizada,
+    # com mesmo corte temporal. Nao altera as demais metodologias (Financeiro /
+    # Itens Consumidos), que seguem pela composicao por reconciliacao.
+    modo = str((leitura.get("controle") or {}).get("modo") or "").strip().lower()
+    if modo == "pc":
+        pc = _composicao_vta_pc(leitura, por_ciclo, alertas)
+        if pc.get("disponivel"):
+            execucao = pc["execucao_por_ciclo"]
+            saldo = pc["saldo_remanescente"]
+            linhas = [dict(l, tipo="execucao") for l in execucao]
+            if saldo:
+                linhas.append(dict(saldo, tipo="saldo_remanescente"))
+            for idx, linha in enumerate(linhas):
+                linha["ref"] = chr(ord("A") + idx) if idx < 26 else str(idx + 1)
+            return {
+                "disponivel": True,
+                "motivo": "",
+                "metodo": "pc",
+                "execucao_por_ciclo": execucao,
+                "saldo_remanescente": saldo,
+                "aditivos": [],
+                "aditivos_nao_computados": [],
+                "total_execucao_atualizada": pc["total_execucao_atualizada"],
+                "total_execucao_base": pc["total_execucao_base"],
+                "retroativo_implicito": pc["retroativo_implicito"],
+                "total_aditivos_atualizados": 0.0,
+                "vta_composicao": pc["vta_composicao"],
+                "cenario_teorico": _cenario_teorico(leitura, por_ciclo),
+                "bloqueia_formalizacao": False,
+                "linhas": linhas,
+                "alertas": alertas,
+            }
+        # Base insuficiente: nunca fabrica resultado — devolve motivo controlado.
+        return {
+            "disponivel": False,
+            "motivo": pc.get("motivo") or "CALCULO MANUAL REQUERIDO (metodo PC).",
+            "metodo": "pc",
+            "execucao_por_ciclo": [],
+            "saldo_remanescente": None,
+            "aditivos": [],
+            "aditivos_nao_computados": [],
+            "total_execucao_atualizada": 0.0,
+            "total_execucao_base": 0.0,
+            "retroativo_implicito": 0.0,
+            "total_aditivos_atualizados": 0.0,
+            "vta_composicao": None,
+            "cenario_teorico": _cenario_teorico(leitura, por_ciclo),
+            "bloqueia_formalizacao": False,
+            "linhas": [],
+            "alertas": alertas,
+        }
 
     execucao = _execucao_por_ciclo(leitura, por_ciclo, alertas)
     saldo = _saldo_remanescente(leitura, alertas)

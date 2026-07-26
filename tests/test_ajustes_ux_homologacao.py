@@ -31,7 +31,7 @@ def _wb():
 def test_controle_b1_funcional():
     wb = _wb()
     c = wb["CONTROLE"]
-    assert c["B1"].value == "Principal"
+    assert c["B1"].value == "SELECIONE AQUI"
     dvs = [(str(d.sqref), d.formula1) for d in c.data_validations.dataValidation]
     assert any("B1" in s for s, _ in dvs)                 # dropdown mantido
     assert "CONTROLE!$B$1" in wb["RESULTADOS"]["B35"].value  # consumido pela logica
@@ -151,8 +151,8 @@ def test_vta_invariante():
 
 # ---- T integridade basica ----
 def test_treze_abas():
-    # 12 abas + cobertura_temporal (diagnostico da etapa de cobertura temporal).
-    assert len(_wb().sheetnames) == 13
+    # 13 abas + comparativo_VTA (aba de referencia do pacote pos-CLEMAR).
+    assert len(_wb().sheetnames) == 14
 
 
 # ================================================================ COM
@@ -210,7 +210,7 @@ def test_com_reabertura_sem_reparo(tmp_path):
         xl.Visible = False; xl.DisplayAlerts = True
         try:
             wb = xl.Workbooks.Open(str(dest.resolve()), UpdateLinks=0, CorruptLoad=0)
-            assert wb.Sheets.Count == 13, f"rodada {rodada}"  # +cobertura_temporal
+            assert wb.Sheets.Count == 14, f"rodada {rodada}"  # +comparativo_VTA
             wb.Close(False)
         finally:
             xl.Quit(); gc.collect(); pythoncom.CoUninitialize()

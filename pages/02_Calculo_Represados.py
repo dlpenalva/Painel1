@@ -47,7 +47,8 @@ def aplicar_css_aditivos25_compacto():
     )
 # <<< UX_ADITIVOS_25_COMPACTO
 from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox
-from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
+from _indice_utils import (calcular_ist_numero_indice, coletar_sgs_produtorio,
+                           serie_sgs_do_indice)
 from _reajuste_utils import _competencias_mensais, _data_para_datetime, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br, _percentual_formatado
 from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, NOME_DOWNLOAD_COLETA, gerar_coleta_oficial_preenchida
 from _memoria_calculo import normalizar_memoria_calculo
@@ -1915,7 +1916,7 @@ default_dt_base_original = datetime(2022, 10, 10)
 
 with st.sidebar:
     dt_base_original = st.date_input(
-        "Data-base/âncora inicial da análise atual: 🔹",
+        "Data-base / âncora inicial da análise atual 🔹",
         value=default_dt_base_original,
         format="DD/MM/YYYY",
     )
@@ -1973,7 +1974,7 @@ with st.sidebar:
                 key="rep_ultimo_ciclo_anterior",
             )
             _marco_temporal_anterior = st.date_input(
-                "Marco temporal do último ciclo concedido/formalizado:",
+                "Marco temporal do último ciclo concedido/formalizado 🔹",
                 value=dt_base_original,
                 key="rep_marco_temporal_anterior",
                 format="DD/MM/YYYY",
@@ -2276,7 +2277,7 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
     referencia_documental = dados_ciclo.get('referencia_documental', '')
 
     with containers_ciclos[idx_ciclo]:
-        res_c = get_data_rep("433" if "IPCA" in idx_sel else "189", data_atual, d_fim, "IST" in idx_sel, "ICTI" in idx_sel)
+        res_c = get_data_rep(serie_sgs_do_indice(idx_sel), data_atual, d_fim, "IST" in idx_sel, "ICTI" in idx_sel)
 
         # Intervalo exibido independentemente de haver dados disponíveis para o índice.
         if res_c:

@@ -66,7 +66,8 @@ def _indice_amigavel_doc(indice: Any) -> str | None:
         return None
     norm = texto.upper()
     if norm.startswith("IST"):
-        return "IST (Série Local)"
+        # user-facing IST (Anatel); legado "IST (Série Local)" ainda reconhecido.
+        return "IST (Anatel)"
     if norm.startswith("ICTI"):
         return "ICTI (Ipeadata)"
     if norm.startswith("IPCA"):

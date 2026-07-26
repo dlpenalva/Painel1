@@ -24,6 +24,10 @@ NS = {
 }
 
 FORMULAS_POR_ABA = {
+    # comparativo_VTA: aba de referencia adicionada via Excel COM (1a posicao
+    # fisica). cobertura_temporal 14->15 (+ linha Metodo de apuracao).
+    # RESULTADOS 3353->3354 (+ B4 derivado de CONTROLE!B1).
+    "comparativo_VTA": 1407,
     "CONTROLE": 6,
     "parametros": 32,
     "financeiro": 291,
@@ -35,8 +39,8 @@ FORMULAS_POR_ABA = {
     "posicao_contratual": 4776,
     "itens_RC": 3200,
     "historico_VU": 3592,
-    "cobertura_temporal": 14,
-    "RESULTADOS": 3353,
+    "cobertura_temporal": 15,
+    "RESULTADOS": 3354,
 }
 
 
@@ -196,7 +200,7 @@ def test_abertura_e_reabertura_sem_reparo_no_excel_real():
     try:
         for rodada in range(2):
             wb = excel.Workbooks.Open(str(TEMPLATE), UpdateLinks=0, ReadOnly=True)
-            assert wb.Worksheets.Count == 13, f"rodada {rodada}"  # +cobertura_temporal (esta etapa)
+            assert wb.Worksheets.Count == 14, f"rodada {rodada}"  # +comparativo_VTA (pacote CLEMAR)
             wb.Close(False)
     finally:
         excel.Quit()
