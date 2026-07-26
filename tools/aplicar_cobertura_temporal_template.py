@@ -79,8 +79,8 @@ INICIO_CICLO_ATUAL = (
 # traco ou competencia futura pre-montada NAO contam. LOOKUP(2,1/...) retorna a
 # ultima posicao verdadeira do vetor booleano.
 FIN_ULTIMA = (
-    '=IFERROR(LOOKUP(2,1/ISNUMBER(financeiro!$C$2:$C$200),'
-    'financeiro!$A$2:$A$200),"")'
+    '=IFERROR(LOOKUP(2,1/(ISNUMBER(financeiro!$A$2:$A$200)'
+    '*ISNUMBER(financeiro!$C$2:$C$200)),financeiro!$A$2:$A$200),"")'
 )
 # PC: itens_PC!B (DATA_PC) sao datas de PCs reais (sem grade futura vazia).
 PC_ULTIMA = ('=IF(COUNT(itens_PC!$B$2:$B$200)=0,"",MAX(itens_PC!$B$2:$B$200))')

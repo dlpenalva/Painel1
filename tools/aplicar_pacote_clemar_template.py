@@ -112,6 +112,72 @@ def _resultados(wb) -> None:
     b4.Formula = FORMULA_B4      # derivado/read-only de CONTROLE!B1
 
 
+def _resultados_vta_pc(wb) -> None:
+    """VTA-PC oficial materializado no XLS (RESULTADOS!B26), espelhando o motor
+    Python _composicao_vta_pc. Bloco auxiliar auditavel em RESULTADOS!S:T; so
+    compoe quando CONTROLE!B1 = 'PC (Pedidos de Compra)'. Sem valor hardcoded;
+    recalcula sozinho a partir das abas oficiais. Base insuficiente -> CALCULO
+    MANUAL REQUERIDO (nao fabrica zero como VTA valido).
+
+    Componentes (mesmo corte temporal; sem dupla contagem):
+      C0  = PC C0 (itens_PC!P2) se houver; senao movimentacao fisica
+            (QTD_REM_AJUSTADA_C0 - _C1) x VU_C0.
+      PCn = itens_PC.VALOR_ATUALIZADO_TOTAL por ciclo (col P), ciclos
+            1 <= n < vigente (exclui vigente/posterior).
+      Rem = item a item, ROUND(ROUND(VU_Cvig,2) x QTD_REM_AJUSTADA_Cvig, 2).
+    """
+    r = wb.Worksheets("RESULTADOS")
+    # Helpers POR ITEM (colunas X:Y, linhas 2..201) — formulas ESCALARES por
+    # linha (sem depender de array em SUMPRODUCT, que aqui nao propaga
+    # IFERROR/MID/CHOOSE). Alinhadas por ITEM a posicao_contratual/historico_VU.
+    r.Range("X1").Value = "VTA-PC aux: C0 fisico por item ((QREM_C0-QREM_C1)*VU_C0)"
+    r.Range("Y1").Value = "VTA-PC aux: remanescente por item (ROUND(VU_vig,2)*QREM_vig)"
+    r.Range("X2:X201").Formula = (
+        '=IF(posicao_contratual!$A2="",0,'
+        '(posicao_contratual!$G2-posicao_contratual!$K2)*historico_VU!$C2)')
+    r.Range("Y2:Y201").Formula = (
+        '=IF(OR(posicao_contratual!$A2="",$T$20=""),0,'
+        'ROUND(ROUND(CHOOSE($T$20+1,historico_VU!$C2,historico_VU!$D2,'
+        'historico_VU!$E2,historico_VU!$F2,historico_VU!$G2),2)'
+        '*CHOOSE($T$20+1,posicao_contratual!$G2,posicao_contratual!$K2,'
+        'posicao_contratual!$O2,posicao_contratual!$S2,posicao_contratual!$W2),2))')
+    aux = [
+        ("S19", "VTA-PC (metodo PC) - auxiliar (espelha o motor Python)"),
+        ("S20", "Ciclo vigente (numero)"),
+        ("T20", '=IFERROR(VALUE(MID(CONTROLE!$B$2,2,3)),"")'),
+        ("S21", "C0 executado (PC C0 ou movimentacao fisica x VU_C0)"),
+        # PC C0 se houver (itens_PC!P2); senao soma dos C0 fisicos por item.
+        ("T21", '=IF(itens_PC!$P$2>0,itens_PC!$P$2,SUM($X$2:$X$201))'),
+        ("S22", "Execucao PC (ciclos 1..vigente-1, VALOR_ATUALIZADO)"),
+        # ROW(P2:P6)-2 = numero do ciclo (0..4); soma P dos ciclos 1..vigente-1.
+        ("T22", '=SUMPRODUCT((ROW(itens_PC!$P$2:$P$6)-2>=1)*(ROW(itens_PC!$P$2:$P$6)-2<$T$20)*itens_PC!$P$2:$P$6)'),
+        ("S23", "Remanescente fisico atualizado (item a item, ciclo vigente)"),
+        ("T23", '=SUM($Y$2:$Y$201)'),
+        ("S24", "Base itemizada presente?"),
+        ("T24", '=IF(COUNTIF(posicao_contratual!$A$2:$A$201,"<>")=0,0,1)'),
+        ("S25", "VTA-PC (metodo aplicado)"),
+        ("T25", '=IF(OR($T$24=0,$T$20=""),"CALCULO MANUAL REQUERIDO",ROUND($T$21+$T$22+$T$23,2))'),
+    ]
+    for addr, val in aux:
+        cel = r.Range(addr)
+        if isinstance(val, str) and val.startswith("="):
+            cel.Formula = val
+        else:
+            cel.Value = val
+    for addr in ("T21", "T22", "T23", "T25"):
+        r.Range(addr).NumberFormatLocal = MOEDA_BR
+    # B26 (VTA FINAL): caminho PC via bloco auxiliar; preserva Principal/Itens
+    # Consumidos e o override manual (B24/B25) e os aditivos ($N$263).
+    r.Range("B26").Formula = (
+        '=IF(AND(B24<>"",B25<>""),"",IF(ISNUMBER(B25),B25,'
+        'IF(CONTROLE!$B$1="PC (Pedidos de Compra)",'
+        'IF($T$25="CALCULO MANUAL REQUERIDO","",'
+        'ROUND($T$25+IF(ISNUMBER(B24),B24,0),2)),'
+        'IF(OR(B23="",AND(B24<>"",NOT(ISNUMBER(B24)))),"",'
+        'ROUND(B23+IF(ISNUMBER(B24),B24,0)+IF(ISNUMBER($N$263),$N$263,0),2)))))'
+    )
+
+
 def _parametros(wb) -> None:
     p = wb.Worksheets("parametros")
     # Linhas 5:6 no mesmo cinza estrutural das demais (sem distincao C3/C4).
@@ -228,6 +294,7 @@ def aplicar(origem: Path, destino: Path) -> None:
         COB._validar_layout(wb)
         _controle(wb, excel)
         _resultados(wb)
+        _resultados_vta_pc(wb)
         _parametros(wb)
         _posicao_contratual(wb)
         _historico_vu(wb)

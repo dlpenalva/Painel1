@@ -40,7 +40,9 @@ FORMULAS_POR_ABA = {
     "itens_RC": 3200,
     "historico_VU": 3592,
     "cobertura_temporal": 15,
-    "RESULTADOS": 3354,
+    # RESULTADOS 3354 -> 3760: bloco auxiliar VTA-PC (X2:X201 + Y2:Y201 por item
+    # + T20:T25) que materializa o VTA-PC oficial em B26 no metodo PC.
+    "RESULTADOS": 3760,
 }
 
 

@@ -69,6 +69,9 @@ def test_ultima_evidencia_nao_e_completo_ate():
     # Bug P0 corrigido: ultima evidencia Financeiro = ultima linha com VALOR
     # (financeiro!C) numerico, NAO a MAX da coluna de competencias (grade futura).
     assert "MAX(financeiro!$A$2:$A$200)" not in str(ws["B12"].value)
+    # exige A (competencia) E C (valor) numericos na mesma linha: exclui a
+    # linha TOTAL (A vazia) que gerava falsa evidencia Financeiro.
+    assert "ISNUMBER(financeiro!$A$2:$A$200)" in ws["B12"].value
     assert "ISNUMBER(financeiro!$C$2:$C$200)" in ws["B12"].value
     assert "MAX(itens_PC!$B$2:$B$200)" in ws["B14"].value
 

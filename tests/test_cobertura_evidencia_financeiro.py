@@ -21,8 +21,11 @@ def test_formula_financeiro_nao_usa_max_da_coluna_a():
     # A grade (coluna A) vai ate o termino contratual; MAX(A) daria falsa
     # evidencia. A formula deve olhar o VALOR (coluna C) informado.
     assert "MAX(financeiro!$A$2:$A$200)" not in _TOOL
+    # Robusto: evidencia exige, NA MESMA LINHA, A (competencia) E C (valor)
+    # numericos — exclui a linha TOTAL C74=SUM(C2:C73) cuja A e vazia. As duas
+    # metades ISNUMBER podem estar em linhas-fonte distintas (string concatenada).
+    assert "LOOKUP(2,1/(ISNUMBER(financeiro!$A$2:$A$200)" in _TOOL
     assert "ISNUMBER(financeiro!$C$2:$C$200)" in _TOOL
-    assert "LOOKUP(2,1/ISNUMBER(financeiro!$C$2:$C$200)" in _TOOL
 
 
 def test_projecao_temporal_automatica_independe_da_analise():
