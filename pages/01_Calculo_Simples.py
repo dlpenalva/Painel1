@@ -1873,7 +1873,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
 
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
     render_cabecalho_pagina(
-        "Calculadora 1 ciclo",
+        "Primeiro Reajuste",
         "",
     )
 

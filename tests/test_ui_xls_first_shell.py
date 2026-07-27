@@ -20,8 +20,9 @@ PREVISAO = (ROOT / "pages" / "12_Adequacao_Orcamentaria.py").read_text(encoding=
 class TestCascaXlsFirst(unittest.TestCase):
     def test_menu_principal_tem_somente_as_quatro_rotas_operacionais(self):
         self.assertIn('st.page_link(PAGINA_INICIO, label="Início")', APP)
-        self.assertIn('st.page_link(PAGINA_UM_CICLO, label="Calculadora 1 ciclo")', APP)
-        self.assertIn('st.page_link(PAGINA_MULTICICLO, label="Calculadora multiciclo")', APP)
+        # Etapa 26D: nomenclatura visivel dos fluxos (identificadores intactos).
+        self.assertIn('st.page_link(PAGINA_UM_CICLO, label="Primeiro Reajuste")', APP)
+        self.assertIn('st.page_link(PAGINA_MULTICICLO, label="Reajustes Subsequentes")', APP)
         self.assertIn('st.page_link(PAGINA_UPLOAD, label="Upload e docs")', APP)
         self.assertIn('position="hidden"', APP)
 

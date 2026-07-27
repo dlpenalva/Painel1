@@ -158,11 +158,12 @@ def test_apostila_quadros_1_a_4_presentes():
 def test_apostila_vu_ate_ultimo_ciclo_sem_futuro():
     b = gerar_termo_apostila(leitura_simples_financeiro(), campos_manuais=CAMPOS_TERMO)
     quadros = _titulos_quadros(b)
-    vu = [q for q in quadros if "VU C0" in q]
+    # Etapa 26D: cabecalhos VU_Cn (estrutura canonica do quadro historico).
+    vu = [q for q in quadros if "VU_C0" in q]
     assert vu, "tabela de VU ausente"
-    assert "VU C1" in vu[0]
-    assert "VU C2" not in vu[0]  # ciclo futuro nao entra
-    assert "VU C3" not in vu[0]
+    assert "VU_C1" in vu[0]
+    assert "VU_C2" not in vu[0]  # ciclo futuro nao entra
+    assert "VU_C3" not in vu[0]
 
 
 def test_apostila_duas_assinaturas_telebras_sem_contratada():

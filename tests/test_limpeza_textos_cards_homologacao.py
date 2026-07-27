@@ -73,7 +73,7 @@ def test_quatro_descricoes_removidas_dos_call_sites():
 
 def test_titulos_funcionais_permanecem():
     assert '"Reajustes contratuais"' in INICIO
-    assert '"Calculadora 1 ciclo"' in SIMPLES
+    assert '"Primeiro Reajuste"' in SIMPLES  # Etapa 26D: nomenclatura do fluxo
     assert '"Painel da Apuração Contratual"' in DOCUMENTOS
     assert '"Adequação Orçamentária"' in ADEQUACAO
 

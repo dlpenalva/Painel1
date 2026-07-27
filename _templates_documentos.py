@@ -393,20 +393,23 @@ def _composicao_didatica_vta(dados: dict) -> list[tuple[str, float | None]]:
     return [(d, grupos[d]) for d in ordem]
 
 
-def _secao_valores_unitarios_por_ciclo(doc: Document, dados: dict) -> None:
-    """Tabela 'Valores Unitarios por Ciclo': C0..ultimo ciclo analisado.
+TITULO_HISTORICO_VU = "HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO"
 
-    Nunca inventa zeros: celula sem valor sai vazia. C0 = valor unitario
-    original. Ciclos futuros nao entram.
+
+def montar_historico_vu_documental(dados: dict) -> dict:
+    """Estrutura neutra do quadro de VUs, unica para Saneador e Apostila.
+
+    Fonte: dados["historico_vu"] (aba historico_VU via sumario executivo),
+    ja truncada em C0..ultimo ciclo da analise SEM filtrar ciclos historicos
+    com COMPUTAR=Nao (o quadro e historico contratual). Nunca inventa zeros.
     """
     hvu = dados.get("historico_vu") or {}
     itens = hvu.get("itens") or []
     ciclos = hvu.get("ciclos") or []
     if not itens or not ciclos:
-        return
-
-    _titulo_quadro(doc, "Quadro de Valores Unitários por Ciclo")
-    cabecalho = ["Item", "Descrição"] + [f"VU {c}" for c in ciclos]
+        return {"disponivel": False, "cabecalhos": [], "linhas": [],
+                "ciclo_final": None}
+    cabecalhos = ["Item", "Descrição"] + [f"VU_{c}" for c in ciclos]
     linhas: list[list[str]] = []
     for reg in itens:
         vus = reg.get("vus") or {}
@@ -415,7 +418,26 @@ def _secao_valores_unitarios_por_ciclo(doc: Document, dados: dict) -> None:
             valor = vus.get(c)
             linha.append(formatar_moeda(valor) if valor is not None else "")
         linhas.append(linha)
-    _adicionar_tabela(doc, cabecalho, linhas)
+    return {"disponivel": True, "cabecalhos": cabecalhos, "linhas": linhas,
+            "ciclo_final": hvu.get("ultimo_ciclo")}
+
+
+def _secao_valores_unitarios_por_ciclo(
+    doc: Document, dados: dict, texto_intro: str | None = None
+) -> None:
+    """Renderiza o HISTORICO DOS VALORES UNITARIOS POR CICLO (C0..ultimo).
+
+    Mesma estrutura para os dois documentos (montar_historico_vu_documental).
+    """
+    quadro = montar_historico_vu_documental(dados)
+    if not quadro["disponivel"]:
+        return
+    if texto_intro:
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        _adicionar_run(p, texto_intro)
+    _titulo_quadro(doc, TITULO_HISTORICO_VU)
+    _adicionar_tabela(doc, quadro["cabecalhos"], quadro["linhas"])
     doc.add_paragraph()
 
 
@@ -724,7 +746,14 @@ def _ta_secao4_composicao_vta(doc: Document, dados: dict) -> None:
 
 def _ta_secao5_valores_unitarios(doc: Document, dados: dict) -> None:
     _titulo_secao(doc, "5. Dos valores unitários")
-    _secao_valores_unitarios_por_ciclo(doc, dados)
+    _secao_valores_unitarios_por_ciclo(
+        doc, dados,
+        texto_intro=(
+            "5.1. Os valores unitários dos itens, considerados os ciclos de "
+            "reajuste aplicáveis até a presente atualização, ficam consolidados "
+            "conforme quadro abaixo."
+        ),
+    )
 
 
 def _ta_secao6_aditivos(doc: Document, dados: dict) -> None:
@@ -833,6 +862,7 @@ def gerar_despacho_saneador(
     _ds_par5_quadro2(doc, dados)
     _ds_par6_quadro3(doc, dados, campos_manuais)
     _ds_par7_composicao(doc, dados)
+    _ds_bloco_historico_vu(doc, dados)
     _ds_par8_aditivos(doc, dados)
     _ds_par9_adequacao(doc, campos_manuais)
     _ds_par10_regularidade(doc, campos_manuais)
@@ -1038,6 +1068,20 @@ def _ds_par7_composicao(doc: Document, dados: dict) -> None:
                    formatar_moeda(vta) if vta is not None else ""])
     _adicionar_tabela(doc, cabecalho, linhas)
     doc.add_paragraph()
+
+
+def _ds_bloco_historico_vu(doc: Document, dados: dict) -> None:
+    """Bloco sem numeracao propria (entre os paragrafos 7 e 8): historico de
+    VUs vinculado a consolidacao dos valores apurados. Preserva a numeracao
+    juridica existente do despacho."""
+    _secao_valores_unitarios_por_ciclo(
+        doc, dados,
+        texto_intro=(
+            "Para fins de consolidação da evolução dos preços contratuais, "
+            "apresenta-se abaixo o histórico dos valores unitários dos itens "
+            "até o último ciclo considerado nesta análise."
+        ),
+    )
 
 
 def _ds_par8_aditivos(doc: Document, dados: dict) -> None:

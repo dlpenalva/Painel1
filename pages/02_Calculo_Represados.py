@@ -1904,7 +1904,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
     return output.getvalue()
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
     render_cabecalho_pagina(
-        "Calculadora multiciclo",
+        "Reajustes Subsequentes",
         "Ferramenta para análise contratual com mais de um ciclo de reajuste.",
     )
 
