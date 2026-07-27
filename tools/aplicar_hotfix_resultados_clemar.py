@@ -191,8 +191,9 @@ def _patch_resultados(wb) -> None:
 
 def _layout(wb) -> None:
     r = wb.Worksheets("RESULTADOS")
-    # Esconde colunas auxiliares (formulas preservadas).
-    for col in ("G:O", "X:Y"):
+    # Esconde colunas auxiliares (formulas preservadas). S:T = bloco VTA-PC
+    # (S19:T25), tecnico; incluido na Etapa 26C.
+    for col in ("G:O", "S:T", "X:Y"):
         r.Columns(col).Hidden = True
     # Agrupa (outline) memoria item-a-item e bloco Eixo 5; colapsa.
     r.Outline.SummaryRow = 0  # xlSummaryAbove (resumo no topo)

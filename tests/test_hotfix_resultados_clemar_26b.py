@@ -152,8 +152,8 @@ def _col_oculta(ws, letra):
 
 def test_i_helpers_ocultos():
     ws = _resultados()
-    # Helpers tecnicos identificados pelo usuario (secao 15): G:O e X:Y ocultos.
-    for col in ("G", "H", "I", "J", "K", "L", "M", "N", "O", "X", "Y"):
+    # Helpers tecnicos: G:O e X:Y (26B) + S:T (bloco VTA-PC, Etapa 26C).
+    for col in ("G", "H", "I", "J", "K", "L", "M", "N", "O", "S", "T", "X", "Y"):
         assert _col_oculta(ws, col), f"coluna {col} deveria estar oculta"
 
 

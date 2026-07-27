@@ -140,11 +140,18 @@ def test_data_pc_invalida_nao_causa_crash_e_fica_indeterminada():
     assert any(a["codigo"] == "PC_SEM_DATA" for a in pc.alertas)
 
 
-def test_vta_sombra_pc_sem_efeito_nominal_e_com_efeito_atualizado():
+def test_vta_sombra_usa_valor_historico_independente_do_efeito():
+    # Etapa 26C: efeito financeiro governa retroativo, nunca o valor historico.
     base = {"valor_pc": 100.0, "fator_acumulado": 1.10, "valor_atualizado": 110.0}
-    assert _valor_parcela_pc({**base, "efeito_financeiro_pc": "Nao"}) == 100.0
+    assert _valor_parcela_pc({**base, "efeito_financeiro_pc": "Nao"}) == 110.0
     assert _valor_parcela_pc({**base, "efeito_financeiro_pc": "Sim"}) == 110.0
-    assert _valor_parcela_pc(base) == 0.0  # legado sem fonte: nao presume Sim
+    assert _valor_parcela_pc(base) == 110.0
+    # Sem valor_atualizado, deriva do fator historico canonico.
+    derivado = {"valor_pc": 100.0, "fator_acumulado": 1.10,
+                "efeito_financeiro_pc": "Nao"}
+    assert _valor_parcela_pc(derivado) == 110.0
+    # Sem base segura: 0.0 (cai em inconsistencia diagnosticada), nunca nominal.
+    assert _valor_parcela_pc({"valor_pc": 100.0}) == 0.0
 
 
 def test_template_usa_l_sem_deslocar_resumos_metadados_e_limite():
@@ -169,7 +176,9 @@ def test_template_usa_l_sem_deslocar_resumos_metadados_e_limite():
 
 def test_formulas_pc_separam_nominal_reconhecido_analise_e_delta():
     ws = load_workbook(TEMPLATE, data_only=False)["itens_PC"]
-    assert 'L2="Nao",1' in ws["E2"].value
+    # Etapa 26C: E = fator HISTORICO do ciclo, desacoplado de L (efeito).
+    assert 'VLOOKUP(C2,parametros!$A$11:$E$15,5,0)' in ws["E2"].value
+    assert "L2" not in ws["E2"].value
     assert "ROUND(D2*E2,2)" in ws["F2"].value
     assert 'L2="Sim",ROUND(F2-D2,2),0' in ws["H2"].value
     assert 'G2="Nao"' in ws["I2"].value and "F2" in ws["I2"].value
@@ -319,8 +328,9 @@ def test_leitor_recompoe_xls_sem_cache_e_coincide_com_regra_python():
     itens = {i["numero_pc"]: i for i in leitura["itens"]}
     assert itens["PC-ANTES"]["ciclo"] == "C1"
     assert itens["PC-ANTES"]["efeito_financeiro_pc"] == "Nao"
-    assert itens["PC-ANTES"]["fator_acumulado"] == 1.0
-    assert itens["PC-ANTES"]["valor_atualizado"] == 100.0
+    # Etapa 26C: efeito "Nao" zera retroativo/delta, nunca o valor historico.
+    assert itens["PC-ANTES"]["fator_acumulado"] == pytest.approx(1.10)
+    assert itens["PC-ANTES"]["valor_atualizado"] == 110.0
     assert itens["PC-ANTES"]["delta_potencial"] == 0.0
     assert itens["PC-DEPOIS"]["ciclo"] == "C1"
     assert itens["PC-DEPOIS"]["efeito_financeiro_pc"] == "Sim"
@@ -364,4 +374,9 @@ def test_regressao_50_pcs_preserva_identidade_ciclo_e_efeito():
     assert sum(i["efeito_financeiro_pc"] == "Nao" for i in leitura["itens"]) == 25
     assert sum(i["efeito_financeiro_pc"] == "Sim" for i in leitura["itens"]) == 25
     assert leitura["totais"]["total_original"] == 5000.0
-    assert leitura["totais"]["total_atualizado"] == 5250.0
+    # Etapa 26C: TODOS os PCs do ciclo computado sao atualizados pelo fator
+    # historico (50 x 110); o efeito Sim/Nao segue governando so o retroativo.
+    assert leitura["totais"]["total_atualizado"] == 5500.0
+    assert sum(
+        (i["delta_potencial"] or 0.0) for i in leitura["itens"]
+    ) == pytest.approx(25 * 10.0)

@@ -2448,17 +2448,30 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
                 f"PC '{ident}' linha {r}: efeito financeiro indeterminado; "
                 "INICIO_EFEITO_FINANCEIRO ausente ou inconsistente."
             )
+        # Etapa 26C: VALOR HISTORICO ATUALIZADO e desacoplado do EFEITO
+        # FINANCEIRO. O fator historico e o da memoria da apuracao
+        # (parametros!A11:E15 no XLS; _fator_pc_na_apuracao aqui), aplicavel ao
+        # CICLO_PC independentemente de efeito Sim/Nao. O efeito continua
+        # governando somente retroativo/status/cor.
         valor_num = _tofl(valor, default=None)
-        fator_efetivo = (
-            1.0 if efeito_pc == "Nao"
-            else _fator_pc_na_apuracao(ciclo_norm) if efeito_pc == "Sim"
-            else None
-        )
-        fator = fator_efetivo
+        vatual_cache = _tofl(vatual, default=None)
+        fator_historico = _fator_pc_na_apuracao(ciclo_norm)
+        fator = fator_historico
         vatual = (
-            round(valor_num * fator_efetivo, 2)
-            if valor_num is not None and fator_efetivo is not None else None
+            round(valor_num * fator_historico, 2)
+            if valor_num is not None and fator_historico is not None else None
         )
+        if (
+            vatual is not None
+            and vatual_cache is not None
+            and abs(vatual - vatual_cache) > 0.01
+        ):
+            resultado["alertas"].append(
+                f"PC '{ident}' linha {r}: VALOR_ATUALIZADO do XLS "
+                f"({vatual_cache:.2f}) diverge do valor historico recomputado "
+                f"({vatual:.2f}); adotado o recomputado (compatibilidade com "
+                "XLS anterior ao desacoplamento historico x efeito)."
+            )
 
         if layout_corrigido:
             resultado["alertas"].append(
@@ -2545,12 +2558,19 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
             round(vatual - valor_num, 2)
             if vatual is not None and valor_num is not None else None
         )
+        # Retroativo/delta continuam GOVERNADOS PELO EFEITO (espelha itens_PC!H/J):
+        # efeito "Nao" -> retroativo/delta 0; indeterminado -> None. O valor
+        # historico (vatual) NAO participa desse gate.
+        incremento_retroativo = (
+            incremento if efeito_pc == "Sim"
+            else 0.0 if efeito_pc == "Nao" else None
+        )
         if retro_lido is None and pago_norm in {"sim", "s", "true", "1", "yes"}:
-            retro_lido = incremento
+            retro_lido = incremento_retroativo
         if analise_lida is None and pago_norm in {"nao", "n", "false", "0", "no"}:
             analise_lida = vatual
         if delta_lido is None and pago_norm in {"nao", "n", "false", "0", "no"}:
-            delta_lido = incremento
+            delta_lido = incremento_retroativo
 
         registro = {
             "linha":            r,

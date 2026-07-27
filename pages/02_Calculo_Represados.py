@@ -1978,7 +1978,6 @@ with st.sidebar:
                 value=dt_base_original,
                 key="rep_marco_temporal_anterior",
                 format="DD/MM/YYYY",
-                help="Este marco será usado para calcular a admissibilidade do próximo ciclo.",
             )
             st.text_input(
                 "Observação de rastreabilidade (opcional):",

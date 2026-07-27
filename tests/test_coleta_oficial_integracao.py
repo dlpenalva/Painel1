@@ -45,7 +45,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # GCC (2 campos novos) e projecao fail-closed; template re-salvo via Excel COM.
 # ETAPA 26B: template alterado intencionalmente (hotfix RESULTADOS/VTA-PC via
 # Excel COM — ramo PC no remanescente, B4 canonica, layout helpers ocultos).
-SHA256_TEMPLATE_ESPERADO = "6fdf0c1b98b2de46517999f6990d5d4eae104065758bd036cfa1aebed0bf6b25"
+# ETAPA 26C: E desacoplada de L (fator historico), N/A em G12, S:T ocultas,
+# comparativo executivo A28:C29 (via Excel COM).
+SHA256_TEMPLATE_ESPERADO = "455415cae7451682baab269dd4e4eef38eceb3e190ed75898c7bbde811dc0ac8"
 
 
 def _dados_calculadora() -> dict:

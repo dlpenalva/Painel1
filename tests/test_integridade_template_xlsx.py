@@ -42,7 +42,8 @@ FORMULAS_POR_ABA = {
     "cobertura_temporal": 15,
     # RESULTADOS 3354 -> 3760: bloco auxiliar VTA-PC (X2:X201 + Y2:Y201 por item
     # + T20:T25) que materializa o VTA-PC oficial em B26 no metodo PC.
-    "RESULTADOS": 3760,
+    # 3760 -> 3762 (Etapa 26C): comparativo executivo B28/B29 (referencias).
+    "RESULTADOS": 3762,
 }
 
 

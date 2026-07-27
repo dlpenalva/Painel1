@@ -236,7 +236,8 @@ def test_excel_com_efeitos_itens_pc_data_exata_cores_e_reabertura(tmp_path: Path
         caminho, editar, inspecionar
     )
     # tupla: C, E, F, H, I, J, K, L
-    assert valores[2][:6] == ("C1", 1.0, 100.0, 0.0, 100.0, 0.0)
+    # Etapa 26C: pre-efeito mantem o fator HISTORICO (E/F/I); H/J seguem 0.
+    assert valores[2][:6] == ("C1", 1.1, 110.0, 0.0, 110.0, 0.0)
     assert valores[2][7] == "Nao" and valores[2][6] == "OK"
     assert valores[3][:6] == ("C1", 1.1, 110.0, 0.0, 110.0, 10.0)
     assert valores[3][7] == "Sim" and valores[3][6] == "OK"

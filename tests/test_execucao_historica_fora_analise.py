@@ -110,19 +110,20 @@ def test_marcador_formalizado_dropdown(wb):
     assert "FORMALIZADO" in str(wp["G10"].value).upper()
     # validacao tipo lista cobrindo G12:G15 (Excel embrulha a lista em
     # mc:AlternateContent, que openpyxl le como formula1=None -> checar XML bruto)
-    achou = any("G12:G15" in str(dv.sqref) and dv.type == "list"
-                for dv in wp.data_validations.dataValidation)
-    assert achou, "dropdown (list) ausente em parametros G12:G15"
+    # Etapa 26C: G12 (C1) tem dropdown proprio com N/A; G13:G15 seguem Sim/Nao.
+    achou_sim_nao = any("G13:G15" in str(dv.sqref) and dv.type == "list"
+                        for dv in wp.data_validations.dataValidation)
+    achou_na = any(str(dv.sqref) == "G12" and dv.type == "list"
+                   for dv in wp.data_validations.dataValidation)
+    assert achou_sim_nao, "dropdown (list) ausente em parametros G13:G15"
+    assert achou_na, "dropdown (list) com N/A ausente em parametros G12"
     with zipfile.ZipFile(TEMPLATE) as z:
         raw = None
-        for n in z.namelist():
-            if n.startswith("xl/worksheets/") and b"REAJUSTE ANTERIOR JA FORMALIZADO" not in b"":
-                pass
         # localiza a aba parametros pelo conteudo do marcador
         for n in z.namelist():
             if n.startswith("xl/worksheets/sheet") and n.endswith(".xml"):
                 data = z.read(n)
-                if b"G12:G15" in data:
+                if b"G13:G15" in data:
                     raw = data.decode("utf-8", "replace")
                     break
     assert raw is not None and "Sim,Nao" in raw, "lista Sim,Nao ausente no XML"
