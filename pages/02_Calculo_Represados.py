@@ -1974,7 +1974,7 @@ with st.sidebar:
                 key="rep_ultimo_ciclo_anterior",
             )
             _marco_temporal_anterior = st.date_input(
-                "Marco temporal do último ciclo concedido/formalizado 🔹",
+                "Marco temporal do último ciclo concedido/formalizado",
                 value=dt_base_original,
                 key="rep_marco_temporal_anterior",
                 format="DD/MM/YYYY",

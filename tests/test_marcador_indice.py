@@ -25,9 +25,10 @@ def test_indice_do_contrato_tem_marcador_no_final():
 
 
 def test_marcadores_usam_o_mesmo_caractere():
-    # Titulos padronizados com o mesmo caractere 🔹. No multiciclo ha dois campos
-    # com a identidade visual: Data-base/ancora e Marco temporal do ultimo ciclo.
-    assert MULTI.count(MARCADOR) == 2
+    # Titulos padronizados com o mesmo caractere 🔹. No multiciclo resta apenas o
+    # campo Data-base/ancora com a identidade visual; o marcador do campo "Marco
+    # temporal do ultimo ciclo" foi removido a pedido (etapa 26B, ajuste visual).
+    assert MULTI.count(MARCADOR) == 1
     assert UI.count(MARCADOR) == 1
 
 

@@ -34,7 +34,9 @@ def test_controle_b1_funcional():
     assert c["B1"].value == "SELECIONE AQUI"
     dvs = [(str(d.sqref), d.formula1) for d in c.data_validations.dataValidation]
     assert any("B1" in s for s, _ in dvs)                 # dropdown mantido
-    assert "CONTROLE!$B$1" in wb["RESULTADOS"]["B35"].value  # consumido pela logica
+    # Chave canonica: B4 normaliza CONTROLE!$B$1 e a logica (ex.: B35) consome B4.
+    assert "CONTROLE!$B$1" in wb["RESULTADOS"]["B4"].value
+    assert "$B$4" in wb["RESULTADOS"]["B35"].value
 
 
 def test_controle_c1_vazia():
