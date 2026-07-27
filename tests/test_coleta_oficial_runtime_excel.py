@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from _coleta_oficial import gerar_coleta_oficial_preenchida
+from _coleta_oficial import ABAS_COLETA_OFICIAL, gerar_coleta_oficial_preenchida
 from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
 
 
@@ -483,11 +483,24 @@ def test_excel_com_efeito_d_vazio_bloqueia_e_f_e_documentos(tmp_path: Path) -> N
         return ws.Range(f"E{row}").Value, ws.Range(f"F{row}").Value, ws.Range(f"A{row}").DisplayFormat.Interior.Color
 
     atualizado, delta, cor = _excel_editar_e_inspecionar(caminho, editar, ler)
-    assert atualizado in (None, "")
-    assert delta in (None, "")
-    assert cor == _cor_excel("FCE4D6")
-    with pytest.raises(ValueError, match="Efeito financeiro nao informado.*04/2024"):
-        processar_coleta_oficial_runtime(caminho.read_bytes())
+    assert atualizado in (None, "")           # VALOR_ATUALIZADO E permanece vazio
+    assert delta in (None, "")                # DELTA F permanece vazio
+    assert cor == _cor_excel("FCE4D6")        # celula sinalizada (alerta)
+    # Efeito financeiro nao informado (competencia paga sem flag) e INSUFICIENCIA
+    # de negocio -> SOFT block (politica homologada, commit 1337247), NAO falha
+    # estrutural: upload aceito e diagnosticado, mas resultado dependente nao
+    # confiavel e FORMALIZACAO BLOQUEADA. processar_coleta_oficial_runtime so
+    # levanta ValueError em falha ESTRUTURAL (arquivo invalido), nunca em SOFT.
+    resultado, diagnostico = processar_coleta_oficial_runtime(caminho.read_bytes())
+    assert diagnostico["valido"] is True
+    assert diagnostico["status_base"] == "ANALISE_COM_INCONSISTENCIAS"
+    assert diagnostico["pronto_para_consolidar"] is False   # formalizacao bloqueada
+    mensagens = " | ".join(
+        str(x) for x in
+        (diagnostico.get("inconsistencias") or [])
+        + (diagnostico.get("bloqueios_criticos") or []))
+    assert "Efeito financeiro nao informado" in mensagens
+    assert "04/2024" in mensagens
 
 
 def test_excel_com_efeito_e_dropdown_termina_em_g73(tmp_path: Path) -> None:
@@ -520,7 +533,10 @@ def test_excel_com_efeito_f_abre_sem_reparo_e_preserva_estrutura(tmp_path: Path)
     nomes, formula_e2, formula_f73 = _excel_editar_e_inspecionar(caminho, lambda wb: None, ler)
     depois = {p.name for p in tmp_path.iterdir()}
     novos_logs = [n for n in depois - antes if "repair" in n.lower() or "recover" in n.lower()]
-    assert nomes == ["CONTROLE", "parametros", "financeiro", "itens_Remanesc", "itens_Consumidos", "itens_PC", "aditivos", "posicao_contratual", "itens_RC", "historico_VU", "RESULTADOS"]
+    # Fonte canonica das abas oficiais (evita hardcode duplicado). Continua
+    # protegendo quantidade, nomes, ordem e estrutura: falha se uma aba oficial
+    # sumir, surgir uma inesperada ou a ordem mudar sem atualizar a fonte.
+    assert nomes == ABAS_COLETA_OFICIAL
     assert 'G2="Sim"' in formula_e2
     assert 'G73="Sim"' in formula_f73
     assert not novos_logs
