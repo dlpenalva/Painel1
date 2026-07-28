@@ -84,7 +84,7 @@ def test_fallback_nao_usa_max_nem_today():
 def test_sem_today_em_toda_a_aba_e_bloco():
     ws = _wb()[ABA]
     textos = [str(c.value) for row in ws.iter_rows() for c in row if isinstance(c.value, str)]
-    r = _wb()["RESULTADOS"]
+    r = _wb()["MEMORIA_RESULTADOS"]
     textos += [str(r.cell(x, 2).value) for x in range(267, 278)]
     for f in textos:
         for proib in ("TODAY(", "HOJE(", "AGORA("):
@@ -112,7 +112,7 @@ def test_controle_b3_desbloqueada_formato_dia():
 
 
 def test_bloco_resultados_referencia_sem_vta():
-    ws = _wb()["RESULTADOS"]
+    ws = _wb()["MEMORIA_RESULTADOS"]
     assert "POSICAO DE REFERENCIA DO CONTRATO" in str(ws["A267"].value)
     rot = [str(ws.cell(r, 1).value) for r in range(268, 277)]
     assert any("Origem da posicao de referencia" in x for x in rot)
@@ -123,10 +123,13 @@ def test_bloco_resultados_referencia_sem_vta():
 
 def test_b23_b26_inalterados():
     wb = _wb()
-    assert wb["RESULTADOS"]["B23"].value == '=IF(OR(B20="",B21="",B22=""),"",ROUND(B20+B21+B22,2))'
-    b26 = wb["RESULTADOS"]["B26"].value
+    assert wb["MEMORIA_RESULTADOS"]["B23"].value == '=IF(OR(B20="",B21="",B22=""),"",ROUND(B20+B21+B22,2))'
+    b26 = wb["MEMORIA_RESULTADOS"]["B26"].value
     assert "$N$263" in b26 and ABA not in b26
-    assert wb["RESULTADOS"]["B25"].value in (None, "")
+    assert wb["MEMORIA_RESULTADOS"]["B25"].value == (
+        '=IF(AND(RESULTADOS!$G$45="Sim",RESULTADOS!$C$45<>""),'
+        'RESULTADOS!$C$45,"")'
+    )
 
 
 def test_template_legado_intacto():
@@ -248,7 +251,7 @@ def _dmy(v):
 
 def _ler(wb, linhas=(2,)):
     pr = wb.Worksheets(ABA)
-    r = wb.Worksheets("RESULTADOS")
+    r = wb.Worksheets("MEMORIA_RESULTADOS")
 
     def g(ws, a):
         return ws.Range(a).Value

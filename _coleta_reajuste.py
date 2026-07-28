@@ -276,6 +276,41 @@ def _validar_resultados_integra(wb, etapa: str) -> dict[str, Any]:
         raise ValueError(f"A aba RESULTADOS não está visível na etapa {etapa}.")
     if ws["A1"].value != "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL":
         raise ValueError(f"A aba RESULTADOS está vazia ou foi substituída na etapa {etapa}.")
+    if "MEMORIA_RESULTADOS" in wb.sheetnames:
+        memoria = wb["MEMORIA_RESULTADOS"]
+        formulas_memoria = sum(
+            1
+            for row in memoria.iter_rows()
+            for cell in row
+            if isinstance(cell.value, str) and cell.value.startswith("=")
+        )
+        conteudo_memoria = sum(
+            1
+            for row in memoria.iter_rows()
+            for cell in row
+            if cell.value not in (None, "")
+        )
+        if memoria.sheet_state == "visible":
+            raise ValueError(
+                f"A MEMORIA_RESULTADOS deve permanecer oculta na etapa {etapa}."
+            )
+        if formulas < 40 or conteudo < 100:
+            raise ValueError(
+                f"A RESULTADOS executiva perdeu conteúdo na etapa {etapa}: "
+                f"{formulas} fórmulas e {conteudo} células preenchidas."
+            )
+        if formulas_memoria < 3000 or conteudo_memoria < 3300:
+            raise ValueError(
+                f"A MEMORIA_RESULTADOS perdeu conteúdo na etapa {etapa}: "
+                f"{formulas_memoria} fórmulas e {conteudo_memoria} células preenchidas."
+            )
+        return {
+            "visivel": True,
+            "formulas": formulas,
+            "conteudo": conteudo,
+            "memoria_formulas": formulas_memoria,
+            "memoria_conteudo": conteudo_memoria,
+        }
     if formulas < 3000 or conteudo < 3300:
         raise ValueError(
             f"A aba RESULTADOS perdeu conteúdo na etapa {etapa}: "
@@ -460,19 +495,24 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
     formulas = _formulas(wb)
     if len(formulas) < 1000:
         bloqueios_estruturais.append("A matriz de fórmulas foi removida ou está incompleta.")
+    aba_resultados_tecnicos = (
+        "MEMORIA_RESULTADOS"
+        if "MEMORIA_RESULTADOS" in wb.sheetnames
+        else "RESULTADOS"
+    )
     for chave in (
         "financeiro!D2",
         "itens_Remanesc!D2",
         "itens_Consumidos!O2",
         _chave_ciclo_pc,
-        "RESULTADOS!B15",
-        "RESULTADOS!B16",
-        "RESULTADOS!B23",
-        "RESULTADOS!B26",
-        "RESULTADOS!B35",
-        "RESULTADOS!C35",
-        "RESULTADOS!D35",
-        "RESULTADOS!F36",
+        f"{aba_resultados_tecnicos}!B15",
+        f"{aba_resultados_tecnicos}!B16",
+        f"{aba_resultados_tecnicos}!B23",
+        f"{aba_resultados_tecnicos}!B26",
+        f"{aba_resultados_tecnicos}!B35",
+        f"{aba_resultados_tecnicos}!C35",
+        f"{aba_resultados_tecnicos}!D35",
+        f"{aba_resultados_tecnicos}!F36",
     ):
         if chave not in formulas:
             bloqueios_estruturais.append(f"Fórmula estrutural ausente em {chave}.")
@@ -745,9 +785,14 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
                 bloqueios_criticos.append(
                     "Posição contratual inconsistente: " + ", ".join(alertas_posicao[:5])
                 )
-        resultados_valores = wb_valores["RESULTADOS"]
+        resultados_valores = wb_valores[aba_resultados_tecnicos]
+        resultados_executivos = wb_valores["RESULTADOS"]
         status_resultados = {
-            "geral": resultados_valores["J4"].value,
+            "geral": (
+                resultados_executivos["B3"].value
+                if "MEMORIA_RESULTADOS" in wb_valores.sheetnames
+                else resultados_valores["J4"].value
+            ),
             "metodo_retroativo": resultados_valores["B4"].value,
             "origem_retroativo_oficial": resultados_valores["D16"].value,
             "retroativo": resultados_valores["F16"].value,

@@ -89,7 +89,11 @@ def adaptar_coleta_reajuste_para_documentos(
     aditivos = wb["aditivos"]
     posicao = wb["posicao_contratual"] if "posicao_contratual" in wb.sheetnames else None
     itens_rc = wb["itens_RC"]
-    resultados = wb["RESULTADOS"]
+    resultados = (
+        wb["MEMORIA_RESULTADOS"]
+        if "MEMORIA_RESULTADOS" in wb.sheetnames
+        else wb["RESULTADOS"]
+    )
     origem_label = _rotulo_origem_coleta(conteudo)
 
     ciclos_rows = []

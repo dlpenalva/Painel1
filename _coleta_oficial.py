@@ -5,9 +5,9 @@ Fonte de verdade estrutural: templates/COLETA_REAJUSTE_OFICIAL.xlsx
 apos rodada de UX de 17/07/2026 via Excel real: destaque CONTROLE!B1 +
 protecao, itens_PC coluna A em Texto com estilo de entrada, DATA_PC
 dd/mm/aaaa, CICLO_PC com alerta de data invalida, V:AC ocultas,
-posicao_contratual com cores por ciclo, RESULTADOS memoria na linha 52 e
-RESULTADOS!B4 com destaque FFF7E7B2 — mesmo padrao de CONTROLE!B1 —
-dropdown/validacao/valor/borda preservados).
+posicao_contratual com cores por ciclo, MEMORIA_RESULTADOS oculta com a
+matematica homologada e RESULTADOS executiva com quatro tabelas e um unico
+status global. Os nomes definidos permanecem como contrato de leitura.
 
 Correcao aprovada sobre o arquivo fornecido (Coleta_Reajuste_Nova.xlsx,
 SHA-256 6353357b...8069ff3): o original possuia uma OMISSAO CRITICA — a
@@ -59,6 +59,7 @@ ABAS_COLETA_OFICIAL = [
     "itens_RC",
     "historico_VU",
     "cobertura_temporal",
+    "MEMORIA_RESULTADOS",
     "RESULTADOS",
 ]
 
@@ -128,6 +129,10 @@ _RESIDUOS_POR_ABA["itens_Remanesc"] = [
 _RESIDUOS_POR_ABA["aditivos"] = [
     f"{col}{lin}" for lin in range(2, 201)
     for col in ("A", "B", "D", "E", "F", "H", "K")
+]
+# Etapa 26F: a unica interface manual fica na RESULTADOS executiva.
+_RESIDUOS_POR_ABA["RESULTADOS"] = [
+    f"{col}{lin}" for lin in range(43, 51) for col in ("C", "D", "E", "F", "G")
 ]
 
 

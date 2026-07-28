@@ -26,7 +26,8 @@ NS = {
 FORMULAS_POR_ABA = {
     # comparativo_VTA: aba de referencia adicionada via Excel COM (1a posicao
     # fisica). cobertura_temporal 14->15 (+ linha Metodo de apuracao).
-    # RESULTADOS 3353->3354 (+ B4 derivado de CONTROLE!B1).
+    # Etapa 26F: calculos antigos preservados em MEMORIA_RESULTADOS e nova
+    # RESULTADOS executiva com formulas de apresentacao.
     "comparativo_VTA": 1407,
     "CONTROLE": 6,
     "parametros": 32,
@@ -40,10 +41,11 @@ FORMULAS_POR_ABA = {
     "itens_RC": 3200,
     "historico_VU": 3592,
     "cobertura_temporal": 15,
-    # RESULTADOS 3354 -> 3760: bloco auxiliar VTA-PC (X2:X201 + Y2:Y201 por item
-    # + T20:T25) que materializa o VTA-PC oficial em B26 no metodo PC.
-    # 3760 -> 3762 (Etapa 26C): comparativo executivo B28/B29 (referencias).
-    "RESULTADOS": 3762,
+    # 3762 anteriores + 11 referencias para a tabela manual unica.
+    "MEMORIA_RESULTADOS": 3773,
+    # 57 do prototipo + 4 selos por tabela + 1 premissa da estimativa - 1
+    # helper J4 removido (status global agora agrega os selos H8/H14/H24/H33).
+    "RESULTADOS": 61,
 }
 
 
@@ -203,7 +205,7 @@ def test_abertura_e_reabertura_sem_reparo_no_excel_real():
     try:
         for rodada in range(2):
             wb = excel.Workbooks.Open(str(TEMPLATE), UpdateLinks=0, ReadOnly=True)
-            assert wb.Worksheets.Count == 14, f"rodada {rodada}"  # +comparativo_VTA (pacote CLEMAR)
+            assert wb.Worksheets.Count == 15, f"rodada {rodada}"
             wb.Close(False)
     finally:
         excel.Quit()

@@ -217,7 +217,7 @@ def test_limites_operacionais_convergem_na_linha_73():
     assert all(ws[f"{col}74"].value is None for col in "ADG")
     assert all(str(intervalo.sqref) == "A2:G73" for intervalo in ws.conditional_formatting._cf_rules)
     formulas_resultados = [
-        cell.value for row in wb["RESULTADOS"].iter_rows() for cell in row
+        cell.value for row in wb["MEMORIA_RESULTADOS"].iter_rows() for cell in row
         if isinstance(cell.value, str) and "financeiro!" in cell.value
     ]
     assert formulas_resultados

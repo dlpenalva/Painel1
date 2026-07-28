@@ -133,10 +133,13 @@ def test_sem_today_now_hoje():
 
 def test_vta_oficial_invariante():
     wb = _wb()
-    r = wb["RESULTADOS"]
+    r = wb["MEMORIA_RESULTADOS"]
     assert r["B23"].value == '=IF(OR(B20="",B21="",B22=""),"",ROUND(B20+B21+B22,2))'
     assert "$N$263" in r["B26"].value and ABA not in str(r["B26"].value)
-    assert r["B25"].value in (None, "")
+    assert r["B25"].value == (
+        '=IF(AND(RESULTADOS!$G$45="Sim",RESULTADOS!$C$45<>""),'
+        'RESULTADOS!$C$45,"")'
+    )
 
 
 def test_template_legado_intacto():
@@ -208,7 +211,7 @@ def _montar_cenario(dest, *, gcc_pc=None):
 
 def _ler(w):
     cv = w.Worksheets(ABA)
-    r = w.Worksheets("RESULTADOS")
+    r = w.Worksheets("MEMORIA_RESULTADOS")
     return {
         "modo": cv.Range("B19").Value,
         "fisica": cv.Range("B11").Value,

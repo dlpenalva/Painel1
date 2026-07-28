@@ -213,7 +213,7 @@ def test_template_g12_aceita_na_e_g13_g15_continuam_sim_nao():
 
 
 def test_template_b259_na_tem_semantica_propria():
-    r = load_workbook(TEMPLATE, data_only=False)["RESULTADOS"]
+    r = load_workbook(TEMPLATE, data_only=False)["MEMORIA_RESULTADOS"]
     b259 = str(r["B259"].value)
     assert 'parametros!$G$12="N/A"' in b259
     assert "NAO SE APLICA" in b259
@@ -225,7 +225,7 @@ def test_template_b259_na_tem_semantica_propria():
 
 
 def test_template_comparativo_executivo_por_referencia():
-    r = load_workbook(TEMPLATE, data_only=False)["RESULTADOS"]
+    r = load_workbook(TEMPLATE, data_only=False)["MEMORIA_RESULTADOS"]
     assert r["B28"].value == "=$B$26"
     assert r["B29"].value == "=comparativo_VTA!$B$208"
     assert "COMPARACAO DE REFERENCIA" in str(r["A28"].value)
@@ -320,9 +320,9 @@ def test_com_cadeia_completa_c3_pre_e_pos_efeito():
         cor_pos = int(ipc.Range("A5").DisplayFormat.Interior.Color)
         assert cor_pre == COR_VERMELHO_BGR
         assert cor_pos != COR_VERMELHO_BGR
-        # Sumario por ciclo (P) e VTA (RESULTADOS!T25/B26/B28).
+        # Sumario por ciclo (P) e VTA preservado na memoria tecnica.
         assert float(ipc.Range("P5").Value) == pytest.approx(2152.20, abs=0.01)
-        res = wb.Worksheets("RESULTADOS")
+        res = wb.Worksheets("MEMORIA_RESULTADOS")
         assert float(res.Range("T22").Value) == pytest.approx(4172.20, abs=0.01)
         assert float(res.Range("T25").Value) == pytest.approx(5012.20, abs=0.01)
         assert float(res.Range("B26").Value) == pytest.approx(5012.20, abs=0.01)

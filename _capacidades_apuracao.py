@@ -145,7 +145,7 @@ def _rastreabilidade_resultados(
         "metodologia": f"Método oficial selecionado no XLS: {fonte_retro}.",
         "fontes_consideradas": [
             {"fonte": fonte_retro, "papel": "Método oficial do retroativo"},
-            {"fonte": "RESULTADOS!B16", "papel": "Valor oficial calculado e preservado pelo XLS"},
+            {"fonte": "RETRO_OFICIAL", "papel": "Nome definido do valor oficial preservado pelo XLS"},
         ] if retro.get("disponivel") else [],
         "fontes_ausentes": [item for item in ausentes if item["fonte"] in ("Financeiro", "PCs", "Itens consumidos")],
         "fontes_excluidas": fontes_retro_excluidas,
@@ -172,7 +172,7 @@ def _rastreabilidade_resultados(
     if _numero_disponivel(vta_manual):
         metodologia_vta = "VTA manual oficial informado no XLS; substitui a composição automática."
         valor_reproduzido = vta_manual
-        fontes_vta = [{"fonte": "RESULTADOS!B25", "papel": "VTA manual oficial"}]
+        fontes_vta = [{"fonte": "VTA_MANUAL_OFICIAL", "papel": "Nome definido do VTA manual oficial"}]
     else:
         metodologia_vta = (
             "Composição automática do XLS: base contratual + retroativo oficial + "
@@ -185,12 +185,12 @@ def _rastreabilidade_resultados(
             else None
         )
         fontes_vta = [
-            {"fonte": "RESULTADOS!B20", "papel": "Base contratual", "valor": componentes.get("base_contratual")},
-            {"fonte": "RESULTADOS!B21", "papel": "Retroativo oficial", "valor": componentes.get("retroativo_oficial")},
-            {"fonte": "RESULTADOS!B22", "papel": "Ajuste do remanescente", "valor": componentes.get("ajuste_remanescente")},
+            {"fonte": "MEMORIA_RESULTADOS - base contratual", "papel": "Base contratual", "valor": componentes.get("base_contratual")},
+            {"fonte": "RETRO_OFICIAL", "papel": "Nome definido do retroativo oficial", "valor": componentes.get("retroativo_oficial")},
+            {"fonte": "MEMORIA_RESULTADOS - ajuste do remanescente", "papel": "Ajuste do remanescente", "valor": componentes.get("ajuste_remanescente")},
         ]
         if _numero_disponivel(ajuste_manual):
-            fontes_vta.append({"fonte": "RESULTADOS!B24", "papel": "Ajuste manual justificado", "valor": ajuste_manual})
+            fontes_vta.append({"fonte": "AJUSTE_MANUAL_VTA", "papel": "Nome definido do ajuste manual justificado", "valor": ajuste_manual})
     reproduzivel = (
         _numero_disponivel(vta.get("valor"))
         and _numero_disponivel(valor_reproduzido)
@@ -225,7 +225,7 @@ def _rastreabilidade_resultados(
             "metodologia": "Saldo oficial preservado em RESULTADOS, derivado da base remanescente selecionada pelo XLS.",
             "fontes_consideradas": [
                 {"fonte": "Itens remanescentes", "papel": "Base quantitativa e financeira"},
-                {"fonte": "RESULTADOS!D35", "papel": "Saldo atualizado oficial"},
+                {"fonte": "REM_ATUALIZADO_OFICIAL", "papel": "Nome definido do saldo atualizado oficial"},
             ] if calculos["valor_remanescente"].get("disponivel") else [],
             "fontes_ausentes": [item for item in ausentes if item["fonte"] == "Itens remanescentes"],
             "fontes_excluidas": [],

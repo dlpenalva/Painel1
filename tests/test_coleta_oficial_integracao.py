@@ -47,7 +47,9 @@ ROOT = Path(__file__).resolve().parents[1]
 # Excel COM — ramo PC no remanescente, B4 canonica, layout helpers ocultos).
 # ETAPA 26C: E desacoplada de L (fator historico), N/A em G12, S:T ocultas,
 # comparativo executivo A28:C29 (via Excel COM).
-SHA256_TEMPLATE_ESPERADO = "455415cae7451682baab269dd4e4eef38eceb3e190ed75898c7bbde811dc0ac8"
+# ETAPA 26F: memoria tecnica oculta + RESULTADOS executiva, fator historico
+# fail-closed e tabela manual unica (Excel COM).
+SHA256_TEMPLATE_ESPERADO = "8185a14f5f3d355c2708b271bb452c414a0ffe54a8741420062b9288535e388a"
 
 
 def _dados_calculadora() -> dict:
@@ -102,7 +104,8 @@ def test_geracao_pos_calculadora_preserva_e_preenche_modelo_oficial() -> None:
     assert wb["itens_PC"]["B1"].value == "DATA_PC"
     assert wb["itens_PC"]["C1"].value == "CICLO_PC"
     assert "ITEM" not in [wb["itens_PC"].cell(1, c).value for c in range(1, 12)]
-    assert wb["RESULTADOS"]["A52"].value is not None
+    assert wb["RESULTADOS"]["A41"].value.startswith("AJUSTES MANUAIS")
+    assert wb["MEMORIA_RESULTADOS"]["A52"].value is not None
 
 
 def test_multiciclo_iniciado_em_c2_nao_marca_c1_como_objeto_atual() -> None:
@@ -221,7 +224,7 @@ def test_template_tem_72_competencias_e_resultados_alcanca_linha_73() -> None:
 
     formulas_resultados = [
         cell.value
-        for row in wb["RESULTADOS"].iter_rows()
+        for row in wb["MEMORIA_RESULTADOS"].iter_rows()
         for cell in row
         if isinstance(cell.value, str) and cell.value.startswith("=")
     ]
@@ -236,7 +239,9 @@ def test_template_preserva_layout_visual_e_sha256() -> None:
     assert all(any(d.min <= coluna <= d.max for d in ocultas) for coluna in range(22, 30))
     assert itens_pc.sheet_view.topLeftCell in (None, "A1")
     assert wb["financeiro"].sheet_view.topLeftCell in (None, "A1")
-    assert wb["RESULTADOS"]["B4"].fill.fgColor.rgb == "FFF7E7B2"
+    assert wb["RESULTADOS"]["B3"].value.startswith("=IF(")
+    assert wb["MEMORIA_RESULTADOS"].sheet_state == "hidden"
+    assert wb["RESULTADOS"]["C43"].fill.fgColor.rgb == "FFFFF2CC"
     assert wb["CONTROLE"]["B1"].fill.fgColor.rgb == "FFF7E7B2"
     assert hashlib.sha256(TEMPLATE_COLETA_OFICIAL.read_bytes()).hexdigest() == SHA256_TEMPLATE_ESPERADO
 

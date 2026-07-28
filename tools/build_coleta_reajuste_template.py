@@ -126,8 +126,22 @@ def _reset_controle(wb) -> None:
     ws["A7"] = "Índice utilizado"
     ws["A8"] = "Data-base original"
     ws["A9"] = "Quantidade de ciclos desta análise"
-    ws["A10"] = "Variação acumulada final"
-    ws["A11"] = "Fator acumulado total"
+    # Etapa 26F: B10/B11 sao o fator historico integral FAIL-CLOSED ate o
+    # ciclo vigente (zero explicito e valido; percentual necessario ausente
+    # deixa a celula vazia — nunca regride para 1). Mesma regra aplicada por
+    # tools/aplicar_resultados_consolidados_26f.py (_formula_fator_historico);
+    # manter as duas fontes identicas.
+    ws["A10"] = "Variação histórica integral até o ciclo vigente"
+    ws["B10"] = '=IF(ISNUMBER(B11),B11-1,"")'
+    ws["A11"] = "Fator histórico integral (até o ciclo vigente)"
+    ws["B11"] = (
+        '=IFERROR(IF(UPPER($B$2)="C0",1,'
+        'IF(UPPER($B$2)="C1",IF(COUNT(parametros!$E$3:$E$3)=1,parametros!$F$3,""),'
+        'IF(UPPER($B$2)="C2",IF(COUNT(parametros!$E$3:$E$4)=2,parametros!$F$4,""),'
+        'IF(UPPER($B$2)="C3",IF(COUNT(parametros!$E$3:$E$5)=3,parametros!$F$5,""),'
+        'IF(UPPER($B$2)="C4",IF(COUNT(parametros!$E$3:$E$6)=4,parametros!$F$6,""),'
+        '""))))),"")'
+    )
     ws["A12"] = "Último ciclo considerado nesta apuração"
     ws["A13"] = "Início do último ciclo considerado"
     for ref in ("B3", "B8", "B13", "B14"):

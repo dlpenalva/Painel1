@@ -109,7 +109,7 @@ def test_ab_entra_no_calculo_nao_exclui_do_vta():
 # ---- F/G/H (template estatico). Ramo PC no remanescente + B4 canonica -------
 def _resultados():
     wb = openpyxl.load_workbook(TEMPLATE, data_only=False)
-    return wb["RESULTADOS"]
+    return wb["MEMORIA_RESULTADOS"]
 
 
 def test_f_b4_normalizador_canonico():

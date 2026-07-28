@@ -38,7 +38,7 @@ def wb():
 
 
 def test_bloco_cabecalhos(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb["MEMORIA_RESULTADOS"]
     assert str(ws["A256"].value).startswith("EIXO 5")
     assert [ws.cell(LIN_HDR, c).value for c in range(1, 16)] == CAB_BLOCO
     assert [ws.cell(LIN_C0 + i, 1).value for i in range(5)] == ["C0", "C1", "C2", "C3", "C4"]
@@ -54,13 +54,13 @@ def test_helper_20_colunas(wb):
 
 
 def test_vta_b23_inalterado(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb["MEMORIA_RESULTADOS"]
     for cel, esp in VTA_HOMOLOGADO.items():
         assert ws[cel].value == esp, f"{cel} divergiu"
 
 
 def test_b26_integra_total_adotado_sem_override(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb["MEMORIA_RESULTADOS"]
     b26 = str(ws["B26"].value)
     assert "IF(ISNUMBER($N$263),$N$263,0)" in b26           # incorpora total adotado
     assert b26.startswith('=IF(AND(B24<>"",B25<>"")')        # governanca preservada
@@ -69,7 +69,7 @@ def test_b26_integra_total_adotado_sem_override(wb):
 
 
 def test_vta_nao_depende_do_bloco(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb["MEMORIA_RESULTADOS"]
     chain = ["B20", "B21", "B22", "B23", "B16", "E15", "C35", "D35", "B32", "C32", "D32"]
     aux = ["AO", "AP", "AQ", "AR", "AS", "AT", "AU", "AV", "AW", "AX", "AY", "AZ",
            "BA", "BB", "BC", "BD", "BE", "BF", "BG", "BH"]
@@ -82,7 +82,7 @@ def test_vta_nao_depende_do_bloco(wb):
 
 
 def test_fator_base_canonico(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb["MEMORIA_RESULTADOS"]
     # F_base = F/D quando computado; F_cheio quando fora+formalizado (marcador Sim)
     i259 = str(ws["I259"].value)
     assert "parametros!$F$3/parametros!$D$12" in i259
@@ -94,11 +94,11 @@ def test_fator_base_canonico(wb):
 def test_parcelas_formulas(wb):
     wi = wb["itens_Remanesc"]
     # PARCELA A = QTD_EXEC * VU * (F_base - 1) ; independe de cobertura
-    assert wi["AU2"].value == '=IF(OR($A2="",M2="",RESULTADOS!$I$259=""),"",ROUND(M2*$C2*(RESULTADOS!$I$259-1),2))'
+    assert wi["AU2"].value == '=IF(OR($A2="",M2="",MEMORIA_RESULTADOS!$I$259=""),"",ROUND(M2*$C2*(MEMORIA_RESULTADOS!$I$259-1),2))'
     # PARCELA B = QTD_NAO_COBERTA * VU * (F_cheio - F_base)
-    assert wi["AV2"].value == '=IF(OR($A2="",AT2="",RESULTADOS!$I$259=""),"",ROUND(AT2*$C2*(parametros!$F$3-RESULTADOS!$I$259),2))'
+    assert wi["AV2"].value == '=IF(OR($A2="",AT2="",MEMORIA_RESULTADOS!$I$259=""),"",ROUND(AT2*$C2*(parametros!$F$3-MEMORIA_RESULTADOS!$I$259),2))'
     # bloco: K (parcela A) nao exige metodo; L (parcela B) exige "Itens"
-    ws = wb["RESULTADOS"]
+    ws = wb["MEMORIA_RESULTADOS"]
     assert '$B$4<>"Itens"' not in str(ws["K259"].value)      # A independe do metodo
     assert '$B$4<>"Itens"' in str(ws["L259"].value)          # B exige reconciliavel
 
@@ -132,7 +132,7 @@ def test_marcador_formalizado_dropdown(wb):
 
 
 def test_valor_adotado_validacao(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb["MEMORIA_RESULTADOS"]
     achou = False
     for dv in ws.data_validations.dataValidation:
         if any(f"N{LIN_C0 + i}" in str(dv.sqref) for i in range(5)):
@@ -140,7 +140,13 @@ def test_valor_adotado_validacao(wb):
             assert dv.type == "decimal" and dv.operator == "greaterThanOrEqual"
     assert achou
     for i in range(5):
-        assert ws.cell(LIN_C0 + i, 14).value in (None, "")   # coluna N vazia
+        linha_resultados = 46 + i
+        assert ws.cell(LIN_C0 + i, 14).value == (
+            f'=IF(AND(RESULTADOS!$G${linha_resultados}="Sim",'
+            f'ISNUMBER(RESULTADOS!$C${linha_resultados}),'
+            f'RESULTADOS!$C${linha_resultados}>=0),'
+            f'RESULTADOS!$C${linha_resultados},"")'
+        )
 
 
 def test_colunas_ocultas_reexibiveis(wb):
@@ -224,7 +230,7 @@ def _edit(pasta, *, metodo="Itens", base=100.0, vu=10.0, rem_c1=60.0, rem_c2=30.
           cons_c1=None, delta_c1=0.0, adotado=None, b25=None, uncompute=None,
           marker=None, aditivo_considerado=False):
     if metodo is not None:
-        pasta.Worksheets("RESULTADOS").Range("B4").Value = metodo
+        pasta.Worksheets("CONTROLE").Range("B1").Value = metodo
     ir = pasta.Worksheets("itens_Remanesc")
     ir.Range("A2").Value = "ITEM-1"
     ir.Range("B2").Value = base
@@ -256,7 +262,7 @@ def _edit(pasta, *, metodo="Itens", base=100.0, vu=10.0, rem_c1=60.0, rem_c2=30.
     if marker:
         for grow, val in marker.items():
             wp.Range(f"G{grow}").Value = val
-    r = pasta.Worksheets("RESULTADOS")
+    r = pasta.Worksheets("MEMORIA_RESULTADOS")
     if adotado:
         for row, val in adotado.items():
             r.Range(f"N{row}").Value = val
@@ -266,7 +272,7 @@ def _edit(pasta, *, metodo="Itens", base=100.0, vu=10.0, rem_c1=60.0, rem_c2=30.
 
 
 def _ler(pasta):
-    r = pasta.Worksheets("RESULTADOS")
+    r = pasta.Worksheets("MEMORIA_RESULTADOS")
     L = {}
     for i, nome in enumerate(["C0", "C1", "C2", "C3", "C4"]):
         row = 258 + i
@@ -434,7 +440,7 @@ def test_com_identidade_conservacao(tmp_path):
     # adota o complemento potencial de C1 (M259) integralmente
     def editar2(p):
         _edit(p, cons_c1=10.0)
-        r = p.Worksheets("RESULTADOS")
+        r = p.Worksheets("MEMORIA_RESULTADOS")
         p.Application.CalculateFull()
         m259 = r.Range("M259").Value
         if isinstance(m259, (int, float)):

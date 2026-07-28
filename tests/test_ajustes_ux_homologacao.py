@@ -26,6 +26,9 @@ com = pytest.mark.skipif(os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
 def _wb():
     return load_workbook(TEMPLATE, data_only=False)
 
+def _memoria(wb):
+    return wb["MEMORIA_RESULTADOS"]
+
 
 # ---- A/B CONTROLE ----
 def test_controle_b1_funcional():
@@ -35,8 +38,8 @@ def test_controle_b1_funcional():
     dvs = [(str(d.sqref), d.formula1) for d in c.data_validations.dataValidation]
     assert any("B1" in s for s, _ in dvs)                 # dropdown mantido
     # Chave canonica: B4 normaliza CONTROLE!$B$1 e a logica (ex.: B35) consome B4.
-    assert "CONTROLE!$B$1" in wb["RESULTADOS"]["B4"].value
-    assert "$B$4" in wb["RESULTADOS"]["B35"].value
+    assert "CONTROLE!$B$1" in _memoria(wb)["B4"].value
+    assert "$B$4" in _memoria(wb)["B35"].value
 
 
 def test_controle_c1_vazia():
@@ -113,7 +116,7 @@ def test_painel_posicao_referencia_estilizado():
 
 # ---- O B4 ----
 def test_b4_destaque_isolado():
-    r = _wb()["RESULTADOS"]
+    r = _memoria(_wb())
     assert r["B4"].fill.fgColor.rgb == "FFF7E7B2" and r["B4"].font.bold
     assert r["A4"].fill.fgColor.rgb == "FFC6D9E8"   # A4 inalterada
     assert r["C4"].fill.fgColor.rgb == "FFC6D9E8"   # C4 inalterada
@@ -121,19 +124,19 @@ def test_b4_destaque_isolado():
 
 # ---- P/Q EIXOS ----
 def test_eixos_padronizados_maroon():
-    r = _wb()["RESULTADOS"]
+    r = _memoria(_wb())
     for cel in ("A8", "A17", "A19", "A30", "A256", "A267"):
         assert r[cel].fill.fgColor.rgb == MAROON, f"{cel} nao padronizado"
         assert r[cel].font.color.rgb in ("FFFFFFFF", "00FFFFFF")
 
 
 def test_eixo2_sem_referencia_linha_62():
-    assert "linha 62" not in str(_wb()["RESULTADOS"]["A17"].value)
+    assert "linha 62" not in str(_memoria(_wb())["A17"].value)
 
 
 # ---- R notas + AC/AD ancoras ----
 def test_notas_tecnicas_movidas_sem_deslocar():
-    r = _wb()["RESULTADOS"]
+    r = _memoria(_wb())
     assert r["A48"].value in (None, "")
     assert r["A49"].value in (None, "")
     assert r["A280"].value == "NOTAS TECNICAS"
@@ -145,16 +148,19 @@ def test_notas_tecnicas_movidas_sem_deslocar():
 
 # ---- S invariantes ----
 def test_vta_invariante():
-    r = _wb()["RESULTADOS"]
+    r = _memoria(_wb())
     assert r["B23"].value == '=IF(OR(B20="",B21="",B22=""),"",ROUND(B20+B21+B22,2))'
     assert "$N$263" in r["B26"].value and "posicao_referencia" not in r["B26"].value
-    assert r["B25"].value in (None, "")
+    assert r["B25"].value == (
+        '=IF(AND(RESULTADOS!$G$45="Sim",RESULTADOS!$C$45<>""),'
+        'RESULTADOS!$C$45,"")'
+    )
 
 
 # ---- T integridade basica ----
-def test_treze_abas():
-    # 13 abas + comparativo_VTA (aba de referencia do pacote pos-CLEMAR).
-    assert len(_wb().sheetnames) == 14
+def test_quinze_abas():
+    # 14 abas anteriores + MEMORIA_RESULTADOS da Etapa 26F.
+    assert len(_wb().sheetnames) == 15
 
 
 # ================================================================ COM
@@ -212,7 +218,7 @@ def test_com_reabertura_sem_reparo(tmp_path):
         xl.Visible = False; xl.DisplayAlerts = True
         try:
             wb = xl.Workbooks.Open(str(dest.resolve()), UpdateLinks=0, CorruptLoad=0)
-            assert wb.Sheets.Count == 14, f"rodada {rodada}"  # +comparativo_VTA
+            assert wb.Sheets.Count == 15, f"rodada {rodada}"
             wb.Close(False)
         finally:
             xl.Quit(); gc.collect(); pythoncom.CoUninitialize()

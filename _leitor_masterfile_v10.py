@@ -2871,11 +2871,13 @@ _NOMES_RESULTADOS_XLS = (
 
 
 def _ler_resultados_xls(wb) -> dict[str, Any]:
-    """Le os intervalos nomeados da aba RESULTADOS (novo modelo oficial).
+    """Le os intervalos nomeados dos resultados do modelo oficial.
 
-    Uso exclusivo de AUDITORIA/reconciliacao com o motor Python — nunca
-    substitui o calculo. Valores vem do cache do Excel (data_only=True);
-    sem recalculo, tudo retorna None e cache_ausente=True.
+    Desde a Etapa 26F, os nomes apontam para MEMORIA_RESULTADOS e a aba
+    RESULTADOS e somente executiva. A leitura continua orientada pelos nomes,
+    sem depender de coordenadas. Uso exclusivo de AUDITORIA/reconciliacao com
+    o motor Python — nunca substitui o calculo. Valores vem do cache do Excel
+    (data_only=True); sem recalculo, tudo retorna None e cache_ausente=True.
     """
     resultado: dict[str, Any] = {
         "disponivel": False, "nomes_presentes": [], "valores": {},
@@ -2995,7 +2997,11 @@ def ler_masterfile_v10(
         # e necessaria para leitura); Coletas geradas antes dela devem seguir
         # sendo lidas (compatibilidade retroativa).
         ABAS_OPCIONAIS_COMPAT = {
-            "posicao_referencia", "cobertura_temporal", "comparativo_VTA"}
+            "posicao_referencia",
+            "cobertura_temporal",
+            "comparativo_VTA",
+            "MEMORIA_RESULTADOS",
+        }
         res["abas_ausentes"] = [
             a for a in ABAS_COLETA_OFICIAL
             if a.lower() not in abas_lower and a not in ABAS_OPCIONAIS_COMPAT

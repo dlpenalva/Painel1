@@ -171,7 +171,7 @@ def _arquivo_sheet_por_nome(caminho: Path, nome_aba: str) -> str:
 
 
 def _alterar_cache_resultados(caminho: Path, celula: str, valor: float) -> None:
-    arquivo_resultados = _arquivo_sheet_por_nome(caminho, "RESULTADOS")
+    arquivo_resultados = _arquivo_sheet_por_nome(caminho, "MEMORIA_RESULTADOS")
     temporario = caminho.with_suffix(".tmp.xlsx")
     with zipfile.ZipFile(caminho, "r") as origem, zipfile.ZipFile(
         temporario, "w", zipfile.ZIP_DEFLATED
@@ -202,7 +202,7 @@ def test_excel_com_linha_73_entra_em_resultados(tmp_path: Path) -> None:
     valores = load_workbook(caminho, data_only=True)
     assert str(valores["financeiro"]["B73"].value).lower() == "c4"
     assert valores["financeiro"]["F73"].value == pytest.approx(46.41, abs=0.01)
-    assert valores["RESULTADOS"]["B14"].value == pytest.approx(46.41, abs=0.01)
+    assert valores["MEMORIA_RESULTADOS"]["B14"].value == pytest.approx(46.41, abs=0.01)
 
 
 def test_excel_com_efeitos_itens_pc_data_exata_cores_e_reabertura(tmp_path: Path) -> None:
@@ -312,7 +312,6 @@ def test_excel_com_runtime_financeiro_pc_reconciliacao_e_bloqueio(tmp_path: Path
 
     pc = load_workbook(io.BytesIO(base))
     pc["CONTROLE"]["B1"] = "Pedidos de Compras"
-    pc["RESULTADOS"]["B4"] = "PCs"
     pc["itens_PC"]["A2"] = "PC-001"
     pc["itens_PC"]["B2"] = date(2024, 1, 15)
     pc["itens_PC"]["D2"] = 600.0
@@ -372,7 +371,6 @@ def test_excel_com_pcs_multiciclo_ignora_fator_historico_fora_do_objeto(tmp_path
     }
     wb = load_workbook(io.BytesIO(gerar_coleta_oficial_preenchida(dados)))
     wb["CONTROLE"]["B1"] = "Pedidos de Compras"
-    wb["RESULTADOS"]["B4"] = "PCs"
     for row, numero, data_pc, valor in (
         (2, "PC-2001", date(2025, 2, 15), 600.0),
         (3, "PC-3001", date(2026, 3, 20), 800.0),
