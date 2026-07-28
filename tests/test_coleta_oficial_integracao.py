@@ -49,7 +49,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # comparativo executivo A28:C29 (via Excel COM).
 # ETAPA 26F: memoria tecnica oculta + RESULTADOS executiva, fator historico
 # fail-closed e tabela manual unica (Excel COM).
-SHA256_TEMPLATE_ESPERADO = "8185a14f5f3d355c2708b271bb452c414a0ffe54a8741420062b9288535e388a"
+SHA256_TEMPLATE_ESPERADO = "adfe0eb2f54911380a353e2fc56a615e2ca5b6fc2162476c93f7dce48fa8d0e1"
 
 
 def _dados_calculadora() -> dict:

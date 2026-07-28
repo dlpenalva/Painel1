@@ -229,6 +229,16 @@ def test_26f1_validacao_complemento_historico_nao_negativo(wb):
         assert ">=0" not in str(ws[f"H{linha}"].value), f"H{linha}"
 
 
+def test_26f4_resultados_sem_painel_congelado(wb):
+    """Homologacao humana: rolagem livre desde a linha 1 (sem FreezePanes)."""
+    pane = wb["RESULTADOS"].sheet_view.pane
+    assert pane is None or (
+        getattr(pane, "state", None) != "frozen"
+        and not getattr(pane, "ySplit", None)
+        and not getattr(pane, "xSplit", None)
+    )
+
+
 def test_achado_d_builder_canonico_possui_fator_historico():
     builder = (ROOT / "tools" / "build_coleta_reajuste_template.py").read_text(
         encoding="utf-8"

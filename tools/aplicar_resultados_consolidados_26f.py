@@ -859,9 +859,13 @@ def _criar_nova_resultados(wb, manuais: dict[str, object]):
     nova.PageSetup.FitToPagesTall = False
     nova.PageSetup.PrintArea = "$A$1:$H$50"
     nova.Application.ActiveWindow.DisplayGridlines = False
+    # 26F.4: sem paineis congelados — rolagem livre desde a linha 1
+    # (homologacao humana da V2). Limpeza explicita de qualquer split.
     nova.Activate()
-    nova.Range("A8").Select()
-    nova.Application.ActiveWindow.FreezePanes = True
+    janela = nova.Application.ActiveWindow
+    janela.FreezePanes = False
+    janela.SplitRow = 0
+    janela.SplitColumn = 0
     nova.Range("A1").Select()
 
     # Guia executiva unica colorida; memorias podem ser reexibidas para auditoria.
