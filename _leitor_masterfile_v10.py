@@ -29,6 +29,8 @@ from _masterfile_config_v10 import (
     ABA_EXECUCAO_SALDO,
     MODOS_VALIDOS_V10,
 )
+from _capacidade_pcs import ULTIMA_LINHA_PCS
+from _capacidade_pcs import ULTIMA_LINHA_PCS
 from _motor_vta_sombra import calcular_vta_sombra
 from _motor_composicao_vta import montar_composicao_vta
 from _motor_reconciliacao import reconciliar_execucoes

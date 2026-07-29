@@ -34,7 +34,9 @@ FORMULAS_POR_ABA = {
     "financeiro": 291,
     "itens_Remanesc": 9195,
     "itens_Consumidos": 1806,
-    "itens_PC": 834,
+    # Etapa 26G: grade escalada para a capacidade canonica (5.000 PCs
+    # x 8 colunas de formula) + resumo lateral N2:T6.
+    "itens_PC": 40042,
     "aditivos": 1393,
     "posicao_referencia": 2595,
     "posicao_contratual": 4776,
@@ -42,10 +44,12 @@ FORMULAS_POR_ABA = {
     "historico_VU": 3592,
     "cobertura_temporal": 15,
     # 3762 anteriores + 11 referencias para a tabela manual unica.
-    "MEMORIA_RESULTADOS": 3773,
+    # 26G: +5 (T26/T27 completude do remanescente; T28:T30 PCs sem efeito).
+    "MEMORIA_RESULTADOS": 3778,
     # 57 do prototipo + 4 selos por tabela + 1 premissa da estimativa - 1
     # helper J4 removido (status global agora agrega os selos H8/H14/H24/H33).
-    "RESULTADOS": 61,
+    # 26G: +5 (linha executiva A23:E23 dos PCs sem efeito financeiro).
+    "RESULTADOS": 66,
 }
 
 
@@ -162,11 +166,12 @@ def test_itens_pc_efeito_financeiro_aplicado():
     ws = wb["itens_PC"]
     assert ws["L1"].value == "EFEITO_FINANCEIRO_PC"
     assert isinstance(ws["L2"].value, str) and ws["L2"].value.startswith("=IF(")
-    assert ws["L101"].value is None
+    # 26G: grade ate a capacidade canonica — L101 tem formula.
+    assert str(ws["L101"].value).startswith("=")
     validacoes = [
         (dv.type, str(dv.sqref)) for dv in ws.data_validations.dataValidation
     ]
-    assert validacoes == [("list", "G2:G100")]
+    assert validacoes == [("list", "G2:G5001")]
     par = wb["parametros"]
     assert par["H1"].value == "INICIO_EFEITO_FINANCEIRO"
     assert {par.cell(r, 8).number_format for r in range(2, 7)} == {

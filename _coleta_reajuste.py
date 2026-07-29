@@ -20,6 +20,7 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 from openpyxl.styles import Font, PatternFill
 
+from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
 from _capacidades_apuracao import avaliar_capacidades_apuracao
 from _efeitos_financeiros_pc import (
     efeito_financeiro_pc,
@@ -596,7 +597,49 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
     col_numero_pc = "A" if layout_pc_numero else None
     col_data_pc = "B" if layout_pc_numero else "A"
     col_valor_pc = "D" if layout_pc_numero else "C"
-    for row in range(2, 101):
+    # 26G: capacidade excedida NUNCA e truncada em silencio — bloqueio explicito.
+    if ws_pc.max_row > ULTIMA_LINHA_PCS:
+        linhas_alem = sorted(
+            {
+                cell.row
+                for row_alem in ws_pc.iter_rows(
+                    min_row=ULTIMA_LINHA_PCS + 1, min_col=1, max_col=12
+                )
+                for cell in row_alem
+                if cell.value not in (None, "")
+            }
+        )
+        if linhas_alem:
+            bloqueios_estruturais.append(
+                f"Capacidade de PCs excedida: ha conteudo em itens_PC apos a "
+                f"linha {ULTIMA_LINHA_PCS} (ex.: linha {linhas_alem[0]}). "
+                f"Maximo suportado: {CAPACIDADE_PCS} PCs."
+            )
+    # 26G: duplicidade de NUMERO_PC verificada em TODA a base (TRIM+UPPER),
+    # nao apenas nos primeiros 100 PCs.
+    if col_numero_pc:
+        _vistos: dict[str, int] = {}
+        _duplicados: dict[str, list[int]] = {}
+        for row in range(2, ULTIMA_LINHA_PCS + 1):
+            bruto = ws_pc[f"{col_numero_pc}{row}"].value
+            chave = str(bruto).strip().upper() if bruto not in (None, "") else ""
+            if not chave:
+                continue
+            if chave in _vistos:
+                _duplicados.setdefault(chave, [_vistos[chave]]).append(row)
+            else:
+                _vistos[chave] = row
+        for chave, linhas in sorted(_duplicados.items())[:8]:
+            bloqueios_criticos.append(
+                f"NUMERO_PC duplicado: {chave} (linhas "
+                + ", ".join(str(li) for li in linhas)
+                + ")."
+            )
+        if len(_duplicados) > 8:
+            bloqueios_criticos.append(
+                f"Ha mais {len(_duplicados) - 8} NUMERO_PC duplicados em itens_PC."
+            )
+    for row in range(2, ULTIMA_LINHA_PCS + 1):
         if not any(
             ws_pc[f"{col}{row}"].value not in (None, "")
             for col in tuple(
@@ -719,7 +762,7 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         "competencias_com_valor": sum(1 for row in range(2, 74) if _numero(wb["financeiro"][f"C{row}"].value) is not None),
         "itens_remanescentes": sum(1 for row in range(2, 201) if wb["itens_Remanesc"][f"A{row}"].value not in (None, "")),
         "itens_consumidos": sum(1 for row in range(2, 201) if wb["itens_Consumidos"][f"A{row}"].value not in (None, "")),
-        "pedidos_de_compra": sum(1 for row in range(2, 101) if wb["itens_PC"][f"A{row}"].value not in (None, "")),
+        "pedidos_de_compra": sum(1 for row in range(2, ULTIMA_LINHA_PCS + 1) if wb["itens_PC"][f"A{row}"].value not in (None, "")),
         "aditivos": sum(1 for row in range(2, 201) if wb["aditivos"][f"A{row}"].value not in (None, "")),
         "formulas": len(formulas),
         "posicao_contratual_itens": 0,

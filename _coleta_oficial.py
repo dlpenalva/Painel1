@@ -34,6 +34,8 @@ from typing import Any
 from openpyxl import load_workbook
 from dateutil.relativedelta import relativedelta
 
+from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
+
 ROOT = Path(__file__).resolve().parent
 TEMPLATE_COLETA_OFICIAL = ROOT / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
 # Nome de referencia interno do template (nao renomear o arquivo fisico).
@@ -172,9 +174,10 @@ def _limpar_residuos(wb) -> None:
 def _validar_estrutura_itens_pc(wb) -> None:
     """Barreira contra regressao critica: itens_PC jamais pode sair esvaziada.
 
-    Valida cabecalhos A1:L1 e a densidade de formulas da grade (C:L, linhas
-    2-100). Se o template em disco for trocado por uma versao sem a estrutura
-    homologada, a geracao falha explicitamente em vez de entregar o XLS.
+    Valida cabecalhos A1:L1 e a densidade de formulas da grade (C:L, ate a
+    capacidade canonica de PCs — Etapa 26G). Se o template em disco for
+    trocado por uma versao sem a estrutura homologada, a geracao falha
+    explicitamente em vez de entregar o XLS.
     """
     ws = wb["itens_PC"]
     cabecalhos = [ws.cell(1, c).value for c in range(1, 13)]
@@ -185,14 +188,16 @@ def _validar_estrutura_itens_pc(wb) -> None:
         )
     formulas = sum(
         1
-        for row in ws.iter_rows(min_row=2, max_row=100, min_col=3, max_col=12)
+        for row in ws.iter_rows(
+            min_row=2, max_row=ULTIMA_LINHA_PCS, min_col=3, max_col=12
+        )
         for cell in row
         if isinstance(cell.value, str) and cell.value.startswith("=")
     )
-    if formulas < 700:
+    if formulas < CAPACIDADE_PCS * 7:
         raise ValueError(
-            f"itens_PC invalida: apenas {formulas} formulas na grade C2:L100 "
-            "(estrutura esvaziada)"
+            f"itens_PC invalida: apenas {formulas} formulas na grade "
+            f"C2:L{ULTIMA_LINHA_PCS} (estrutura esvaziada ou truncada)"
         )
     # Visao salva rolada (ex.: topLeftCell=AD1 com V:AC ocultas e sem grade)
     # faz a aba parecer completamente vazia no Excel — causa raiz do bug de

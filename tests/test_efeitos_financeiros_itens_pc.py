@@ -167,10 +167,11 @@ def test_template_usa_l_sem_deslocar_resumos_metadados_e_limite():
     assert ws["AC1"].value == "JUSTIFICATIVA_VTA"
     assert wb["parametros"]["H1"].value == "INICIO_EFEITO_FINANCEIRO"
     assert all(str(ws[f"L{r}"].value).startswith("=") for r in range(2, 101))
-    assert ws["L101"].value is None and not ws["L101"].has_style
-    assert [str(dv.sqref) for dv in ws.data_validations.dataValidation] == ["G2:G100"]
+    # 26G: a grade cobre a capacidade canonica; L101 passou a ter formula.
+    assert str(ws["L101"].value).startswith("=")
+    assert [str(dv.sqref) for dv in ws.data_validations.dataValidation] == ["G2:G5001"]
     regras = list(ws.conditional_formatting._cf_rules.items())
-    assert len(regras) == 1 and str(regras[0][0].sqref) == "A2:L100"
+    assert len(regras) == 1 and str(regras[0][0].sqref) == "A2:L5001"
     assert regras[0][1][0].stopIfTrue is True
 
 
@@ -186,9 +187,9 @@ def test_formulas_pc_separam_nominal_reconhecido_analise_e_delta():
     assert "INICIO_EFEITO ausente: PC" in ws["K2"].value
     assert "B2>=" in ws["L2"].value
     # M:T: Q soma H; R soma I; S soma J. Valor integral nao vira retroativo.
-    assert "$H$2:$H$100" in ws["Q2"].value
-    assert "$I$2:$I$100" in ws["R2"].value
-    assert "$J$2:$J$100" in ws["S2"].value
+    assert "$H$2:$H$5001" in ws["Q2"].value
+    assert "$I$2:$I$5001" in ws["R2"].value
+    assert "$J$2:$J$5001" in ws["S2"].value
 
 
 def _workbook_upload(

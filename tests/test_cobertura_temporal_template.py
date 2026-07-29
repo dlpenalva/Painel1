@@ -73,7 +73,7 @@ def test_ultima_evidencia_nao_e_completo_ate():
     # linha TOTAL (A vazia) que gerava falsa evidencia Financeiro.
     assert "ISNUMBER(financeiro!$A$2:$A$200)" in ws["B12"].value
     assert "ISNUMBER(financeiro!$C$2:$C$200)" in ws["B12"].value
-    assert "MAX(itens_PC!$B$2:$B$200)" in ws["B14"].value
+    assert "MAX(itens_PC!$B$2:$B$5001)" in ws["B14"].value
 
 
 def test_campos_gcc_confirmacao_completa():
