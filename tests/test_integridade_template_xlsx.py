@@ -6,6 +6,7 @@ formulas/estilos e descaracterizacao da aba financeiro.
 """
 from __future__ import annotations
 
+import gc
 import re
 import zipfile
 import xml.etree.ElementTree as ET
@@ -32,14 +33,22 @@ FORMULAS_POR_ABA = {
     "CONTROLE": 6,
     "parametros": 32,
     "financeiro": 291,
-    "itens_Remanesc": 9195,
+    # 26H.1/26H.2: +199 formulas pre-semeadas de base zero visual em
+    # B2:B200. FRONTEIRA FUNCIONAL: linha 200 = ultima linha de cadastro
+    # contratual (A2:A200 em toda a cadeia); linha 201 = linha extra do
+    # total dinamico de D/F — FORA da capacidade funcional e sem automacao
+    # de input (o off-by-one B201 da 26H.1 foi apontado pela auditoria e
+    # removido na 26H.2).
+    "itens_Remanesc": 9394,
     "itens_Consumidos": 1806,
     # Etapa 26G: grade escalada para a capacidade canonica (5.000 PCs
     # x 8 colunas de formula) + resumo lateral N2:T6.
     "itens_PC": 40042,
     "aditivos": 1393,
     "posicao_referencia": 2595,
-    "posicao_contratual": 4776,
+    # 26H: +398 formulas das colunas tecnicas ocultas Y (CICLO_NASCIMENTO)
+    # e Z (EH_NOVO_ITEM), linhas 2:200.
+    "posicao_contratual": 5174,
     "itens_RC": 3200,
     "historico_VU": 3592,
     "cobertura_temporal": 15,
@@ -212,6 +221,9 @@ def test_abertura_e_reabertura_sem_reparo_no_excel_real():
             wb = excel.Workbooks.Open(str(TEMPLATE), UpdateLinks=0, ReadOnly=True)
             assert wb.Worksheets.Count == 15, f"rodada {rodada}"
             wb.Close(False)
+            del wb
     finally:
         excel.Quit()
+        del excel
+        gc.collect()
         pythoncom.CoUninitialize()

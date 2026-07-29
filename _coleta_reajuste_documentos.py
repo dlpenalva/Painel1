@@ -400,6 +400,14 @@ def adaptar_coleta_reajuste_para_documentos(
             "reconciliacao_xls_python": leitura.get("reconciliacao_xls_python") or {},
             "posicao_contratual_runtime": leitura.get("posicao_contratual") or {},
             "memoria_por_ciclo": memoria,
+            # Etapa 26H: chaves canonicas da leitura exigidas pelos documentos
+            # (montar_dados_sumario_executivo). Sem elas, o quadro de VUs do
+            # Termo ficava vazio, o indice caia em "Nao informado" e a PREVIA
+            # nao tinha o numero oficial do XLS.
+            "controle": leitura.get("controle") or {},
+            "historico_vu": leitura.get("historico_vu") or {},
+            "memoria_calculo": leitura.get("memoria_calculo") or {},
+            "resultados_xls": leitura.get("resultados_xls") or {},
             "_resultado_calculado_python": True,
         })
     return resultado_documental

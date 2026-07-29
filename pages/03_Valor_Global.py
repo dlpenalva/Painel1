@@ -76,7 +76,6 @@ def aplicar_css_aditivos25_compacto():
 from _ui_utils import (
     render_avisos_override_efeito_financeiro,
     render_cabecalho_pagina,
-    render_cobertura_temporal,
 )
 
 def agora_brasilia():
@@ -4858,9 +4857,12 @@ def render_status_base_coleta(diagnostico):
 
 
 def render_documentos_funcionais_upload(resultado):
-    """Renderiza os seis destinos documentais após processamento explícito."""
-    render_status_base_coleta(resultado.get("diagnostico_coleta"))
+    """Renderiza os seis destinos documentais após processamento explícito.
 
+    Etapa 26H (limpeza da interface): o aviso de status da base foi retirado
+    da tela — a política documental da PRÉVIA passa a comunicar o estado não
+    definitivo nos próprios documentos; o diagnóstico segue no session_state.
+    """
     st.markdown(_CSS_DOCS_GRID, unsafe_allow_html=True)
     documentos = (resultado.get("capacidades") or {}).get("documentos") or {}
     col_a, col_b, col_c = st.columns(3)
@@ -4992,7 +4994,9 @@ if resultado:
     resumo_ciclos.metric("Ciclos analisados", _ciclos_str)
     resumo_retro.metric("Retroativo reconhecido", _retro_str)
     resumo_acum.metric("Percentual acumulado", _acum_str)
-    render_cobertura_temporal(diagnostico_coleta.get("cobertura_temporal"))
+    # Etapa 26H (limpeza da interface): expander de cobertura temporal
+    # confirmado na homologação e removido da tela; o diagnóstico permanece
+    # em diagnostico_coleta["cobertura_temporal"] (camada sombra intacta).
     render_documentos_funcionais_upload(resultado)
     st.stop()
 

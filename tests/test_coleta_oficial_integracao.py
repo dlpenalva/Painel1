@@ -51,7 +51,21 @@ ROOT = Path(__file__).resolve().parents[1]
 # fail-closed e tabela manual unica (Excel COM).
 # Etapa 26G: escala canonica de PCs + fail-closed do VTA (owner:
 # tools/aplicar_escala_pcs_26g.py) — pin reancorado.
-SHA256_TEMPLATE_ESPERADO = "ddaf5c21c86cb71bab9381629e346607667369d949d57889260a02b92fbef5c0"
+# Etapa 26H: novos itens Nxxx com base zero automatica (colunas tecnicas
+# Y/Z em posicao_contratual), historico_VU temporal, POSICAO ATUAL COMPLETA?
+# com vigencia na data de corte, CHECKs de novo item, mensagem de aditivos e
+# dropdown itens_PC!G via =OPCOES_SIM_NAO (owner: tools/aplicar_26h_template.py)
+# — pin reancorado.
+# Etapa 26H.1: base zero VISUAL — formula pre-semeada em itens_Remanesc!B2:B200
+# (Nxxx -> 0 na propria aba; caso contrario "") e coercao ""->0 nos consumidores
+# aritmeticos posicao_contratual!C e posicao_referencia!C (owner:
+# tools/aplicar_26h1_template.py) — pin reancorado.
+# Etapa 26H.2 (auditoria independente): fronteira de cadastro 2:200 (B201
+# limpa — linha 201 e do total dinamico, fora da capacidade funcional);
+# padrao canonico N + exatamente 3 algarismos (espelho ^[Nn]\d{3}$) em
+# itens_Remanesc!B e posicao_contratual!Z; UX aditivos!M com WrapText
+# (owner: tools/aplicar_26h2_template.py) — pin reancorado.
+SHA256_TEMPLATE_ESPERADO = "c85fd05ec82d660fe4a4e84cf0e37b25408924d81710c380c00621c2041f4814"
 
 
 def _dados_calculadora() -> dict:

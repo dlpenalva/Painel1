@@ -30,7 +30,6 @@ from _masterfile_config_v10 import (
     MODOS_VALIDOS_V10,
 )
 from _capacidade_pcs import ULTIMA_LINHA_PCS
-from _capacidade_pcs import ULTIMA_LINHA_PCS
 from _motor_vta_sombra import calcular_vta_sombra
 from _motor_composicao_vta import montar_composicao_vta
 from _motor_reconciliacao import reconciliar_execucoes
@@ -140,7 +139,9 @@ def _ler_posicao_fisica_fiscal(wb):
     pr = wb["posicao_referencia"] if "posicao_referencia" in wb.sheetnames else None
     itens_base: list[str] = []
     remanescente: dict[str, float] = {}
-    for r in range(2, 202):
+    # 26H.2: capacidade canonica de cadastro = linhas 2:200 (linha 201 e do
+    # total dinamico e NAO e linha valida de item — fronteira da auditoria).
+    for r in range(2, 201):
         item = ir.cell(r, 1).value
         cod = str(item).strip() if item not in (None, "") else ""
         if not cod:
@@ -2341,7 +2342,13 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
             and _norm(valor_deslocado) in {"sim", "nao"}
         )
 
-    limite_operacional = min(ws.max_row, 100) if ws.title == "itens_PC" else ws.max_row
+    # Etapa 26H: o teto operacional de itens_PC segue a capacidade canonica
+    # (_capacidade_pcs). O teto legado de 100 linhas truncava silenciosamente
+    # os PCs a partir da linha 101 (C0 parcial e C1 inteiro fora da memoria
+    # por ciclo e do Sumario Executivo).
+    limite_operacional = (
+        min(ws.max_row, ULTIMA_LINHA_PCS) if ws.title == "itens_PC" else ws.max_row
+    )
     for r in range(2, limite_operacional + 1):
         if _linha_exemplo_fiscal(ws, r):
             continue
@@ -3061,11 +3068,15 @@ def ler_masterfile_v10(
     modo_bruto = str(_achar_valor(c, "modo de leitura") or "").strip()
     ciclo      = _achar_valor(c, "ciclo vigente (em execucao)")
     corte      = _achar_valor(c, "data de corte (unica p/ contrato)")
+    indice     = _achar_valor(c, "indice utilizado")
     res["controle"] = {
         "modo":          _normalizar_modo(modo_bruto),
         "modo_bruto":    modo_bruto,
         "ciclo_vigente": str(ciclo or "").strip(),
         "data_corte":    corte,
+        # Etapa 26H: indice contratual (CONTROLE!B7) propagado pela cadeia
+        # canonica ate o Sumario Executivo (sem hardcode no renderer).
+        "indice":        str(indice or "").strip(),
         "versao":        res["versao_detectada"],
     }
 

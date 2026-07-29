@@ -219,7 +219,10 @@ class TestAppTestStatusEDocumentos(unittest.TestCase):
         }
         at.session_state["diagnostico_coleta_v2"] = diagnostico
 
-    def test_inconsistencia_mostra_banner_e_mantem_tres_documentos(self):
+    # Etapa 26H (limpeza da interface): o banner de status da base foi retirado
+    # da tela — o estado nao definitivo passa a ser comunicado pela politica
+    # PREVIA nos proprios documentos. O soft-block segue mantendo os documentos.
+    def test_inconsistencia_sem_banner_e_mantem_tres_documentos(self):
         from streamlit.testing.v1 import AppTest
 
         at = AppTest.from_file(self.CAMINHO_PAGINA, default_timeout=90)
@@ -227,12 +230,12 @@ class TestAppTestStatusEDocumentos(unittest.TestCase):
         at.run()
         self.assertFalse(at.exception, msg=str(getattr(at, "exception", "")))
         avisos = " \n ".join(w.value for w in at.warning)
-        self.assertIn("inconsistências que exigem revisão", avisos)
+        self.assertNotIn("inconsistências que exigem revisão", avisos)
         markdowns = " \n ".join(m.value for m in at.markdown)
         for titulo in ("Sumário Executivo", "Despacho Saneador", "Termo de Apostila"):
             self.assertIn(titulo, markdowns)
 
-    def test_insuficiencia_mostra_banner_proprio(self):
+    def test_insuficiencia_sem_banner_proprio(self):
         from streamlit.testing.v1 import AppTest
 
         at = AppTest.from_file(self.CAMINHO_PAGINA, default_timeout=90)
@@ -240,7 +243,7 @@ class TestAppTestStatusEDocumentos(unittest.TestCase):
         at.run()
         self.assertFalse(at.exception, msg=str(getattr(at, "exception", "")))
         avisos = " \n ".join(w.value for w in at.warning)
-        self.assertIn("informações insuficientes", avisos)
+        self.assertNotIn("informações insuficientes", avisos)
 
 
 if __name__ == "__main__":

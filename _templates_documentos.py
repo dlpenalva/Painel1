@@ -128,6 +128,25 @@ _CAMPOS_OPCIONAIS = {
 # Helpers XML / DOCX
 # ---------------------------------------------------------------------------
 
+# Etapa 26H — politica documental da PREVIA: numero XLS oficial sem resultado
+# definitivo e exibido como "R$ x — PREVIA", com highlight verde somente na
+# palavra PREVIA. Nunca declara VALIDADO nem resolve a divergencia (26C).
+ROTULO_PREVIA = "PRÉVIA"
+SUFIXO_PREVIA = f" — {ROTULO_PREVIA}"
+COR_HIGHLIGHT_PREVIA = "green"
+
+
+def _vta_texto_doc(dados: dict) -> str:
+    """Texto documental do VTA: valor oficial, PREVIA do XLS, ou vazio."""
+    vta = dados.get("vta")
+    if vta is not None:
+        return formatar_moeda(vta)
+    vta_previa = dados.get("vta_previa")
+    if vta_previa is not None:
+        return f"{formatar_moeda(vta_previa)}{SUFIXO_PREVIA}"
+    return ""
+
+
 def _set_highlight(run, cor: str = "yellow") -> None:
     rPr = run._r.get_or_add_rPr()
     highlight = OxmlElement("w:highlight")
@@ -251,7 +270,18 @@ def _adicionar_tabela(doc: Document, cabecalho: list[str],
                 negativo = val_num < 0
             except (ValueError, AttributeError):
                 pass
-            run = row.cells[i].paragraphs[0].add_run(texto)
+            paragrafo_celula = row.cells[i].paragraphs[0]
+            if texto.endswith(SUFIXO_PREVIA):
+                # Etapa 26H: highlight verde SOMENTE na palavra PREVIA.
+                run = paragrafo_celula.add_run(texto[: -len(ROTULO_PREVIA)])
+                run.font.name = "Calibri"
+                run.font.size = Pt(10)
+                run_previa = paragrafo_celula.add_run(ROTULO_PREVIA)
+                run_previa.font.name = "Calibri"
+                run_previa.font.size = Pt(10)
+                _set_highlight(run_previa, COR_HIGHLIGHT_PREVIA)
+                continue
+            run = paragrafo_celula.add_run(texto)
             run.font.name = "Calibri"
             run.font.size = Pt(10)
             if negativo and "R$" in str(celula_texto):
@@ -300,6 +330,7 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
         "ciclos_computados": ciclos_computados,
         "var_acumulada": sintese.get("variacao_acumulada"),
         "vta": sintese.get("vta"),
+        "vta_previa": sintese.get("vta_previa"),
         "fin_por_ciclo": fin_por_ciclo,
         "pc_por_ciclo": pc_por_ciclo,
         "parcelas_vta": parcelas_vta,
@@ -1047,9 +1078,7 @@ def _ds_par6_quadro3(doc: Document, dados: dict, cm: dict) -> None:
     linhas: list[list[str]] = []
     for desc, valor in _composicao_didatica_vta(dados):
         linhas.append([desc, formatar_moeda(valor) if valor is not None else ""])
-    vta = dados.get("vta")
-    linhas.append(["Valor total do contrato estimado",
-                   formatar_moeda(vta) if vta is not None else ""])
+    linhas.append(["Valor total do contrato estimado", _vta_texto_doc(dados)])
     _adicionar_tabela(doc, cabecalho, linhas)
     doc.add_paragraph()
 
@@ -1063,9 +1092,8 @@ def _ds_par7_composicao(doc: Document, dados: dict) -> None:
     cabecalho = ["Parcela", "Valor"]
     linhas = [[desc, formatar_moeda(valor) if valor is not None else ""]
               for desc, valor in componentes]
-    vta = dados.get("vta")
     linhas.append(["Valor Total Atualizado Estimado do Contrato",
-                   formatar_moeda(vta) if vta is not None else ""])
+                   _vta_texto_doc(dados)])
     _adicionar_tabela(doc, cabecalho, linhas)
     doc.add_paragraph()
 
@@ -1210,9 +1238,9 @@ def _ds_quadro4(doc: Document, dados: dict, cm: dict) -> None:
     if retro is not None:
         linhas.append(["Valor retroativo/represado a pagar", formatar_moeda(retro)])
 
-    vta = dados.get("vta")
-    if vta is not None:
-        linhas.append(["Valor Total Atualizado Estimado do Contrato", formatar_moeda(vta)])
+    vta_texto = _vta_texto_doc(dados)
+    if vta_texto:
+        linhas.append(["Valor Total Atualizado Estimado do Contrato", vta_texto])
 
     adeq = _num_ou_none(_campo(cm, "adequacao_orcamentaria_valor"))
     if adeq is not None:

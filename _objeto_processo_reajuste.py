@@ -800,7 +800,12 @@ def _montar_memoria_por_ciclo(
             vu_original = _f_none(reg.get("VU_ORIGINAL"))
             if vu_original is None:
                 continue
-            qtd_base = _f_none(reg.get("QTD_BASE_ORIGINAL"))
+            # Etapa 26H: base zero automatica p/ novo item (Nxxx) com base
+            # vazia; item normal permanece com vazio (nunca vira 0 aqui).
+            from _reajuste_utils import qtd_base_efetiva
+            qtd_base = qtd_base_efetiva(
+                reg.get("ITEM"), reg.get("QTD_BASE_ORIGINAL")
+            )
             qtd_vigente = (
                 _f_none(reg.get(f"QTD_CONTRATADA_{vigente}"))
                 if vigente in ciclos else None

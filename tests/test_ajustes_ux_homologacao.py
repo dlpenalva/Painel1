@@ -89,7 +89,8 @@ def test_aditivos_check_item_ausente_explicito():
     f = _wb()["aditivos"]["M2"].value
     assert "NOVO ITEM NAO CADASTRADO" in f
     assert "itens_Remanesc" in f
-    assert "N001" in f                                       # identificador de novo item
+    assert "sera 0 automaticamente" in f                     # mensagem 26H (base zero)
+    assert "informar VU_ORIGINAL" in f                       # mensagem 26H (VU obrigatorio)
     assert "COUNTIF(itens_Remanesc!$A$2:$A$200,A2)=0" in f   # check ja existente
 
 

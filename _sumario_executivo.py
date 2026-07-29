@@ -99,6 +99,10 @@ def montar_dados_sumario_executivo(
         objeto, resultados, memoria_ciclo, metodologia, financeiro_sec
     )
     _mascarar_sintese_por_divergencia(sintese, campos_nc)
+    # Etapa 26H (politica documental da PREVIA): existindo numero XLS oficial
+    # sem resultado definitivo, o VTA e exibido como "R$ x — PREVIA". Nunca
+    # declara VALIDADO e nao resolve a divergencia XLS x Python (residual 26C).
+    _aplicar_previa_vta(sintese, leitura.get("resultados_xls"))
 
     ciclos_sec = _montar_secao_ciclos(parametros, resultados, identificacao)
 
@@ -158,10 +162,14 @@ def _montar_secao_historico_vu(
     for reg in historico_vu.get("itens") or []:
         vu_ciclos = reg.get("vu_ciclos") or {}
         vus: dict[str, float | None] = {}
+        # Etapa 26H: item nascido apos C0 tem VU_C0 legitimamente vazio na aba
+        # historico_VU; o fallback p/ vu_original vale apenas para planilhas
+        # legadas sem NENHUM VU por ciclo (nunca inventa VU pre-nascimento).
+        tem_vu_por_ciclo = any(v is not None for v in vu_ciclos.values())
         for i in range(ultimo + 1):
             valor = vu_ciclos.get(f"VU_C{i}")
-            if i == 0 and valor is None:
-                valor = reg.get("vu_original")  # C0 = VU original
+            if i == 0 and valor is None and not tem_vu_por_ciclo:
+                valor = reg.get("vu_original")  # C0 = VU original (legado)
             vus[f"C{i}"] = _num_ou_none(valor)
         itens_saida.append({
             "item": reg.get("item"),
@@ -208,6 +216,24 @@ def _mascarar_financeiro_por_divergencia(financeiro: dict[str, Any], campos_nc: 
         financeiro["retroativo_estado"] = MOTIVO_DIVERGENCIA_XLS_PYTHON
 
 
+def _aplicar_previa_vta(
+    sintese: dict[str, Any], resultados_xls: dict[str, Any] | None
+) -> None:
+    """Etapa 26H: PREVIA documental do VTA a partir do numero XLS oficial.
+
+    Aplica-se somente quando o VTA oficial nao pode ser exibido (mascarado por
+    divergencia ou indisponivel) e o XLS possui VTA_FINAL numerico. O valor e
+    apresentado como PREVIA — nunca como VALIDADO — e a divergencia permanece
+    registrada (residual 26C intocado).
+    """
+    if sintese.get("vta") is not None:
+        return
+    valores = (resultados_xls or {}).get("valores") or {}
+    vta_xls = valores.get("VTA_FINAL")
+    if isinstance(vta_xls, (int, float)) and not isinstance(vta_xls, bool):
+        sintese["vta_previa"] = round(float(vta_xls), 2)
+
+
 def _montar_identificacao(
     objeto: dict[str, Any],
     metodologia: dict[str, Any],
@@ -215,9 +241,15 @@ def _montar_identificacao(
     identificacao: dict[str, Any] | None,
 ) -> dict[str, Any]:
     externo = identificacao or {}
-    indice = _indice_contratual(metodologia, memoria_calculo) or externo.get("indice")
-    metodo = metodologia.get("escolhida") or externo.get("metodo")
     controle = (objeto.get("dados_operacionais") or {}).get("controle") or {}
+    # Etapa 26H: o indice contratual canonico e CONTROLE!B7 (propagado pelo
+    # leitor em controle.indice); METODO_FONTE da memoria segue como fallback.
+    indice = (
+        str(controle.get("indice") or "").strip()
+        or _indice_contratual(metodologia, memoria_calculo)
+        or externo.get("indice")
+    )
+    metodo = metodologia.get("escolhida") or externo.get("metodo")
     # Campos empresa, contrato, processo, versao_masterfile e objeto_processo_id
     # nao sao transportados para o PDF (requisito de privacidade Etapa 5 v2).
     return {
@@ -821,8 +853,10 @@ def _bloco_identificacao(historia, dados, estilos) -> None:
     historia.append(Spacer(1, 6))
     historia.append(_paragrafo("1. Identificação", estilos["secao"]))
     largura = _largura_util()
+    # Etapa 26H.1: cabecalho da identificacao trocado de "Campo | Valor" para
+    # "Informação | Resultado" por requisito do Gate.
     linhas = [
-        ["Campo", "Valor", "Campo", "Valor"],
+        ["Informação", "Resultado", "Informação", "Resultado"],
         ["Índice contratual", ident.get("indice"),
          "Método da apuração", ident.get("metodo")],
         ["Ciclo vigente", ident.get("ciclo_vigente"),
@@ -840,25 +874,25 @@ def _bloco_sintese(historia, dados, estilos) -> None:
     historia.append(_paragrafo("2. Síntese da apuração", estilos["secao"]))
     largura = _largura_util()
     vta_txt = formatar_moeda(sintese.get("vta"))
-    if sintese.get("vta") is None and sintese.get("vta_motivo"):
-        vta_txt = f"{NAO_INFORMADO} — {sintese.get('vta_motivo')}"
+    if sintese.get("vta") is None:
+        if sintese.get("vta_previa") is not None:
+            # Etapa 26H: numero XLS oficial sem resultado definitivo -> PREVIA.
+            vta_txt = f"{formatar_moeda(sintese.get('vta_previa'))} — PRÉVIA"
+        elif sintese.get("vta_motivo"):
+            vta_txt = f"{NAO_INFORMADO} — {sintese.get('vta_motivo')}"
     variacao_txt = formatar_percentual(sintese.get("variacao_acumulada"))
     if sintese.get("ciclo_referencia_acumulado"):
         variacao_txt += f" (referência {sintese.get('ciclo_referencia_acumulado')})"
+    # Etapa 26H: as linhas de estado do retroativo e situacao do processo e a
+    # conclusao (resumo executivo) foram retiradas do PDF por requisito.
     linhas = [
         ["Indicador", "Valor"],
         ["Método aplicável", _texto_ou_nao_informado(sintese.get("metodo_vta"))],
         ["Valor total atualizado (VTA)", vta_txt],
         ["Variação acumulada", variacao_txt],
         ["Retroativo total", formatar_moeda(sintese.get("retroativo_total"))],
-        ["Estado do retroativo",
-         _texto_ou_nao_informado(sintese.get("retroativo_estado"))],
-        ["Situação do processo",
-         _texto_ou_nao_informado(sintese.get("situacao_processo"))],
     ]
     historia.append(_tabela(linhas, [largura * 0.34, largura * 0.66], estilos))
-    if sintese.get("resumo_executivo"):
-        historia.append(_paragrafo(str(sintese["resumo_executivo"]), estilos["nota"]))
 
 
 def _bloco_ciclos(historia, dados, estilos) -> None:
@@ -918,7 +952,7 @@ def _bloco_financeiro(historia, dados, estilos) -> None:
     largura = _largura_util()
 
     def _tabela_metodo(titulo: str, linhas_metodo: list[dict[str, Any]],
-                       delta_total: Any, nota: str) -> None:
+                       delta_total: Any) -> None:
         historia.append(_paragrafo(titulo, estilos["subsecao"]))
         if not linhas_metodo:
             historia.append(_paragrafo(
@@ -940,21 +974,16 @@ def _bloco_financeiro(historia, dados, estilos) -> None:
              largura * 0.14],
             estilos, alinhamentos_direita={1, 2, 3, 4},
         ))
-        historia.append(_paragrafo(nota, estilos["nota"]))
 
     _tabela_metodo(
         "Método Financeiro — valor pago, valor atualizado e delta por ciclo",
         fin.get("financeiro_por_ciclo") or [],
         fin.get("delta_total_financeiro"),
-        "Valores consolidados pela memória por ciclo do objeto do processo "
-        "(fonte: aba financeiro).",
     )
     _tabela_metodo(
         "Método Pedido de Compras — retroativo em análise, por ciclo",
         fin.get("pc_por_ciclo") or [],
         fin.get("delta_total_pc"),
-        "Retroativo apurado pelo método Pedido de Compras permanece EM "
-        "ANÁLISE e não se mistura ao valor reconhecido.",
     )
 
     historia.append(_paragrafo("Retroativo por estado", estilos["subsecao"]))
@@ -1025,12 +1054,6 @@ def _bloco_itens(historia, dados, estilos) -> None:
         linhas,
         [larg_item, larg_qtd] + [larg_col] * n_valores,
         estilos, alinhamentos_direita=set(range(1, 2 + n_valores)),
-    ))
-    historia.append(_paragrafo(
-        "VU C0 e VU por ciclo são os valores canônicos do objeto do processo; "
-        "o total por ciclo aplica a quantidade contratada ao VU canônico do "
-        "ciclo, sem novo fator.",
-        estilos["nota"],
     ))
 
 
@@ -1110,7 +1133,6 @@ def _bloco_aditivos(historia, dados, estilos) -> None:
         [largura * 0.40, largura * 0.12, largura * 0.24, largura * 0.24],
         estilos, alinhamentos_direita={2},
     ))
-    historia.append(_paragrafo(str(aditivos.get("regra") or ""), estilos["nota"]))
 
 
 def _bloco_observacoes(historia, dados, estilos) -> None:
