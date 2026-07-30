@@ -255,6 +255,12 @@ def _ler_historico_vu(wb) -> dict[str, Any]:
     col_obs     = mapa.get("observacao")
 
     cols_vu_ciclo = {f"VU_C{i}": mapa.get(f"vu_c{i}") for i in range(5)}
+    cols_qtd_vigente = {
+        f"C{i}": _col(mapa, f"QTD_VIGENTE_C{i}") for i in range(5)
+    }
+    cols_qtd_rem_ajustada = {
+        f"C{i}": _col(mapa, f"QTD_REM_AJUSTADA_C{i}") for i in range(5)
+    }
 
     for r in range(2, ws.max_row + 1):
         item = ws.cell(r, col_item).value
@@ -276,6 +282,14 @@ def _ler_historico_vu(wb) -> dict[str, Any]:
             "descricao":       ws.cell(r, col_desc).value   if col_desc  else None,
             "vu_original":     vu_orig,
             "vu_ciclos":       vu_ciclos,
+            "qtd_vigente_ciclos": {
+                ciclo: ws.cell(r, col).value if col else None
+                for ciclo, col in cols_qtd_vigente.items()
+            },
+            "qtd_rem_ajustada_ciclos": {
+                ciclo: ws.cell(r, col).value if col else None
+                for ciclo, col in cols_qtd_rem_ajustada.items()
+            },
             "vu_vigente":      ws.cell(r, col_vu_vig).value if col_vu_vig else None,
             "fator_acumulado": ws.cell(r, col_fator).value  if col_fator  else None,
             "variacao":        ws.cell(r, col_var).value    if col_var    else None,
@@ -1926,6 +1940,12 @@ def _ler_parcelas_sombra_aditivos(wb) -> list[dict[str, Any]]:
             parcelas_novo.append({
                 "linha": r,
                 "identificador": f"aditivos:{ciclo or 'sem_ciclo'}:{r}",
+                "item": item,
+                "data_aditivo": ws_adt.cell(r, 2).value,
+                "tipo_alteracao": ws_adt.cell(r, 4).value,
+                "quantidade": ws_adt.cell(r, 5).value,
+                "vu_original": ws_adt.cell(r, 6).value,
+                "valor_original": ws_adt.cell(r, 7).value,
                 "origem_dado": "Aditivo",
                 "tipo_parcela": "Aditivo",
                 "tipo_financeiro": "Aditivo Computavel",

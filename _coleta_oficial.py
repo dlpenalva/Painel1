@@ -351,6 +351,38 @@ def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]
     }
 
 
+# Legibilidade da mensagem fiscal de novo item (aditivos!M): dimensoes minimas
+# funcionais; dimensoes maiores ja presentes no arquivo nunca sao reduzidas.
+LARGURA_MINIMA_ADITIVOS_M = 45.0
+ALTURA_MINIMA_LINHAS_ADITIVOS = 45.0
+ULTIMA_LINHA_ORIENTACAO_ADITIVOS = 200
+
+
+def garantir_formatacao_orientacao_aditivos(wb) -> None:
+    """Garante a mensagem fiscal integralmente legivel em aditivos!M.
+
+    Reaplica WrapText e dimensoes minimas no workbook FINAL gerado/migrado,
+    protegendo contra linhagens de arquivo anteriores a 26H.2 em que a
+    formatacao do template nao existia.
+    """
+    if "aditivos" not in wb.sheetnames:
+        return
+    ws = wb["aditivos"]
+    dim = ws.column_dimensions["M"]
+    if not dim.width or dim.width < LARGURA_MINIMA_ADITIVOS_M:
+        dim.width = LARGURA_MINIMA_ADITIVOS_M
+    from copy import copy as _copy
+    for row in range(2, ULTIMA_LINHA_ORIENTACAO_ADITIVOS + 1):
+        celula = ws.cell(row=row, column=13)
+        if not celula.alignment.wrap_text:
+            alinhamento = _copy(celula.alignment)
+            alinhamento.wrapText = True
+            celula.alignment = alinhamento
+        altura = ws.row_dimensions[row]
+        if not altura.height or altura.height < ALTURA_MINIMA_LINHAS_ADITIVOS:
+            altura.height = ALTURA_MINIMA_LINHAS_ADITIVOS
+
+
 def gerar_coleta_oficial_preenchida(dados_calculadora: dict[str, Any] | None) -> bytes:
     """Gera o XLS oficial; preenche marcos quando a Calculadora tem dados."""
     base = obter_coleta_oficial_bytes()

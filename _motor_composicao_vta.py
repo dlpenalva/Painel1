@@ -139,6 +139,29 @@ def _aditivos(
     # Fallback legado: aditivos consolidados da aba oculta (motor sombra),
     # que ja chegam a valor atualizado.
     parcelas = (leitura.get("vta_sombra") or {}).get("parcelas_computadas") or []
+    posicao = leitura.get("posicao_contratual") or {}
+    if posicao.get("ok") and not posicao.get("cache_ausente"):
+        # No modelo oficial, os deltas da aba aditivos ja integram a posicao
+        # contratual e, por ela, o remanescente valorado. Soma-los novamente
+        # como parcela financeira duplicaria o mesmo efeito no VTA.
+        for parcela in parcelas:
+            if parcela.get("fonte_parcela") != "Aditivo":
+                continue
+            nao_computados.append({
+                "descricao": parcela.get("identificador") or "Aditivo",
+                "ciclo": parcela.get("ciclo") or "",
+                "valor_base": parcela.get("valor_original"),
+                "fator_acumulado": parcela.get("fator_acumulado"),
+                "valor_atualizado": _tofl(parcela.get("valor")),
+                "fonte": "aditivo",
+                "ja_refletido_em": "posicao_contratual/remanescente",
+                "motivo": (
+                    "Efeito fisico ja refletido na posicao contratual e no "
+                    "remanescente; nao soma novamente ao VTA."
+                ),
+            })
+        return [], nao_computados
+
     for parcela in parcelas:
         if parcela.get("fonte_parcela") != "Aditivo":
             continue

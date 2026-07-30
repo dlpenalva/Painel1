@@ -78,6 +78,13 @@ def _parcela_generica(item: dict[str, Any]) -> dict[str, Any]:
     return {
         "linha": item.get("linha"),
         "identificador": item.get("identificador"),
+        "instrumento": item.get("instrumento"),
+        "item": item.get("item"),
+        "data_aditivo": item.get("data_aditivo"),
+        "tipo_alteracao": item.get("tipo_alteracao"),
+        "quantidade": item.get("quantidade"),
+        "vu_original": item.get("vu_original"),
+        "valor_original": item.get("valor_original"),
         "ciclo": item.get("ciclo"),
         "data_referencia": item.get("data_referencia"),
         "confianca": item.get("confianca"),

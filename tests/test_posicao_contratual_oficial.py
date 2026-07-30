@@ -8,12 +8,12 @@ define a regra atual.
 
 Semântica normativa (MODELO B)
 ------------------------------
-* ``QTD_REM_BASE_Cn``   — remanescente **real** informado pelo fiscal.
+* ``QTD_REM_BASE_Cn``   — fotografia informada antes das alterações do ciclo.
 * ``QTD_CONTRATADA_Cn`` — quantidade contratual vigente = base + Σ DELTAS
   assinados dos aditivos (cumulativo).
-* ``QTD_REM_AJUSTADA_Cn`` — remanescente informado, normalizado/arredondado e
-  validado (passthrough: C0 = contratada de nascimento; C1..C4 = ROUND do
-  informado). Não reaplica o aditivo (já está em ``QTD_CONTRATADA_Cn``).
+* ``QTD_REM_AJUSTADA_Cn`` — fotografia base + DELTA_Cn, consolidado uma vez na
+  posição contratual. Para item que nasce em Cn, a fotografia anterior é zero;
+  antes do nascimento permanece vazio.
 * Validação ``QTD_REM_AJUSTADA_Cn <= QTD_CONTRATADA_Cn``.
 
 Reconstrução de execução (DELTA assinado)
@@ -172,12 +172,17 @@ class FormulasOficialModeloB(unittest.TestCase):
         self.assertIn("ROUND(M2+P2,2)", self.pos["Q2"].value)
         self.assertIn("ROUND(Q2+T2,2)", self.pos["U2"].value)
 
-    def test_rem_ajustada_passthrough_sem_reaplicar_aditivo(self):
-        self.assertEqual(self.pos["G2"].value, '=IF(A2="","",E2)')  # C0 = contratada
-        for cel, ref in (("K2", "J2"), ("O2", "N2"), ("S2", "R2"), ("W2", "V2")):
+    def test_rem_ajustada_integra_delta_uma_vez_e_respeita_nascimento(self):
+        self.assertIn('$Y2>0,""', self.pos["G2"].value)
+        for cel, ref, delta, nascimento in (
+            ("K2", "J2", "H2", 1),
+            ("O2", "N2", "L2", 2),
+            ("S2", "R2", "P2", 3),
+            ("W2", "V2", "T2", 4),
+        ):
             f = self.pos[cel].value
-            self.assertIn(f"ROUND({ref},2)", f)
-            self.assertNotIn("aditivos", f)
+            self.assertIn(f"ROUND({ref}+{delta},2)", f)
+            self.assertIn(f'IF($Y2={nascimento},ROUND({delta},2),"")', f)
 
     def test_check_valida_remanescente_le_contratada(self):
         f = self.pos["X2"].value
@@ -218,7 +223,9 @@ class PropagacaoOficial(unittest.TestCase):
 
     def test_12_historico_vu_espelha_vigente_e_rem_ajustada(self):
         for cel, ref in (("N2", "E2"), ("O2", "I2"), ("P2", "M2"), ("Q2", "Q2"), ("R2", "U2")):
-            self.assertEqual(self.hv[cel].value, f'=IF(A2="","",posicao_contratual!{ref})')
+            f = self.hv[cel].value
+            self.assertIn(f"posicao_contratual!{ref}", f)
+            self.assertIn("posicao_contratual!$Y2", f)
         for cel, ref in (("S2", "G2"), ("T2", "K2"), ("U2", "O2"), ("V2", "S2"), ("W2", "W2")):
             self.assertEqual(self.hv[cel].value, f'=IF(A2="","",posicao_contratual!{ref})')
 

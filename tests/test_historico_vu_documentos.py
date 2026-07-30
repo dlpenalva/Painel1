@@ -104,14 +104,15 @@ class TestRenderDocx(unittest.TestCase):
         t2 = self._render(sec).tables[0]
         self.assertEqual(len(t1.columns), len(t2.columns))
         self.assertEqual(len(t1.rows), len(t2.rows))
-        # cabecalho (Etapa 26D): Item, Descricao, VU_C0, VU_C1, VU_C2
+        # Etapa 26J: documentos fiscais exibem somente Item e VUs por ciclo.
         cab = [c.text for c in t1.rows[0].cells]
-        self.assertEqual(cab, ["Item", "Descrição", "VU_C0", "VU_C1", "VU_C2"])
+        self.assertEqual(cab, ["Item", "VU_C0", "VU_C1", "VU_C2"])
+        self.assertNotIn("Descrição", cab)
 
     def test_f_formatacao_monetaria_reais_duas_casas(self):
         sec = _montar_secao_historico_vu(_historico(1), _ciclos("C1"))
         tabela = self._render(sec).tables[0]
-        valor_c0 = tabela.rows[1].cells[2].text  # primeira linha de dados, coluna VU C0
+        valor_c0 = tabela.rows[1].cells[1].text  # primeira linha de dados, coluna VU C0
         self.assertTrue(valor_c0.startswith("R$"))
         self.assertRegex(valor_c0, r",\d{2}$")
 
@@ -167,14 +168,15 @@ class TestDocumentoFinalEndToEnd(unittest.TestCase):
         cab, linhas = self._tabela_vu(docx_bytes)
         self.assertIsNotNone(cab, "tabela de VU ausente no DOCX final")
         # C0..C2 presentes; C3/C4 ausentes (analise termina em C2)
-        self.assertEqual(cab, ["Item", "Descrição", "VU_C0", "VU_C1", "VU_C2"])
+        self.assertEqual(cab, ["Item", "VU_C0", "VU_C1", "VU_C2"])
+        self.assertNotIn("Descrição", cab)
         self.assertNotIn("VU_C3", cab)
         self.assertNotIn("VU_C4", cab)
         # valores vindos de historico_vu, formatados R$ com duas casas
         self.assertEqual(linhas[0][0], "ITEM_X")
-        self.assertEqual(linhas[0][2:], ["R$ 100,00", "R$ 103,10", "R$ 106,00"])
+        self.assertEqual(linhas[0][1:], ["R$ 100,00", "R$ 103,10", "R$ 106,00"])
         self.assertEqual(linhas[1][0], "ITEM_Y")
-        self.assertEqual(linhas[1][2:], ["R$ 50,00", "R$ 51,55", "R$ 53,00"])
+        self.assertEqual(linhas[1][1:], ["R$ 50,00", "R$ 51,55", "R$ 53,00"])
         # valores futuros nao vazam para o documento
         texto = "\n".join("|".join(l) for l in linhas)
         self.assertNotIn("999,99", texto)
@@ -220,7 +222,7 @@ class TestDocumentoFinalEndToEnd(unittest.TestCase):
             self.assertIsNotNone(cab, gerador.__name__)
             self.assertEqual(
                 cab,
-                ["Item", "Descrição", "VU_C0", "VU_C1", "VU_C2", "VU_C3", "VU_C4"],
+                ["Item", "VU_C0", "VU_C1", "VU_C2", "VU_C3", "VU_C4"],
                 gerador.__name__,
             )
 

@@ -775,6 +775,12 @@ def gerar_masterfile_preenchido(
     if _formulas(wb) != formulas_antes:
         raise AssertionError("A geração alterou fórmulas do template antes da gravação.")
 
+    # 26J.1: a planilha entregue ao fiscal deve manter a mensagem de novo item
+    # (aditivos!M) integralmente legivel mesmo quando o template de origem for
+    # de linhagem anterior a 26H.2 (WrapText/dimensoes ausentes).
+    from _coleta_oficial import garantir_formatacao_orientacao_aditivos
+    garantir_formatacao_orientacao_aditivos(wb)
+
     saida = BytesIO()
     wb.save(saida)
     conteudo = _corrigir_selection_pane_xlsx(_corrigir_vml_xlsx(saida.getvalue()))

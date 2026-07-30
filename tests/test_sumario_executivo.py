@@ -28,12 +28,36 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from _sumario_executivo import (  # noqa: E402
     NAO_APLICAVEL,
     NAO_INFORMADO,
+    _aplicar_previa_vta,
     formatar_moeda,
     formatar_percentual,
     gerar_sumario_executivo,
     gerar_sumario_executivo_pdf,
     montar_dados_sumario_executivo,
 )
+
+
+@pytest.mark.parametrize("status", ["REVISE", "ESTIMADO"])
+def test_vta_numerico_permanece_previa_enquanto_status_nao_definitivo(status):
+    sintese = {"vta": 137375560.29}
+    _aplicar_previa_vta(
+        sintese,
+        {"valores": {"VTA_FINAL": 137375560.29}},
+        {"geral": status},
+    )
+    assert sintese["vta"] is None
+    assert sintese["vta_previa"] == 137375560.29
+
+
+def test_vta_validado_nao_recebe_selo_previa():
+    sintese = {"vta": 137375560.29}
+    _aplicar_previa_vta(
+        sintese,
+        {"valores": {"VTA_FINAL": 137375560.29}},
+        {"geral": "VALIDADO"},
+    )
+    assert sintese["vta"] == 137375560.29
+    assert "vta_previa" not in sintese
 
 
 # ---------------------------------------------------------------------------
@@ -93,7 +117,9 @@ def leitura_simples_financeiro():
              "fonte_parcela": "Financeiro", "ciclo": "C1",
              "valor": 2000.0, "valor_atualizado": 2105.0, "linha": 3},
             {"identificador": "aditivos:C1:4", "fonte_parcela": "Aditivo",
-             "ciclo": "C1", "valor": 500.0, "linha": 4,
+             "ciclo": "C1", "valor": 500.0, "linha": 4, "item": "N001",
+             "tipo_alteracao": "Acrescimo",
+             "data_aditivo": date(2025, 4, 10),
              "justificativa_vta": "Aditivo computavel (K=Sim)."},
         ]},
         "historico_vu": {"itens": [
@@ -397,7 +423,9 @@ def test_r13_aditivo_computavel_exibido():
     assert len(itens) == 1
     assert itens[0]["ciclo"] == "C1"
     assert itens[0]["valor_atualizado"] == pytest.approx(500.0)
-    assert itens[0]["anterior_formalizacao"] == "Sim"
+    assert itens[0]["rotulo_documental"] == "C1 — Acréscimo — Item N001"
+    assert itens[0]["data_alteracao"] == "10/04/2025"
+    assert itens[0]["identificador_interno"] == "aditivos:C1:4"
 
 
 def test_r13_sem_aditivos_nao_aplicavel():
@@ -405,11 +433,11 @@ def test_r13_sem_aditivos_nao_aplicavel():
     assert dados["aditivos"]["itens"] == []
 
 
-def test_r13_aditivo_sem_inicio_efeito_nao_informado():
+def test_r13_aditivo_sem_data_da_alteracao_nao_informado():
     leitura = leitura_simples_financeiro()
-    leitura["parametros_v10"]["por_ciclo"]["C1"]["inicio_efeito_financeiro"] = None
+    leitura["vta_sombra"]["parcelas_computadas"][-1]["data_aditivo"] = None
     dados = _dados(leitura)
-    assert dados["aditivos"]["itens"][0]["anterior_formalizacao"] == NAO_INFORMADO
+    assert dados["aditivos"]["itens"][0]["data_alteracao"] == NAO_INFORMADO
 
 
 # ---------------------------------------------------------------------------
@@ -460,7 +488,7 @@ def test_pdf_valido_e_pesquisavel():
     for secao in ("1. Identificação", "2. Síntese da apuração",
                   "3. Ciclos e efeitos financeiros", "4. Valores financeiros",
                   "5. Itens e valores atualizados", "6. Memória de cálculo",
-                  "7. Aditivos aplicáveis"):
+                  "7. Alterações contratuais consideradas"):
         assert secao in texto, secao
 
 
@@ -532,7 +560,7 @@ def test_pdf_sem_secao_observacoes():
     assert "Observações de consistência" not in texto
     assert "8. Observações" not in texto
     # O documento termina na secao 7
-    assert "7. Aditivos aplicáveis" in texto
+    assert "7. Alterações contratuais consideradas" in texto
 
 
 def test_pdf_rodape_somente_data():

@@ -162,6 +162,7 @@ def test_apostila_vu_ate_ultimo_ciclo_sem_futuro():
     vu = [q for q in quadros if "VU_C0" in q]
     assert vu, "tabela de VU ausente"
     assert "VU_C1" in vu[0]
+    assert "Descrição" not in vu[0]
     assert "VU_C2" not in vu[0]  # ciclo futuro nao entra
     assert "VU_C3" not in vu[0]
 
@@ -184,10 +185,10 @@ def test_apostila_equacao_sintetica_nao_soma_vta_a_si_mesmo():
     doc = Document()
     _ta_secao4_composicao_vta(doc, dados)
     texto = "\n".join(p.text for p in doc.paragraphs)
-    assert "A + B + C = D = R$ 3.500,00." in texto
+    assert "A + B + C = VTA = R$ 3.500,00." in texto
     tabela = doc.tables[0]
     valores = [row.cells[-1].text for row in tabela.rows]
-    assert valores.count("R$ 3.500,00") == 2       # ref_vta + Total
+    assert valores.count("R$ 3.500,00") == 1       # uma unica linha VTA
     assert "R$ 7.000,00" not in "\n".join(valores)  # nunca dobra o VTA
 
 
@@ -247,7 +248,7 @@ def test_saneador_itens_administrativos_presentes():
     assert "certidões de regularidade" in texto
     assert "manifestou concordância" in texto
     assert "garantia contratual" in texto
-    assert "aditivos e supressões" in texto
+    assert "alterações contratuais consideradas" in texto
 
 
 def test_saneador_conclusao_normal_afirma_inexistencia():

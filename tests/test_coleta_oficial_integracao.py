@@ -65,7 +65,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # padrao canonico N + exatamente 3 algarismos (espelho ^[Nn]\d{3}$) em
 # itens_Remanesc!B e posicao_contratual!Z; UX aditivos!M com WrapText
 # (owner: tools/aplicar_26h2_template.py) — pin reancorado.
-SHA256_TEMPLATE_ESPERADO = "c85fd05ec82d660fe4a4e84cf0e37b25408924d81710c380c00621c2041f4814"
+SHA256_TEMPLATE_ESPERADO = "aefa71abef17fa5fe230a598766285772d85d7fd02a1563c068b8d3316b9cb62"
 
 
 def _dados_calculadora() -> dict:

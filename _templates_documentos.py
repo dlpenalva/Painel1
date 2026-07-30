@@ -21,6 +21,7 @@ from io import BytesIO
 from typing import Any
 
 from docx import Document
+from docx.enum.table import WD_ROW_HEIGHT_RULE
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
@@ -158,6 +159,7 @@ def _repetir_cabecalho(tabela) -> None:
     tr = tabela.rows[0]._tr
     trPr = tr.get_or_add_trPr()
     tblHeader = OxmlElement("w:tblHeader")
+    tblHeader.set(qn("w:val"), "true")
     trPr.append(tblHeader)
 
 
@@ -244,11 +246,18 @@ def _configurar_documento() -> Document:
     return doc
 
 
-def _adicionar_tabela(doc: Document, cabecalho: list[str],
-                       linhas: list[list[str]]) -> Any:
+def _adicionar_tabela(
+    doc: Document,
+    cabecalho: list[str],
+    linhas: list[list[str]],
+    *,
+    repetir_cabecalho: bool = True,
+) -> Any:
     n_cols = len(cabecalho)
     tabela = doc.add_table(rows=1, cols=n_cols)
     tabela.style = "Table Grid"
+    tabela.rows[0].height = Pt(16)
+    tabela.rows[0].height_rule = WD_ROW_HEIGHT_RULE.AT_LEAST
     celulas_cab = tabela.rows[0].cells
     for i, texto in enumerate(cabecalho):
         celulas_cab[i].text = ""
@@ -256,9 +265,12 @@ def _adicionar_tabela(doc: Document, cabecalho: list[str],
         run.bold = True
         run.font.name = "Calibri"
         run.font.size = Pt(10)
-    _repetir_cabecalho(tabela)
+    if repetir_cabecalho:
+        _repetir_cabecalho(tabela)
     for linha in linhas:
         row = tabela.add_row()
+        row.height = Pt(16)
+        row.height_rule = WD_ROW_HEIGHT_RULE.AT_LEAST
         for i, celula_texto in enumerate(linha):
             row.cells[i].text = ""
             texto = remover_emojis_leve(celula_texto)
@@ -317,10 +329,18 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
     aditivos = []
     for ad in aditivos_raw:
         aditivos.append({
-            "identificador": ad.get("identificador") or ad.get("ciclo"),
+            "identificador_interno": ad.get("identificador_interno"),
+            "rotulo_documental": (
+                ad.get("rotulo_documental") or ad.get("ciclo")
+            ),
+            "instrumento": ad.get("instrumento"),
+            "item": ad.get("item"),
+            "tipo_alteracao": ad.get("tipo_alteracao"),
             "ciclo": ad.get("ciclo"),
+            "data_alteracao": ad.get("data_alteracao"),
+            "quantidade": ad.get("quantidade"),
+            "valor_original": ad.get("valor_original"),
             "valor_atualizado": ad.get("valor_atualizado"),
-            "anterior_formalizacao": ad.get("anterior_formalizacao"),
         })
 
     return {
@@ -331,6 +351,10 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
         "var_acumulada": sintese.get("variacao_acumulada"),
         "vta": sintese.get("vta"),
         "vta_previa": sintese.get("vta_previa"),
+        "vta_execucao_atualizada": sintese.get("vta_execucao_atualizada"),
+        "vta_saldo_remanescente_atualizado": sintese.get(
+            "vta_saldo_remanescente_atualizado"
+        ),
         "fin_por_ciclo": fin_por_ciclo,
         "pc_por_ciclo": pc_por_ciclo,
         "parcelas_vta": parcelas_vta,
@@ -408,6 +432,22 @@ def _composicao_didatica_vta(dados: dict) -> list[tuple[str, float | None]]:
     """Agrupa as parcelas em componentes didaticos (execucao por ciclo, saldo,
     aditivos), somando por rubrica. Nunca inventa; apenas soma o que existe.
     """
+    executado = _num_ou_none(dados.get("vta_execucao_atualizada"))
+    saldo = _num_ou_none(dados.get("vta_saldo_remanescente_atualizado"))
+    vta = _num_ou_none(dados.get("vta"))
+    if vta is None:
+        vta = _num_ou_none(dados.get("vta_previa"))
+    if (
+        executado is not None
+        and saldo is not None
+        and vta is not None
+        and abs(round(executado + saldo, 2) - round(vta, 2)) <= 0.01
+    ):
+        return [
+            ("Execução atualizada anterior ao corte", round(executado, 2)),
+            ("Saldo remanescente atualizado no corte", round(saldo, 2)),
+        ]
+
     parcelas = dados.get("parcelas_vta") or []
     grupos: dict[str, float | None] = {}
     ordem: list[str] = []
@@ -440,11 +480,11 @@ def montar_historico_vu_documental(dados: dict) -> dict:
     if not itens or not ciclos:
         return {"disponivel": False, "cabecalhos": [], "linhas": [],
                 "ciclo_final": None}
-    cabecalhos = ["Item", "Descrição"] + [f"VU_{c}" for c in ciclos]
+    cabecalhos = ["Item"] + [f"VU_{c}" for c in ciclos]
     linhas: list[list[str]] = []
     for reg in itens:
         vus = reg.get("vus") or {}
-        linha = [str(reg.get("item") or ""), str(reg.get("descricao") or "")]
+        linha = [str(reg.get("item") or "")]
         for c in ciclos:
             valor = vus.get(c)
             linha.append(formatar_moeda(valor) if valor is not None else "")
@@ -468,7 +508,22 @@ def _secao_valores_unitarios_por_ciclo(
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         _adicionar_run(p, texto_intro)
     _titulo_quadro(doc, TITULO_HISTORICO_VU)
-    _adicionar_tabela(doc, quadro["cabecalhos"], quadro["linhas"])
+    linhas = quadro["linhas"]
+    blocos = [linhas[:10]]
+    restante = linhas[10:]
+    while restante:
+        blocos.append(restante[:12])
+        restante = restante[12:]
+    for indice, bloco in enumerate(blocos):
+        if indice:
+            doc.add_page_break()
+            _titulo_quadro(doc, f"{TITULO_HISTORICO_VU} (continuação)")
+        _adicionar_tabela(
+            doc,
+            quadro["cabecalhos"],
+            bloco,
+            repetir_cabecalho=False,
+        )
     doc.add_paragraph()
 
 
@@ -723,11 +778,10 @@ def _ta_secao3_memoria_vta(doc: Document, dados: dict) -> None:
             desc,
             formatar_moeda(valor) if valor is not None else "",
         ])
-    vta = dados.get("vta")
     linhas.append([
         "Total",
         "Valor Total Atualizado do Contrato",
-        formatar_moeda(vta) if vta is not None else "",
+        _vta_texto_doc(dados),
     ])
     _adicionar_tabela(doc, cabecalho, linhas)
     doc.add_paragraph()
@@ -750,12 +804,9 @@ def _ta_secao4_composicao_vta(doc: Document, dados: dict) -> None:
         ref = _LETRAS[i] if i < len(_LETRAS) else str(i + 1)
         letras_componentes.append(ref)
         linhas.append([ref, desc, formatar_moeda(valor) if valor is not None else ""])
-    vta = dados.get("vta")
-    ref_vta = _LETRAS[len(componentes)] if len(componentes) < len(_LETRAS) else "VTA"
+    ref_vta = "VTA"
     linhas.append([ref_vta, "Valor Total Atualizado do Contrato",
-                   formatar_moeda(vta) if vta is not None else ""])
-    linhas.append(["Total", "Valor Total Atualizado",
-                   formatar_moeda(vta) if vta is not None else ""])
+                   _vta_texto_doc(dados)])
     _adicionar_tabela(doc, cabecalho, linhas)
 
     # 4.2 — leitura correta: componentes = E = VTA (nunca soma o VTA a si mesmo).
@@ -767,8 +818,9 @@ def _ta_secao4_composicao_vta(doc: Document, dados: dict) -> None:
         _adicionar_run(p42, f"{soma} = {ref_vta} = ")
     else:
         _adicionar_run(p42, f"{ref_vta} = ")
-    if vta is not None:
-        _adicionar_run(p42, formatar_moeda(vta), negrito=True)
+    vta_texto = _vta_texto_doc(dados)
+    if vta_texto:
+        _adicionar_run(p42, vta_texto, negrito=True)
     else:
         _run_campo_manual(p42, "Valor Total Atualizado")
     _adicionar_run(p42, ".")
@@ -787,6 +839,58 @@ def _ta_secao5_valores_unitarios(doc: Document, dados: dict) -> None:
     )
 
 
+def _sintese_aditivos_por_ciclo(aditivos: list[dict]) -> list[str]:
+    """Rotulos executivos por ciclo, sem expor chaves tecnicas internas."""
+    grupos: dict[str, dict[str, Any]] = {}
+    for ad in aditivos:
+        ciclo = remover_emojis_leve(ad.get("ciclo") or "Sem ciclo").strip()
+        grupo = grupos.setdefault(
+            ciclo, {"total": 0.0, "tem_valor": False, "tipos": {}}
+        )
+        tipo = remover_emojis_leve(
+            ad.get("tipo_alteracao") or "Alteração"
+        ).strip()
+        chave_tipo = "supressao" if "supr" in tipo.lower() else (
+            "acrescimo" if "acresc" in tipo.lower()
+            or "acrésc" in tipo.lower() else "alteracao"
+        )
+        grupo["tipos"][chave_tipo] = grupo["tipos"].get(chave_tipo, 0) + 1
+        valor = _num_ou_none(ad.get("valor_atualizado"))
+        if valor is not None:
+            grupo["total"] += valor
+            grupo["tem_valor"] = True
+
+    def _ordem(ciclo: str) -> tuple[int, str]:
+        texto = ciclo.upper()
+        return (
+            int(texto[1]) if len(texto) == 2 and texto[0] == "C"
+            and texto[1].isdigit() else 99,
+            texto,
+        )
+
+    saida: list[str] = []
+    for ciclo in sorted(grupos, key=_ordem):
+        grupo = grupos[ciclo]
+        tipos = grupo["tipos"]
+        partes_tipo = []
+        if tipos.get("acrescimo"):
+            n = tipos["acrescimo"]
+            partes_tipo.append(f"{n} acréscimo" + ("" if n == 1 else "s"))
+        if tipos.get("supressao"):
+            n = tipos["supressao"]
+            partes_tipo.append(f"{n} supressão" if n == 1 else f"{n} supressões")
+        if tipos.get("alteracao"):
+            n = tipos["alteracao"]
+            partes_tipo.append(f"{n} alteração" if n == 1 else f"{n} alterações")
+        tipos_txt = " e ".join(partes_tipo)
+        impacto = (
+            f"impacto atualizado total {formatar_moeda(grupo['total'])}"
+            if grupo["tem_valor"] else "impacto a confirmar"
+        )
+        saida.append(f"{ciclo} — {tipos_txt} — {impacto}")
+    return saida
+
+
 def _ta_secao6_aditivos(doc: Document, dados: dict) -> None:
     _titulo_secao(doc, "6. Dos aditivos e supressões considerados")
     aditivos = dados.get("aditivos") or []
@@ -798,16 +902,12 @@ def _ta_secao6_aditivos(doc: Document, dados: dict) -> None:
             "base processada, sem prejuízo da conferência dos instrumentos já "
             "formalizados no processo.")
     else:
-        _adicionar_run(p1, "6.1. Foram considerados os seguintes aditivos e supressões: ")
-        partes = []
-        for ad in aditivos:
-            ident = remover_emojis_leve(ad.get("identificador") or ad.get("ciclo") or "instrumento")
-            val = _num_ou_none(ad.get("valor_atualizado"))
-            if val is not None:
-                partes.append(f"{ident}, com impacto atualizado de {formatar_moeda(val)}")
-            else:
-                partes.append(f"{ident}, com impacto a confirmar")
-        _adicionar_run(p1, "; ".join(partes) + ".")
+        _adicionar_run(
+            p1,
+            "6.1. Foram consideradas as alterações contratuais registradas "
+            "na apuração: " + "; ".join(_sintese_aditivos_por_ciclo(aditivos))
+            + ".",
+        )
 
     p2 = doc.add_paragraph()
     p2.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
@@ -1117,20 +1217,15 @@ def _ds_par8_aditivos(doc: Document, dados: dict) -> None:
     aditivos = dados.get("aditivos") or []
     if not aditivos:
         _adicionar_run(p,
-            "Quanto aos aditivos e supressões, não foram identificados eventos "
-            "específicos na base processada, sem prejuízo da conferência dos "
-            "instrumentos já formalizados no processo.")
+            "Quanto às alterações contratuais consideradas, não foram "
+            "identificados eventos específicos na base processada, sem prejuízo "
+            "da conferência dos instrumentos já formalizados no processo.")
         return
-    _adicionar_run(p, "Quanto aos aditivos e supressões, registra-se: ")
-    partes = []
-    for ad in aditivos:
-        ident = remover_emojis_leve(ad.get("identificador") or ad.get("ciclo") or "instrumento")
-        val = _num_ou_none(ad.get("valor_atualizado"))
-        if val is not None:
-            partes.append(f"{ident}, com impacto atualizado de {formatar_moeda(val)}")
-        else:
-            partes.append(f"{ident}, com impacto a confirmar")
-    _adicionar_run(p, "; ".join(partes) + ".")
+    _adicionar_run(
+        p,
+        "Quanto às alterações contratuais consideradas, registra-se: "
+        + "; ".join(_sintese_aditivos_por_ciclo(aditivos)) + ".",
+    )
 
 
 def _ds_par9_adequacao(doc: Document, cm: dict) -> None:
