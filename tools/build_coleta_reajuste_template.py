@@ -126,8 +126,22 @@ def _reset_controle(wb) -> None:
     ws["A7"] = "Índice utilizado"
     ws["A8"] = "Data-base original"
     ws["A9"] = "Quantidade de ciclos desta análise"
-    ws["A10"] = "Variação acumulada final"
-    ws["A11"] = "Fator acumulado total"
+    # Etapa 26F: B10/B11 sao o fator historico integral FAIL-CLOSED ate o
+    # ciclo vigente (zero explicito e valido; percentual necessario ausente
+    # deixa a celula vazia — nunca regride para 1). Mesma regra aplicada por
+    # tools/aplicar_resultados_consolidados_26f.py (_formula_fator_historico);
+    # manter as duas fontes identicas.
+    ws["A10"] = "Variação histórica integral até o ciclo vigente"
+    ws["B10"] = '=IF(ISNUMBER(B11),B11-1,"")'
+    ws["A11"] = "Fator histórico integral (até o ciclo vigente)"
+    ws["B11"] = (
+        '=IFERROR(IF(UPPER($B$2)="C0",1,'
+        'IF(UPPER($B$2)="C1",IF(COUNT(parametros!$E$3:$E$3)=1,parametros!$F$3,""),'
+        'IF(UPPER($B$2)="C2",IF(COUNT(parametros!$E$3:$E$4)=2,parametros!$F$4,""),'
+        'IF(UPPER($B$2)="C3",IF(COUNT(parametros!$E$3:$E$5)=3,parametros!$F$5,""),'
+        'IF(UPPER($B$2)="C4",IF(COUNT(parametros!$E$3:$E$6)=4,parametros!$F$6,""),'
+        '""))))),"")'
+    )
     ws["A12"] = "Último ciclo considerado nesta apuração"
     ws["A13"] = "Início do último ciclo considerado"
     for ref in ("B3", "B8", "B13", "B14"):
@@ -532,8 +546,12 @@ def _reset_aditivos(wb) -> None:
         "I": '=IFERROR(VLOOKUP(C{r},parametros!$B:$F,5,0),"")',
         # L e a unica regra de sinal quantitativo. J apenas monetiza esse delta.
         "J": '=IF(OR(L{r}="",F{r}=""),"",ROUND(L{r}*F{r}*IF(AND(UPPER(H{r})="SIM",ISNUMBER(I{r})),I{r},1),2))',
-        "L": '=IF(OR(A{r}="",C{r}="",D{r}="",NOT(ISNUMBER(E{r}))),"",IF(LEFT(UPPER(D{r}),5)="ACRES",ROUND(ABS(E{r}),2),IF(OR(LEFT(UPPER(D{r}),6)="SUPRES",LEFT(UPPER(D{r}),4)="DECR"),ROUND(-ABS(E{r}),2),"")))',
-        "M": '=IF(A{r}="","",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{r})=0,"ALERTA: ITEM_AUSENTE",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{r})>1,"ALERTA: ITEM_DUPLICADO",IF(OR(C{r}="",C{r}="Fora dos ciclos"),"ALERTA: CICLO_INVALIDO",IF(NOT(ISNUMBER(E{r})),"ALERTA: QTD_INVALIDA",IF(AND(LEFT(UPPER(D{r}),5)<>"ACRES",LEFT(UPPER(D{r}),6)<>"SUPRES",LEFT(UPPER(D{r}),4)<>"DECR"),"ALERTA: TIPO_INVALIDO","OK"))))))',
+        # §12: prefixos tolerantes a acento. UPPER("Acréscimo")="ACRÉSCIMO" e o
+        # acento (É) fica na posicao 4, entao LEFT(...,5)="ACRES" falhava. Usamos
+        # LEFT(...,3)="ACR" (cobre Acréscimo/Acrescimo) e LEFT(...,4)="SUPR"
+        # (cobre Supressão/Supressao). DECR (legado) mantido para leitura.
+        "L": '=IF(OR(A{r}="",C{r}="",D{r}="",NOT(ISNUMBER(E{r}))),"",IF(LEFT(UPPER(D{r}),3)="ACR",ROUND(ABS(E{r}),2),IF(OR(LEFT(UPPER(D{r}),4)="SUPR",LEFT(UPPER(D{r}),4)="DECR"),ROUND(-ABS(E{r}),2),"")))',
+        "M": '=IF(A{r}="","",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{r})=0,"ALERTA: ITEM_AUSENTE",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{r})>1,"ALERTA: ITEM_DUPLICADO",IF(OR(C{r}="",C{r}="Fora dos ciclos"),"ALERTA: CICLO_INVALIDO",IF(NOT(ISNUMBER(E{r})),"ALERTA: QTD_INVALIDA",IF(AND(LEFT(UPPER(D{r}),3)<>"ACR",LEFT(UPPER(D{r}),4)<>"SUPR",LEFT(UPPER(D{r}),4)<>"DECR"),"ALERTA: TIPO_INVALIDO","OK"))))))',
     }
     for row in range(2, 201):
         for col in ("A", "B", "D", "E", "H", "K"):
@@ -549,13 +567,17 @@ def _reset_aditivos(wb) -> None:
         ws[f"L{row}"].number_format = QTY
         ws[f"I{row}"].number_format = FACTOR
     ws.data_validations.dataValidation.clear()
+    # §12: dropdown mantido sem acento ("Acrescimo,Supressao") para preservar a
+    # validacao legivel por openpyxl (Excel embrulha listas re-salvas via COM em
+    # mc:AlternateContent -> formula1=None). As formulas L/M aceitam a ENTRADA
+    # acentuada ("Acréscimo"/"Supressão") via prefixos ACR/SUPR.
     for rng, values in (("D2:D200", "Acrescimo,Supressao"), ("H2:H200", "Sim,Nao"), ("K2:K200", "Sim,Nao")):
         dv = DataValidation(type="list", formula1=f'"{values}"', allow_blank=True)
         ws.add_data_validation(dv)
         dv.add(rng)
     red_fill = PatternFill("solid", fgColor="FFFFC7CE")
     red_font = Font(color="FF9C0006")
-    ws.conditional_formatting.add("A2:K200", FormulaRule(formula=['OR(LEFT(UPPER($D2),6)="SUPRES",LEFT(UPPER($D2),4)="DECR")'], fill=red_fill, font=red_font))
+    ws.conditional_formatting.add("A2:K200", FormulaRule(formula=['OR(LEFT(UPPER($D2),4)="SUPR",LEFT(UPPER($D2),4)="DECR")'], fill=red_fill, font=red_font))
     ws["L1"] = "DELTA_QTD_CONTRATUAL"
     ws["M1"] = "CHECK_POSICAO_CONTRATUAL"
     for col in ("L", "M"):

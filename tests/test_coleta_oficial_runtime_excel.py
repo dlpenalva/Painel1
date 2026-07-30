@@ -11,7 +11,7 @@ from pathlib import Path
 import pytest
 from openpyxl import load_workbook
 
-from _coleta_oficial import gerar_coleta_oficial_preenchida
+from _coleta_oficial import ABAS_COLETA_OFICIAL, gerar_coleta_oficial_preenchida
 from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
 
 
@@ -151,14 +151,34 @@ def _excel_editar_e_inspecionar(caminho: Path, editar, inspecionar):
         pythoncom.CoUninitialize()
 
 
+def _arquivo_sheet_por_nome(caminho: Path, nome_aba: str) -> str:
+    """Resolve xl/worksheets/sheetN.xml da aba pelo nome (§26: sem hard-code).
+
+    A numeracao sheetN.xml segue a ordem interna de criacao, nao a ordem das
+    guias; com posicao_referencia adicionada, RESULTADOS deixou de ser sheet11.
+    """
+    with zipfile.ZipFile(caminho, "r") as z:
+        wbxml = z.read("xl/workbook.xml").decode("utf-8")
+        rels = z.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+    rid = None
+    for nome, ident in re.findall(r'<sheet name="([^"]+)"[^>]*r:id="([^"]+)"', wbxml):
+        if nome == nome_aba:
+            rid = ident
+            break
+    assert rid is not None, f"aba {nome_aba} nao encontrada em workbook.xml"
+    alvo = dict(re.findall(r'Id="([^"]+)"[^>]*Target="([^"]+)"', rels))[rid]
+    return alvo if alvo.startswith("xl/") else "xl/" + alvo.lstrip("/")
+
+
 def _alterar_cache_resultados(caminho: Path, celula: str, valor: float) -> None:
+    arquivo_resultados = _arquivo_sheet_por_nome(caminho, "MEMORIA_RESULTADOS")
     temporario = caminho.with_suffix(".tmp.xlsx")
     with zipfile.ZipFile(caminho, "r") as origem, zipfile.ZipFile(
         temporario, "w", zipfile.ZIP_DEFLATED
     ) as destino:
         for item in origem.infolist():
             dados = origem.read(item.filename)
-            if item.filename == "xl/worksheets/sheet11.xml":
+            if item.filename == arquivo_resultados:
                 texto = dados.decode("utf-8")
                 padrao = re.compile(
                     rf'(<c r="{re.escape(celula)}"[^>]*>.*?<v>)([^<]*)(</v>)',
@@ -182,7 +202,7 @@ def test_excel_com_linha_73_entra_em_resultados(tmp_path: Path) -> None:
     valores = load_workbook(caminho, data_only=True)
     assert str(valores["financeiro"]["B73"].value).lower() == "c4"
     assert valores["financeiro"]["F73"].value == pytest.approx(46.41, abs=0.01)
-    assert valores["RESULTADOS"]["B14"].value == pytest.approx(46.41, abs=0.01)
+    assert valores["MEMORIA_RESULTADOS"]["B14"].value == pytest.approx(46.41, abs=0.01)
 
 
 def test_excel_com_efeitos_itens_pc_data_exata_cores_e_reabertura(tmp_path: Path) -> None:
@@ -216,7 +236,8 @@ def test_excel_com_efeitos_itens_pc_data_exata_cores_e_reabertura(tmp_path: Path
         caminho, editar, inspecionar
     )
     # tupla: C, E, F, H, I, J, K, L
-    assert valores[2][:6] == ("C1", 1.0, 100.0, 0.0, 100.0, 0.0)
+    # Etapa 26C: pre-efeito mantem o fator HISTORICO (E/F/I); H/J seguem 0.
+    assert valores[2][:6] == ("C1", 1.1, 110.0, 0.0, 110.0, 0.0)
     assert valores[2][7] == "Nao" and valores[2][6] == "OK"
     assert valores[3][:6] == ("C1", 1.1, 110.0, 0.0, 110.0, 10.0)
     assert valores[3][7] == "Sim" and valores[3][6] == "OK"
@@ -291,7 +312,6 @@ def test_excel_com_runtime_financeiro_pc_reconciliacao_e_bloqueio(tmp_path: Path
 
     pc = load_workbook(io.BytesIO(base))
     pc["CONTROLE"]["B1"] = "Pedidos de Compras"
-    pc["RESULTADOS"]["B4"] = "PCs"
     pc["itens_PC"]["A2"] = "PC-001"
     pc["itens_PC"]["B2"] = date(2024, 1, 15)
     pc["itens_PC"]["D2"] = 600.0
@@ -312,11 +332,15 @@ def test_excel_com_runtime_financeiro_pc_reconciliacao_e_bloqueio(tmp_path: Path
     _alterar_cache_resultados(caminho_pc, "C15", 9999.0)
     divergente, _ = processar_coleta_oficial_runtime(caminho_pc.read_bytes())
     assert divergente["reconciliacao_xls_python"]["divergencias_relevantes"]
+    # Formalizacao permanece bloqueada pela divergencia XLS x Python...
     assert divergente["formalizacao_bloqueada"]
-    assert not any(
-        doc.get("habilitado")
-        for doc in (divergente.get("capacidades") or {}).get("documentos", {}).values()
-    )
+    documentos = (divergente.get("capacidades") or {}).get("documentos", {})
+    # ...mas §7: os 3 documentos diagnosticos seguem DISPONIVEIS (disponibilidade
+    # documental != aptidao para formalizar). Os demais formais ficam bloqueados.
+    for chave in ("sumario_executivo", "despacho_saneador", "termo_apostila"):
+        assert documentos[chave]["habilitado"], chave
+    for chave in ("garantia_contratual", "dou", "relatorio_executivo"):
+        assert not documentos[chave]["habilitado"], chave
 
 
 def test_excel_com_pcs_multiciclo_ignora_fator_historico_fora_do_objeto(tmp_path: Path) -> None:
@@ -347,7 +371,6 @@ def test_excel_com_pcs_multiciclo_ignora_fator_historico_fora_do_objeto(tmp_path
     }
     wb = load_workbook(io.BytesIO(gerar_coleta_oficial_preenchida(dados)))
     wb["CONTROLE"]["B1"] = "Pedidos de Compras"
-    wb["RESULTADOS"]["B4"] = "PCs"
     for row, numero, data_pc, valor in (
         (2, "PC-2001", date(2025, 2, 15), 600.0),
         (3, "PC-3001", date(2026, 3, 20), 800.0),
@@ -459,11 +482,24 @@ def test_excel_com_efeito_d_vazio_bloqueia_e_f_e_documentos(tmp_path: Path) -> N
         return ws.Range(f"E{row}").Value, ws.Range(f"F{row}").Value, ws.Range(f"A{row}").DisplayFormat.Interior.Color
 
     atualizado, delta, cor = _excel_editar_e_inspecionar(caminho, editar, ler)
-    assert atualizado in (None, "")
-    assert delta in (None, "")
-    assert cor == _cor_excel("FCE4D6")
-    with pytest.raises(ValueError, match="Efeito financeiro nao informado.*04/2024"):
-        processar_coleta_oficial_runtime(caminho.read_bytes())
+    assert atualizado in (None, "")           # VALOR_ATUALIZADO E permanece vazio
+    assert delta in (None, "")                # DELTA F permanece vazio
+    assert cor == _cor_excel("FCE4D6")        # celula sinalizada (alerta)
+    # Efeito financeiro nao informado (competencia paga sem flag) e INSUFICIENCIA
+    # de negocio -> SOFT block (politica homologada, commit 1337247), NAO falha
+    # estrutural: upload aceito e diagnosticado, mas resultado dependente nao
+    # confiavel e FORMALIZACAO BLOQUEADA. processar_coleta_oficial_runtime so
+    # levanta ValueError em falha ESTRUTURAL (arquivo invalido), nunca em SOFT.
+    resultado, diagnostico = processar_coleta_oficial_runtime(caminho.read_bytes())
+    assert diagnostico["valido"] is True
+    assert diagnostico["status_base"] == "ANALISE_COM_INCONSISTENCIAS"
+    assert diagnostico["pronto_para_consolidar"] is False   # formalizacao bloqueada
+    mensagens = " | ".join(
+        str(x) for x in
+        (diagnostico.get("inconsistencias") or [])
+        + (diagnostico.get("bloqueios_criticos") or []))
+    assert "Efeito financeiro nao informado" in mensagens
+    assert "04/2024" in mensagens
 
 
 def test_excel_com_efeito_e_dropdown_termina_em_g73(tmp_path: Path) -> None:
@@ -496,7 +532,10 @@ def test_excel_com_efeito_f_abre_sem_reparo_e_preserva_estrutura(tmp_path: Path)
     nomes, formula_e2, formula_f73 = _excel_editar_e_inspecionar(caminho, lambda wb: None, ler)
     depois = {p.name for p in tmp_path.iterdir()}
     novos_logs = [n for n in depois - antes if "repair" in n.lower() or "recover" in n.lower()]
-    assert nomes == ["CONTROLE", "parametros", "financeiro", "itens_Remanesc", "itens_Consumidos", "itens_PC", "aditivos", "posicao_contratual", "itens_RC", "historico_VU", "RESULTADOS"]
+    # Fonte canonica das abas oficiais (evita hardcode duplicado). Continua
+    # protegendo quantidade, nomes, ordem e estrutura: falha se uma aba oficial
+    # sumir, surgir uma inesperada ou a ordem mudar sem atualizar a fonte.
+    assert nomes == ABAS_COLETA_OFICIAL
     assert 'G2="Sim"' in formula_e2
     assert 'G73="Sim"' in formula_f73
     assert not novos_logs

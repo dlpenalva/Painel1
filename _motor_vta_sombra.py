@@ -40,18 +40,21 @@ def _to_float(valor: Any, default: float = 0.0) -> float:
 
 
 def _valor_parcela_pc(item: dict[str, Any]) -> float:
-    efeito = str(item.get("efeito_financeiro_pc") or "").strip()
-    valor_pc = _to_float(item.get("valor_pc"))
-    if efeito == "Nao":
-        return valor_pc
-    if efeito != "Sim":
-        return 0.0
+    """Valor HISTORICO atualizado da parcela PC para o VTA sombra.
+
+    Etapa 26C: o efeito financeiro (Sim/Nao) governa retroativo, nunca o valor
+    historico. Ordem de fonte: valor_atualizado do leitor; senao valor_pc x
+    fator historico; sem base segura -> 0.0 (a parcela cai em inconsistencia
+    diagnosticada, jamais vira valor nominal silencioso).
+    """
     valor_atualizado = _to_float(item.get("valor_atualizado"))
     if valor_atualizado:
         return valor_atualizado
-
-    fator = _to_float(item.get("fator_acumulado"), default=1.0) or 1.0
-    return round(valor_pc * fator, 2)
+    valor_pc = _to_float(item.get("valor_pc"))
+    fator = _to_float(item.get("fator_acumulado"), default=0.0)
+    if valor_pc and fator:
+        return round(valor_pc * fator, 2)
+    return 0.0
 
 
 def _parcela_base(item: dict[str, Any], valor: float) -> dict[str, Any]:
@@ -75,6 +78,13 @@ def _parcela_generica(item: dict[str, Any]) -> dict[str, Any]:
     return {
         "linha": item.get("linha"),
         "identificador": item.get("identificador"),
+        "instrumento": item.get("instrumento"),
+        "item": item.get("item"),
+        "data_aditivo": item.get("data_aditivo"),
+        "tipo_alteracao": item.get("tipo_alteracao"),
+        "quantidade": item.get("quantidade"),
+        "vu_original": item.get("vu_original"),
+        "valor_original": item.get("valor_original"),
         "ciclo": item.get("ciclo"),
         "data_referencia": item.get("data_referencia"),
         "confianca": item.get("confianca"),

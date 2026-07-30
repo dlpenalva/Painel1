@@ -12,6 +12,7 @@ import streamlit.components.v1 as components
 
 from _coleta_oficial import (
     NOME_ARQUIVO_COLETA_OFICIAL,
+    NOME_DOWNLOAD_COLETA,
     TEMPLATE_COLETA_OFICIAL,
     assinatura_template_coleta,
     gerar_coleta_oficial_preenchida,
@@ -37,7 +38,7 @@ except Exception:
     REPORTLAB_OK = False
 
 
-st.set_page_config(page_title="Análises de Reajustes - Valor Global", layout="wide")
+st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="Análises de Reajustes - Valor Global", layout="wide")
 
 
 
@@ -72,7 +73,10 @@ def aplicar_css_aditivos25_compacto():
         unsafe_allow_html=True,
     )
 # <<< UX_ADITIVOS_25_COMPACTO
-from _ui_utils import render_avisos_override_efeito_financeiro, render_cabecalho_pagina
+from _ui_utils import (
+    render_avisos_override_efeito_financeiro,
+    render_cabecalho_pagina,
+)
 
 def agora_brasilia():
     return datetime.now(ZoneInfo("America/Sao_Paulo"))
@@ -4722,22 +4726,22 @@ DOCUMENTOS_FUNCIONAIS_UPLOAD = SEIS_DOCUMENTOS_CANONICOS
 
 _CSS_DOCS_GRID = """
 <style>
+/* Marcador invisivel: apenas ancora o :has() para uniformizar os 6 cards. */
+.upload-doc-card { display:none; }
+/* Altura minima uniforme + coluna flex em cada card documental. */
 div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]:has(.upload-doc-card) {
     display:flex;
     flex-direction:column;
-    min-height:10rem;
+    min-height:7rem;
 }
 div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-card) {
     display:flex;
     flex-direction:column;
     height:100%;
 }
-.upload-doc-card {
-    font-size:.85rem;
-    color:#52667A;
-    line-height:1.35;
-    margin-bottom:.5rem;
-    flex:1;
+/* Acao (ultimo elemento) alinhada a base — mesma posicao vertical nos 6 cards. */
+div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-card) > div:last-child {
+    margin-top:auto;
 }
 </style>
 """
@@ -4745,13 +4749,14 @@ div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-c
 
 def _render_pendencia_documento(chave, documento):
     rotulo = documento.get("rotulo") or "Aguardando dados"
+    # Card enxuto: mantém o botão desabilitado como bloqueio funcional visível,
+    # sem a legenda descritiva de motivo (removida na limpeza da homologação).
     st.button(
         rotulo,
         disabled=True,
         use_container_width=True,
         key=f"upload_docs_{chave}_pendencia",
     )
-    st.caption(documento.get("motivo") or "Complete os dados necessários para liberar este documento.")
 
 
 def _render_acao_documento_upload(chave, documento, resultado):
@@ -4834,9 +4839,30 @@ def _render_acao_documento_upload(chave, documento, resultado):
         _render_pendencia_documento(chave, documento)
 
 
-def render_documentos_funcionais_upload(resultado):
-    """Renderiza os seis destinos documentais após processamento explícito."""
+def render_status_base_coleta(diagnostico):
+    """§5: mensagem de destaque conforme o status global da base analisada."""
+    status = (diagnostico or {}).get("status_base")
+    if status == "ANALISE_PARCIAL_INFORMACOES_INSUFICIENTES":
+        st.warning(
+            "Este arquivo contém informações insuficientes para uma análise segura. "
+            "O upload foi aceito para diagnóstico, mas os resultados afetados não devem "
+            "ser utilizados como definitivos até a complementação das informações."
+        )
+    elif status == "ANALISE_COM_INCONSISTENCIAS":
+        st.warning(
+            "Este arquivo contém inconsistências que exigem revisão. O upload foi aceito "
+            "para diagnóstico; os blocos afetados permanecem indisponíveis para "
+            "formalização até a correção ou validação responsável."
+        )
 
+
+def render_documentos_funcionais_upload(resultado):
+    """Renderiza os seis destinos documentais após processamento explícito.
+
+    Etapa 26H (limpeza da interface): o aviso de status da base foi retirado
+    da tela — a política documental da PRÉVIA passa a comunicar o estado não
+    definitivo nos próprios documentos; o diagnóstico segue no session_state.
+    """
     st.markdown(_CSS_DOCS_GRID, unsafe_allow_html=True)
     documentos = (resultado.get("capacidades") or {}).get("documentos") or {}
     col_a, col_b, col_c = st.columns(3)
@@ -4847,6 +4873,7 @@ def render_documentos_funcionais_upload(resultado):
         documento = documentos.get(chave) or {}
         with colunas[indice]:
             with st.container(border=True):
+                st.markdown('<span class="upload-doc-card"></span>', unsafe_allow_html=True)
                 st.markdown(f"#### {titulo}")
                 try:
                     _render_acao_documento_upload(chave, documento, resultado)
@@ -4861,13 +4888,7 @@ def render_documentos_funcionais_upload(resultado):
 aplicar_css_responsivo_telebras()
 render_cabecalho_pagina(
     "Painel da Apuração Contratual",
-    "Envie o Arquivo Coleta Oficial preenchido para validar cada bloco, acompanhar os resultados disponíveis e gerar documentos.",
-)
-
-st.markdown(
-    '<div class="cl8us-docs-note">O Arquivo Coleta Oficial reúne os dados da apuração. '
-    'A web lê o novo modelo, calcula em Python e reconcilia os resultados com a aba RESULTADOS.</div>',
-    unsafe_allow_html=True,
+    "",
 )
 
 
@@ -4890,7 +4911,7 @@ with st.container(border=True):
             st.download_button(
                 "Baixar Arquivo Coleta Oficial",
                 data=_coleta_oficial_cacheada(_assinatura_coleta, _dados_calculadora_coleta),
-                file_name=NOME_ARQUIVO_COLETA_OFICIAL,
+                file_name=NOME_DOWNLOAD_COLETA,
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary",
                 key="download_coleta_documentos",
@@ -4973,6 +4994,9 @@ if resultado:
     resumo_ciclos.metric("Ciclos analisados", _ciclos_str)
     resumo_retro.metric("Retroativo reconhecido", _retro_str)
     resumo_acum.metric("Percentual acumulado", _acum_str)
+    # Etapa 26H (limpeza da interface): expander de cobertura temporal
+    # confirmado na homologação e removido da tela; o diagnóstico permanece
+    # em diagnostico_coleta["cobertura_temporal"] (camada sombra intacta).
     render_documentos_funcionais_upload(resultado)
     st.stop()
 

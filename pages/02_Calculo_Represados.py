@@ -11,7 +11,7 @@ from zoneinfo import ZoneInfo
 from dateutil.relativedelta import relativedelta
 
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
-    st.set_page_config(page_title="Análises de Reajustes - Reajustes Múltiplos", layout="wide")
+    st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="Análises de Reajustes - Reajustes Múltiplos", layout="wide")
 
 
 
@@ -47,9 +47,10 @@ def aplicar_css_aditivos25_compacto():
     )
 # <<< UX_ADITIVOS_25_COMPACTO
 from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox
-from _indice_utils import calcular_ist_numero_indice, coletar_sgs_produtorio
+from _indice_utils import (calcular_ist_numero_indice, coletar_sgs_produtorio,
+                           serie_sgs_do_indice)
 from _reajuste_utils import _competencias_mensais, _data_para_datetime, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br, _percentual_formatado
-from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, gerar_coleta_oficial_preenchida
+from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, NOME_DOWNLOAD_COLETA, gerar_coleta_oficial_preenchida
 from _memoria_calculo import normalizar_memoria_calculo
 from _email_contratada import render_email_contratada
 
@@ -1903,7 +1904,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
     return output.getvalue()
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
     render_cabecalho_pagina(
-        "Calculadora multiciclo",
+        "Reajustes Subsequentes",
         "Ferramenta para análise contratual com mais de um ciclo de reajuste.",
     )
 
@@ -1915,10 +1916,9 @@ default_dt_base_original = datetime(2022, 10, 10)
 
 with st.sidebar:
     dt_base_original = st.date_input(
-        "Data-base/âncora inicial da análise atual:",
+        "Data-base / âncora inicial da análise atual 🔹",
         value=default_dt_base_original,
         format="DD/MM/YYYY",
-        help="Informe a data-base original do contrato ou a âncora a partir da qual os ciclos devem ser contados.",
     )
 
     st.markdown(
@@ -1974,11 +1974,10 @@ with st.sidebar:
                 key="rep_ultimo_ciclo_anterior",
             )
             _marco_temporal_anterior = st.date_input(
-                "Marco temporal do último ciclo concedido/formalizado:",
+                "Marco temporal do último ciclo concedido/formalizado",
                 value=dt_base_original,
                 key="rep_marco_temporal_anterior",
                 format="DD/MM/YYYY",
-                help="Este marco será usado para calcular a admissibilidade do próximo ciclo.",
             )
             st.text_input(
                 "Observação de rastreabilidade (opcional):",
@@ -2277,7 +2276,7 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
     referencia_documental = dados_ciclo.get('referencia_documental', '')
 
     with containers_ciclos[idx_ciclo]:
-        res_c = get_data_rep("433" if "IPCA" in idx_sel else "189", data_atual, d_fim, "IST" in idx_sel, "ICTI" in idx_sel)
+        res_c = get_data_rep(serie_sgs_do_indice(idx_sel), data_atual, d_fim, "IST" in idx_sel, "ICTI" in idx_sel)
 
         # Intervalo exibido independentemente de haver dados disponíveis para o índice.
         if res_c:
@@ -2541,7 +2540,7 @@ if historico_coleta:
         label="Baixar Arquivo Coleta Oficial",
         type="primary",
         data=gerar_coleta_oficial_preenchida(st.session_state['dados_admissibilidade']),
-        file_name=NOME_ARQUIVO_COLETA_OFICIAL,
+        file_name=NOME_DOWNLOAD_COLETA,
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=False,
     )
@@ -2549,5 +2548,6 @@ if historico_coleta:
     render_email_contratada(
         historico_coleta,
         numero_contrato=st.session_state.get("dados_admissibilidade", {}).get("contrato"),
+        indice=st.session_state.get("dados_admissibilidade", {}).get("indice"),
         key="baixar_email_contratada_multiciclo",
     )

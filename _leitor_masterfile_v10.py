@@ -29,6 +29,7 @@ from _masterfile_config_v10 import (
     ABA_EXECUCAO_SALDO,
     MODOS_VALIDOS_V10,
 )
+from _capacidade_pcs import ULTIMA_LINHA_PCS
 from _motor_vta_sombra import calcular_vta_sombra
 from _motor_composicao_vta import montar_composicao_vta
 from _motor_reconciliacao import reconciliar_execucoes
@@ -63,6 +64,126 @@ def _achar_valor(ws, rotulo_norm: str, max_lin: int = 60) -> Any:
     return None
 
 
+def _valor_por_prefixo(ws, prefixo: str, max_lin: int = 40) -> Any:
+    """Valor em col B da 1a linha cujo rotulo (col A) COMECA com `prefixo`.
+
+    Leitura semantica por rotulo (tolerante a sufixos como "(GCC, opcional)"),
+    sem depender de coordenada fixa.
+    """
+    alvo = _norm(prefixo)
+    for r in range(1, max_lin + 1):
+        rot = _norm(ws.cell(r, 1).value)
+        if rot and rot.startswith(alvo):
+            return ws.cell(r, 2).value
+    return None
+
+
+def _norm_data(valor: Any):
+    """Normaliza um valor de celula para datetime.date; caso contrario None.
+
+    NUNCA transforma vazio, numero solto ou texto em data (fail-closed): apenas
+    datas reais (date/datetime) sao aceitas.
+    """
+    from datetime import date as _date, datetime as _dt
+    if isinstance(valor, _dt):
+        return valor.date()
+    if isinstance(valor, _date):
+        return valor
+    return None
+
+
+# Rotulos canonicos da aba cobertura_temporal (leitura por prefixo).
+_ROTULOS_COBERTURA_TEMPORAL = {
+    "data_analise": "data da analise",
+    "financeiro_confirmado_completo_ate": "financeiro confirmado completo ate",
+    "pc_confirmado_completo_ate": "pc confirmado completo ate",
+}
+
+
+def _ler_cobertura_temporal(wb) -> dict[str, Any]:
+    """Le a aba de diagnostico cobertura_temporal (GCC) por rotulo.
+
+    Le SOMENTE as declaracoes GCC (Data da analise, Financeiro/PC confirmado
+    completo ate). NAO recalcula formula e NAO le a ultima evidencia (MAX): a
+    ultima evidencia continua sendo derivada pelo motor a partir de
+    financeiro/itens_PC. Aba ausente => estrutura vazia compativel (sem
+    excecao, sem bloquear arquivos oficiais anteriores).
+    """
+    vazio = {
+        "ok": False,
+        "data_analise": None,
+        "financeiro_confirmado_completo_ate": None,
+        "pc_confirmado_completo_ate": None,
+    }
+    if "cobertura_temporal" not in wb.sheetnames:
+        return vazio
+    ws = wb["cobertura_temporal"]
+    saida: dict[str, Any] = {"ok": True}
+    for chave, prefixo in _ROTULOS_COBERTURA_TEMPORAL.items():
+        saida[chave] = _norm_data(_valor_por_prefixo(ws, prefixo))
+    return saida
+
+
+def _ler_posicao_fisica_fiscal(wb):
+    """Itens da base (itens_Remanesc!A) e a fotografia recente do fiscal.
+
+    Fornece ao motor de cobertura temporal os dois insumos da posicao fisica
+    ATUAL: a lista de itens e o remanescente informado manualmente em
+    posicao_referencia!B (QTD_REM_ATUAL), alinhado por LINHA a itens_Remanesc.
+    Zero conta como informado; celula vazia nao entra (a fotografia so e
+    completa quando TODOS os itens tem quantidade). Nao le formula nem inventa.
+    """
+    if "itens_Remanesc" not in wb.sheetnames:
+        return [], {}
+    ir = wb["itens_Remanesc"]
+    pr = wb["posicao_referencia"] if "posicao_referencia" in wb.sheetnames else None
+    itens_base: list[str] = []
+    remanescente: dict[str, float] = {}
+    # 26H.2: capacidade canonica de cadastro = linhas 2:200 (linha 201 e do
+    # total dinamico e NAO e linha valida de item — fronteira da auditoria).
+    for r in range(2, 201):
+        item = ir.cell(r, 1).value
+        cod = str(item).strip() if item not in (None, "") else ""
+        if not cod:
+            continue
+        itens_base.append(cod)
+        if pr is not None:
+            q = pr.cell(r, 2).value
+            if isinstance(q, (int, float)) and not isinstance(q, bool):
+                remanescente[cod] = float(q)
+    return itens_base, remanescente
+
+
+def _ler_financeiro_competencias(wb) -> list[dict[str, Any]]:
+    """Competencias financeiras (mensais) para o motor de cobertura temporal.
+
+    Fonte mensal: COMPETENCIA (col A), CICLO (col B), VALOR_PAGO (col C). Apenas
+    linhas cuja competencia e uma DATA real entram; zero conta como competencia
+    informada, a AUSENCIA de linha e lacuna. Nao interpreta valor nem infere
+    continuidade aqui — o motor decide. Compat: aba ausente => lista vazia.
+    """
+    if "financeiro" not in wb.sheetnames:
+        return []
+    # Semantica homologada da Adequacao Rev.2 (fonte unica): ZERO != VAZIO.
+    from _adequacao_orcamentaria import valor_original_foi_informado
+    ws = wb["financeiro"]
+    linhas: list[dict[str, Any]] = []
+    for r in range(2, min(ws.max_row or 2, 200) + 1):
+        comp = _norm_data(ws.cell(r, 1).value)
+        if comp is None:
+            continue
+        valor_bruto = ws.cell(r, 3).value
+        # informado=True inclui zero explicito; None/vazio/NaN/traco => False.
+        # Linha vazia PERMANECE no payload (diagnostico da lacuna), mas sinalizada.
+        linhas.append({
+            "competencia": comp,
+            "ciclo": str(ws.cell(r, 2).value or "").strip().upper(),
+            "valor": valor_bruto,
+            "informado": valor_original_foi_informado(valor_bruto),
+        })
+    return linhas
+
+
 def _mapear_colunas_por_cabecalho(ws, linha_header: int = 1) -> dict[str, int]:
     mapa: dict[str, int] = {}
     for cell in ws[linha_header]:
@@ -90,18 +211,13 @@ def _normalizar_data(valor: Any) -> Any:
     return valor
 
 
-_MODOS_AMIGAVEIS = {
-    "itens consumidos": "d",
-    "pedidos de compras": "pc",
-    "pedido de compra": "pc",
-    "principal": "principal",
-}
-
-
 def _normalizar_modo(valor_bruto: str) -> str:
+    # Fonte unica de verdade do metodo (CONTROLE!B1): normalizador canonico
+    # compartilhado, com aliases legados e novos rotulos do dropdown.
+    from _metodo_apuracao import normalizar_metodo
     if not valor_bruto:
         return ""
-    return _MODOS_AMIGAVEIS.get(_norm(valor_bruto), _norm(valor_bruto))
+    return normalizar_metodo(valor_bruto)
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +255,12 @@ def _ler_historico_vu(wb) -> dict[str, Any]:
     col_obs     = mapa.get("observacao")
 
     cols_vu_ciclo = {f"VU_C{i}": mapa.get(f"vu_c{i}") for i in range(5)}
+    cols_qtd_vigente = {
+        f"C{i}": _col(mapa, f"QTD_VIGENTE_C{i}") for i in range(5)
+    }
+    cols_qtd_rem_ajustada = {
+        f"C{i}": _col(mapa, f"QTD_REM_AJUSTADA_C{i}") for i in range(5)
+    }
 
     for r in range(2, ws.max_row + 1):
         item = ws.cell(r, col_item).value
@@ -160,6 +282,14 @@ def _ler_historico_vu(wb) -> dict[str, Any]:
             "descricao":       ws.cell(r, col_desc).value   if col_desc  else None,
             "vu_original":     vu_orig,
             "vu_ciclos":       vu_ciclos,
+            "qtd_vigente_ciclos": {
+                ciclo: ws.cell(r, col).value if col else None
+                for ciclo, col in cols_qtd_vigente.items()
+            },
+            "qtd_rem_ajustada_ciclos": {
+                ciclo: ws.cell(r, col).value if col else None
+                for ciclo, col in cols_qtd_rem_ajustada.items()
+            },
             "vu_vigente":      ws.cell(r, col_vu_vig).value if col_vu_vig else None,
             "fator_acumulado": ws.cell(r, col_fator).value  if col_fator  else None,
             "variacao":        ws.cell(r, col_var).value    if col_var    else None,
@@ -1810,6 +1940,12 @@ def _ler_parcelas_sombra_aditivos(wb) -> list[dict[str, Any]]:
             parcelas_novo.append({
                 "linha": r,
                 "identificador": f"aditivos:{ciclo or 'sem_ciclo'}:{r}",
+                "item": item,
+                "data_aditivo": ws_adt.cell(r, 2).value,
+                "tipo_alteracao": ws_adt.cell(r, 4).value,
+                "quantidade": ws_adt.cell(r, 5).value,
+                "vu_original": ws_adt.cell(r, 6).value,
+                "valor_original": ws_adt.cell(r, 7).value,
                 "origem_dado": "Aditivo",
                 "tipo_parcela": "Aditivo",
                 "tipo_financeiro": "Aditivo Computavel",
@@ -2226,7 +2362,13 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
             and _norm(valor_deslocado) in {"sim", "nao"}
         )
 
-    limite_operacional = min(ws.max_row, 100) if ws.title == "itens_PC" else ws.max_row
+    # Etapa 26H: o teto operacional de itens_PC segue a capacidade canonica
+    # (_capacidade_pcs). O teto legado de 100 linhas truncava silenciosamente
+    # os PCs a partir da linha 101 (C0 parcial e C1 inteiro fora da memoria
+    # por ciclo e do Sumario Executivo).
+    limite_operacional = (
+        min(ws.max_row, ULTIMA_LINHA_PCS) if ws.title == "itens_PC" else ws.max_row
+    )
     for r in range(2, limite_operacional + 1):
         if _linha_exemplo_fiscal(ws, r):
             continue
@@ -2335,17 +2477,30 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
                 f"PC '{ident}' linha {r}: efeito financeiro indeterminado; "
                 "INICIO_EFEITO_FINANCEIRO ausente ou inconsistente."
             )
+        # Etapa 26C: VALOR HISTORICO ATUALIZADO e desacoplado do EFEITO
+        # FINANCEIRO. O fator historico e o da memoria da apuracao
+        # (parametros!A11:E15 no XLS; _fator_pc_na_apuracao aqui), aplicavel ao
+        # CICLO_PC independentemente de efeito Sim/Nao. O efeito continua
+        # governando somente retroativo/status/cor.
         valor_num = _tofl(valor, default=None)
-        fator_efetivo = (
-            1.0 if efeito_pc == "Nao"
-            else _fator_pc_na_apuracao(ciclo_norm) if efeito_pc == "Sim"
-            else None
-        )
-        fator = fator_efetivo
+        vatual_cache = _tofl(vatual, default=None)
+        fator_historico = _fator_pc_na_apuracao(ciclo_norm)
+        fator = fator_historico
         vatual = (
-            round(valor_num * fator_efetivo, 2)
-            if valor_num is not None and fator_efetivo is not None else None
+            round(valor_num * fator_historico, 2)
+            if valor_num is not None and fator_historico is not None else None
         )
+        if (
+            vatual is not None
+            and vatual_cache is not None
+            and abs(vatual - vatual_cache) > 0.01
+        ):
+            resultado["alertas"].append(
+                f"PC '{ident}' linha {r}: VALOR_ATUALIZADO do XLS "
+                f"({vatual_cache:.2f}) diverge do valor historico recomputado "
+                f"({vatual:.2f}); adotado o recomputado (compatibilidade com "
+                "XLS anterior ao desacoplamento historico x efeito)."
+            )
 
         if layout_corrigido:
             resultado["alertas"].append(
@@ -2432,12 +2587,19 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
             round(vatual - valor_num, 2)
             if vatual is not None and valor_num is not None else None
         )
+        # Retroativo/delta continuam GOVERNADOS PELO EFEITO (espelha itens_PC!H/J):
+        # efeito "Nao" -> retroativo/delta 0; indeterminado -> None. O valor
+        # historico (vatual) NAO participa desse gate.
+        incremento_retroativo = (
+            incremento if efeito_pc == "Sim"
+            else 0.0 if efeito_pc == "Nao" else None
+        )
         if retro_lido is None and pago_norm in {"sim", "s", "true", "1", "yes"}:
-            retro_lido = incremento
+            retro_lido = incremento_retroativo
         if analise_lida is None and pago_norm in {"nao", "n", "false", "0", "no"}:
             analise_lida = vatual
         if delta_lido is None and pago_norm in {"nao", "n", "false", "0", "no"}:
-            delta_lido = incremento
+            delta_lido = incremento_retroativo
 
         registro = {
             "linha":            r,
@@ -2738,11 +2900,13 @@ _NOMES_RESULTADOS_XLS = (
 
 
 def _ler_resultados_xls(wb) -> dict[str, Any]:
-    """Le os intervalos nomeados da aba RESULTADOS (novo modelo oficial).
+    """Le os intervalos nomeados dos resultados do modelo oficial.
 
-    Uso exclusivo de AUDITORIA/reconciliacao com o motor Python — nunca
-    substitui o calculo. Valores vem do cache do Excel (data_only=True);
-    sem recalculo, tudo retorna None e cache_ausente=True.
+    Desde a Etapa 26F, os nomes apontam para MEMORIA_RESULTADOS e a aba
+    RESULTADOS e somente executiva. A leitura continua orientada pelos nomes,
+    sem depender de coordenadas. Uso exclusivo de AUDITORIA/reconciliacao com
+    o motor Python — nunca substitui o calculo. Valores vem do cache do Excel
+    (data_only=True); sem recalculo, tudo retorna None e cache_ausente=True.
     """
     resultado: dict[str, Any] = {
         "disponivel": False, "nomes_presentes": [], "valores": {},
@@ -2853,8 +3017,23 @@ def ler_masterfile_v10(
         return res
 
     if modelo_oficial:
+        # Etapa 3: posicao_referencia e OPCIONAL para leitura — Coletas oficiais
+        # geradas antes da Etapa 3 nao a possuem e devem continuar sendo lidas
+        # (compatibilidade retroativa; a aba pertence ao layout novo, mas sua
+        # ausencia nao descaracteriza o modelo oficial). cobertura_temporal
+        # (diagnostico desta etapa) segue a mesma politica de opcionalidade.
+        # comparativo_VTA e aba de saida/referencia (nao aparece na web e nao
+        # e necessaria para leitura); Coletas geradas antes dela devem seguir
+        # sendo lidas (compatibilidade retroativa).
+        ABAS_OPCIONAIS_COMPAT = {
+            "posicao_referencia",
+            "cobertura_temporal",
+            "comparativo_VTA",
+            "MEMORIA_RESULTADOS",
+        }
         res["abas_ausentes"] = [
-            a for a in ABAS_COLETA_OFICIAL if a.lower() not in abas_lower
+            a for a in ABAS_COLETA_OFICIAL
+            if a.lower() not in abas_lower and a not in ABAS_OPCIONAIS_COMPAT
         ]
         if res["abas_ausentes"]:
             res["erro"] = (
@@ -2909,13 +3088,33 @@ def ler_masterfile_v10(
     modo_bruto = str(_achar_valor(c, "modo de leitura") or "").strip()
     ciclo      = _achar_valor(c, "ciclo vigente (em execucao)")
     corte      = _achar_valor(c, "data de corte (unica p/ contrato)")
+    indice     = _achar_valor(c, "indice utilizado")
     res["controle"] = {
         "modo":          _normalizar_modo(modo_bruto),
         "modo_bruto":    modo_bruto,
         "ciclo_vigente": str(ciclo or "").strip(),
         "data_corte":    corte,
+        # Etapa 26H: indice contratual (CONTROLE!B7) propagado pela cadeia
+        # canonica ate o Sumario Executivo (sem hardcode no renderer).
+        "indice":        str(indice or "").strip(),
         "versao":        res["versao_detectada"],
     }
+
+    # Integracao cobertura_temporal (aba de diagnostico GCC). Expoe a fonte
+    # canonica para o motor: data_analise em controle e confirmacoes GCC em
+    # confirmacao_gcc. Ausencia da aba => campos None (compativel com arquivos
+    # oficiais anteriores; ver ABAS_OPCIONAIS_COMPAT). MAX nunca vira aqui.
+    cobertura = _ler_cobertura_temporal(wb)
+    res["cobertura_temporal"] = cobertura
+    res["controle"]["data_analise"] = cobertura.get("data_analise")
+    res["confirmacao_gcc"] = {
+        "financeiro_ate": cobertura.get("financeiro_confirmado_completo_ate"),
+        "pc_ate":         cobertura.get("pc_confirmado_completo_ate"),
+    }
+    # Competencias financeiras (mensais) para o motor de cobertura temporal.
+    res["financeiro"] = _ler_financeiro_competencias(wb)
+    # Posicao fisica do fiscal (itens + fotografia recente posicao_referencia!B).
+    res["itens_base"], res["remanescente_atual"] = _ler_posicao_fisica_fiscal(wb)
 
     if "historico" in wb.sheetnames:
         try:

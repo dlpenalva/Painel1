@@ -20,6 +20,7 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 from openpyxl.styles import Font, PatternFill
 
+from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
 from _capacidades_apuracao import avaliar_capacidades_apuracao
 from _efeitos_financeiros_pc import (
     efeito_financeiro_pc,
@@ -276,6 +277,41 @@ def _validar_resultados_integra(wb, etapa: str) -> dict[str, Any]:
         raise ValueError(f"A aba RESULTADOS não está visível na etapa {etapa}.")
     if ws["A1"].value != "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL":
         raise ValueError(f"A aba RESULTADOS está vazia ou foi substituída na etapa {etapa}.")
+    if "MEMORIA_RESULTADOS" in wb.sheetnames:
+        memoria = wb["MEMORIA_RESULTADOS"]
+        formulas_memoria = sum(
+            1
+            for row in memoria.iter_rows()
+            for cell in row
+            if isinstance(cell.value, str) and cell.value.startswith("=")
+        )
+        conteudo_memoria = sum(
+            1
+            for row in memoria.iter_rows()
+            for cell in row
+            if cell.value not in (None, "")
+        )
+        if memoria.sheet_state == "visible":
+            raise ValueError(
+                f"A MEMORIA_RESULTADOS deve permanecer oculta na etapa {etapa}."
+            )
+        if formulas < 40 or conteudo < 100:
+            raise ValueError(
+                f"A RESULTADOS executiva perdeu conteúdo na etapa {etapa}: "
+                f"{formulas} fórmulas e {conteudo} células preenchidas."
+            )
+        if formulas_memoria < 3000 or conteudo_memoria < 3300:
+            raise ValueError(
+                f"A MEMORIA_RESULTADOS perdeu conteúdo na etapa {etapa}: "
+                f"{formulas_memoria} fórmulas e {conteudo_memoria} células preenchidas."
+            )
+        return {
+            "visivel": True,
+            "formulas": formulas,
+            "conteudo": conteudo,
+            "memoria_formulas": formulas_memoria,
+            "memoria_conteudo": conteudo_memoria,
+        }
     if formulas < 3000 or conteudo < 3300:
         raise ValueError(
             f"A aba RESULTADOS perdeu conteúdo na etapa {etapa}: "
@@ -428,10 +464,12 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         return {
             "valido": False,
             "pronto_para_consolidar": False,
+            "status_base": "ARQUIVO_ESTRUTURALMENTE_INVALIDO",
             "processamento_progressivo": True,
             "pendencias": bloqueios_estruturais,
             "bloqueios_estruturais": bloqueios_estruturais,
             "bloqueios_criticos": bloqueios_criticos,
+            "inconsistencias": bloqueios_criticos,
             "lacunas_apuracao": [],
             "avisos": avisos,
             "contagens": {},
@@ -458,19 +496,24 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
     formulas = _formulas(wb)
     if len(formulas) < 1000:
         bloqueios_estruturais.append("A matriz de fórmulas foi removida ou está incompleta.")
+    aba_resultados_tecnicos = (
+        "MEMORIA_RESULTADOS"
+        if "MEMORIA_RESULTADOS" in wb.sheetnames
+        else "RESULTADOS"
+    )
     for chave in (
         "financeiro!D2",
         "itens_Remanesc!D2",
         "itens_Consumidos!O2",
         _chave_ciclo_pc,
-        "RESULTADOS!B15",
-        "RESULTADOS!B16",
-        "RESULTADOS!B23",
-        "RESULTADOS!B26",
-        "RESULTADOS!B35",
-        "RESULTADOS!C35",
-        "RESULTADOS!D35",
-        "RESULTADOS!F36",
+        f"{aba_resultados_tecnicos}!B15",
+        f"{aba_resultados_tecnicos}!B16",
+        f"{aba_resultados_tecnicos}!B23",
+        f"{aba_resultados_tecnicos}!B26",
+        f"{aba_resultados_tecnicos}!B35",
+        f"{aba_resultados_tecnicos}!C35",
+        f"{aba_resultados_tecnicos}!D35",
+        f"{aba_resultados_tecnicos}!F36",
     ):
         if chave not in formulas:
             bloqueios_estruturais.append(f"Fórmula estrutural ausente em {chave}.")
@@ -540,13 +583,63 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
     bloqueios_criticos.extend(
         f"Inicio dos efeitos inconsistente: {erro}" for erro in erros_inicios_pc
     )
+    # Fonte visivel (parametros!INICIO_EFEITO_FINANCEIRO) e canonica. O metadado
+    # CL8US_INICIO_EFEITO e apenas copia de integridade: se desaparecer apos o
+    # fiscal abrir/salvar o XLS em editores legitimos, o arquivo continua valido.
+    if tem_inicio_visivel and not tem_inicio_metadado:
+        avisos.append(
+            "Metadado tecnico CL8US_INICIO_EFEITO ausente; adotada a fonte "
+            "visivel parametros!INICIO_EFEITO_FINANCEIRO como canonica."
+        )
     ativos_nome = {f"C{numero}" for numero in ativos}
     ws_pc = wb["itens_PC"]
     layout_pc_numero = str(_header_a1).strip().upper() == "NUMERO_PC"
     col_numero_pc = "A" if layout_pc_numero else None
     col_data_pc = "B" if layout_pc_numero else "A"
     col_valor_pc = "D" if layout_pc_numero else "C"
-    for row in range(2, 101):
+    # 26G: capacidade excedida NUNCA e truncada em silencio — bloqueio explicito.
+    if ws_pc.max_row > ULTIMA_LINHA_PCS:
+        linhas_alem = sorted(
+            {
+                cell.row
+                for row_alem in ws_pc.iter_rows(
+                    min_row=ULTIMA_LINHA_PCS + 1, min_col=1, max_col=12
+                )
+                for cell in row_alem
+                if cell.value not in (None, "")
+            }
+        )
+        if linhas_alem:
+            bloqueios_estruturais.append(
+                f"Capacidade de PCs excedida: ha conteudo em itens_PC apos a "
+                f"linha {ULTIMA_LINHA_PCS} (ex.: linha {linhas_alem[0]}). "
+                f"Maximo suportado: {CAPACIDADE_PCS} PCs."
+            )
+    # 26G: duplicidade de NUMERO_PC verificada em TODA a base (TRIM+UPPER),
+    # nao apenas nos primeiros 100 PCs.
+    if col_numero_pc:
+        _vistos: dict[str, int] = {}
+        _duplicados: dict[str, list[int]] = {}
+        for row in range(2, ULTIMA_LINHA_PCS + 1):
+            bruto = ws_pc[f"{col_numero_pc}{row}"].value
+            chave = str(bruto).strip().upper() if bruto not in (None, "") else ""
+            if not chave:
+                continue
+            if chave in _vistos:
+                _duplicados.setdefault(chave, [_vistos[chave]]).append(row)
+            else:
+                _vistos[chave] = row
+        for chave, linhas in sorted(_duplicados.items())[:8]:
+            bloqueios_criticos.append(
+                f"NUMERO_PC duplicado: {chave} (linhas "
+                + ", ".join(str(li) for li in linhas)
+                + ")."
+            )
+        if len(_duplicados) > 8:
+            bloqueios_criticos.append(
+                f"Ha mais {len(_duplicados) - 8} NUMERO_PC duplicados em itens_PC."
+            )
+    for row in range(2, ULTIMA_LINHA_PCS + 1):
         if not any(
             ws_pc[f"{col}{row}"].value not in (None, "")
             for col in tuple(
@@ -578,9 +671,13 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         efeito_esperado = efeito_financeiro_pc(data_pc, ciclo_pc, reg_pc)
         ciclo_ativo = ciclo_pc in ativos_nome
         if ciclo_ativo and efeito_esperado is None:
-            bloqueios_criticos.append(
-                "INICIO_EFEITO_FINANCEIRO ausente ou inconsistente: "
-                f"PC {numero_pc} - {ciclo_pc}."
+            # Sem inicio de efeito para o ciclo: insuficiencia, nao inconsistencia.
+            # O efeito daquele PC fica indeterminado; upload segue aceito e o
+            # calculo dependente e barrado pela politica de capacidades/lacunas.
+            lacunas_apuracao.append(
+                "INICIO_EFEITO_FINANCEIRO ausente para ciclo ativo: "
+                f"PC {numero_pc} - {ciclo_pc}. Efeito financeiro indeterminado "
+                "ate a complementacao do inicio do efeito."
             )
             continue
         marcador = ws_pc[f"L{row}"].value if _modelo_pc_etapa3 else None
@@ -599,13 +696,9 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
                     "EFEITO_FINANCEIRO_PC divergente da data canonica: "
                     f"PC {numero_pc} - {ciclo_pc}."
                 )
-        if _modelo_pc_etapa3 and ciclo_ativo and (
-            not tem_inicio_visivel or not tem_inicio_metadado
-        ):
-            bloqueios_criticos.append(
-                "Fonte dupla obrigatoria incompleta para INICIO_EFEITO_FINANCEIRO: "
-                f"PC {numero_pc} - {ciclo_pc}."
-            )
+        # NOTA: a exigencia historica de "fonte dupla" (visivel + metadado) foi
+        # removida. O metadado tecnico pode ser legitimamente apagado por editores
+        # de XLSX; a fonte visivel em parametros e suficiente e canonica.
 
     financeiro = wb["financeiro"]
     divergencias_manuais: list[str] = []
@@ -669,7 +762,7 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         "competencias_com_valor": sum(1 for row in range(2, 74) if _numero(wb["financeiro"][f"C{row}"].value) is not None),
         "itens_remanescentes": sum(1 for row in range(2, 201) if wb["itens_Remanesc"][f"A{row}"].value not in (None, "")),
         "itens_consumidos": sum(1 for row in range(2, 201) if wb["itens_Consumidos"][f"A{row}"].value not in (None, "")),
-        "pedidos_de_compra": sum(1 for row in range(2, 101) if wb["itens_PC"][f"A{row}"].value not in (None, "")),
+        "pedidos_de_compra": sum(1 for row in range(2, ULTIMA_LINHA_PCS + 1) if wb["itens_PC"][f"A{row}"].value not in (None, "")),
         "aditivos": sum(1 for row in range(2, 201) if wb["aditivos"][f"A{row}"].value not in (None, "")),
         "formulas": len(formulas),
         "posicao_contratual_itens": 0,
@@ -735,9 +828,14 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
                 bloqueios_criticos.append(
                     "Posição contratual inconsistente: " + ", ".join(alertas_posicao[:5])
                 )
-        resultados_valores = wb_valores["RESULTADOS"]
+        resultados_valores = wb_valores[aba_resultados_tecnicos]
+        resultados_executivos = wb_valores["RESULTADOS"]
         status_resultados = {
-            "geral": resultados_valores["J4"].value,
+            "geral": (
+                resultados_executivos["B3"].value
+                if "MEMORIA_RESULTADOS" in wb_valores.sheetnames
+                else resultados_valores["J4"].value
+            ),
             "metodo_retroativo": resultados_valores["B4"].value,
             "origem_retroativo_oficial": resultados_valores["D16"].value,
             "retroativo": resultados_valores["F16"].value,
@@ -752,6 +850,10 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
                 "vta_retroativo": resultados_valores["B21"].value,
                 "vta_ajuste_remanescente": resultados_valores["B22"].value,
                 "vta_calculado": resultados_valores["B23"].value,
+                "vta_pc_execucao_anterior": resultados_valores["T21"].value,
+                "vta_pc_parcelas_intermediarias": resultados_valores["T22"].value,
+                "vta_pc_remanescente_corte": resultados_valores["T23"].value,
+                "vta_pc_total": resultados_valores["T25"].value,
                 "vta_ajuste_manual": resultados_valores["B24"].value,
                 "vta_manual_oficial": resultados_valores["B25"].value,
                 "vta_oficial": resultados_valores["B26"].value,
@@ -775,23 +877,48 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         "status_resultados": status_resultados,
         "arquitetura_posicao_contratual": "canonica" if possui_posicao_contratual else "legada",
     }
-    bloqueios = bloqueios_estruturais + bloqueios_criticos
+    # HARD BLOCK: somente falhas estruturais tornam o arquivo invalido e barram
+    # a leitura dos blocos. SOFT BLOCK: inconsistencias de negocio e lacunas de
+    # informacao NAO rejeitam o upload; barram apenas o bloco dependente e a
+    # formalizacao. Por isso somente bloqueios_estruturais alimentam capacidades.
+    inconsistencias = bloqueios_criticos
     capacidades = avaliar_capacidades_apuracao(
         contagens,
         metadados,
-        bloqueios,
+        bloqueios_estruturais,
         lacunas_apuracao,
     )
     possui_base = capacidades["resumo"]["tem_alguma_evidencia"]
     resultados_seguros = capacidades["resumo"]["apuracao_integral"]
-    pendencias = bloqueios + lacunas_apuracao
+    estruturalmente_invalido = bool(bloqueios_estruturais)
+    tem_inconsistencias = bool(inconsistencias)
+    tem_insuficiencia = bool(lacunas_apuracao) or not resultados_seguros
+    if estruturalmente_invalido:
+        status_base = "ARQUIVO_ESTRUTURALMENTE_INVALIDO"
+    elif tem_inconsistencias:
+        status_base = "ANALISE_COM_INCONSISTENCIAS"
+    elif tem_insuficiencia or not possui_base:
+        status_base = "ANALISE_PARCIAL_INFORMACOES_INSUFICIENTES"
+    else:
+        status_base = "APTO_PARA_ANALISE"
+    # Formalizacao permanece protegida: exige estrutura integra, ausencia de
+    # inconsistencias, base presente e apuracao integral.
+    formalizacao_liberada = (
+        not estruturalmente_invalido
+        and not tem_inconsistencias
+        and possui_base
+        and resultados_seguros
+    )
+    pendencias = bloqueios_estruturais + inconsistencias + lacunas_apuracao
     return {
-        "valido": not bloqueios,
-        "pronto_para_consolidar": not bloqueios and possui_base and resultados_seguros,
+        "valido": not estruturalmente_invalido,
+        "pronto_para_consolidar": formalizacao_liberada,
+        "status_base": status_base,
         "processamento_progressivo": True,
         "pendencias": pendencias,
         "bloqueios_estruturais": bloqueios_estruturais,
         "bloqueios_criticos": bloqueios_criticos,
+        "inconsistencias": inconsistencias,
         "lacunas_apuracao": lacunas_apuracao,
         "avisos": avisos,
         "contagens": contagens,

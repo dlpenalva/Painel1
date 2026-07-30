@@ -99,6 +99,14 @@ def montar_dados_sumario_executivo(
         objeto, resultados, memoria_ciclo, metodologia, financeiro_sec
     )
     _mascarar_sintese_por_divergencia(sintese, campos_nc)
+    # Etapa 26H (politica documental da PREVIA): existindo numero XLS oficial
+    # sem resultado definitivo, o VTA e exibido como "R$ x — PREVIA". Nunca
+    # declara VALIDADO e nao resolve a divergencia XLS x Python (residual 26C).
+    _aplicar_previa_vta(
+        sintese,
+        leitura.get("resultados_xls"),
+        leitura.get("status_resultados"),
+    )
 
     ciclos_sec = _montar_secao_ciclos(parametros, resultados, identificacao)
 
@@ -158,10 +166,14 @@ def _montar_secao_historico_vu(
     for reg in historico_vu.get("itens") or []:
         vu_ciclos = reg.get("vu_ciclos") or {}
         vus: dict[str, float | None] = {}
+        # Etapa 26H: item nascido apos C0 tem VU_C0 legitimamente vazio na aba
+        # historico_VU; o fallback p/ vu_original vale apenas para planilhas
+        # legadas sem NENHUM VU por ciclo (nunca inventa VU pre-nascimento).
+        tem_vu_por_ciclo = any(v is not None for v in vu_ciclos.values())
         for i in range(ultimo + 1):
             valor = vu_ciclos.get(f"VU_C{i}")
-            if i == 0 and valor is None:
-                valor = reg.get("vu_original")  # C0 = VU original
+            if i == 0 and valor is None and not tem_vu_por_ciclo:
+                valor = reg.get("vu_original")  # C0 = VU original (legado)
             vus[f"C{i}"] = _num_ou_none(valor)
         itens_saida.append({
             "item": reg.get("item"),
@@ -208,6 +220,34 @@ def _mascarar_financeiro_por_divergencia(financeiro: dict[str, Any], campos_nc: 
         financeiro["retroativo_estado"] = MOTIVO_DIVERGENCIA_XLS_PYTHON
 
 
+def _aplicar_previa_vta(
+    sintese: dict[str, Any],
+    resultados_xls: dict[str, Any] | None,
+    status_resultados: dict[str, Any] | None = None,
+) -> None:
+    """Etapa 26H: PREVIA documental do VTA a partir do numero XLS oficial.
+
+    Aplica-se somente quando o VTA oficial nao pode ser exibido (mascarado por
+    divergencia ou indisponivel) e o XLS possui VTA_FINAL numerico. O valor e
+    apresentado como PREVIA — nunca como VALIDADO — e a divergencia permanece
+    registrada (residual 26C intocado).
+    """
+    status = str((status_resultados or {}).get("geral") or "").strip().upper()
+    if sintese.get("vta") is not None:
+        # Igualdade XLS x Python torna o numero calculavel, mas nao transforma
+        # um processo ainda marcado como REVISE/ESTIMADO em resultado
+        # definitivo. Nessa situacao, preserva o numero e muda somente o selo
+        # documental para PREVIA.
+        if status in {"REVISE", "ESTIMADO"}:
+            sintese["vta_previa"] = round(float(sintese["vta"]), 2)
+            sintese["vta"] = None
+        return
+    valores = (resultados_xls or {}).get("valores") or {}
+    vta_xls = valores.get("VTA_FINAL")
+    if isinstance(vta_xls, (int, float)) and not isinstance(vta_xls, bool):
+        sintese["vta_previa"] = round(float(vta_xls), 2)
+
+
 def _montar_identificacao(
     objeto: dict[str, Any],
     metodologia: dict[str, Any],
@@ -215,9 +255,15 @@ def _montar_identificacao(
     identificacao: dict[str, Any] | None,
 ) -> dict[str, Any]:
     externo = identificacao or {}
-    indice = _indice_contratual(metodologia, memoria_calculo) or externo.get("indice")
-    metodo = metodologia.get("escolhida") or externo.get("metodo")
     controle = (objeto.get("dados_operacionais") or {}).get("controle") or {}
+    # Etapa 26H: o indice contratual canonico e CONTROLE!B7 (propagado pelo
+    # leitor em controle.indice); METODO_FONTE da memoria segue como fallback.
+    indice = (
+        str(controle.get("indice") or "").strip()
+        or _indice_contratual(metodologia, memoria_calculo)
+        or externo.get("indice")
+    )
+    metodo = metodologia.get("escolhida") or externo.get("metodo")
     # Campos empresa, contrato, processo, versao_masterfile e objeto_processo_id
     # nao sao transportados para o PDF (requisito de privacidade Etapa 5 v2).
     return {
@@ -268,6 +314,10 @@ def _montar_sintese(
     return {
         "metodo_vta": ROTULO_METODO.get(str(vta.get("metodo") or ""), vta.get("metodo")),
         "vta": vta.get("valor_total_atualizado"),
+        "vta_execucao_atualizada": vta.get("executado_atualizado"),
+        "vta_saldo_remanescente_atualizado": vta.get(
+            "potencial_restante_atualizado"
+        ),
         "vta_natureza": vta.get("natureza"),
         "vta_motivo": vta.get("motivo"),
         "variacao_acumulada": acumulado.get("indice_acumulado"),
@@ -305,6 +355,12 @@ def _montar_secao_ciclos(
             "data_inicio": _fmt_data(reg.get("data_inicio")),
             "data_fim": _fmt_data(reg.get("data_fim")),
             "data_pedido": _fmt_data(pedidos.get(nome)),
+            # Apresentacao documental: inicio real do efeito financeiro do ciclo
+            # (INICIO_EFEITO_FINANCEIRO). Nunca cai para data_inicio por conveniencia.
+            "inicio_efeito_financeiro": _fmt_data(
+                reg.get("inicio_efeito_financeiro")
+                or reg.get("inicio_efeito_financeiro_parametros")
+            ),
             "situacao": _texto_ou_nao_informado(reg.get("situacao")),
             "percentual_reajuste": (
                 NAO_APLICAVEL if nome == "C0"
@@ -431,23 +487,49 @@ def _montar_secao_itens(
             if item.get("quantidade_contratada") is not None
             else item.get("quantidade_base")
         )
-        vu_ciclos = {
-            c: v for c, v in (item.get("vu_ciclos") or {}).items()
-            if c in ciclos_com_fator
+        ciclos_exibidos = ["C0"] + sorted(ciclos_com_fator)
+        vu_por_ciclo_raw = item.get("vu_por_ciclo") or {
+            "C0": item.get("vu_c0", item.get("vu_original")),
+            **(item.get("vu_ciclos") or {}),
         }
-        totais = {
-            ciclo: (round(qtd * vu, 2) if qtd is not None and vu is not None else None)
-            for ciclo, vu in (
-                (c, _num_ou_none(v)) for c, v in vu_ciclos.items()
-            )
+        qtd_por_ciclo_raw = item.get("quantidade_por_ciclo") or {
+            ciclo: qtd for ciclo in ciclos_exibidos
         }
+        total_por_ciclo_raw = item.get("total_por_ciclo") or {}
+        vu_por_ciclo = {
+            ciclo: _num_ou_none(vu_por_ciclo_raw.get(ciclo))
+            for ciclo in ciclos_exibidos
+        }
+        qtd_por_ciclo = {
+            ciclo: _num_ou_none(qtd_por_ciclo_raw.get(ciclo))
+            for ciclo in ciclos_exibidos
+        }
+        totais = {}
+        for ciclo in ciclos_exibidos:
+            total = _num_ou_none(total_por_ciclo_raw.get(ciclo))
+            if total is None:
+                q = qtd_por_ciclo[ciclo]
+                vu = vu_por_ciclo[ciclo]
+                total = (
+                    round(q * vu, 2)
+                    if q is not None and vu is not None else None
+                )
+            totais[ciclo] = total
+        ciclo_nascimento = item.get("ciclo_nascimento")
         saida.append({
             "item": item.get("item"),
             "descricao": item.get("descricao"),
             "quantidade": qtd,
-            "vu_c0": _num_ou_none(item.get("vu_original")),
-            "total_c0": _num_ou_none(item.get("valor_total_original")),
-            "vu_ciclos": {c: _num_ou_none(v) for c, v in vu_ciclos.items()},
+            "ciclo_nascimento": (
+                int(ciclo_nascimento) if ciclo_nascimento is not None else None
+            ),
+            "ciclos": ciclos_exibidos,
+            "quantidade_ciclos": qtd_por_ciclo,
+            "vu_c0": vu_por_ciclo.get("C0"),
+            "total_c0": totais.get("C0"),
+            "vu_ciclos": {
+                c: vu_por_ciclo[c] for c in ciclos_exibidos if c != "C0"
+            },
             "total_ciclos": totais,
         })
     return saida
@@ -483,30 +565,55 @@ def _montar_secao_aditivos(
 
     Regra auditada (leitor v10): so viram parcela os aditivos com
     K=CONSIDERADO NO CALCULO FINANCEIRO=Sim e valor atualizado J em cache do
-    Excel — o fator aplicado tem fonte canonica no proprio XLS. A anterioridade
-    a formalizacao do reajuste do ciclo e exibida a partir do INICIO_EFEITO
-    registrado; sem esse registro, sai "Nao informado" (nada e presumido).
+    Excel — o fator aplicado tem fonte canonica no proprio XLS. A superficie
+    documental usa rotulo humano derivado de instrumento ou tipo/ciclo/item e
+    preserva o identificador tecnico apenas na estrutura interna.
     """
-    por_ciclo = parametros.get("por_ciclo") or {}
-    parcelas = (dados_op.get("vta_sombra") or {}).get("parcelas_computadas") or []
+    vta_sombra = dados_op.get("vta_sombra") or {}
+    parcelas = list(vta_sombra.get("parcelas_computadas") or [])
+    # Supressoes chegam como parcelas negativas e o motor sombra as mantem na
+    # lista nao computada por seguranca financeira. Para a superficie
+    # documental, contudo, continuam sendo alteracoes contratuais reais e
+    # devem aparecer com sinal, sem serem somadas novamente ao VTA.
+    parcelas.extend(vta_sombra.get("parcelas_nao_computadas") or [])
     aditivos: list[dict[str, Any]] = []
     for parcela in parcelas:
         if str(parcela.get("fonte_parcela") or "") != "Aditivo":
             continue
         ciclo = str(parcela.get("ciclo") or "").upper()
-        reg = por_ciclo.get(ciclo) or {}
-        inicio_efeito = _como_date(
-            reg.get("inicio_efeito_financeiro")
-            or reg.get("inicio_efeito_financeiro_parametros")
-        )
+        tipo = str(parcela.get("tipo_alteracao") or "").strip()
+        tipo_norm = tipo.lower()
+        if "supr" in tipo_norm:
+            tipo = "Supressão"
+        elif "acresc" in tipo_norm or "acrésc" in tipo_norm:
+            tipo = "Acréscimo"
+        else:
+            tipo = tipo or "Alteração contratual"
+        item = str(parcela.get("item") or "").strip()
+        instrumento = str(parcela.get("instrumento") or "").strip()
+        if instrumento:
+            rotulo = instrumento
+        elif ciclo and item:
+            rotulo = f"{ciclo} — {tipo} — Item {item}"
+        elif ciclo:
+            rotulo = (
+                f"Alteração contratual do {ciclo} — registro "
+                f"{parcela.get('linha') or ''}"
+            ).strip()
+        else:
+            rotulo = f"{tipo} — Item {item}" if item else tipo
         aditivos.append({
-            "identificador": parcela.get("identificador"),
+            "identificador_interno": parcela.get("identificador"),
+            "rotulo_documental": rotulo,
+            "instrumento": instrumento or None,
+            "item": item or None,
+            "tipo_alteracao": tipo,
             "ciclo": ciclo or NAO_INFORMADO,
             "linha": parcela.get("linha"),
+            "data_alteracao": _fmt_data(parcela.get("data_aditivo")),
+            "quantidade": _num_ou_none(parcela.get("quantidade")),
+            "valor_original": _num_ou_none(parcela.get("valor_original")),
             "valor_atualizado": _num_ou_none(parcela.get("valor")),
-            "anterior_formalizacao": (
-                NAO_INFORMADO if inicio_efeito is None else "Sim"
-            ),
             "justificativa": parcela.get("justificativa_vta"),
         })
     return {
@@ -556,7 +663,9 @@ def _num_ou_none(valor: Any) -> float | None:
 
 
 def _texto_ou_nao_informado(valor: Any) -> str:
-    texto = str(valor or "").strip()
+    # Sanitiza emoji/pictograma: o Sumario Executivo e um ARQUIVO entregue.
+    from _sanitizacao_documental import remover_emojis_leve
+    texto = remover_emojis_leve(str(valor or "")).strip()
     return texto or NAO_INFORMADO
 
 
@@ -646,12 +755,12 @@ def gerar_sumario_executivo_pdf(dados: dict[str, Any]) -> bytes:
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import mm
     from reportlab.platypus import (
-        BaseDocTemplate, Frame, PageTemplate, Spacer,
+        SimpleDocTemplate, Spacer,
     )
 
     estilos = _estilos_pdf()
     buffer = BytesIO()
-    doc = BaseDocTemplate(
+    doc = SimpleDocTemplate(
         buffer,
         pagesize=A4,
         leftMargin=18 * mm,
@@ -661,13 +770,6 @@ def gerar_sumario_executivo_pdf(dados: dict[str, Any]) -> bytes:
         title="Sumário Executivo — Reajuste Contratual",
         author="Cl8us",
     )
-    frame = Frame(
-        doc.leftMargin, doc.bottomMargin, doc.width, doc.height, id="corpo",
-    )
-    doc.addPageTemplates([
-        PageTemplate(id="pagina", frames=[frame], onPage=_rodape_factory(dados)),
-    ])
-
     historia: list[Any] = []
     if not dados.get("disponivel"):
         historia.append(_paragrafo("Sumário Executivo", estilos["titulo"]))
@@ -676,7 +778,8 @@ def gerar_sumario_executivo_pdf(dados: dict[str, Any]) -> bytes:
             f"Documento não gerado: {dados.get('motivo') or NAO_INFORMADO}",
             estilos["normal"],
         ))
-        doc.build(historia)
+        rodape = _rodape_factory(dados)
+        doc.build(historia, onFirstPage=rodape, onLaterPages=rodape)
         return buffer.getvalue()
 
     _bloco_identificacao(historia, dados, estilos)
@@ -688,7 +791,8 @@ def gerar_sumario_executivo_pdf(dados: dict[str, Any]) -> bytes:
     _bloco_aditivos(historia, dados, estilos)
     # Secao "8. Observacoes de consistencia" removida (requisito Etapa 5 v2).
 
-    doc.build(historia)
+    rodape = _rodape_factory(dados)
+    doc.build(historia, onFirstPage=rodape, onLaterPages=rodape)
     return buffer.getvalue()
 
 
@@ -758,10 +862,13 @@ def _tabela(
     larguras: list[float],
     estilos: dict[str, Any],
     alinhamentos_direita: set[int] | None = None,
+    *,
+    permitir_quebra: bool = True,
+    alturas: list[float] | None = None,
 ) -> Any:
     """LongTable com cabecalho repetido nas quebras de pagina."""
     from reportlab.lib import colors
-    from reportlab.platypus import LongTable, Paragraph, TableStyle
+    from reportlab.platypus import LongTable, Paragraph, Table, TableStyle
 
     direita = alinhamentos_direita or set()
     corpo: list[list[Any]] = []
@@ -777,7 +884,14 @@ def _tabela(
             conv.append(Paragraph(_escapar(celula), estilo))
         corpo.append(conv)
 
-    tabela = LongTable(corpo, colWidths=larguras, repeatRows=1, splitByRow=1)
+    classe_tabela = LongTable if permitir_quebra else Table
+    tabela = classe_tabela(
+        corpo,
+        colWidths=larguras,
+        rowHeights=alturas,
+        repeatRows=1 if permitir_quebra else 0,
+        splitByRow=1 if permitir_quebra else 0,
+    )
     tabela.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor(_COR_AZUL)),
         ("ROWBACKGROUNDS", (0, 1), (-1, -1),
@@ -813,8 +927,10 @@ def _bloco_identificacao(historia, dados, estilos) -> None:
     historia.append(Spacer(1, 6))
     historia.append(_paragrafo("1. Identificação", estilos["secao"]))
     largura = _largura_util()
+    # Etapa 26H.1: cabecalho da identificacao trocado de "Campo | Valor" para
+    # "Informação | Resultado" por requisito do Gate.
     linhas = [
-        ["Campo", "Valor", "Campo", "Valor"],
+        ["Informação", "Resultado", "Informação", "Resultado"],
         ["Índice contratual", ident.get("indice"),
          "Método da apuração", ident.get("metodo")],
         ["Ciclo vigente", ident.get("ciclo_vigente"),
@@ -832,25 +948,25 @@ def _bloco_sintese(historia, dados, estilos) -> None:
     historia.append(_paragrafo("2. Síntese da apuração", estilos["secao"]))
     largura = _largura_util()
     vta_txt = formatar_moeda(sintese.get("vta"))
-    if sintese.get("vta") is None and sintese.get("vta_motivo"):
-        vta_txt = f"{NAO_INFORMADO} — {sintese.get('vta_motivo')}"
+    if sintese.get("vta") is None:
+        if sintese.get("vta_previa") is not None:
+            # Etapa 26H: numero XLS oficial sem resultado definitivo -> PREVIA.
+            vta_txt = f"{formatar_moeda(sintese.get('vta_previa'))} — PRÉVIA"
+        elif sintese.get("vta_motivo"):
+            vta_txt = f"{NAO_INFORMADO} — {sintese.get('vta_motivo')}"
     variacao_txt = formatar_percentual(sintese.get("variacao_acumulada"))
     if sintese.get("ciclo_referencia_acumulado"):
         variacao_txt += f" (referência {sintese.get('ciclo_referencia_acumulado')})"
+    # Etapa 26H: as linhas de estado do retroativo e situacao do processo e a
+    # conclusao (resumo executivo) foram retiradas do PDF por requisito.
     linhas = [
         ["Indicador", "Valor"],
         ["Método aplicável", _texto_ou_nao_informado(sintese.get("metodo_vta"))],
         ["Valor total atualizado (VTA)", vta_txt],
         ["Variação acumulada", variacao_txt],
         ["Retroativo total", formatar_moeda(sintese.get("retroativo_total"))],
-        ["Estado do retroativo",
-         _texto_ou_nao_informado(sintese.get("retroativo_estado"))],
-        ["Situação do processo",
-         _texto_ou_nao_informado(sintese.get("situacao_processo"))],
     ]
     historia.append(_tabela(linhas, [largura * 0.34, largura * 0.66], estilos))
-    if sintese.get("resumo_executivo"):
-        historia.append(_paragrafo(str(sintese["resumo_executivo"]), estilos["nota"]))
 
 
 def _bloco_ciclos(historia, dados, estilos) -> None:
@@ -910,7 +1026,7 @@ def _bloco_financeiro(historia, dados, estilos) -> None:
     largura = _largura_util()
 
     def _tabela_metodo(titulo: str, linhas_metodo: list[dict[str, Any]],
-                       delta_total: Any, nota: str) -> None:
+                       delta_total: Any) -> None:
         historia.append(_paragrafo(titulo, estilos["subsecao"]))
         if not linhas_metodo:
             historia.append(_paragrafo(
@@ -932,24 +1048,21 @@ def _bloco_financeiro(historia, dados, estilos) -> None:
              largura * 0.14],
             estilos, alinhamentos_direita={1, 2, 3, 4},
         ))
-        historia.append(_paragrafo(nota, estilos["nota"]))
 
     _tabela_metodo(
         "Método Financeiro — valor pago, valor atualizado e delta por ciclo",
         fin.get("financeiro_por_ciclo") or [],
         fin.get("delta_total_financeiro"),
-        "Valores consolidados pela memória por ciclo do objeto do processo "
-        "(fonte: aba financeiro).",
     )
     _tabela_metodo(
         "Método Pedido de Compras — retroativo em análise, por ciclo",
         fin.get("pc_por_ciclo") or [],
         fin.get("delta_total_pc"),
-        "Retroativo apurado pelo método Pedido de Compras permanece EM "
-        "ANÁLISE e não se mistura ao valor reconhecido.",
     )
 
-    historia.append(_paragrafo("Retroativo por estado", estilos["subsecao"]))
+    historia.append(_paragrafo(
+        "Situação do retroativo", estilos["subsecao"]
+    ))
     if (fin.get("retroativo_total") is None
             and fin.get("retroativo_reconhecido_pago") is None
             and not fin.get("retroativo_por_estado")):
@@ -959,28 +1072,62 @@ def _bloco_financeiro(historia, dados, estilos) -> None:
             estilos["normal"],
         ))
         return
-    linhas_estado = [["Estado", "Valor"]]
+    por_estado = fin.get("retroativo_por_estado") or {}
+    linhas_estado = [["Situação", "Valor"]]
     linhas_estado.append([
-        "Reconhecido a pagar (com efeitos financeiros)",
-        formatar_moeda(fin.get("retroativo_reconhecido_pago")),
+        "Em análise",
+        formatar_moeda(
+            por_estado.get("em análise", fin.get("retroativo_em_analise"))
+        ),
     ])
     linhas_estado.append([
-        "Em análise (sem efeitos financeiros)",
-        formatar_moeda(fin.get("retroativo_em_analise")),
+        "Reconhecido", formatar_moeda(por_estado.get("reconhecido", 0.0)),
     ])
-    for estado, valor in (fin.get("retroativo_por_estado") or {}).items():
-        linhas_estado.append([f"Detalhe — {estado}", formatar_moeda(valor)])
-    linhas_estado.append(["Total", formatar_moeda(fin.get("retroativo_total"))])
+    linhas_estado.append([
+        "Pago", formatar_moeda(por_estado.get("pago", 0.0)),
+    ])
     historia.append(_tabela(
         linhas_estado, [largura * 0.62, largura * 0.38], estilos,
         alinhamentos_direita={1},
     ))
 
 
+def _celulas_item_no_ciclo(item: dict[str, Any], ciclo: str) -> list[str]:
+    """Formata (qtd, VU, total) de um item para um ciclo da tabela de itens.
+
+    Pre-vigencia: ciclo anterior ao nascimento do item nao e dado ausente —
+    celulas numericas ficam vazias (nunca zero nem "Nao informado", que fica
+    reservado a ausencia real de dado em ciclo ja vigente).
+    """
+    nascimento = item.get("ciclo_nascimento")
+    if nascimento is not None and int(ciclo[1:]) < int(nascimento):
+        return ["", "", ""]
+    vu = (
+        item.get("vu_c0") if ciclo == "C0"
+        else (item.get("vu_ciclos") or {}).get(ciclo)
+    )
+    total = (
+        item.get("total_c0") if ciclo == "C0"
+        else (item.get("total_ciclos") or {}).get(ciclo)
+    )
+    return [
+        formatar_numero((item.get("quantidade_ciclos") or {}).get(ciclo)),
+        formatar_moeda(vu),
+        formatar_moeda(total),
+    ]
+
+
 def _bloco_itens(historia, dados, estilos) -> None:
+    from reportlab.platypus import FrameBreak
+
+    estilo_titulo_paginado = estilos["secao"].clone(
+        "secao_itens_paginada", keepWithNext=0,
+    )
     itens = dados.get("itens") or []
-    historia.append(_paragrafo("5. Itens e valores atualizados", estilos["secao"]))
     if not itens:
+        historia.append(_paragrafo(
+            "5. Itens e valores atualizados", estilos["secao"]
+        ))
         historia.append(_paragrafo(
             f"{NAO_INFORMADO} — itens do contrato não localizados no XLS "
             "processado.",
@@ -992,38 +1139,43 @@ def _bloco_itens(historia, dados, estilos) -> None:
         c for c in ("C1", "C2", "C3", "C4")
         if any((i.get("vu_ciclos") or {}).get(c) is not None for i in itens)
     ]
-    linhas: list[list[Any]] = [
-        ["Item", "Qtd", "VU C0", "Total C0"]
-        + [f"VU {c}" for c in ciclos_presentes]
-        + [f"Total {c}" for c in ciclos_presentes]
-    ]
+    ciclos_tabela = ["C0"] + ciclos_presentes
+    linhas: list[list[Any]] = [["Item"] + [
+        rotulo
+        for ciclo in ciclos_tabela
+        for rotulo in (f"Qtd {ciclo}", f"VU {ciclo}", f"Total {ciclo}")
+    ]]
     for i in itens:
         rotulo = str(i.get("item") if i.get("item") is not None else NAO_INFORMADO)
         if i.get("descricao"):
             rotulo = f"{rotulo} — {i['descricao']}"
-        linhas.append(
-            [rotulo, formatar_numero(i.get("quantidade")),
-             formatar_moeda(i.get("vu_c0")), formatar_moeda(i.get("total_c0"))]
-            + [formatar_moeda((i.get("vu_ciclos") or {}).get(c))
-               for c in ciclos_presentes]
-            + [formatar_moeda((i.get("total_ciclos") or {}).get(c))
-               for c in ciclos_presentes]
-        )
-    n_valores = 2 + 2 * len(ciclos_presentes)
-    larg_item = largura * 0.20
-    larg_qtd = largura * 0.07
-    larg_col = (largura - larg_item - larg_qtd) / n_valores
-    historia.append(_tabela(
-        linhas,
-        [larg_item, larg_qtd] + [larg_col] * n_valores,
-        estilos, alinhamentos_direita=set(range(1, 2 + n_valores)),
-    ))
-    historia.append(_paragrafo(
-        "VU C0 e VU por ciclo são os valores canônicos do objeto do processo; "
-        "o total por ciclo aplica a quantidade contratada ao VU canônico do "
-        "ciclo, sem novo fator.",
-        estilos["nota"],
-    ))
+        celulas = [rotulo]
+        for ciclo in ciclos_tabela:
+            celulas.extend(_celulas_item_no_ciclo(i, ciclo))
+        linhas.append(celulas)
+    n_valores = 3 * len(ciclos_tabela)
+    larg_item = largura * 0.16
+    larg_col = (largura - larg_item) / n_valores
+    cabecalho, corpo = linhas[0], linhas[1:]
+    blocos = [corpo[:10]]
+    restante = corpo[10:]
+    while restante:
+        blocos.append(restante[:10])
+        restante = restante[10:]
+    for indice, bloco in enumerate(blocos):
+        if indice == 0:
+            titulo = "5. Itens e valores atualizados"
+        else:
+            historia.append(FrameBreak())
+            titulo = "5. Itens e valores atualizados (continuação)"
+        historia.append(_paragrafo(titulo, estilo_titulo_paginado))
+        historia.append(_tabela(
+            [cabecalho] + bloco,
+            [larg_item] + [larg_col] * n_valores,
+            estilos,
+            alinhamentos_direita=set(range(1, 1 + n_valores)),
+            permitir_quebra=False,
+        ))
 
 
 def _bloco_memoria(historia, dados, estilos) -> None:
@@ -1079,7 +1231,9 @@ def _bloco_memoria(historia, dados, estilos) -> None:
 
 def _bloco_aditivos(historia, dados, estilos) -> None:
     aditivos = dados.get("aditivos") or {}
-    historia.append(_paragrafo("7. Aditivos aplicáveis", estilos["secao"]))
+    historia.append(_paragrafo(
+        "7. Alterações contratuais consideradas", estilos["secao"]
+    ))
     itens = aditivos.get("itens") or []
     if not itens:
         historia.append(_paragrafo(
@@ -1089,20 +1243,18 @@ def _bloco_aditivos(historia, dados, estilos) -> None:
         ))
         return
     largura = _largura_util()
-    linhas = [["Identificação", "Ciclo", "Valor atualizado",
-               "Anterior à formalização"]]
+    linhas = [["Alteração", "Ciclo", "Valor atualizado", "Data da alteração"]]
     for a in itens:
         linhas.append([
-            a.get("identificador"), a.get("ciclo"),
+            a.get("rotulo_documental"), a.get("ciclo"),
             formatar_moeda(a.get("valor_atualizado")),
-            a.get("anterior_formalizacao"),
+            a.get("data_alteracao"),
         ])
     historia.append(_tabela(
         linhas,
         [largura * 0.40, largura * 0.12, largura * 0.24, largura * 0.24],
         estilos, alinhamentos_direita={2},
     ))
-    historia.append(_paragrafo(str(aditivos.get("regra") or ""), estilos["nota"]))
 
 
 def _bloco_observacoes(historia, dados, estilos) -> None:

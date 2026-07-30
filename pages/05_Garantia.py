@@ -20,7 +20,7 @@ except Exception:
 
 from _ui_utils import render_marca_topo, render_aviso_privacidade
 
-st.set_page_config(page_title="Análises de Reajustes - Garantia", layout="wide")
+st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="Análises de Reajustes - Garantia", layout="wide")
 
 
 

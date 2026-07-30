@@ -4,6 +4,7 @@ import streamlit as st
 
 from _coleta_oficial import (
     NOME_ARQUIVO_COLETA_OFICIAL,
+    NOME_DOWNLOAD_COLETA,
     TEMPLATE_COLETA_OFICIAL,
     assinatura_template_coleta,
     gerar_coleta_oficial_preenchida,
@@ -13,7 +14,7 @@ from _ui_utils import render_cabecalho_pagina
 
 st.set_page_config(
     page_title="TLB · cl8us — Início",
-    page_icon="CL",
+    page_icon="assets/cl8us_favicon_512.png",
     layout="wide",
 )
 
@@ -40,7 +41,7 @@ def _conteudo_card(tag: str, titulo: str, texto: str) -> None:
 
 render_cabecalho_pagina(
     "Reajustes contratuais",
-    "Baixe o XLS Coleta, registre as informações do processo e envie o arquivo preenchido para validação e geração progressiva dos documentos.",
+    "",
 )
 
 st.subheader("Fluxo operacional")
@@ -61,7 +62,7 @@ with linha_1[0]:
             st.download_button(
                 "Baixar Arquivo Coleta Oficial",
                 data=_ler_modelo(assinatura_template_coleta()),
-                file_name=NOME_ARQUIVO_COLETA_OFICIAL,
+                file_name=NOME_DOWNLOAD_COLETA,
                 mime=MIME_XLSX,
                 type="primary",
                 use_container_width=True,
@@ -86,18 +87,18 @@ with linha_2[0]:
     with st.container(border=True):
         _conteudo_card(
             "3 · Análise simples",
-            "Calculadora 1 ciclo",
+            "Primeiro Reajuste",
             "Use quando apenas um ciclo é objeto da apuração. Ao final, baixe o Arquivo Coleta Oficial já parametrizado.",
         )
-        if st.button("Abrir Calculadora 1 ciclo", use_container_width=True, key="abrir_um_ciclo_inicio"):
+        if st.button("Abrir Primeiro Reajuste", use_container_width=True, key="abrir_um_ciclo_inicio"):
             st.switch_page("pages/01_Calculo_Simples.py")
 
 with linha_2[1]:
     with st.container(border=True):
         _conteudo_card(
             "4 · Análise acumulada",
-            "Calculadora multiciclo",
+            "Reajustes Subsequentes",
             "Use para dois ou mais ciclos e inicie a apuração em qualquer ciclo entre C1 e C4.",
         )
-        if st.button("Abrir Calculadora multiciclo", use_container_width=True, key="abrir_multiciclo_inicio"):
+        if st.button("Abrir Reajustes Subsequentes", use_container_width=True, key="abrir_multiciclo_inicio"):
             st.switch_page("pages/02_Calculo_Represados.py")

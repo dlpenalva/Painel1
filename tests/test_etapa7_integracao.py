@@ -142,7 +142,7 @@ class TestCentralConvergente(unittest.TestCase):
     def test_session_keys_canonicos(self):
         for key in (
             "arquivo_sumario_executivo_pdf",
-            "arquivo_previsao_orcamentaria_docx",
+            "arquivo_adequacao_orcamentaria_xlsx",
             "arquivo_despacho_saneador_docx",
             "arquivo_termo_apostila_docx",
             "arquivo_garantia_pdf",

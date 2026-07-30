@@ -104,14 +104,15 @@ class TestRenderDocx(unittest.TestCase):
         t2 = self._render(sec).tables[0]
         self.assertEqual(len(t1.columns), len(t2.columns))
         self.assertEqual(len(t1.rows), len(t2.rows))
-        # cabecalho: Item, Descricao, VU C0, VU C1, VU C2
+        # Etapa 26J: documentos fiscais exibem somente Item e VUs por ciclo.
         cab = [c.text for c in t1.rows[0].cells]
-        self.assertEqual(cab, ["Item", "Descrição", "VU C0", "VU C1", "VU C2"])
+        self.assertEqual(cab, ["Item", "VU_C0", "VU_C1", "VU_C2"])
+        self.assertNotIn("Descrição", cab)
 
     def test_f_formatacao_monetaria_reais_duas_casas(self):
         sec = _montar_secao_historico_vu(_historico(1), _ciclos("C1"))
         tabela = self._render(sec).tables[0]
-        valor_c0 = tabela.rows[1].cells[2].text  # primeira linha de dados, coluna VU C0
+        valor_c0 = tabela.rows[1].cells[1].text  # primeira linha de dados, coluna VU C0
         self.assertTrue(valor_c0.startswith("R$"))
         self.assertRegex(valor_c0, r",\d{2}$")
 
@@ -158,7 +159,7 @@ class TestDocumentoFinalEndToEnd(unittest.TestCase):
         doc = Document(BytesIO(docx_bytes))
         for t in doc.tables:
             cab = [c.text for c in t.rows[0].cells]
-            if cab[:1] == ["Item"] and "VU C0" in cab:
+            if cab[:1] == ["Item"] and "VU_C0" in cab:
                 linhas = [[c.text for c in r.cells] for r in t.rows[1:]]
                 return cab, linhas
         return None, None
@@ -167,24 +168,63 @@ class TestDocumentoFinalEndToEnd(unittest.TestCase):
         cab, linhas = self._tabela_vu(docx_bytes)
         self.assertIsNotNone(cab, "tabela de VU ausente no DOCX final")
         # C0..C2 presentes; C3/C4 ausentes (analise termina em C2)
-        self.assertEqual(cab, ["Item", "Descrição", "VU C0", "VU C1", "VU C2"])
-        self.assertNotIn("VU C3", cab)
-        self.assertNotIn("VU C4", cab)
+        self.assertEqual(cab, ["Item", "VU_C0", "VU_C1", "VU_C2"])
+        self.assertNotIn("Descrição", cab)
+        self.assertNotIn("VU_C3", cab)
+        self.assertNotIn("VU_C4", cab)
         # valores vindos de historico_vu, formatados R$ com duas casas
         self.assertEqual(linhas[0][0], "ITEM_X")
-        self.assertEqual(linhas[0][2:], ["R$ 100,00", "R$ 103,10", "R$ 106,00"])
+        self.assertEqual(linhas[0][1:], ["R$ 100,00", "R$ 103,10", "R$ 106,00"])
         self.assertEqual(linhas[1][0], "ITEM_Y")
-        self.assertEqual(linhas[1][2:], ["R$ 50,00", "R$ 51,55", "R$ 53,00"])
+        self.assertEqual(linhas[1][1:], ["R$ 50,00", "R$ 51,55", "R$ 53,00"])
         # valores futuros nao vazam para o documento
         texto = "\n".join("|".join(l) for l in linhas)
         self.assertNotIn("999,99", texto)
         self.assertNotIn("888,88", texto)
 
     def test_saneador_final_contem_vu(self):
-        self._assert_documento(gerar_despacho_saneador(self._leitura_c2()))
+        # Etapa 26D (revoga a decisao §7.13): o Saneador passa a conter o
+        # HISTORICO DOS VALORES UNITARIOS POR CICLO, com texto introdutorio
+        # vinculado a consolidacao dos valores apurados.
+        docx_bytes = gerar_despacho_saneador(self._leitura_c2())
+        self._assert_documento(docx_bytes)
+        from io import BytesIO
+        texto = chr(10).join(p.text for p in Document(BytesIO(docx_bytes)).paragraphs)
+        self.assertIn("histórico dos valores unitários dos itens", texto)
+        self.assertIn("HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO", texto)
 
     def test_apostila_final_contem_vu(self):
-        self._assert_documento(gerar_termo_apostila(self._leitura_c2()))
+        docx_bytes = gerar_termo_apostila(self._leitura_c2())
+        self._assert_documento(docx_bytes)
+        from io import BytesIO
+        texto = chr(10).join(p.text for p in Document(BytesIO(docx_bytes)).paragraphs)
+        self.assertIn("ficam consolidados conforme quadro abaixo", texto)
+        self.assertIn("HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO", texto)
+
+    def test_ciclo_historico_computar_nao_aparece_nos_dois_documentos(self):
+        # Etapa 26D secao 14: C1 fora da apuracao (COMPUTAR=Nao) CONTINUA no
+        # quadro historico; colunas contiguas C0..C4 nos DOIS documentos.
+        leit = self._leitura_c2()
+        for reg in (leit.get("parametros_v10") or {}).get("ciclos") or []:
+            nome = str(reg.get("ciclo") or "").upper()
+            if nome == "C1":
+                reg["computar_nesta_apuracao"] = "Nao"
+            elif nome in ("C2", "C3", "C4"):
+                reg["computar_nesta_apuracao"] = "Sim"
+        por_ciclo = (leit.get("parametros_v10") or {}).get("por_ciclo") or {}
+        for nome, reg in por_ciclo.items():
+            if nome == "C1":
+                reg["computar_nesta_apuracao"] = "Nao"
+            elif nome in ("C2", "C3", "C4"):
+                reg["computar_nesta_apuracao"] = "Sim"
+        for gerador in (gerar_despacho_saneador, gerar_termo_apostila):
+            cab, _ = self._tabela_vu(gerador(leit))
+            self.assertIsNotNone(cab, gerador.__name__)
+            self.assertEqual(
+                cab,
+                ["Item", "VU_C0", "VU_C1", "VU_C2", "VU_C3", "VU_C4"],
+                gerador.__name__,
+            )
 
 
 if __name__ == "__main__":

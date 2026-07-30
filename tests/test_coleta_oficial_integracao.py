@@ -25,7 +25,47 @@ ROOT = Path(__file__).resolve().parents[1]
 # Reancorado novamente no ajuste final: remocao da opcao "Decrescimo" do
 # dropdown de aditivos!D2:D200 (Acrescimo,Supressao) via Excel COM (re-save
 # nativo, sem reparo). Layout/formulas F2:F200 preservados.
-SHA256_TEMPLATE_ESPERADO = "5f25215a06baa2db805d2686b86d40518c6c0f857f6cde10f3e97f1a9a50a101"
+# Reancorado na Etapa 3 (Posicao de Referencia): nova aba posicao_referencia
+# (com fallback para a ultima fotografia historica valida), formato de
+# CONTROLE!B3 e bloco de referencia em RESULTADOS, tudo via Excel COM (sem
+# reparo). Estrutura existente e VTA oficial (B23/B26) preservados.
+# Reancorado na rodada de homologacao UX: dropdown Sim/Nao via OPCOES_SIM_NAO,
+# limpeza de CONTROLE!C1 e itens_Consumidos!Q, mensagem de aditivos, painel
+# posicao_referencia, EIXO 2 padronizado e NOTAS TECNICAS ao fim de RESULTADOS.
+# Tudo via Excel COM (sem reparo); matematica e VTA (B23/B25/B26) preservados.
+# Reancorado no ajuste pontual de identificacao de novos itens (N001, N002...):
+# orientacao em itens_Remanesc!A1/aditivos!A1 e mensagem do check em aditivos!M.
+# Atualizado no Pacote pos-5-casos (Excel COM): §10/§11 datas dd/mm/aaaa em
+# itens_PC!B2:B100 e aditivos!B2:B200; borda 'thin' na coluna B do itens_PC; §12
+# prefixos ACR/SUPR (tolerantes a acento) em aditivos L2:L200 e M2:M200. Sem
+# mudanca de layout/validacao; mensagens e demais estilos preservados.
+# Atualizado nesta etapa (Excel COM): nova aba cobertura_temporal (diagnostico
+# GCC/automatico) inserida antes de RESULTADOS; VTA oficial inalterado.
+# Hotfix evidencia x cobertura: BLOCO B separa ultima evidencia de confirmacao
+# GCC (2 campos novos) e projecao fail-closed; template re-salvo via Excel COM.
+# ETAPA 26B: template alterado intencionalmente (hotfix RESULTADOS/VTA-PC via
+# Excel COM — ramo PC no remanescente, B4 canonica, layout helpers ocultos).
+# ETAPA 26C: E desacoplada de L (fator historico), N/A em G12, S:T ocultas,
+# comparativo executivo A28:C29 (via Excel COM).
+# ETAPA 26F: memoria tecnica oculta + RESULTADOS executiva, fator historico
+# fail-closed e tabela manual unica (Excel COM).
+# Etapa 26G: escala canonica de PCs + fail-closed do VTA (owner:
+# tools/aplicar_escala_pcs_26g.py) — pin reancorado.
+# Etapa 26H: novos itens Nxxx com base zero automatica (colunas tecnicas
+# Y/Z em posicao_contratual), historico_VU temporal, POSICAO ATUAL COMPLETA?
+# com vigencia na data de corte, CHECKs de novo item, mensagem de aditivos e
+# dropdown itens_PC!G via =OPCOES_SIM_NAO (owner: tools/aplicar_26h_template.py)
+# — pin reancorado.
+# Etapa 26H.1: base zero VISUAL — formula pre-semeada em itens_Remanesc!B2:B200
+# (Nxxx -> 0 na propria aba; caso contrario "") e coercao ""->0 nos consumidores
+# aritmeticos posicao_contratual!C e posicao_referencia!C (owner:
+# tools/aplicar_26h1_template.py) — pin reancorado.
+# Etapa 26H.2 (auditoria independente): fronteira de cadastro 2:200 (B201
+# limpa — linha 201 e do total dinamico, fora da capacidade funcional);
+# padrao canonico N + exatamente 3 algarismos (espelho ^[Nn]\d{3}$) em
+# itens_Remanesc!B e posicao_contratual!Z; UX aditivos!M com WrapText
+# (owner: tools/aplicar_26h2_template.py) — pin reancorado.
+SHA256_TEMPLATE_ESPERADO = "aefa71abef17fa5fe230a598766285772d85d7fd02a1563c068b8d3316b9cb62"
 
 
 def _dados_calculadora() -> dict:
@@ -80,7 +120,8 @@ def test_geracao_pos_calculadora_preserva_e_preenche_modelo_oficial() -> None:
     assert wb["itens_PC"]["B1"].value == "DATA_PC"
     assert wb["itens_PC"]["C1"].value == "CICLO_PC"
     assert "ITEM" not in [wb["itens_PC"].cell(1, c).value for c in range(1, 12)]
-    assert wb["RESULTADOS"]["A52"].value is not None
+    assert wb["RESULTADOS"]["A41"].value.startswith("AJUSTES MANUAIS")
+    assert wb["MEMORIA_RESULTADOS"]["A52"].value is not None
 
 
 def test_multiciclo_iniciado_em_c2_nao_marca_c1_como_objeto_atual() -> None:
@@ -199,7 +240,7 @@ def test_template_tem_72_competencias_e_resultados_alcanca_linha_73() -> None:
 
     formulas_resultados = [
         cell.value
-        for row in wb["RESULTADOS"].iter_rows()
+        for row in wb["MEMORIA_RESULTADOS"].iter_rows()
         for cell in row
         if isinstance(cell.value, str) and cell.value.startswith("=")
     ]
@@ -214,7 +255,9 @@ def test_template_preserva_layout_visual_e_sha256() -> None:
     assert all(any(d.min <= coluna <= d.max for d in ocultas) for coluna in range(22, 30))
     assert itens_pc.sheet_view.topLeftCell in (None, "A1")
     assert wb["financeiro"].sheet_view.topLeftCell in (None, "A1")
-    assert wb["RESULTADOS"]["B4"].fill.fgColor.rgb == "FFF7E7B2"
+    assert wb["RESULTADOS"]["B3"].value.startswith("=IF(")
+    assert wb["MEMORIA_RESULTADOS"].sheet_state == "hidden"
+    assert wb["RESULTADOS"]["C43"].fill.fgColor.rgb == "FFFFF2CC"
     assert wb["CONTROLE"]["B1"].fill.fgColor.rgb == "FFF7E7B2"
     assert hashlib.sha256(TEMPLATE_COLETA_OFICIAL.read_bytes()).hexdigest() == SHA256_TEMPLATE_ESPERADO
 

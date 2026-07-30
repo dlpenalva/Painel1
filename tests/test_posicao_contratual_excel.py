@@ -108,7 +108,7 @@ class PosicaoContratualExcelTests(unittest.TestCase):
             self.assertEqual(calculado["historico_VU"]["P3"].value, 5.5)
             calculado.close()
 
-    def test_alertas_calculados_no_excel_bloqueiam_upload_e_documentos(self):
+    def test_alertas_calculados_no_excel_geram_soft_block_e_bloqueiam_formalizacao(self):
         import win32com.client
 
         casos = json.loads(FIXTURE.read_text(encoding="utf-8"))["casos"]
@@ -153,10 +153,34 @@ class PosicaoContratualExcelTests(unittest.TestCase):
                 calculado.close()
                 payload = caminho.read_bytes()
                 diagnostico = ler_coleta_reajuste(payload)
-                self.assertFalse(diagnostico["valido"])
-                self.assertFalse(diagnostico["pronto_para_consolidar"])
-                with self.assertRaises(ValueError):
-                    adaptar_coleta_reajuste_para_documentos(payload)
+                # Politica HARD x SOFT homologada (commit 1337247): inconsistencia
+                # de NEGOCIO (posicao contratual impossivel/negativa) e SOFT BLOCK,
+                # NAO falha estrutural. Upload aceito e diagnosticado; resultado
+                # dependente nao confiavel; formalizacao bloqueada.
+                self.assertTrue(diagnostico["valido"])                      # upload aceito
+                self.assertEqual(
+                    diagnostico["status_base"], "ANALISE_COM_INCONSISTENCIAS")
+                self.assertFalse(diagnostico["pronto_para_consolidar"])     # formalizacao bloqueada
+                self.assertTrue(diagnostico["inconsistencias"])             # inconsistencia registrada
+                # Documentos diagnosticos permanecem acessiveis COM RESSALVAS
+                # (a inconsistencia SOFT nao levanta ValueError global).
+                docs = adaptar_coleta_reajuste_para_documentos(payload)
+                self.assertIsInstance(docs, dict)
+
+
+class PoliticaHardSoftBlockTests(unittest.TestCase):
+    """Guarda da politica HARD x SOFT (nao exige Excel; roda sempre).
+
+    Contrasta o SOFT BLOCK (inconsistencia de negocio -> upload aceito,
+    formalizacao bloqueada; provado no teste Excel acima) com o HARD BLOCK
+    (falha estrutural -> upload REJEITADO). A correcao do teste stale NAO
+    transforma o hard-block em soft.
+    """
+
+    def test_falha_estrutural_permanece_hard_block(self):
+        # HARD: arquivo estruturalmente invalido (nao-XLSX) e REJEITADO.
+        with self.assertRaises(ValueError):
+            ler_coleta_reajuste(b"conteudo que nao e um XLSX valido")
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ except Exception:
     def render_aviso_privacidade(tem_upload=False, tem_download=False):
         return
 
-st.set_page_config(page_title="TLB · cl8us - DOU", layout="wide")
+st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="TLB · cl8us - DOU", layout="wide")
 
 DOU_VERSAO = "20260516_botao_laranja_dados_auto"
 
@@ -304,6 +304,9 @@ def _add_texto_com_destaque(paragraph, texto, bold=False):
 def gerar_docx_dou(texto):
     if not DOCX_OK:
         raise RuntimeError("python-docx não está disponível neste ambiente.")
+    # Nenhum arquivo entregue pode conter emoji/pictograma (a web pode).
+    from _sanitizacao_documental import remover_emojis_leve
+    texto = remover_emojis_leve(str(texto))
     doc = Document()
     styles = doc.styles
     styles["Normal"].font.name = "Arial"

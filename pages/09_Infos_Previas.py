@@ -5,7 +5,7 @@ from zoneinfo import ZoneInfo
 import pandas as pd
 import streamlit as st
 
-st.set_page_config(page_title="TLB · cl8us - Infos Prévias", layout="wide")
+st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="TLB · cl8us - Infos Prévias", layout="wide")
 
 from _ui_utils import render_marca_topo, render_aviso_privacidade
 

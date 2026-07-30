@@ -20,8 +20,9 @@ PREVISAO = (ROOT / "pages" / "12_Adequacao_Orcamentaria.py").read_text(encoding=
 class TestCascaXlsFirst(unittest.TestCase):
     def test_menu_principal_tem_somente_as_quatro_rotas_operacionais(self):
         self.assertIn('st.page_link(PAGINA_INICIO, label="Início")', APP)
-        self.assertIn('st.page_link(PAGINA_UM_CICLO, label="Calculadora 1 ciclo")', APP)
-        self.assertIn('st.page_link(PAGINA_MULTICICLO, label="Calculadora multiciclo")', APP)
+        # Etapa 26D: nomenclatura visivel dos fluxos (identificadores intactos).
+        self.assertIn('st.page_link(PAGINA_UM_CICLO, label="Primeiro Reajuste")', APP)
+        self.assertIn('st.page_link(PAGINA_MULTICICLO, label="Reajustes Subsequentes")', APP)
         self.assertIn('st.page_link(PAGINA_UPLOAD, label="Upload e docs")', APP)
         self.assertIn('position="hidden"', APP)
 
@@ -54,7 +55,7 @@ class TestCascaXlsFirst(unittest.TestCase):
     def test_modelo_xls_e_a_fonte_do_download_inicial(self):
         self.assertIn("TEMPLATE_COLETA_OFICIAL", INICIO)
         self.assertIn("assinatura_template_coleta", INICIO)
-        self.assertIn('file_name=NOME_ARQUIVO_COLETA_OFICIAL', INICIO)
+        self.assertIn('file_name=NOME_DOWNLOAD_COLETA', INICIO)
         self.assertIn('"Baixar Arquivo Coleta Oficial"', INICIO)
         self.assertNotIn("CAMINHO_MODELO_COLETA", INICIO)
 
@@ -89,13 +90,21 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn('st.caption(f"Arquivo enviado: {arquivo.name}")', DOCUMENTOS)
         self.assertIn('"assinatura_processada_upload_docs"', DOCUMENTOS)
 
-    def test_modo_um_usa_botoes_de_download_na_cor_padrao(self):
+    def test_modo_um_usa_botoes_no_padrao_global(self):
+        # Pacote documental: a Calculadora 1 ciclo passa a usar o mesmo padrao
+        # visual homologado nas demais calculadoras (download de acao = primary).
         coleta = SIMPLES[SIMPLES.index('label="Baixar Arquivo Coleta Oficial"'):]
         coleta = coleta[:coleta.index(")")]
-        rascunho = SIMPLES[SIMPLES.index('label="Baixar rascunho (.txt)"'):]
-        rascunho = rascunho[:rascunho.index(")")]
-        self.assertNotIn('type="primary"', coleta)
-        self.assertNotIn('type="primary"', rascunho)
+        self.assertIn('type="primary"', coleta)
+        # O mesmo botao no multiciclo tambem e primary (consistencia global).
+        coleta_multi = MULTI[MULTI.index('label="Baixar Arquivo Coleta Oficial"'):]
+        coleta_multi = coleta_multi[:coleta_multi.index(")")]
+        self.assertIn('type="primary"', coleta_multi)
+        # A Comunicacao a Contratada usa o componente comum (botao primary global),
+        # sem "botao" HTML local com paleta divergente.
+        self.assertIn("render_email_contratada(", SIMPLES)
+        self.assertNotIn("stButton > button", SIMPLES)
+        self.assertNotIn("stDownloadButton > button", SIMPLES)
 
     def test_upload_nao_exibe_textos_excluidos(self):
         self.assertNotIn("render_aviso_privacidade", DOCUMENTOS)
@@ -178,7 +187,10 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn('CAPACIDADES.get("estruturalmente_valido", True)', CENTRAL)
         self.assertIn('"Corrigir XLS para continuar"', CENTRAL)
         self.assertIn('st.session_state["arquivo_garantia_pdf"] = pdf_bytes', GARANTIA)
-        self.assertIn('st.session_state["arquivo_previsao_orcamentaria_docx"] = docx_bytes', PREVISAO)
+        # Etapa 4 alinhou a Adequacao ao metodo normativo: a saida passou a ser
+        # somente a planilha de validacao (XLSX), sem o memorando DOCX antigo.
+        self.assertIn("gerar_xlsx_projecao(", PREVISAO)
+        self.assertIn('"Baixar XLSX"', PREVISAO)
         self.assertIn('st.session_state["arquivo_saneador_docx"] = docx_bytes', SANEADOR)
         self.assertIn("[campo a preencher]", SANEADOR)
 

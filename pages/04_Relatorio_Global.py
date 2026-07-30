@@ -8,7 +8,7 @@ import pandas as pd
 import streamlit as st
 
 
-st.set_page_config(page_title="Análises de Reajustes - Relatório Global", layout="wide")
+st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="Análises de Reajustes - Relatório Global", layout="wide")
 
 
 

@@ -82,10 +82,16 @@ def _formula_k(linha: int) -> str:
 
 
 def _formula_e(linha: int) -> str:
+    """FATOR_ACUMULADO = fator HISTORICO do ciclo (memoria parametros!A11:E15).
+
+    Etapa 26C: desacoplado de L (EFEITO_FINANCEIRO_PC). O efeito governa
+    retroativo (H/J) e cor, nunca a atualizacao historica. Ciclo fora da
+    apuracao/C0 continuam com fator 1 pela propria memoria (coluna E).
+    """
     r = linha
     return (
-        f'=IF(C{r}="","",IF(L{r}="","",IF(L{r}="Nao",1,'
-        f'IFERROR(VLOOKUP(C{r},parametros!$A$11:$E$15,5,0),""))))'
+        f'=IF(C{r}="","",'
+        f'IFERROR(VLOOKUP(C{r},parametros!$A$11:$E$15,5,0),""))'
     )
 
 

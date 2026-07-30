@@ -9,7 +9,7 @@ from _capacidades_apuracao import avaliar_capacidades_apuracao, SEIS_DOCUMENTOS_
 from _ui_utils import render_marca_topo
 
 
-st.set_page_config(page_title="TLB · cl8us - Central de Arquivos", layout="wide")
+st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="TLB · cl8us - Central de Arquivos", layout="wide")
 
 
 DOCUMENTOS = (
@@ -25,11 +25,11 @@ DOCUMENTOS = (
     },
     {
         "nome": "Adequação Orçamentária",
-        "descricao": "Módulo para calcular e gerar o memorando de adequação orçamentária.",
-        "formato": "DOCX",
-        "session_key": "arquivo_previsao_orcamentaria_docx",
-        "file_name": "memorando_adequacao_orcamentaria.docx",
-        "mime": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "descricao": "Módulo para calcular a adequação orçamentária e baixar a planilha de validação (XLSX).",
+        "formato": "XLSX",
+        "session_key": "arquivo_adequacao_orcamentaria_xlsx",
+        "file_name": "adequacao_orcamentaria.xlsx",
+        "mime": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         "pagina": "pages/12_Adequacao_Orcamentaria.py",
         "sempre_acessivel": True,
     },

@@ -231,6 +231,27 @@ _TRADUCAO_ALERTAS = {
 }
 
 
+_FRASES_PROTECAO_DUPLA = (
+    "evita dupla contagem",
+    "evitar dupla contagem",
+    "vedada dupla contagem",
+    "vedada a dupla contagem",
+    "anti-dupla contagem",
+    "nao soma ao vta",
+    "não soma ao vta",
+    "nao soma novamente ao vta",
+)
+
+
+def _eh_protecao_dupla_aplicada(texto_l: str) -> bool:
+    """True quando o alerta descreve exclusao anti-duplicidade JA aplicada.
+
+    Distingue protecao bem-sucedida (regra temporal impediu a soma dupla) de
+    risco real pendente; somente o segundo deve gerar acao de revisao.
+    """
+    return any(frase in texto_l for frase in _FRASES_PROTECAO_DUPLA)
+
+
 def _traduzir_inconsistencias(painel: dict[str, Any]) -> list[dict[str, Any]]:
     itens: list[dict[str, Any]] = []
     for a in painel.get("alertas") or []:
@@ -243,6 +264,15 @@ def _traduzir_inconsistencias(painel: dict[str, Any]) -> list[dict[str, Any]]:
         if nivel == "ERRO_GRAVE":
             itens.append({"gravidade": "bloqueante", "codigo": codigo,
                           "descricao": msg, "acao": ACAO_REVISAR_BLOQUEANTES})
+        elif _eh_protecao_dupla_aplicada(texto_l):
+            # Exclusao deterministica ja aplicada pela regra temporal/anti-
+            # duplicidade: e protecao bem-sucedida, nao risco pendente. O texto
+            # original permanece visivel como informacao, sem acao de revisao.
+            itens.append({"gravidade": "informação", "codigo": codigo,
+                          "descricao": ("Proteção contra dupla contagem aplicada "
+                                        "pela regra temporal (nenhuma parcela foi "
+                                        "somada duas vezes). " + msg),
+                          "acao": ""})
         elif "dupl" in texto_l or "ja_refletido" in texto_l or "já refletido" in texto_l:
             itens.append({"gravidade": "atenção", "codigo": codigo,
                           "descricao": ("Possível dupla contagem: a mesma execução pode "

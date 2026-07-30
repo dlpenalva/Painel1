@@ -15,7 +15,7 @@ from _ui_utils import render_versao_sidebar
 
 st.set_page_config(
     page_title="TLB · cl8us — Reajustes contratuais",
-    page_icon="CL",
+    page_icon=str(Path(__file__).resolve().parent / "assets" / "cl8us_favicon_512.png"),
     layout="wide",
 )
 
@@ -28,8 +28,9 @@ def _page(caminho: str, titulo: str, *, default: bool = False) -> st.Page:
 
 
 PAGINA_INICIO = _page("00_Calculadora_Reajustes.py", "Início", default=True)
-PAGINA_UM_CICLO = _page("01_Calculo_Simples.py", "Calculadora 1 ciclo")
-PAGINA_MULTICICLO = _page("02_Calculo_Represados.py", "Calculadora multiciclo")
+# Etapa 26D: nomenclatura visivel dos fluxos; rotas/constantes/keys intactas.
+PAGINA_UM_CICLO = _page("01_Calculo_Simples.py", "Primeiro Reajuste")
+PAGINA_MULTICICLO = _page("02_Calculo_Represados.py", "Reajustes Subsequentes")
 PAGINA_UPLOAD = _page("03_Valor_Global.py", "Upload e docs")
 
 PAGINAS_PRINCIPAIS = (
@@ -269,6 +270,10 @@ def _render_css() -> None:
             font-weight: 800;
             margin: .08rem 0 .55rem;
         }
+        /* O marcador decorativo do titulo "Indice do contrato" agora e o
+           caractere 🔹 no proprio texto do titulo (render_indice_contrato_selectbox).
+           Nao ha mais pseudo-elemento circular. O marker tecnico
+           .cl8us-index-marker segue invisivel apenas para o :has() do container. */
         [data-baseweb="select"] > div,
         [data-testid="stDateInput"] input,
         [data-testid="stTextInput"] input {
@@ -373,13 +378,13 @@ def _render_css() -> None:
 def _render_sidebar() -> None:
     with st.sidebar:
         st.markdown(
-            '<div class="cl8us-side-brand"><strong>TLB<span>·</span>cl8us</strong></div>'
+            '<div class="cl8us-side-brand"><strong><span>·</span>cl8us<span>·</span></strong></div>'
             '<div class="cl8us-side-caption">apoio à gestão de contratos</div>',
             unsafe_allow_html=True,
         )
         st.page_link(PAGINA_INICIO, label="Início")
-        st.page_link(PAGINA_UM_CICLO, label="Calculadora 1 ciclo")
-        st.page_link(PAGINA_MULTICICLO, label="Calculadora multiciclo")
+        st.page_link(PAGINA_UM_CICLO, label="Primeiro Reajuste")
+        st.page_link(PAGINA_MULTICICLO, label="Reajustes Subsequentes")
         st.markdown('<div class="cl8us-side-group">Documentos</div>', unsafe_allow_html=True)
         st.page_link(PAGINA_UPLOAD, label="Upload e docs")
 

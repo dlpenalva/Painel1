@@ -590,7 +590,10 @@ def gerar_masterfile_preenchido(
     parametros = wb["parametros"]
     agora = datetime.now().astimezone()
 
-    _escrever_entrada(controle, "B1", "Principal")
+    # Fonte unica do metodo: inicia sem selecao silenciosa. O usuario escolhe
+    # em CONTROLE!B1 (dropdown); RESULTADOS!B4 e derivado/read-only.
+    from _metodo_apuracao import SELECIONE_AQUI
+    _escrever_entrada(controle, "B1", SELECIONE_AQUI)
     _escrever_entrada(controle, "B2", dados_calculadora.get("ciclo_vigente") or "C0")
     _escrever_entrada(controle, "B3", dados_calculadora.get("data_corte"))
     ciclos = {str(c.get("ciclo", "")).upper(): c for c in dados_calculadora.get("ciclos", [])}
@@ -641,7 +644,7 @@ def gerar_masterfile_preenchido(
                 _escrever_entrada(parametros, f"A{linha}", "Nao")
                 _escrever_entrada(
                     parametros, f"G{linha}",
-                    "Base" if nome == "C0" else "Fora desta apuracao",
+                    "Base" if nome == "C0" else "Fora da apuracao",
                 )
                 parametros[f"G{linha}"].fill = PatternFill("solid", fgColor="FFEDEDED")
                 continue
@@ -771,6 +774,12 @@ def gerar_masterfile_preenchido(
 
     if _formulas(wb) != formulas_antes:
         raise AssertionError("A geração alterou fórmulas do template antes da gravação.")
+
+    # 26J.1: a planilha entregue ao fiscal deve manter a mensagem de novo item
+    # (aditivos!M) integralmente legivel mesmo quando o template de origem for
+    # de linhagem anterior a 26H.2 (WrapText/dimensoes ausentes).
+    from _coleta_oficial import garantir_formatacao_orientacao_aditivos
+    garantir_formatacao_orientacao_aditivos(wb)
 
     saida = BytesIO()
     wb.save(saida)

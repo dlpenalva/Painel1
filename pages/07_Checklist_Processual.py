@@ -5,7 +5,7 @@ from io import BytesIO
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-st.set_page_config(page_title="TLB · cl8us - Checklist Processual", layout="wide")
+st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="TLB · cl8us - Checklist Processual", layout="wide")
 
 from _ui_utils import render_marca_topo, render_aviso_privacidade
 

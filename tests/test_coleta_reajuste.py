@@ -54,6 +54,9 @@ class ColetaReajusteTests(unittest.TestCase):
         self.assertIn("B20+B21+B22", resultados["B23"].value)
         self.assertIn("CONTROLE!$B$1", resultados["B35"].value)
         self.assertIn("CÁLCULO MANUAL REQUERIDO", resultados["F36"].value)
+        # Modelo legado (Coleta_Reajuste.xlsx) NAO foi alterado nesta rodada; a
+        # nota permanece em A48 (a movimentacao para NOTAS TECNICAS ocorreu apenas
+        # no COLETA_REAJUSTE_OFICIAL.xlsx).
         self.assertIn("fator-base praticado", resultados["A48"].value)
 
         ws = wb["parametros"]
@@ -134,6 +137,9 @@ class ColetaReajusteTests(unittest.TestCase):
 
         aditivos = wb["aditivos"]
         self.assertEqual(aditivos["L1"].value, "DELTA_QTD_CONTRATUAL")
+        # Modelo canonico legado (Coleta_Reajuste.xlsx) e interno e nao e
+        # baixado pelo fiscal; mantem a formula original. A tolerancia a acento
+        # (§12) foi aplicada no template OFICIAL, coberta em test_pacote_pos5casos.
         self.assertIn('LEFT(UPPER(D2),5)="ACRES"', aditivos["L2"].value)
         self.assertIn("L2*F2", aditivos["J2"].value)
 
@@ -332,7 +338,8 @@ class ColetaReajusteTests(unittest.TestCase):
         valores = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
         for fonte in (simples, multiplos):
             self.assertIn("gerar_coleta_oficial_preenchida", fonte)
-            self.assertIn("file_name=NOME_ARQUIVO_COLETA_OFICIAL", fonte)
+            # §15: o download user-facing sai como Coleta_Reajuste.xlsx.
+            self.assertIn("file_name=NOME_DOWNLOAD_COLETA", fonte)
         self.assertNotIn("render_botao_download_modelo_consumo(modelo_consumo)", multiplos)
         self.assertIn("processar_coleta_oficial_runtime", valores)
         self.assertNotIn("render_status_apuracao", valores)

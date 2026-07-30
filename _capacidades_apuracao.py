@@ -145,7 +145,7 @@ def _rastreabilidade_resultados(
         "metodologia": f"Método oficial selecionado no XLS: {fonte_retro}.",
         "fontes_consideradas": [
             {"fonte": fonte_retro, "papel": "Método oficial do retroativo"},
-            {"fonte": "RESULTADOS!B16", "papel": "Valor oficial calculado e preservado pelo XLS"},
+            {"fonte": "RETRO_OFICIAL", "papel": "Nome definido do valor oficial preservado pelo XLS"},
         ] if retro.get("disponivel") else [],
         "fontes_ausentes": [item for item in ausentes if item["fonte"] in ("Financeiro", "PCs", "Itens consumidos")],
         "fontes_excluidas": fontes_retro_excluidas,
@@ -160,20 +160,49 @@ def _rastreabilidade_resultados(
     vta = calculos["vta"]
     vta_manual = valores.get("vta_manual_oficial")
     ajuste_manual = valores.get("vta_ajuste_manual")
-    componentes = {
+    metodo_apuracao = _texto(status.get("metodo_retroativo"))
+    componentes_pc = {
+        "execucao_anterior_ao_corte": valores.get("vta_pc_execucao_anterior"),
+        "parcelas_intermediarias": valores.get("vta_pc_parcelas_intermediarias"),
+        "remanescente_no_corte": valores.get("vta_pc_remanescente_corte"),
+    }
+    metodo_pc_disponivel = metodo_apuracao == "PCS" and all(
+        _numero_disponivel(valor) for valor in componentes_pc.values()
+    )
+    componentes_legado = {
         "base_contratual": valores.get("vta_base_contratual"),
         "retroativo_oficial": valores.get("vta_retroativo"),
         "ajuste_remanescente": valores.get("vta_ajuste_remanescente"),
         "ajuste_manual": ajuste_manual,
     }
-    componentes_numericos = {
-        chave: valor for chave, valor in componentes.items() if _numero_disponivel(valor)
-    }
     if _numero_disponivel(vta_manual):
+        componentes = componentes_legado
         metodologia_vta = "VTA manual oficial informado no XLS; substitui a composição automática."
         valor_reproduzido = vta_manual
-        fontes_vta = [{"fonte": "RESULTADOS!B25", "papel": "VTA manual oficial"}]
+        fontes_vta = [{"fonte": "VTA_MANUAL_OFICIAL", "papel": "Nome definido do VTA manual oficial"}]
+    elif metodo_pc_disponivel:
+        # Metodo PC: o VTA FINAL (B26) vem de T25 = execucao anterior ao corte
+        # + parcelas intermediarias + remanescente atualizado no mesmo corte.
+        # A composicao legada (B23) permanece apenas como registro diagnostico,
+        # sob nome proprio, nunca como VTA.
+        componentes = componentes_pc
+        metodologia_vta = (
+            "Composição pelo método PC: execução anterior ao corte + "
+            "remanescente atualizado no mesmo corte temporal."
+        )
+        valor_reproduzido = round(
+            sum(float(valor) for valor in componentes_pc.values()), 2
+        )
+        fontes_vta = [
+            {"fonte": "MEMORIA_RESULTADOS - execução anterior ao corte", "papel": "Execução anterior ao corte", "valor": componentes_pc.get("execucao_anterior_ao_corte")},
+            {"fonte": "MEMORIA_RESULTADOS - parcelas intermediárias", "papel": "Parcelas intermediárias do método PC", "valor": componentes_pc.get("parcelas_intermediarias")},
+            {"fonte": "MEMORIA_RESULTADOS - remanescente no corte", "papel": "Remanescente atualizado no corte", "valor": componentes_pc.get("remanescente_no_corte")},
+        ]
     else:
+        componentes = componentes_legado
+        componentes_numericos = {
+            chave: valor for chave, valor in componentes_legado.items() if _numero_disponivel(valor)
+        }
         metodologia_vta = (
             "Composição automática do XLS: base contratual + retroativo oficial + "
             "ajuste do remanescente + eventual ajuste manual."
@@ -181,16 +210,16 @@ def _rastreabilidade_resultados(
         obrigatorios = ("base_contratual", "retroativo_oficial", "ajuste_remanescente")
         valor_reproduzido = (
             sum(float(componentes_numericos.get(chave, 0)) for chave in componentes_numericos)
-            if all(_numero_disponivel(componentes.get(chave)) for chave in obrigatorios)
+            if all(_numero_disponivel(componentes_legado.get(chave)) for chave in obrigatorios)
             else None
         )
         fontes_vta = [
-            {"fonte": "RESULTADOS!B20", "papel": "Base contratual", "valor": componentes.get("base_contratual")},
-            {"fonte": "RESULTADOS!B21", "papel": "Retroativo oficial", "valor": componentes.get("retroativo_oficial")},
-            {"fonte": "RESULTADOS!B22", "papel": "Ajuste do remanescente", "valor": componentes.get("ajuste_remanescente")},
+            {"fonte": "MEMORIA_RESULTADOS - base contratual", "papel": "Base contratual", "valor": componentes_legado.get("base_contratual")},
+            {"fonte": "RETRO_OFICIAL", "papel": "Nome definido do retroativo oficial", "valor": componentes_legado.get("retroativo_oficial")},
+            {"fonte": "MEMORIA_RESULTADOS - ajuste do remanescente", "papel": "Ajuste do remanescente", "valor": componentes_legado.get("ajuste_remanescente")},
         ]
         if _numero_disponivel(ajuste_manual):
-            fontes_vta.append({"fonte": "RESULTADOS!B24", "papel": "Ajuste manual justificado", "valor": ajuste_manual})
+            fontes_vta.append({"fonte": "AJUSTE_MANUAL_VTA", "papel": "Nome definido do ajuste manual justificado", "valor": ajuste_manual})
     reproduzivel = (
         _numero_disponivel(vta.get("valor"))
         and _numero_disponivel(valor_reproduzido)
@@ -205,6 +234,15 @@ def _rastreabilidade_resultados(
         "fontes_ausentes": ausentes,
         "fontes_excluidas": fontes_retro_excluidas,
         "componentes": componentes,
+        "composicao_legada_remanescentes": {
+            "valor": valores.get("vta_calculado"),
+            "significado": (
+                "Soma legada B20+B21+B22 (base contratual + retroativo oficial "
+                "+ ajuste do remanescente). Grandeza do método por "
+                "remanescentes, registrada apenas como diagnóstico; não é o "
+                "VTA quando o método oficial é PC."
+            ),
+        },
         "valor_reproduzido": valor_reproduzido,
         "reproduzivel": bool(reproduzivel),
         "impacto": (
@@ -225,7 +263,7 @@ def _rastreabilidade_resultados(
             "metodologia": "Saldo oficial preservado em RESULTADOS, derivado da base remanescente selecionada pelo XLS.",
             "fontes_consideradas": [
                 {"fonte": "Itens remanescentes", "papel": "Base quantitativa e financeira"},
-                {"fonte": "RESULTADOS!D35", "papel": "Saldo atualizado oficial"},
+                {"fonte": "REM_ATUALIZADO_OFICIAL", "papel": "Nome definido do saldo atualizado oficial"},
             ] if calculos["valor_remanescente"].get("disponivel") else [],
             "fontes_ausentes": [item for item in ausentes if item["fonte"] == "Itens remanescentes"],
             "fontes_excluidas": [],
@@ -404,7 +442,6 @@ def avaliar_capacidades_apuracao(
         )
 
     vta_oficial = valores.get("vta_oficial")
-    vta_calculado = valores.get("vta_calculado")
     vta_oficial_seguro = _numero_disponivel(vta_oficial) and any(
         termo in status_vta for termo in ("VALIDADO", "CONFERIR", "CALCULADO")
     )
@@ -413,11 +450,14 @@ def avaliar_capacidades_apuracao(
             "VTA", ESTADO_COMPLETO, "Calculado", "Valor Total Atualizado oficial preservado no XLS.",
             disponivel=True, valor=vta_oficial, origem="RESULTADOS",
         )
-    elif _numero_disponivel(vta_calculado) and (tem_financeiro or tem_remanescentes or tem_itens):
+    elif _numero_disponivel(vta_oficial) and (tem_financeiro or tem_remanescentes or tem_itens):
+        # Fonte canonica unica: mesmo com status pendente de validacao, o VTA
+        # exposto e sempre o VTA FINAL (B26); a composicao legada B23 nunca e
+        # apresentada como VTA (grandeza distinta no metodo PC).
         vta = _registro(
             "VTA", ESTADO_PARCIAL, "Calculado com ressalva",
-            "A composição automática está disponível; eventual ajuste/manualização oficial permanece pendente.",
-            disponivel=True, valor=vta_calculado, origem="Composição automática do XLS",
+            "O VTA FINAL oficial está preservado no XLS; a validação do status permanece pendente.",
+            disponivel=True, valor=vta_oficial, origem="RESULTADOS",
         )
     elif tem_financeiro or tem_remanescentes or tem_itens:
         vta = _registro(

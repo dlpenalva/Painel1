@@ -6,6 +6,7 @@ formulas/estilos e descaracterizacao da aba financeiro.
 """
 from __future__ import annotations
 
+import gc
 import re
 import zipfile
 import xml.etree.ElementTree as ET
@@ -24,17 +25,40 @@ NS = {
 }
 
 FORMULAS_POR_ABA = {
+    # comparativo_VTA: aba de referencia adicionada via Excel COM (1a posicao
+    # fisica). cobertura_temporal 14->15 (+ linha Metodo de apuracao).
+    # Etapa 26F: calculos antigos preservados em MEMORIA_RESULTADOS e nova
+    # RESULTADOS executiva com formulas de apresentacao.
+    "comparativo_VTA": 1407,
     "CONTROLE": 6,
     "parametros": 32,
     "financeiro": 291,
-    "itens_Remanesc": 5215,
+    # 26H.1/26H.2: +199 formulas pre-semeadas de base zero visual em
+    # B2:B200. FRONTEIRA FUNCIONAL: linha 200 = ultima linha de cadastro
+    # contratual (A2:A200 em toda a cadeia); linha 201 = linha extra do
+    # total dinamico de D/F — FORA da capacidade funcional e sem automacao
+    # de input (o off-by-one B201 da 26H.1 foi apontado pela auditoria e
+    # removido na 26H.2).
+    "itens_Remanesc": 9394,
     "itens_Consumidos": 1806,
-    "itens_PC": 834,
+    # Etapa 26G: grade escalada para a capacidade canonica (5.000 PCs
+    # x 8 colunas de formula) + resumo lateral N2:T6.
+    "itens_PC": 40042,
     "aditivos": 1393,
-    "posicao_contratual": 4776,
+    "posicao_referencia": 2595,
+    # 26H: +398 formulas das colunas tecnicas ocultas Y (CICLO_NASCIMENTO)
+    # e Z (EH_NOVO_ITEM), linhas 2:200.
+    "posicao_contratual": 5174,
     "itens_RC": 3200,
     "historico_VU": 3592,
-    "RESULTADOS": 3274,
+    "cobertura_temporal": 15,
+    # 3762 anteriores + 11 referencias para a tabela manual unica.
+    # 26G: +5 (T26/T27 completude do remanescente; T28:T30 PCs sem efeito).
+    "MEMORIA_RESULTADOS": 3778,
+    # 57 do prototipo + 4 selos por tabela + 1 premissa da estimativa - 1
+    # helper J4 removido (status global agora agrega os selos H8/H14/H24/H33).
+    # 26G: +5 (linha executiva A23:E23 dos PCs sem efeito financeiro).
+    "RESULTADOS": 66,
 }
 
 
@@ -151,11 +175,12 @@ def test_itens_pc_efeito_financeiro_aplicado():
     ws = wb["itens_PC"]
     assert ws["L1"].value == "EFEITO_FINANCEIRO_PC"
     assert isinstance(ws["L2"].value, str) and ws["L2"].value.startswith("=IF(")
-    assert ws["L101"].value is None
+    # 26G: grade ate a capacidade canonica — L101 tem formula.
+    assert str(ws["L101"].value).startswith("=")
     validacoes = [
         (dv.type, str(dv.sqref)) for dv in ws.data_validations.dataValidation
     ]
-    assert validacoes == [("list", "G2:G100")]
+    assert validacoes == [("list", "G2:G5001")]
     par = wb["parametros"]
     assert par["H1"].value == "INICIO_EFEITO_FINANCEIRO"
     assert {par.cell(r, 8).number_format for r in range(2, 7)} == {
@@ -194,8 +219,11 @@ def test_abertura_e_reabertura_sem_reparo_no_excel_real():
     try:
         for rodada in range(2):
             wb = excel.Workbooks.Open(str(TEMPLATE), UpdateLinks=0, ReadOnly=True)
-            assert wb.Worksheets.Count == 11, f"rodada {rodada}"
+            assert wb.Worksheets.Count == 15, f"rodada {rodada}"
             wb.Close(False)
+            del wb
     finally:
         excel.Quit()
+        del excel
+        gc.collect()
         pythoncom.CoUninitialize()

@@ -61,24 +61,29 @@ class TestDisponibilidadeDocumental(unittest.TestCase):
                 f"{chave} deveria continuar bloqueado pela divergencia (regra atual)",
             )
 
-    def test_bloqueio_nao_divergencia_bloqueia_ate_os_tres(self):
+    def test_bloqueio_formalizacao_nao_divergencia_mantem_os_tres_disponiveis(self):
+        # Pacote pos-5-casos (§7): disponibilidade documental != aptidao para
+        # formalizar. QUALQUER bloqueio de formalizacao (inclusive nao-divergencia,
+        # como insuficiencia/inconsistencia) mantem os 3 diagnosticos disponiveis.
         cap = _capacidades()
         aplicar_bloqueio_documental(cap, [BLOQUEIO_OUTRO])
         for chave in DOCS_LIBERADOS_APESAR_DIVERGENCIA:
-            self.assertFalse(
+            self.assertTrue(
                 cap["documentos"][chave]["habilitado"],
-                f"{chave} deveria ser bloqueado por motivo que nao e divergencia",
+                f"{chave} deveria seguir disponivel como documento diagnostico",
             )
 
-    def test_divergencia_mais_outro_bloqueio_tambem_bloqueia_os_tres(self):
+    def test_multiplos_bloqueios_formalizacao_mantem_os_tres_disponiveis(self):
         cap = _capacidades()
         aplicar_bloqueio_documental(cap, [BLOQUEIO_DIVERGENCIA, BLOQUEIO_OUTRO])
         for chave in DOCS_LIBERADOS_APESAR_DIVERGENCIA:
-            self.assertFalse(
+            self.assertTrue(
                 cap["documentos"][chave]["habilitado"],
-                f"{chave}: havendo outro bloqueio alem da divergencia, bloqueia",
+                f"{chave}: diagnostico segue disponivel mesmo com multiplos bloqueios",
             )
-            self.assertEqual(cap["documentos"][chave]["motivo"], BLOQUEIO_OUTRO)
+        # Os demais documentos (formais) continuam bloqueados.
+        for chave in ("garantia_contratual", "dou", "relatorio_executivo"):
+            self.assertFalse(cap["documentos"][chave]["habilitado"])
 
     def test_sem_bloqueios_preserva_habilitados(self):
         cap = _capacidades()

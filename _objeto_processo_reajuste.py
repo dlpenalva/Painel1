@@ -753,17 +753,28 @@ def _montar_memoria_por_ciclo(
     if (not tem_fotografia and posicao.get("ok")
             and not posicao.get("cache_ausente") and vigente in ciclos):
         fator_vigente = ciclos[vigente]["fator_acumulado"]
+        historico_por_item = {
+            str(item.get("item") or "").strip().upper(): item
+            for item in (leitura.get("historico_vu") or {}).get("itens") or []
+        }
         for reg in posicao.get("itens") or []:
             vu = _f_none(reg.get("VU_ORIGINAL"))
             qtd = _f_none(reg.get(f"QTD_REM_AJUSTADA_{vigente}"))
-            if vu is None or qtd is None or fator_vigente is None:
+            hist = historico_por_item.get(
+                str(reg.get("ITEM") or "").strip().upper()
+            ) or {}
+            vu_vigente = _f_none(
+                (hist.get("vu_ciclos") or {}).get(f"VU_{vigente}")
+            )
+            if (vu is None or qtd is None or vu_vigente is None
+                    or fator_vigente is None):
                 continue
             original = round(qtd * vu, 2)
             residual = ciclos[vigente]["residuais"]
             residual["quantidade"] = round(residual["quantidade"] + qtd, 4)
             residual["valor_original"] = round(residual["valor_original"] + original, 2)
             residual["valor_atualizado"] = round(
-                residual["valor_atualizado"] + original * fator_vigente, 2
+                residual["valor_atualizado"] + round(qtd * vu_vigente, 2), 2
             )
             residual["itens"] += 1
             residual["fotografias"].append({
@@ -796,14 +807,60 @@ def _montar_memoria_por_ciclo(
     # Consumidores documentais (VU por item): sem ITENS_CONTRATO no novo
     # modelo, deriva de posicao_contratual (ITEM, VU_ORIGINAL, QTD_BASE).
     if not vu_itens and posicao.get("ok") and not posicao.get("cache_ausente"):
+        historico_por_item = {
+            str(item.get("item") or "").strip().upper(): item
+            for item in (leitura.get("historico_vu") or {}).get("itens") or []
+        }
         for reg in posicao.get("itens") or []:
             vu_original = _f_none(reg.get("VU_ORIGINAL"))
             if vu_original is None:
                 continue
-            qtd_base = _f_none(reg.get("QTD_BASE_ORIGINAL"))
+            # Etapa 26H: base zero automatica p/ novo item (Nxxx) com base
+            # vazia; item normal permanece com vazio (nunca vira 0 aqui).
+            from _reajuste_utils import qtd_base_efetiva
+            qtd_base = qtd_base_efetiva(
+                reg.get("ITEM"), reg.get("QTD_BASE_ORIGINAL")
+            )
             qtd_vigente = (
                 _f_none(reg.get(f"QTD_CONTRATADA_{vigente}"))
                 if vigente in ciclos else None
+            )
+            hist = historico_por_item.get(
+                str(reg.get("ITEM") or "").strip().upper()
+            ) or {}
+            vu_por_ciclo = {
+                c: _f_none((hist.get("vu_ciclos") or {}).get(f"VU_{c}"))
+                for c in ("C0", "C1", "C2", "C3", "C4")
+            }
+            qtd_por_ciclo = {
+                c: _f_none(
+                    (hist.get("qtd_vigente_ciclos") or {}).get(c)
+                )
+                for c in ("C0", "C1", "C2", "C3", "C4")
+            }
+            rem_por_ciclo = {
+                c: _f_none(
+                    (hist.get("qtd_rem_ajustada_ciclos") or {}).get(c)
+                )
+                for c in ("C0", "C1", "C2", "C3", "C4")
+            }
+            totais_por_ciclo = {
+                c: (
+                    round(qtd_por_ciclo[c] * vu_por_ciclo[c], 2)
+                    if qtd_por_ciclo[c] is not None
+                    and vu_por_ciclo[c] is not None else None
+                )
+                for c in ("C0", "C1", "C2", "C3", "C4")
+            }
+            # 26J.1: ciclo de nascimento (mesma regra da coluna tecnica Y do
+            # template: primeiro ciclo com quantidade contratada positiva).
+            # Permite distinguir pre-vigencia de dado ausente nos documentos.
+            ciclo_nascimento = next(
+                (
+                    n for n in range(0, 5)
+                    if (_f_none(reg.get(f"QTD_CONTRATADA_C{n}")) or 0) > 0
+                ),
+                None,
             )
             vu_itens.append({
                 "item": reg.get("ITEM"),
@@ -812,11 +869,17 @@ def _montar_memoria_por_ciclo(
                     qtd_vigente if qtd_vigente is not None else qtd_base
                 ),
                 "vu_original": vu_original,
-                "valor_total_original": round(_f(qtd_base) * vu_original, 2),
+                "valor_total_original": totais_por_ciclo["C0"],
+                "vu_c0": vu_por_ciclo["C0"],
                 "vu_ciclos": {
-                    c: round(vu_original * (ciclos[c]["fator_acumulado"] or 1.0), 6)
+                    c: vu_por_ciclo[c]
                     for c in ("C1", "C2", "C3", "C4")
                 },
+                "vu_por_ciclo": vu_por_ciclo,
+                "quantidade_por_ciclo": qtd_por_ciclo,
+                "remanescente_por_ciclo": rem_por_ciclo,
+                "total_por_ciclo": totais_por_ciclo,
+                "ciclo_nascimento": ciclo_nascimento,
                 "origem": "posicao_contratual",
             })
 
@@ -867,6 +930,32 @@ def _montar_memoria_por_ciclo(
         and c["disponivel"]
         and c["valor_total_atualizado"] is not None
     ), None)
+    composicao = leitura.get("composicao_vta") or {}
+    if (str(composicao.get("metodo") or "").lower() == "pc"
+            and composicao.get("disponivel")
+            and _f_none(composicao.get("vta_composicao")) is not None):
+        # A composicao PC e o espelho do XLS: PCs anteriores ao ciclo vigente
+        # mais o remanescente itemizado do mesmo corte. O caminho antigo
+        # somava tambem PCs do ciclo vigente ao mesmo remanescente, duplicando
+        # a execucao e gerando a divergencia 26C.
+        metodo_escolhido = "pc"
+        selecao_automatica_unica = True
+        saldo_comp = composicao.get("saldo_remanescente") or {}
+        vta = {
+            "metodo": "pc",
+            "disponivel": True,
+            "executado_atualizado": composicao.get(
+                "total_execucao_atualizada"
+            ),
+            "potencial_restante_atualizado": saldo_comp.get(
+                "valor_atualizado"
+            ),
+            "valor_total_atualizado": composicao.get("vta_composicao"),
+            "prioridade": 2,
+            "regra_elegibilidade": (
+                "PCs anteriores ao ciclo vigente + remanescente do mesmo corte"
+            ),
+        }
     return {
         "ciclos": [ciclos[c] for c in ("C0", "C1", "C2", "C3", "C4")],
         "vu_itens": vu_itens,

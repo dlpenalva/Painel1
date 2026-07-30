@@ -45,6 +45,29 @@ def _retroativo_python(memoria: dict[str, Any], metodo: str) -> float | None:
     return round(total, 2) if evidencias else None
 
 
+def _rotulo_origem_coleta(conteudo: bytes) -> str:
+    """Identifica a origem real da Coleta para registro documental.
+
+    Não altera cálculo nem processamento — apenas rotula a fonte de forma fiel.
+    Reutiliza o detector canônico ``eh_layout_coleta_oficial`` para reconhecer o
+    layout oficial (aba posicao_contratual); dentro dele, distingue o Arquivo
+    Oficial (Modelo B) do legado (Modelo A) pelo marcador ``SEM_ADITIVO`` no
+    cabeçalho de itens_Remanesc.
+    """
+    from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, eh_layout_coleta_oficial
+
+    wb_fmt = load_workbook(BytesIO(conteudo), data_only=False)
+    try:
+        if not eh_layout_coleta_oficial(wb_fmt):
+            return "Coleta (layout legado, sem posicao_contratual)"
+        cabecalho = str(wb_fmt["itens_Remanesc"]["E1"].value or "")
+        if "SEM_ADITIVO" in cabecalho:
+            return "Coleta_Reajuste.xlsx (layout legado - Modelo A)"
+        return NOME_ARQUIVO_COLETA_OFICIAL
+    finally:
+        wb_fmt.close()
+
+
 def adaptar_coleta_reajuste_para_documentos(
     conteudo: bytes,
     *,
@@ -66,7 +89,12 @@ def adaptar_coleta_reajuste_para_documentos(
     aditivos = wb["aditivos"]
     posicao = wb["posicao_contratual"] if "posicao_contratual" in wb.sheetnames else None
     itens_rc = wb["itens_RC"]
-    resultados = wb["RESULTADOS"]
+    resultados = (
+        wb["MEMORIA_RESULTADOS"]
+        if "MEMORIA_RESULTADOS" in wb.sheetnames
+        else wb["RESULTADOS"]
+    )
+    origem_label = _rotulo_origem_coleta(conteudo)
 
     ciclos_rows = []
     fatores: dict[str, float] = {}
@@ -278,7 +306,7 @@ def adaptar_coleta_reajuste_para_documentos(
 
     resultado_documental = {
         "ok": True,
-        "origem_coleta": "Coleta_Reajuste.xlsx",
+        "origem_coleta": origem_label,
         "data_processamento": datetime.now().strftime("%d/%m/%Y %H:%M"),
         "modo_apuracao": "Processamento progressivo pelo XLS",
         "base_execucao_mensal_disponivel": bool(financeiro_rows),
@@ -288,7 +316,7 @@ def adaptar_coleta_reajuste_para_documentos(
         "config_ciclo_em_execucao": {},
         "corte_operacional_solicitado": False,
         "corte_operacional_aplicado": False,
-        "origem_ciclos": "Coleta_Reajuste.xlsx",
+        "origem_ciclos": origem_label,
         "indice": controle["B7"].value or "Não informado",
         "fator_acumulado": fator_final,
         "variacao_acumulada": fator_final - 1.0,
@@ -372,6 +400,14 @@ def adaptar_coleta_reajuste_para_documentos(
             "reconciliacao_xls_python": leitura.get("reconciliacao_xls_python") or {},
             "posicao_contratual_runtime": leitura.get("posicao_contratual") or {},
             "memoria_por_ciclo": memoria,
+            # Etapa 26H: chaves canonicas da leitura exigidas pelos documentos
+            # (montar_dados_sumario_executivo). Sem elas, o quadro de VUs do
+            # Termo ficava vazio, o indice caia em "Nao informado" e a PREVIA
+            # nao tinha o numero oficial do XLS.
+            "controle": leitura.get("controle") or {},
+            "historico_vu": leitura.get("historico_vu") or {},
+            "memoria_calculo": leitura.get("memoria_calculo") or {},
+            "resultados_xls": leitura.get("resultados_xls") or {},
             "_resultado_calculado_python": True,
         })
     return resultado_documental
@@ -399,25 +435,20 @@ def aplicar_bloqueio_documental(capacidades: dict[str, Any], bloqueios: list[str
     """
     if not bloqueios:
         return capacidades
-    bloqueios_sem_divergencia = [
-        b for b in bloqueios if not str(b).startswith(_PREFIXO_BLOQUEIO_DIVERGENCIA)
-    ]
     for chave, documento in (capacidades.get("documentos") or {}).items():
-        # Documentos liberados so sao bloqueados por motivos que NAO sejam a
-        # divergencia XLS x Python. Se a divergencia for o unico motivo, seguem
-        # disponiveis (com mascaramento de campos divergentes na Etapa 5b).
-        aplicaveis = (
-            bloqueios_sem_divergencia
-            if chave in DOCS_LIBERADOS_APESAR_DIVERGENCIA
-            else bloqueios
-        )
-        if not aplicaveis:
+        # Documentos diagnosticos (Sumario, Saneador, Apostila) permanecem
+        # DISPONIVEIS diante de QUALQUER bloqueio de FORMALIZACAO — divergencia
+        # XLS x Python, insuficiencia, inconsistencia ou campo nao confiavel.
+        # Disponibilidade documental != aptidao para formalizar: a formalizacao
+        # segue condicionada e o alerta permanece visivel. Coleta estruturalmente
+        # invalida ja foi barrada a montante (nao chega aqui).
+        if chave in DOCS_LIBERADOS_APESAR_DIVERGENCIA:
             continue
         documento["habilitado"] = False
         documento["estado"] = "bloqueado"
         documento["rotulo"] = "Bloqueado para formalização"
         documento["classificacao"] = "BLOQUEADO PARA FORMALIZAÇÃO"
-        documento["motivo"] = aplicaveis[0]
+        documento["motivo"] = bloqueios[0]
     return capacidades
 
 
@@ -452,6 +483,16 @@ def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], d
     diagnostico["bloqueios_criticos"] = list(diagnostico.get("bloqueios_criticos") or []) + bloqueios
     if bloqueios:
         diagnostico["pronto_para_consolidar"] = False
+
+    # Cobertura temporal (camada diagnostica/sombra). Fonte UNICA: o mesmo
+    # payload do leitor (sem reler o Excel). Fail-safe: erro do motor temporal
+    # NAO derruba o upload nem os demais resultados; vira indisponibilidade do
+    # eixo temporal. Nao altera o VTA e nao bloqueia documentos.
+    try:
+        from _motor_cobertura_temporal import montar_cobertura_temporal
+        diagnostico["cobertura_temporal"] = montar_cobertura_temporal(leitura).to_dict()
+    except Exception as exc:  # diagnostico e sombra; nunca hard-reject estrutural
+        diagnostico["cobertura_temporal"] = {"ok": False, "erro": str(exc)}
 
     capacidades = resultado.get("capacidades") or {}
     aplicar_bloqueio_documental(capacidades, bloqueios)

@@ -5,9 +5,9 @@ Fonte de verdade estrutural: templates/COLETA_REAJUSTE_OFICIAL.xlsx
 apos rodada de UX de 17/07/2026 via Excel real: destaque CONTROLE!B1 +
 protecao, itens_PC coluna A em Texto com estilo de entrada, DATA_PC
 dd/mm/aaaa, CICLO_PC com alerta de data invalida, V:AC ocultas,
-posicao_contratual com cores por ciclo, RESULTADOS memoria na linha 52 e
-RESULTADOS!B4 com destaque FFF7E7B2 — mesmo padrao de CONTROLE!B1 —
-dropdown/validacao/valor/borda preservados).
+posicao_contratual com cores por ciclo, MEMORIA_RESULTADOS oculta com a
+matematica homologada e RESULTADOS executiva com quatro tabelas e um unico
+status global. Os nomes definidos permanecem como contrato de leitura.
 
 Correcao aprovada sobre o arquivo fornecido (Coleta_Reajuste_Nova.xlsx,
 SHA-256 6353357b...8069ff3): o original possuia uma OMISSAO CRITICA — a
@@ -34,12 +34,21 @@ from typing import Any
 from openpyxl import load_workbook
 from dateutil.relativedelta import relativedelta
 
+from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
+
 ROOT = Path(__file__).resolve().parent
 TEMPLATE_COLETA_OFICIAL = ROOT / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
+# Nome de referencia interno do template (nao renomear o arquivo fisico).
 NOME_ARQUIVO_COLETA_OFICIAL = "COLETA_REAJUSTE_OFICIAL.xlsx"
+# Nome user-facing entregue nos botoes de download da interface (§15).
+NOME_DOWNLOAD_COLETA = "Coleta_Reajuste.xlsx"
 
-# Ordem oficial das abas do novo modelo (fonte de verdade: o proprio XLS)
+# Ordem oficial das abas do novo modelo (fonte de verdade: o proprio XLS).
+# comparativo_VTA (aba de referencia adicionada via Excel COM) fica na 1a
+# posicao fisica que o Excel produz ao inseri-la; nao aparece na web e a aba
+# ativa original e preservada.
 ABAS_COLETA_OFICIAL = [
+    "comparativo_VTA",
     "CONTROLE",
     "parametros",
     "financeiro",
@@ -47,9 +56,12 @@ ABAS_COLETA_OFICIAL = [
     "itens_Consumidos",
     "itens_PC",
     "aditivos",
+    "posicao_referencia",
     "posicao_contratual",
     "itens_RC",
     "historico_VU",
+    "cobertura_temporal",
+    "MEMORIA_RESULTADOS",
     "RESULTADOS",
 ]
 
@@ -120,6 +132,10 @@ _RESIDUOS_POR_ABA["aditivos"] = [
     f"{col}{lin}" for lin in range(2, 201)
     for col in ("A", "B", "D", "E", "F", "H", "K")
 ]
+# Etapa 26F: a unica interface manual fica na RESULTADOS executiva.
+_RESIDUOS_POR_ABA["RESULTADOS"] = [
+    f"{col}{lin}" for lin in range(43, 51) for col in ("C", "D", "E", "F", "G")
+]
 
 
 def assinatura_template_coleta(caminho: str | Path | None = None) -> str:
@@ -158,9 +174,10 @@ def _limpar_residuos(wb) -> None:
 def _validar_estrutura_itens_pc(wb) -> None:
     """Barreira contra regressao critica: itens_PC jamais pode sair esvaziada.
 
-    Valida cabecalhos A1:L1 e a densidade de formulas da grade (C:L, linhas
-    2-100). Se o template em disco for trocado por uma versao sem a estrutura
-    homologada, a geracao falha explicitamente em vez de entregar o XLS.
+    Valida cabecalhos A1:L1 e a densidade de formulas da grade (C:L, ate a
+    capacidade canonica de PCs — Etapa 26G). Se o template em disco for
+    trocado por uma versao sem a estrutura homologada, a geracao falha
+    explicitamente em vez de entregar o XLS.
     """
     ws = wb["itens_PC"]
     cabecalhos = [ws.cell(1, c).value for c in range(1, 13)]
@@ -171,14 +188,16 @@ def _validar_estrutura_itens_pc(wb) -> None:
         )
     formulas = sum(
         1
-        for row in ws.iter_rows(min_row=2, max_row=100, min_col=3, max_col=12)
+        for row in ws.iter_rows(
+            min_row=2, max_row=ULTIMA_LINHA_PCS, min_col=3, max_col=12
+        )
         for cell in row
         if isinstance(cell.value, str) and cell.value.startswith("=")
     )
-    if formulas < 700:
+    if formulas < CAPACIDADE_PCS * 7:
         raise ValueError(
-            f"itens_PC invalida: apenas {formulas} formulas na grade C2:L100 "
-            "(estrutura esvaziada)"
+            f"itens_PC invalida: apenas {formulas} formulas na grade "
+            f"C2:L{ULTIMA_LINHA_PCS} (estrutura esvaziada ou truncada)"
         )
     # Visao salva rolada (ex.: topLeftCell=AD1 com V:AC ocultas e sem grade)
     # faz a aba parecer completamente vazia no Excel — causa raiz do bug de
@@ -330,6 +349,38 @@ def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]
         "ciclo_vigente": f"C{ultimo}",
         "ciclos": ciclos,
     }
+
+
+# Legibilidade da mensagem fiscal de novo item (aditivos!M): dimensoes minimas
+# funcionais; dimensoes maiores ja presentes no arquivo nunca sao reduzidas.
+LARGURA_MINIMA_ADITIVOS_M = 45.0
+ALTURA_MINIMA_LINHAS_ADITIVOS = 45.0
+ULTIMA_LINHA_ORIENTACAO_ADITIVOS = 200
+
+
+def garantir_formatacao_orientacao_aditivos(wb) -> None:
+    """Garante a mensagem fiscal integralmente legivel em aditivos!M.
+
+    Reaplica WrapText e dimensoes minimas no workbook FINAL gerado/migrado,
+    protegendo contra linhagens de arquivo anteriores a 26H.2 em que a
+    formatacao do template nao existia.
+    """
+    if "aditivos" not in wb.sheetnames:
+        return
+    ws = wb["aditivos"]
+    dim = ws.column_dimensions["M"]
+    if not dim.width or dim.width < LARGURA_MINIMA_ADITIVOS_M:
+        dim.width = LARGURA_MINIMA_ADITIVOS_M
+    from copy import copy as _copy
+    for row in range(2, ULTIMA_LINHA_ORIENTACAO_ADITIVOS + 1):
+        celula = ws.cell(row=row, column=13)
+        if not celula.alignment.wrap_text:
+            alinhamento = _copy(celula.alignment)
+            alinhamento.wrapText = True
+            celula.alignment = alinhamento
+        altura = ws.row_dimensions[row]
+        if not altura.height or altura.height < ALTURA_MINIMA_LINHAS_ADITIVOS:
+            altura.height = ALTURA_MINIMA_LINHAS_ADITIVOS
 
 
 def gerar_coleta_oficial_preenchida(dados_calculadora: dict[str, Any] | None) -> bytes:

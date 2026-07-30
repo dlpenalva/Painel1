@@ -35,53 +35,72 @@ def render_avisos_override_efeito_financeiro(diagnostico):
     return tuple(exibidos)
 
 
+_HEADER_ASSET = Path(__file__).resolve().parent / "assets" / "cl8us_header_proporcional.png"
+
+
+def _header_data_uri():
+    """Header oficial (assets/cl8us_header_proporcional.png) como data URI cacheado."""
+    import base64
+    global _HEADER_DATA_URI
+    try:
+        return _HEADER_DATA_URI
+    except NameError:
+        pass
+    try:
+        b64 = base64.b64encode(_HEADER_ASSET.read_bytes()).decode("ascii")
+        _HEADER_DATA_URI = f"data:image/png;base64,{b64}"
+    except Exception:
+        _HEADER_DATA_URI = ""
+    return _HEADER_DATA_URI
+
+
 def render_marca_topo():
-    """Identidade visual própria do sistema, sem uso de logomarca institucional."""
+    """Marca oficial do Cl8us no topo. Imagem proporcional (943x180), responsiva
+    (width: min(420px, 100%); height: auto; object-fit: contain) — marca, nao banner."""
+    src = _header_data_uri()
     st.markdown(
-        """
+        f"""
         <style>
-        .tlb-cl8us-brand { display: inline-flex; flex-direction: column; gap: 1px; margin: 0 0 0.70rem 0; padding: 1.45rem 0 0; }
-        .tlb-cl8us-brand-main { display: flex; align-items: baseline; gap: 0.45rem; line-height: 1.05; letter-spacing: -0.02em; }
-        .tlb-cl8us-tlb { color: #123B63; font-size: 1.38rem; font-weight: 750; font-family: "Inter", "Segoe UI", Arial, sans-serif; }
-        .tlb-cl8us-dot { color: #C0842B; font-size: 1.18rem; font-weight: 700; }
-        .tlb-cl8us-name { color: #0F172A; font-size: 1.42rem; font-weight: 800; font-family: "Consolas", "SFMono-Regular", "Cascadia Mono", "Courier New", monospace; letter-spacing: -0.04em; }
-        .tlb-cl8us-subtitle { color: #64748B; font-size: 0.74rem; font-weight: 500; font-family: "Inter", "Segoe UI", Arial, sans-serif; margin-top: 0.12rem; letter-spacing: 0.01em; }
-        .tlb-cl8us-separator { width: 172px; border-bottom: 2px solid #1F4E79; opacity: 0.78; margin-top: 0.42rem; }
-        .tlb-cl8us-aviso { display: block; margin-top: 0.42rem; color: #A16207; font-family: "Inter", "Segoe UI", Arial, sans-serif; font-size: 0.74rem; font-style: italic; font-weight: 400; line-height: 1.20; }
+        .cl8us-brand-wrap {{ margin: 0 0 0.55rem 0; padding: 0.9rem 0 0; }}
+        .cl8us-brand-img {{ width: min(420px, 100%); height: auto; object-fit: contain; display: block; }}
+        .cl8us-brand-aviso {{ display: block; margin-top: 0.42rem; color: #A16207; font-family: "Inter", "Segoe UI", Arial, sans-serif; font-size: 0.74rem; font-style: italic; font-weight: 400; line-height: 1.20; }}
         </style>
-        <div class="tlb-cl8us-brand" aria-label="TLB cl8us - apoio à gestão de contratos">
-            <div class="tlb-cl8us-brand-main">
-                <span class="tlb-cl8us-tlb">TLB</span>
-                <span class="tlb-cl8us-dot">·</span>
-                <span class="tlb-cl8us-name">cl8us</span>
-            </div>
-            <div class="tlb-cl8us-subtitle">apoio à gestão de contratos</div>
-            <div class="tlb-cl8us-separator"></div>
-            <div class="tlb-cl8us-aviso">AVISO: use apenas para docs não sigilosos e de livre acesso.</div>
+        <div class="cl8us-brand-wrap">
+            <img class="cl8us-brand-img" src="{src}" alt="TLB cl8us - apoio à gestão de contratos" />
+            <div class="cl8us-brand-aviso">AVISO: use apenas para docs não sigilosos e de livre acesso.</div>
         </div>
         """,
         unsafe_allow_html=True,
     )
 
 
-def render_cabecalho_pagina(titulo, descricao):
-    """Cabeçalho operacional em box, alinhado à casca enxuta do Cl8us 3.0."""
+def render_cabecalho_pagina(titulo, descricao=""):
+    """Cabeçalho global do Cl8us: marca + título funcional + aviso de privacidade.
+
+    Contrato global (hotfix): a descrição NUNCA é renderizada. O parâmetro
+    `descricao` é mantido apenas por compatibilidade temporária com call-sites
+    legados e é intencionalmente ignorado — por isso todo cabeçalho passa a
+    exibir exclusivamente a marca Cl8us, o título e o aviso de privacidade, sem
+    qualquer frase descritiva intermediária.
+
+    O HTML é montado como um bloco íntegro, em uma única string sem indentação
+    nem linha em branco dinâmica. Isso evita o bug pós-reboot em que a linha
+    vazia (descrição ausente) fechava o bloco HTML no CommonMark do Streamlit e
+    fazia o `<div class="cl8us-page-privacy">` ser renderizado literalmente como
+    bloco de código.
+    """
+    # `descricao` recebido apenas por compatibilidade; nunca é renderizado.
     titulo_seguro = html_lib.escape(str(titulo))
-    descricao_segura = html_lib.escape(str(descricao))
-    st.markdown(
-        f"""
-        <section class="cl8us-page-header" aria-label="{titulo_seguro}">
-            <div class="cl8us-page-brand">
-                <strong>TLB</strong><span>· cl8us</span>
-                <small>apoio à gestão de contratos</small>
-            </div>
-            <h1>{titulo_seguro}</h1>
-            <p>{descricao_segura}</p>
-            <div class="cl8us-page-privacy">Use apenas para documentos não sigilosos e de livre acesso.</div>
-        </section>
-        """,
-        unsafe_allow_html=True,
+    html = (
+        f'<section class="cl8us-page-header" aria-label="{titulo_seguro}">'
+        f'<img class="cl8us-brand-img" src="{_header_data_uri()}" '
+        f'alt="TLB cl8us - apoio à gestão de contratos" '
+        f'style="width:min(420px,100%);height:auto;object-fit:contain;display:block;margin:0 0 0.55rem 0;" />'
+        f'<h1>{titulo_seguro}</h1>'
+        f'<div class="cl8us-page-privacy">Use apenas para documentos não sigilosos e de livre acesso.</div>'
+        f'</section>'
     )
+    st.markdown(html, unsafe_allow_html=True)
 
 
 def render_versao_sidebar():
@@ -130,15 +149,50 @@ def obter_ultima_competencia_ist(caminho="ist.csv"):
     return melhor
 
 
+def _status_ist_atual():
+    """(fonte, descricao, indice_str) da ultima competencia da serie IST vigente.
+
+    Usa a MESMA serie que alimenta o calculo (carregar_ist_atual): Anatel oficial
+    quando disponivel, senao a base local. Nao inventa competencia.
+    """
+    import pandas as pd
+    from _indice_utils import carregar_ist_atual, MESES_PT_EXTENSO
+    df, fonte = carregar_ist_atual()
+    ult = df.iloc[-1]
+    data = pd.to_datetime(ult["data"])
+    descricao = f"{MESES_PT_EXTENSO[data.month]}/{data.year}"
+    indice = f"{float(ult['indice']):.3f}".replace(".", ",")
+    return fonte, descricao, indice
+
+
 def render_alerta_ist_local():
-    ultima = obter_ultima_competencia_ist()
-    if ultima:
-        texto = f"IST local: última competência constante no sistema: <strong>{ultima['descricao']}</strong>"
-        if ultima.get("indice"):
-            texto += f" — índice em nível: <strong>{ultima['indice']}</strong>"
-        texto += ". Confira se a data-base necessária já está coberta."
+    try:
+        fonte, descricao, indice = _status_ist_atual()
+    except Exception:
+        fonte = descricao = indice = None
+
+    if fonte == "anatel":
+        texto = (
+            f"IST/Anatel: última competência disponível: <strong>{descricao}</strong>"
+            f" — índice em nível: <strong>{indice}</strong>."
+            " Confira se a data-base necessária já está coberta."
+        )
+    elif fonte == "local" and descricao:
+        texto = (
+            f"IST/base local: última competência disponível: <strong>{descricao}</strong>"
+            f" — índice em nível: <strong>{indice}</strong>."
+            " Fonte oficial da Anatel indisponível neste momento."
+        )
     else:
-        texto = "IST local: não foi possível identificar a última competência no arquivo <code>ist.csv</code>. Confira a base antes de prosseguir."
+        # Fallback total: comportamento anterior baseado no ist.csv.
+        ultima = obter_ultima_competencia_ist()
+        if ultima:
+            texto = f"IST/base local: última competência disponível: <strong>{ultima['descricao']}</strong>"
+            if ultima.get("indice"):
+                texto += f" — índice em nível: <strong>{ultima['indice']}</strong>"
+            texto += ". Fonte oficial da Anatel indisponível neste momento."
+        else:
+            texto = "IST: não foi possível identificar a última competência. Confira a base antes de prosseguir."
 
     st.markdown(
         f"""
@@ -158,6 +212,25 @@ def render_alerta_ist_local():
 def _obter_ultima_competencia_icti_cache():
     from _indice_utils import obter_ultima_competencia_icti_ipeadata
     return obter_ultima_competencia_icti_ipeadata(timeout=15)
+
+
+@st.cache_data(ttl=60 * 60, show_spinner=False)
+def _obter_ultima_competencia_sgs_cache(serie_codigo):
+    from _indice_utils import obter_ultima_competencia_sgs
+    return obter_ultima_competencia_sgs(serie_codigo, timeout=15)
+
+
+def _texto_ultima_competencia_sgs(serie_codigo):
+    """§18: 'Última competência disponível: mm/aaaa.' para IPCA(433)/IGP-M(189).
+
+    Consulta a MESMA fonte oficial do cálculo (SGS/BCB) com cache leve. Em falha
+    de rede não bloqueia o usuário: exibe aviso discreto sem inventar data.
+    """
+    try:
+        ultima = _obter_ultima_competencia_sgs_cache(serie_codigo)
+        return f"Última competência disponível: {ultima['descricao']}."
+    except Exception:
+        return "Última competência disponível: não foi possível consultar neste momento."
 
 
 def render_alerta_icti_ipeadata():
@@ -189,12 +262,13 @@ def render_alerta_icti_ipeadata():
 def render_indice_contrato_selectbox(key=None, index=0, options=None):
     """Renderiza o campo de índice com destaque visual consistente entre os fluxos."""
     if options is None:
-        options = ["IST (Série Local)", "ICTI (Ipeadata)", "IPCA (433)", "IGP-M (189)"]
+        options = ["IST (Anatel)", "ICTI (Ipeadata)", "IPCA (433)",
+                   "IGP-M (189)", "INPC (188)"]
 
     with st.container(border=True):
         st.markdown(
             '<span class="cl8us-index-marker"></span>'
-            '<div class="cl8us-index-title">Índice do contrato</div>',
+            '<div class="cl8us-index-title">Índice do contrato 🔹</div>',
             unsafe_allow_html=True,
         )
 
@@ -204,7 +278,6 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
             index=index,
             key=key,
             label_visibility="collapsed",
-            help="Confirme o índice contratual antes de gerar cálculos, arquivo de coleta ou relatórios.",
         )
 
         if selecionado == options[index]:
@@ -217,8 +290,155 @@ def render_indice_contrato_selectbox(key=None, index=0, options=None):
             render_alerta_ist_local()
         elif selecionado_norm.startswith("ICTI"):
             render_alerta_icti_ipeadata()
+        elif selecionado_norm.startswith("IPCA"):
+            # §18: mesma fonte oficial do cálculo (SGS 433); IST/ICTI intactos.
+            st.caption(_texto_ultima_competencia_sgs(433))
+        elif selecionado_norm.startswith("IGP-M") or selecionado_norm.startswith("IGPM"):
+            st.caption(_texto_ultima_competencia_sgs(189))
+        elif selecionado_norm.startswith("INPC"):
+            # INPC/SGS-BCB serie 188 (mesma infra generica de IPCA/IGP-M).
+            st.caption(_texto_ultima_competencia_sgs(188))
 
     return selecionado
+
+
+_ROTULO_FONTE = {"financeiro": "Financeiro", "pc": "PC", "consumo": "Consumo"}
+
+
+def _data_br_iso(iso, vazio="Não informado"):
+    """ISO (YYYY-MM-DD) -> dd/mm/aaaa. Vazio/None/nan -> texto de ausencia.
+
+    Nunca exibe 0, 01/01/1900, None ou nan como se fosse data valida.
+    """
+    if iso in (None, "", "None") or str(iso).strip().lower() in ("nan", "nat", "none"):
+        return vazio
+    try:
+        ano, mes, dia = str(iso)[:10].split("-")
+        return f"{int(dia):02d}/{int(mes):02d}/{int(ano):04d}"
+    except (ValueError, TypeError):
+        return vazio
+
+
+def _competencia_br_iso(iso, vazio="Não informado"):
+    """ISO -> mm/aaaa (rotulo de competencia mensal do Financeiro)."""
+    if iso in (None, "", "None") or str(iso).strip().lower() in ("nan", "nat", "none"):
+        return vazio
+    try:
+        ano, mes, _ = str(iso)[:10].split("-")
+        return f"{int(mes):02d}/{int(ano):04d}"
+    except (ValueError, TypeError):
+        return vazio
+
+
+def resumo_cobertura_temporal(cobertura):
+    """Formata o diagnostico de cobertura temporal para exibicao (funcao pura).
+
+    Preserva a terminologia rigorosa: ULTIMA EVIDENCIA != COBERTURA. Datas em
+    dd/mm/aaaa (competencia Financeiro em mm/aaaa). Ausencias viram "Nao
+    informado"/"Nao confirmado"/"Nao aplicavel" — nunca 0/1900/None/nan.
+    Retorna {"disponivel": bool, ...campos..., "alertas": [(nivel, texto)]}.
+    """
+    if not isinstance(cobertura, dict):
+        return {"disponivel": False, "erro": None}
+    # Fail-safe do runtime: {"ok": False, "erro": ...} quando o motor falhou.
+    if "bloco_a_marcos" not in cobertura:
+        return {"disponivel": False, "erro": str(cobertura.get("erro") or "") or None}
+
+    b = cobertura.get("bloco_b_cobertura", {})
+    c = cobertura.get("bloco_c_decisao", {})
+    completa = bool(cobertura.get("posicao_atual_completa"))
+    ciclo_ref = cobertura.get("ciclo_referencia")
+    origem = str(cobertura.get("origem_posicao") or "")
+
+    if completa:
+        fisica_label = "Fotografia atual informada"
+    elif "INCOMPLETA" in origem.upper():
+        fisica_label = f"Fotografia atual incompleta — utilizada abertura do {ciclo_ref or 'ciclo'}"
+    elif ciclo_ref:
+        fisica_label = f"Abertura do {ciclo_ref}"
+    else:
+        fisica_label = "Posição de referência indisponível"
+
+    fin_conf = b.get("financeiro_cobertura_confirmada_ate")
+    fin_adot = b.get("financeiro_cobertura_adotada_ate")
+    if fin_conf:
+        fin_origem = "Confirmada pela GCC"
+    elif fin_adot:
+        fin_origem = "Inferida pela sequência mensal"
+    else:
+        fin_origem = "Não confirmada"
+
+    fonte_principal = c.get("fonte_principal")
+    conferencia = [_ROTULO_FONTE.get(x, x) for x in (c.get("fontes_conferencia") or [])]
+
+    # Alertas deduplicados (codigo+mensagem), com nivel para escolha visual.
+    alertas, vistos = [], set()
+    for al in cobertura.get("alertas") or []:
+        if not isinstance(al, dict):
+            continue
+        chave = (al.get("codigo"), al.get("mensagem"))
+        if chave in vistos:
+            continue
+        vistos.add(chave)
+        texto = f"{al.get('codigo')}: {al.get('mensagem')}".strip(": ")
+        alertas.append((str(al.get("nivel") or "INFO"), texto))
+
+    return {
+        "disponivel": True,
+        "erro": None,
+        "posicao_fisica_utilizada": fisica_label,
+        "data_posicao_fisica": _data_br_iso(b.get("posicao_fisica_conhecida_ate")),
+        "financeiro_ultima_competencia": _competencia_br_iso(b.get("financeiro_ultima_evidencia")),
+        "financeiro_cobertura_adotada": _data_br_iso(fin_adot, "Não confirmada"),
+        "financeiro_origem_cobertura": fin_origem,
+        "pc_ultima_evidencia": _data_br_iso(b.get("pc_ultima_evidencia")),
+        "pc_cobertura_confirmada": _data_br_iso(b.get("pc_cobertura_confirmada_ate"), "Não confirmado"),
+        "projecao_a_partir_de": _data_br_iso(b.get("projecao_autorizada_a_partir_de"), "Não aplicável"),
+        "fonte_principal": _ROTULO_FONTE.get(fonte_principal, "Não aplicável"),
+        "fontes_conferencia": ", ".join(conferencia) if conferencia else "Não aplicável",
+        "modo_temporal": str(c.get("modo_temporal") or "—"),
+        "alertas": alertas,
+    }
+
+
+def render_cobertura_temporal(cobertura):
+    """Bloco compacto (expander) de Posicao e cobertura temporal.
+
+    Camada diagnostica/sombra: NAO altera o VTA nem bloqueia documentos. Usa o
+    resumo puro `resumo_cobertura_temporal` para garantir terminologia e datas.
+    """
+    r = resumo_cobertura_temporal(cobertura)
+    with st.expander("Posição e cobertura temporal", expanded=False):
+        if not r.get("disponivel"):
+            st.caption("Diagnóstico temporal indisponível para esta coleta"
+                       + (f": {r['erro']}" if r.get("erro") else "."))
+            return
+        col_fis, col_fin, col_pc = st.columns(3)
+        with col_fis:
+            st.markdown("**Posição física**")
+            st.markdown(f"Utilizada: **{r['posicao_fisica_utilizada']}**")
+            st.markdown(f"Data: **{r['data_posicao_fisica']}**")
+        with col_fin:
+            st.markdown("**Financeiro**")
+            st.markdown(f"Última competência informada: **{r['financeiro_ultima_competencia']}**")
+            st.markdown(f"Cobertura adotada até: **{r['financeiro_cobertura_adotada']}**")
+            st.caption(f"Origem da cobertura: {r['financeiro_origem_cobertura']}")
+        with col_pc:
+            st.markdown("**Pedidos de Compra (PC)**")
+            st.markdown(f"Última evidência: **{r['pc_ultima_evidencia']}**")
+            st.markdown(f"Confirmado completo até: **{r['pc_cobertura_confirmada']}**")
+        st.markdown(
+            f"Modo temporal: **{r['modo_temporal']}**  |  "
+            f"Fonte principal: **{r['fonte_principal']}**  |  "
+            f"Conferência: **{r['fontes_conferencia']}**"
+        )
+        st.caption(f"Projeção temporal possível a partir de: {r['projecao_a_partir_de']} "
+                   "(diagnóstico; não é execução realizada e não altera o VTA).")
+        for nivel, texto in r.get("alertas", ()):
+            if nivel in ("ERRO_GRAVE", "ALERTA"):
+                st.warning(texto)
+            else:
+                st.info(texto)
 
 
 def render_aviso_privacidade(tem_upload=False, tem_download=False):
