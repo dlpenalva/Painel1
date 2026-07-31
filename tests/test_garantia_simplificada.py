@@ -19,8 +19,12 @@ from _garantia_calculo import (
     moeda,
     extrair_vta,
     normalizar_linhas_historico,
+    normalizar_linhas_alteracoes,
     construir_linha_do_tempo,
+    calcular_historico_por_totais,
+    calcular_historico_por_alteracoes,
     formatar_endosso,
+    formatar_alteracao,
     resumo_resultado,
     gerar_texto_comunicacao,
     montar_txt_bytes,
@@ -317,13 +321,187 @@ class VtaOpcionalTests(unittest.TestCase):
         # O antigo bloqueio por VTA inexistente foi removido.
         self.assertNotIn("Nenhum cálculo, PDF ou TXT é gerado com VTA inexistente", GARANTIA)
         self.assertNotIn("VTA atual indisponível", GARANTIA)
-        # Checkbox desmarcada por padrão e sem seleção de métodos.
+        # Checkbox desmarcada por padrão.
         self.assertIn("value=False", GARANTIA)
-        self.assertNotIn("st.radio", GARANTIA)
 
     def test_pagina_usa_formatacao_unica(self):
         self.assertIn("formatar_brl", GARANTIA)
         self.assertNotIn("moeda(", GARANTIA)
+
+
+class FormaValoresTotaisTests(unittest.TestCase):
+    """Cenário 1 — memória consolidada na forma de valores totais."""
+
+    ITENS = [
+        {"instrumento": "Contrato", "valor_informado": Decimal("2968866.00")},
+        {"instrumento": "Apostila 1", "valor_informado": Decimal("3013124.45")},
+        {"instrumento": "Apostila 2", "valor_informado": Decimal("3117252.48")},
+    ]
+
+    def test_garantias_endossos_e_alteracoes_calculadas(self):
+        memoria, erros = calcular_historico_por_totais(self.ITENS)
+        self.assertEqual(erros, [])
+        self.assertEqual([l["garantia"] for l in memoria],
+                         [Decimal("148443.30"), Decimal("150656.22"), Decimal("155862.62")])
+        self.assertEqual([l["endosso"] for l in memoria],
+                         [None, Decimal("2212.92"), Decimal("5206.40")])
+        # Alterações calculadas automaticamente: TOTAL_ATUAL - TOTAL_ANTERIOR.
+        self.assertEqual([l["alteracao"] for l in memoria],
+                         [None, Decimal("44258.45"), Decimal("104128.03")])
+        self.assertEqual([l["valor_total"] for l in memoria],
+                         [Decimal("2968866.00"), Decimal("3013124.45"), Decimal("3117252.48")])
+
+
+class FormaAlteracoesTests(unittest.TestCase):
+    """Cenários 2, 4, 5 e 6 — memória consolidada na forma de acréscimos/reduções."""
+
+    def test_cenario2_igual_ao_cenario1(self):
+        memoria_alt, erros = calcular_historico_por_alteracoes([
+            {"instrumento": "Contrato", "valor_informado": Decimal("2968866.00")},
+            {"instrumento": "Apostila 1", "valor_informado": Decimal("44258.45")},
+            {"instrumento": "Apostila 2", "valor_informado": Decimal("104128.03")},
+        ])
+        self.assertEqual(erros, [])
+        memoria_tot, _ = calcular_historico_por_totais(FormaValoresTotaisTests.ITENS)
+        # Resultados consolidados exatamente iguais nas duas formas.
+        for alt, tot in zip(memoria_alt, memoria_tot):
+            self.assertEqual(alt["valor_total"], tot["valor_total"])
+            self.assertEqual(alt["garantia"], tot["garantia"])
+            self.assertEqual(alt["endosso"], tot["endosso"])
+            self.assertEqual(alt["alteracao"], tot["alteracao"])
+
+    def test_cenario3_nome_nao_altera_formula(self):
+        memoria, erros = calcular_historico_por_alteracoes([
+            {"instrumento": "Contrato", "valor_informado": Decimal("2968866.00")},
+            {"instrumento": "Aditivo 1", "valor_informado": Decimal("44258.45")},
+            {"instrumento": "Apostila 1", "valor_informado": Decimal("104128.03")},
+        ])
+        self.assertEqual(erros, [])
+        self.assertEqual(memoria[-1]["garantia"], Decimal("155862.62"))
+        self.assertEqual(memoria[-1]["endosso"], Decimal("5206.40"))
+
+    def test_cenario4_reducao(self):
+        memoria, erros = calcular_historico_por_alteracoes([
+            {"instrumento": "Contrato", "valor_informado": Decimal("2000000.00")},
+            {"instrumento": "Aditivo 1", "valor_informado": Decimal("-100000.00")},
+        ])
+        self.assertEqual(erros, [])
+        self.assertEqual(memoria[1]["valor_total"], Decimal("1900000.00"))
+        self.assertEqual(memoria[0]["garantia"], Decimal("100000.00"))
+        self.assertEqual(memoria[1]["garantia"], Decimal("95000.00"))
+        self.assertEqual(memoria[1]["endosso"], Decimal("-5000.00"))
+        self.assertEqual(memoria[1]["tipo_endosso"], "reducao")
+        self.assertEqual(formatar_endosso(memoria[1]["endosso"], "reducao"), "Redução de R$ 5.000,00")
+        self.assertEqual(formatar_alteracao(memoria[1]["alteracao"]), "Redução de R$ 100.000,00")
+
+    def test_cenario5_alteracao_zero(self):
+        memoria, erros = calcular_historico_por_alteracoes([
+            {"instrumento": "Contrato", "valor_informado": Decimal("2968866.00")},
+            {"instrumento": "Apostila 1", "valor_informado": Decimal("0.00")},
+        ])
+        self.assertEqual(erros, [])
+        self.assertEqual(memoria[1]["valor_total"], Decimal("2968866.00"))
+        self.assertEqual(memoria[1]["endosso"], Decimal("0.00"))
+        self.assertEqual(formatar_alteracao(memoria[1]["alteracao"]), "R$ 0,00")
+
+    def test_cenario6_total_reconstruido_invalido_bloqueia(self):
+        memoria, erros = calcular_historico_por_alteracoes([
+            {"instrumento": "Contrato", "valor_informado": Decimal("100000.00")},
+            {"instrumento": "Supressão", "valor_informado": Decimal("-150000.00")},
+        ])
+        self.assertEqual(len(erros), 1)
+        self.assertIn("igual ou inferior a zero", erros[0])
+        self.assertIn("R$ -50.000,00", erros[0])
+
+
+class NormalizacaoAlteracoesTests(unittest.TestCase):
+    def test_primeira_linha_deve_ser_positiva(self):
+        linhas, avisos = normalizar_linhas_alteracoes([
+            {"Instrumento": "Contrato", "Valor informado": "-100"},
+        ])
+        self.assertEqual(linhas, [])
+        self.assertEqual(len(avisos), 1)
+
+    def test_linhas_seguintes_aceitam_negativos_e_zero(self):
+        linhas, avisos = normalizar_linhas_alteracoes([
+            {"Instrumento": "Contrato", "Valor informado": "2.968.866,00"},
+            {"Instrumento": "Aditivo 1", "Valor informado": "-50.000,00"},
+            {"Instrumento": "Apostila 1", "Valor informado": "0"},
+        ])
+        self.assertEqual(avisos, [])
+        self.assertEqual([l["valor_informado"] for l in linhas],
+                         [Decimal("2968866.00"), Decimal("-50000.00"), Decimal("0.00")])
+
+    def test_validacoes_basicas(self):
+        linhas, avisos = normalizar_linhas_alteracoes([
+            {"Instrumento": "A", "Valor informado": ""},
+            {"Instrumento": "", "Valor informado": "10"},
+            {"Instrumento": "B", "Valor informado": "xyz"},
+            {"Instrumento": "", "Valor informado": ""},
+        ])
+        self.assertEqual(linhas, [])
+        self.assertEqual(len(avisos), 3)
+
+
+class FormatosNegativosTests(unittest.TestCase):
+    """Cenário 11 — todos os formatos negativos normalizam para Decimal("-50000.00")."""
+
+    def test_formatos_negativos(self):
+        esperado = Decimal("-50000.00")
+        for texto in ("-50000", "-50000,00", "-50.000,00", "-R$ 50.000,00", "R$ -50.000,00"):
+            valor = parse_moeda_br(texto)
+            self.assertIsNotNone(valor, texto)
+            self.assertEqual(valor.quantize(Decimal("0.01")), esperado, texto)
+
+
+class FormasNaPaginaTests(unittest.TestCase):
+    """A escolha da forma de preenchimento na interface (não é método de cálculo)."""
+
+    def test_radio_com_opcoes_e_padrao_recomendado(self):
+        self.assertIn("Como você prefere informar as alterações do contrato?", GARANTIA)
+        self.assertIn("Informar o valor total do contrato após cada instrumento — Recomendado", GARANTIA)
+        self.assertIn("Informar somente os acréscimos ou reduções de cada instrumento", GARANTIA)
+        self.assertIn("index=0", GARANTIA)
+
+    def test_historicos_com_chaves_distintas(self):
+        self.assertIn('key="garantia_historico_valores_totais"', GARANTIA)
+        self.assertIn('key="garantia_historico_alteracoes"', GARANTIA)
+
+    def test_memoria_consolidada_e_session_state(self):
+        self.assertIn('"forma_preenchimento"', GARANTIA)
+        self.assertIn("<th>Alteração</th>", GARANTIA)
+        self.assertIn('"valor_total_atual"', GARANTIA)
+        self.assertIn("O valor total calculado coincide com o VTA disponível no Claus", GARANTIA)
+        self.assertIn("Diferença:", GARANTIA)
+
+
+@unittest.skipUnless(REPORTLAB_OK, "reportlab ausente")
+class PdfComAlteracaoTests(unittest.TestCase):
+    """Cenário 12 — PDF com coluna Alteração e forma de preenchimento."""
+
+    def test_pdf_com_memoria_consolidada(self):
+        memoria, _ = calcular_historico_por_alteracoes([
+            {"instrumento": "Contrato", "valor_informado": Decimal("2968866.00")},
+            {"instrumento": "Apostila 1", "valor_informado": Decimal("44258.45")},
+            {"instrumento": "Apostila 2", "valor_informado": Decimal("104128.03")},
+        ])
+        vta, garantia_total, endosso, tipo = resumo_resultado(memoria)
+        texto = gerar_texto_comunicacao("123/2024", vta, garantia_total, endosso, tipo)
+        # Comunicação não menciona a forma de entrada.
+        self.assertNotIn("acréscimo", texto.lower())
+        self.assertNotIn("valores totais", texto.lower())
+        pdf = gerar_pdf_garantia({
+            "numero_contrato": "123/2024",
+            "forma_preenchimento": "alteracoes",
+            "vta_atual": vta,
+            "garantia_total": garantia_total,
+            "endosso": endosso,
+            "tipo_endosso": tipo,
+            "linha_do_tempo": memoria,
+            "texto_comunicacao": texto,
+        })
+        self.assertIsInstance(pdf, (bytes, bytearray))
+        self.assertTrue(pdf.startswith(b"%PDF"))
 
 
 class PaginaSemResiduosDoModeloAntigoTests(unittest.TestCase):
@@ -342,7 +520,12 @@ class PaginaSemResiduosDoModeloAntigoTests(unittest.TestCase):
         self.assertNotIn("Tipo do evento", GARANTIA)
         self.assertNotIn("garantia_constituida", GARANTIA)
         self.assertNotIn("Garantia/endossos já apresentados", GARANTIA)
-        self.assertNotIn("st.radio", GARANTIA)
+        # Único radio permitido: a forma de preenchimento (não é método de cálculo).
+        self.assertEqual(GARANTIA.count("st.radio"), 1)
+        self.assertNotIn("Método 1", GARANTIA)
+        self.assertNotIn("Método 2", GARANTIA)
+        self.assertNotIn("Cálculo rápido", GARANTIA)
+        self.assertNotIn("Método alternativo", GARANTIA)
 
 
 if __name__ == "__main__":
