@@ -125,6 +125,16 @@ def moeda(valor, com_prefixo=True):
     return f"R$ {texto}" if com_prefixo else texto
 
 
+def formatar_brl(valor):
+    """Função única de formatação monetária brasileira: R$ 2.968.866,00.
+
+    Toda exibição de valor na página, no TXT e no PDF passa por aqui (ou por
+    ``moeda``, que é a mesma implementação). Ex.: Decimal("3117252.48") ->
+    "R$ 3.117.252,48".
+    """
+    return moeda(valor, com_prefixo=True)
+
+
 # ============================================================
 # VTA (Valor Total Atualizado) fornecido pelo módulo Valor Global
 # ============================================================

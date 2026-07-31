@@ -12,6 +12,7 @@ from decimal import Decimal
 from pathlib import Path
 
 from _garantia_calculo import (
+    formatar_brl,
     parse_moeda_br,
     arredondar_financeiro,
     calcular_garantia,
@@ -273,6 +274,56 @@ class PdfTests(unittest.TestCase):
         self.assertIsInstance(pdf, (bytes, bytearray))
         self.assertTrue(pdf.startswith(b"%PDF"))
         self.assertGreater(len(pdf), 1000)
+
+
+class FormatarBrlTests(unittest.TestCase):
+    """Função única de formatação monetária brasileira."""
+
+    def test_padrao_brasileiro(self):
+        self.assertEqual(formatar_brl(Decimal("3117252.48")), "R$ 3.117.252,48")
+        self.assertEqual(formatar_brl(Decimal("2968866")), "R$ 2.968.866,00")
+        self.assertEqual(formatar_brl(Decimal("155862.62")), "R$ 155.862,62")
+        self.assertEqual(formatar_brl(Decimal("0")), "R$ 0,00")
+
+    def test_nao_produz_formatos_proibidos(self):
+        saida = formatar_brl(Decimal("3117252.48"))
+        self.assertNotIn("3117252.48", saida)
+        self.assertNotIn("3,117,252.48", saida)
+
+
+class VtaOpcionalTests(unittest.TestCase):
+    """Correção: VTA é atalho opcional; ausência não bloqueia a página."""
+
+    def test_valor_manual_funciona_sem_vta(self):
+        # Cenário adicional 1: tudo manual, sem VTA — cálculo normal.
+        self.assertIsNone(extrair_vta({}))  # sem VTA no Claus
+        valor_manual = parse_moeda_br("3.117.252,48")
+        tl = construir_linha_do_tempo(
+            [{"instrumento": "Contrato", "valor_total": parse_moeda_br("2.968.866,00")},
+             {"instrumento": "Apostila 2", "valor_total": valor_manual}]
+        )
+        _, garantia_total, endosso, tipo = resumo_resultado(tl)
+        self.assertEqual(garantia_total, Decimal("155862.62"))
+        self.assertEqual(tipo, "aumento")
+
+    def test_pagina_tem_checkbox_e_campo_manual(self):
+        self.assertIn("Usar o VTA disponível no Claus", GARANTIA)
+        self.assertIn("Valor total atual do contrato", GARANTIA)
+        self.assertIn("st.checkbox", GARANTIA)
+        # Aviso de substituição explícita do valor manual pelo VTA.
+        self.assertIn("substituirá o valor informado manualmente", GARANTIA)
+
+    def test_pagina_nao_bloqueia_por_vta_ausente(self):
+        # O antigo bloqueio por VTA inexistente foi removido.
+        self.assertNotIn("Nenhum cálculo, PDF ou TXT é gerado com VTA inexistente", GARANTIA)
+        self.assertNotIn("VTA atual indisponível", GARANTIA)
+        # Checkbox desmarcada por padrão e sem seleção de métodos.
+        self.assertIn("value=False", GARANTIA)
+        self.assertNotIn("st.radio", GARANTIA)
+
+    def test_pagina_usa_formatacao_unica(self):
+        self.assertIn("formatar_brl", GARANTIA)
+        self.assertNotIn("moeda(", GARANTIA)
 
 
 class PaginaSemResiduosDoModeloAntigoTests(unittest.TestCase):
