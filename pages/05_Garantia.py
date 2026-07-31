@@ -7,8 +7,9 @@ imediatamente anterior.
 
 Toda a matemática vive no motor puro ``_garantia_calculo`` (Decimal +
 ROUND_HALF_UP), permitindo testes focais. Esta página cuida apenas da interface:
-histórico manual dos valores totais, VTA da análise atual fornecido pelo Claus,
-memória de cálculo, resultado, comunicação (TXT) e relatório (PDF).
+histórico manual dos valores totais, valor atual manual (com o VTA do Claus como
+atalho opcional de preenchimento), memória de cálculo, resultado, comunicação
+(TXT) e relatório (PDF).
 """
 import pandas as pd
 import streamlit as st
@@ -16,7 +17,8 @@ import streamlit as st
 from _ui_utils import render_cabecalho_pagina
 from _garantia_calculo import (
     REPORTLAB_OK,
-    moeda,
+    formatar_brl,
+    parse_moeda_br,
     extrair_vta,
     normalizar_linhas_historico,
     construir_linha_do_tempo,
@@ -86,8 +88,8 @@ def render_memoria_html(linha_do_tempo):
     linhas = []
     for linha in linha_do_tempo:
         instrumento = escape(str(linha.get("instrumento", "")))
-        valor_total = escape(moeda(linha.get("valor_total", 0)))
-        garantia = escape(moeda(linha.get("garantia", 0)))
+        valor_total = escape(formatar_brl(linha.get("valor_total", 0)))
+        garantia = escape(formatar_brl(linha.get("garantia", 0)))
         endosso = escape(formatar_endosso(linha.get("endosso"), linha.get("tipo_endosso", "inicial")))
         linhas.append(
             f"<tr><td>{instrumento}</td><td class='valor'>{valor_total}</td>"
@@ -166,11 +168,11 @@ for aviso in avisos_historico:
     st.warning(aviso)
 
 # ------------------------------------------------------------
-# 2) Análise atual (instrumento manual + VTA fornecido pelo Claus)
+# 2) Análise atual (instrumento + valor atual manual ou VTA opcional)
 # ------------------------------------------------------------
 st.subheader("Análise atual")
 resultado_valor_global = st.session_state.get("resultado_valor_global", {}) or {}
-vta_atual = extrair_vta(resultado_valor_global)
+vta_claus = extrair_vta(resultado_valor_global)
 
 col_atual_1, col_atual_2 = st.columns(2)
 with col_atual_1:
@@ -178,38 +180,68 @@ with col_atual_1:
         "Instrumento da análise atual",
         value="",
         placeholder="Ex.: Apostila 2, Aditivo 2...",
-        help="Identifique o instrumento em análise. O valor total correspondente é o VTA fornecido pelo Claus.",
+        help="Identifique o instrumento em análise (texto livre).",
     ).strip()
 with col_atual_2:
-    if vta_atual is not None:
-        st.metric("VTA atual fornecido pelo Claus", moeda(vta_atual))
-    else:
-        st.metric("VTA atual fornecido pelo Claus", "—")
+    valor_atual_manual_txt = st.text_input(
+        "Valor total atual do contrato",
+        value="",
+        placeholder="Ex.: 3.117.252,48",
+        help="Valor total consolidado do contrato após o instrumento atual. Ex.: 2968866, 2968866,00, 2.968.866,00 ou R$ 2.968.866,00",
+    ).strip()
 
-st.caption(
-    "O VTA (Valor Total Atualizado do Contrato) da análise atual é fornecido automaticamente pelo "
-    "módulo Valor Global. Todos os valores anteriores são informados manualmente no histórico acima."
+usar_vta = st.checkbox(
+    "Usar o VTA disponível no Claus",
+    value=False,
+    help="Atalho de preenchimento: usa o Valor Total Atualizado do módulo Valor Global como valor atual do contrato.",
 )
 
-# ------------------------------------------------------------
-# Validações de bloqueio (sem cálculo silencioso com valor zero)
-# ------------------------------------------------------------
-if vta_atual is None:
-    st.error(
-        "VTA atual indisponível. Conclua ou reabra o resultado do módulo Valor Global "
-        "(página 03 · Valor Global) para que o VTA da análise atual seja fornecido ao Claus. "
-        "Nenhum cálculo, PDF ou TXT é gerado com VTA inexistente."
-    )
-    st.stop()
+valor_atual_manual = parse_moeda_br(valor_atual_manual_txt) if valor_atual_manual_txt else None
 
+if usar_vta:
+    if vta_claus is not None:
+        valor_atual = vta_claus
+        if valor_atual_manual_txt:
+            st.info(
+                f"O VTA do Claus ({formatar_brl(vta_claus)}) substituirá o valor informado manualmente "
+                "na análise atual. Desmarque a opção para voltar ao valor manual."
+            )
+        else:
+            st.caption(f"VTA do Claus aplicado como valor atual: {formatar_brl(vta_claus)}")
+    else:
+        st.warning(
+            "Não há VTA disponível no Claus nesta sessão (conclua ou reabra o módulo Valor Global). "
+            "O valor informado manualmente será utilizado."
+        )
+        valor_atual = valor_atual_manual
+else:
+    valor_atual = valor_atual_manual
+    if vta_claus is not None:
+        st.caption(f"VTA disponível no Claus: {formatar_brl(vta_claus)} (marque a opção acima para utilizá-lo).")
+
+# ------------------------------------------------------------
+# Validações (apenas dos dados efetivamente necessários ao cálculo)
+# ------------------------------------------------------------
+pendencias = []
 if not instrumento_atual:
-    st.info("Informe o **instrumento da análise atual** para gerar a memória de cálculo, o resultado, o TXT e o PDF.")
+    pendencias.append("informe o **instrumento da análise atual**")
+if valor_atual is None:
+    if valor_atual_manual_txt and valor_atual_manual is None:
+        st.warning(f'O valor "{valor_atual_manual_txt}" não pôde ser interpretado. Use o formato R$ 2.968.866,00.')
+    pendencias.append("informe o **valor total atual do contrato** (manual ou via VTA do Claus)")
+elif valor_atual <= 0:
+    st.warning("O valor total atual do contrato deve ser maior que zero.")
+    pendencias.append("corrija o **valor total atual do contrato**")
+    valor_atual = None
+
+if pendencias:
+    st.info("Para gerar a memória de cálculo, o resultado, o TXT e o PDF: " + "; ".join(pendencias) + ".")
     st.stop()
 
 # ------------------------------------------------------------
 # 3) Memória de cálculo
 # ------------------------------------------------------------
-itens = list(linhas_historico) + [{"instrumento": instrumento_atual, "valor_total": vta_atual}]
+itens = list(linhas_historico) + [{"instrumento": instrumento_atual, "valor_total": valor_atual}]
 linha_do_tempo = construir_linha_do_tempo(itens)
 _, garantia_total, endosso_atual, tipo_endosso = resumo_resultado(linha_do_tempo)
 
@@ -226,28 +258,28 @@ render_memoria_html(linha_do_tempo)
 st.subheader("Resultado")
 col_r1, col_r2, col_r3 = st.columns(3)
 with col_r1:
-    card("VTA atual", moeda(vta_atual))
+    card("VTA ou valor total atual", formatar_brl(valor_atual))
 with col_r2:
-    card("Garantia total exigida", moeda(garantia_total), "5% do valor total do contrato.")
+    card("Garantia total exigida", formatar_brl(garantia_total), "5% do valor total do contrato.")
 with col_r3:
     if tipo_endosso == "reducao":
-        card("Adequação apurada", f"Redução de {moeda(abs(endosso_atual))}", "Diferença negativa frente à garantia anterior.", destaque=True)
+        card("Adequação apurada", f"Redução de {formatar_brl(abs(endosso_atual))}", "Diferença negativa frente à garantia anterior.", destaque=True)
     elif tipo_endosso == "inicial":
-        card("Garantia inicial", moeda(garantia_total), "Não há instrumento anterior.", destaque=True)
+        card("Garantia inicial", formatar_brl(garantia_total), "Não há instrumento anterior.", destaque=True)
     else:
-        card("Endosso necessário", moeda(endosso_atual), "Diferença frente à garantia anterior.", destaque=True)
+        card("Endosso necessário", formatar_brl(endosso_atual), "Diferença frente à garantia anterior.", destaque=True)
 
 if tipo_endosso == "reducao":
     st.warning(
-        f"O instrumento atual ({instrumento_atual}) apura redução de {moeda(abs(endosso_atual))} "
+        f"O instrumento atual ({instrumento_atual}) apura redução de {formatar_brl(abs(endosso_atual))} "
         "em relação à garantia anterior. A adequação não é automática: submeta à análise e à aceitação da Telebras."
     )
 elif tipo_endosso == "sem_alteracao":
     st.info("Não há alteração de garantia decorrente do instrumento atual (endosso de R$ 0,00). Verifique eventual adequação do prazo de validade.")
 elif tipo_endosso == "inicial":
-    st.success(f"Garantia inicial de {moeda(garantia_total)} (5% do VTA atual).")
+    st.success(f"Garantia inicial de {formatar_brl(garantia_total)} (5% do valor total atual do contrato).")
 else:
-    st.success(f"Endosso complementar necessário de {moeda(endosso_atual)} para o instrumento atual ({instrumento_atual}).")
+    st.success(f"Endosso complementar necessário de {formatar_brl(endosso_atual)} para o instrumento atual ({instrumento_atual}).")
 
 # ------------------------------------------------------------
 # 5) Comunicação à contratada
@@ -261,7 +293,7 @@ with col_c2:
 
 texto_comunicacao = gerar_texto_comunicacao(
     numero_contrato=numero_contrato,
-    vta_atual=vta_atual,
+    vta_atual=valor_atual,
     garantia_total=garantia_total,
     endosso=endosso_atual,
     tipo_endosso=tipo_endosso,
@@ -283,7 +315,7 @@ st.subheader("Relatório")
 dados_pdf = {
     "numero_contrato": numero_contrato,
     "contratada": contratada,
-    "vta_atual": vta_atual,
+    "vta_atual": valor_atual,
     "garantia_total": garantia_total,
     "endosso": endosso_atual,
     "tipo_endosso": tipo_endosso,
@@ -308,7 +340,8 @@ else:
 # 7) Resultado consolidado em session_state (integração)
 # ------------------------------------------------------------
 st.session_state["resultado_garantia"] = {
-    "vta_atual": float(vta_atual),
+    "vta_atual": float(valor_atual),
+    "fonte_valor_atual": "vta_claus" if (usar_vta and vta_claus is not None) else "manual",
     "percentual_garantia": 0.05,
     "garantia_total_exigida": float(garantia_total),
     "endosso_ou_reducao": float(endosso_atual) if endosso_atual is not None else 0.0,
