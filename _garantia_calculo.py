@@ -258,6 +258,128 @@ def formatar_endosso(endosso, tipo_endosso):
     return moeda(endosso)
 
 
+def formatar_alteracao(alteracao):
+    """Texto da coluna Alteração da memória consolidada."""
+    if alteracao is None:
+        return TRACO
+    if alteracao < 0:
+        return f"Redução de {moeda(abs(alteracao))}"
+    return moeda(alteracao)
+
+
+def normalizar_linhas_alteracoes(registros):
+    """Normaliza o histórico na forma "acréscimos ou reduções".
+
+    A primeira linha válida é o contrato original (valor > 0 obrigatório); as
+    demais são alterações e aceitam valores negativos (reduções) e zero.
+    Retorna ``(linhas_validas, avisos)`` com linhas
+    ``{"instrumento": str, "valor_informado": Decimal}``.
+    """
+    linhas = []
+    avisos = []
+    for idx, reg in enumerate(registros, start=1):
+        instrumento_bruto = reg.get("Instrumento")
+        instrumento = "" if instrumento_bruto is None else str(instrumento_bruto).strip()
+        valor_bruto = reg.get("Valor informado", reg.get("Valor total do contrato"))
+        tem_texto_valor = valor_bruto is not None and str(valor_bruto).strip() != ""
+
+        if not instrumento and not tem_texto_valor:
+            continue  # linha vazia
+
+        if instrumento and not tem_texto_valor:
+            avisos.append(f"Linha {idx} ({instrumento}): instrumento sem valor informado.")
+            continue
+        if tem_texto_valor and not instrumento:
+            avisos.append(f"Linha {idx}: valor informado sem o nome do instrumento.")
+            continue
+
+        valor = parse_moeda_br(valor_bruto)
+        if valor is None:
+            avisos.append(f"Linha {idx} ({instrumento}): valor \"{str(valor_bruto).strip()}\" não pôde ser interpretado.")
+            continue
+
+        primeira = not linhas
+        if primeira and valor <= 0:
+            avisos.append(f"Linha {idx} ({instrumento}): o valor original do contrato (primeira linha) deve ser maior que zero.")
+            continue
+
+        linhas.append({"instrumento": instrumento, "valor_informado": arredondar_financeiro(valor)})
+
+    return linhas, avisos
+
+
+def _linha_consolidada(instrumento, valor_informado, alteracao, valor_total, garantia_anterior):
+    garantia = calcular_garantia(valor_total)
+    endosso = None if garantia_anterior is None else arredondar_financeiro(garantia - garantia_anterior)
+    return {
+        "instrumento": instrumento,
+        "valor_informado": valor_informado,
+        "alteracao": alteracao,
+        "valor_total": valor_total,
+        "garantia": garantia,
+        "endosso": endosso,
+        "tipo_endosso": classificar_endosso(endosso),
+    }, garantia
+
+
+def calcular_historico_por_totais(itens):
+    """Memória consolidada na forma "valores totais".
+
+    ``itens``: lista ordenada de ``{"instrumento", "valor_informado"}`` onde o
+    valor informado É o valor total consolidado do contrato após o instrumento.
+    A alteração de cada linha é calculada como TOTAL_ATUAL − TOTAL_ANTERIOR.
+    Retorna ``(memoria, erros)``; nesta forma ``erros`` é sempre vazia (valores
+    <= 0 já são barrados na normalização).
+    """
+    memoria = []
+    total_anterior = None
+    garantia_anterior = None
+    for item in itens:
+        total = arredondar_financeiro(item["valor_informado"])
+        alteracao = None if total_anterior is None else arredondar_financeiro(total - total_anterior)
+        linha, garantia_anterior = _linha_consolidada(
+            item["instrumento"], total, alteracao, total, garantia_anterior
+        )
+        memoria.append(linha)
+        total_anterior = total
+    return memoria, []
+
+
+def calcular_historico_por_alteracoes(itens):
+    """Memória consolidada na forma "acréscimos ou reduções".
+
+    ``itens``: lista ordenada de ``{"instrumento", "valor_informado"}`` onde a
+    primeira linha traz o valor original do contrato e as demais trazem a
+    alteração (positiva, negativa ou zero). O valor total é reconstruído:
+    TOTAL_ATUAL = TOTAL_ANTERIOR + ALTERAÇÃO. Se algum total reconstruído ficar
+    igual ou inferior a zero, o cálculo é bloqueado e ``erros`` descreve a linha.
+    """
+    memoria = []
+    erros = []
+    total_anterior = None
+    garantia_anterior = None
+    for item in itens:
+        valor_informado = arredondar_financeiro(item["valor_informado"])
+        if total_anterior is None:
+            alteracao = None
+            total = valor_informado
+        else:
+            alteracao = valor_informado
+            total = arredondar_financeiro(total_anterior + valor_informado)
+        if total <= 0:
+            erros.append(
+                f"O valor total reconstruído após \"{item['instrumento']}\" é {moeda(total)} "
+                "(igual ou inferior a zero). Revise o valor original e as alterações informadas."
+            )
+            return memoria, erros
+        linha, garantia_anterior = _linha_consolidada(
+            item["instrumento"], valor_informado, alteracao, total, garantia_anterior
+        )
+        memoria.append(linha)
+        total_anterior = total
+    return memoria, []
+
+
 # ============================================================
 # Comunicação à contratada
 # ============================================================
@@ -392,6 +514,7 @@ def gerar_pdf_garantia(dados):
 
     numero_contrato = str(dados.get("numero_contrato") or "").strip() or "[número do contrato]"
     contratada = str(dados.get("contratada") or "").strip()
+    forma_preenchimento = str(dados.get("forma_preenchimento") or "")
     vta_atual = dados.get("vta_atual")
     garantia_total = dados.get("garantia_total")
     endosso = dados.get("endosso")
@@ -425,18 +548,23 @@ def gerar_pdf_garantia(dados):
     elementos.append(Paragraph("Percentual aplicado: 5% sobre o valor total do contrato após cada instrumento.", normal))
     elementos.append(Paragraph("Garantia do instrumento = ARREDONDAR(valor total do contrato x 5%; 2).", normal))
     elementos.append(Paragraph("Endosso/adequação = garantia do instrumento atual menos a garantia do instrumento anterior.", normal))
+    if forma_preenchimento == "alteracoes":
+        elementos.append(Paragraph("Forma de preenchimento utilizada: acréscimos e reduções dos instrumentos (valores totais reconstruídos pelo sistema).", normal))
+    elif forma_preenchimento == "valores_totais":
+        elementos.append(Paragraph("Forma de preenchimento utilizada: valores totais do contrato após cada instrumento.", normal))
     elementos.append(Spacer(1, 6))
 
     elementos.append(Paragraph("2. Memória de cálculo (todos os instrumentos)", h2))
-    linhas_tabela = [["Instrumento", "Valor total do contrato", "Garantia (5%)", "Endosso / Adequação"]]
+    linhas_tabela = [["Instrumento", "Alteração", "Valor total do contrato", "Garantia (5%)", "Endosso / Adequação"]]
     for linha in linha_do_tempo:
         linhas_tabela.append([
             _p(linha.get("instrumento", "")),
+            formatar_alteracao(linha.get("alteracao")),
             moeda(linha.get("valor_total", 0)),
             moeda(linha.get("garantia", 0)),
             formatar_endosso(linha.get("endosso"), linha.get("tipo_endosso", "inicial")),
         ])
-    tabela = Table(linhas_tabela, colWidths=[5.2 * cm, 4.1 * cm, 3.6 * cm, 3.6 * cm], repeatRows=1, hAlign="CENTER")
+    tabela = Table(linhas_tabela, colWidths=[4.0 * cm, 3.4 * cm, 3.4 * cm, 2.9 * cm, 3.1 * cm], repeatRows=1, hAlign="CENTER")
     tabela.setStyle(TableStyle([
         ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
         ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
