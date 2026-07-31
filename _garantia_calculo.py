@@ -196,7 +196,11 @@ def normalizar_linhas_historico(registros):
             avisos.append(f"Linha {idx} ({instrumento}): o valor total do contrato deve ser maior que zero.")
             continue
 
-        linhas.append({"instrumento": instrumento, "valor_total": arredondar_financeiro(valor)})
+        valor_norm = arredondar_financeiro(valor)
+        # "valor_informado" é a chave canônica dos calculadores consolidados;
+        # "valor_total" é mantida por compatibilidade (na forma de valores
+        # totais as duas coincidem).
+        linhas.append({"instrumento": instrumento, "valor_total": valor_norm, "valor_informado": valor_norm})
 
     return linhas, avisos
 
