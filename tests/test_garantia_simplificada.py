@@ -338,6 +338,21 @@ class FormaValoresTotaisTests(unittest.TestCase):
         {"instrumento": "Apostila 2", "valor_informado": Decimal("3117252.48")},
     ]
 
+    def test_pipeline_normalizacao_para_calculo(self):
+        """Regressão do KeyError 'valor_informado': o caminho real da página
+        (normalizar_linhas_historico -> calcular_historico_por_totais) deve
+        funcionar de ponta a ponta."""
+        linhas, avisos = normalizar_linhas_historico([
+            {"Instrumento": "Contrato", "Valor total do contrato": "2.968.866,00"},
+            {"Instrumento": "Apostila 1", "Valor total do contrato": "3.013.124,45"},
+        ])
+        self.assertEqual(avisos, [])
+        itens = linhas + [{"instrumento": "Apostila 2", "valor_informado": Decimal("3117252.48")}]
+        memoria, erros = calcular_historico_por_totais(itens)
+        self.assertEqual(erros, [])
+        self.assertEqual(memoria[-1]["garantia"], Decimal("155862.62"))
+        self.assertEqual(memoria[-1]["endosso"], Decimal("5206.40"))
+
     def test_garantias_endossos_e_alteracoes_calculadas(self):
         memoria, erros = calcular_historico_por_totais(self.ITENS)
         self.assertEqual(erros, [])
