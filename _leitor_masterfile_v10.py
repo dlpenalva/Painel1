@@ -1993,10 +1993,16 @@ def _ler_parcelas_sombra_aditivos(wb) -> list[dict[str, Any]]:
     return parcelas
 
 
-def _ler_itens_pc_v10(wb) -> dict[str, Any]:
+def _ler_itens_pc_v10(wb, ciclo_vigente: str | None = None) -> dict[str, Any]:
     """Le itens_PC v10: registro financeiro SAP por cabecalho.
     Aceita PC de item especifico e PC global/agregado.
     Sem TIPO_PC, QTD ou VU — usa VALOR_PC como base financeira.
+
+    Etapa 27B: a participacao do PC no VTA (computa_vta) e ESTRUTURAL —
+    valor valido + ciclo valido + ciclo anterior a linha de corte
+    (ciclo_vigente, quando informado). O pagamento (coluna G) governa
+    somente a classificacao do retroativo: Sim -> reconhecido; Nao ou
+    vazio -> potencial (vazio = pagamento nao confirmado).
     """
     resultado: dict[str, Any] = {
         "itens": [], "totais": {}, "alertas": [],
@@ -2012,6 +2018,14 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
             "descartadas_duplicidade": 0,
         },
     }
+
+    ciclo_vigente_norm = str(ciclo_vigente or "").strip().upper()
+    n_vig_corte = (
+        int(ciclo_vigente_norm[1:])
+        if ciclo_vigente_norm.startswith("C") and ciclo_vigente_norm[1:].isdigit()
+        else None
+    )
+    pagamentos_nao_confirmados = 0
 
     ws, layout_fiscal_v2 = _selecionar_aba_pc(wb)
     layout_fiscal_definitivo = (
@@ -2551,30 +2565,88 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
             # Modelo oficial: PC_PAGO_A_CONTRATADA (coluna G) é a decisão
             # fiscal de pagamento. Os campos V:AC são técnicos/derivados e
             # não podem anular silenciosamente esse dado visível.
+            # Etapa 27B: G classifica o retroativo (Sim -> reconhecido;
+            # Nao/vazio -> potencial); a participacao no VTA e estrutural
+            # e definida no ajuste unificado abaixo, sem condicao em G.
             if col_pago and not col_pagto_smart:
                 valor_pago_oficial = _tofl(valor, default=None)
-                pago_oficial = _norm(pago) in {"sim", "s", "yes", "true", "1"}
+                pago_norm_oficial = _norm(pago)
+                pago_oficial = pago_norm_oficial in {"sim", "s", "yes", "true", "1"}
+                nao_pago_oficial = pago_norm_oficial in {"nao", "n", "no", "false", "0"}
+                if pago_norm_oficial and not pago_oficial and not nao_pago_oficial:
+                    resultado["alertas"].append(
+                        f"PC '{ident}' linha {r}: PC_PAGO_A_CONTRATADA invalido "
+                        f"({pago!r}); esperado Sim, Nao ou vazio."
+                    )
+                elif not pago_norm_oficial and _tofl(valor, default=0.0) > 0.0:
+                    pagamentos_nao_confirmados += 1
                 elegivel_oficial = bool(
                     pago_oficial and valor_pago_oficial is not None
                     and valor_pago_oficial > 0.0
                 )
                 campos_vta.update({
-                    "computa_vta": "Sim" if elegivel_oficial else "Nao",
                     "tipo_parcela": "PC pago" if elegivel_oficial else "PC em analise",
                     "origem_dado": "Pedido de Compra",
-                    "tipo_financeiro": "Execucao Atualizada" if elegivel_oficial else "Impacto Potencial",
                     "fonte_parcela": "PC",
                     "ja_refletido_em": "Nao",
-                    "status_consolidacao": "COMPUTADO" if elegivel_oficial else "NAO_COMPUTADO",
-                    "justificativa_vta": (
-                        "Modelo oficial: PC marcado pelo fiscal como pago à contratada."
-                        if elegivel_oficial else
-                        "Modelo oficial: PC sem confirmação fiscal de pagamento."
-                    ),
                     "valor_pago": valor_pago_oficial if elegivel_oficial else None,
-                    "status_pagamento_pc": "PAGO_INTEGRAL" if elegivel_oficial else "NAO_CONFIRMADO",
+                    "status_pagamento_pc": (
+                        "PAGO_INTEGRAL" if elegivel_oficial
+                        else "NAO_PAGO" if nao_pago_oficial
+                        else "NAO_CONFIRMADO"
+                    ),
                     "data_pagamento_pc": None,
                     "elegivel_retroativo_pc": elegivel_oficial,
+                })
+
+        # Etapa 27B — ajuste unificado (ambos os layouts): a participacao do
+        # PC no VTA e ESTRUTURAL (valor valido + ciclo valido + ciclo anterior
+        # a linha de corte). O pagamento NAO entra nessa decisao; segue
+        # governando apenas retroativo (elegivel_retroativo_pc/valor_pago).
+        # Duplicidade ja resolvida (DESCARTADO_DUPLICIDADE) e preservada.
+        if campos_vta.get("status_consolidacao") != "DESCARTADO_DUPLICIDADE":
+            valor_estrutural = _tofl(valor, default=None)
+            n_pc_corte = (
+                int(ciclo_norm[1:])
+                if ciclo_norm in {f"C{i}" for i in range(5)} else None
+            )
+            estrutura_ok = bool(
+                valor_estrutural is not None and valor_estrutural > 0.0
+                and n_pc_corte is not None
+            )
+            dentro_corte = bool(
+                n_pc_corte is not None
+                and (n_vig_corte is None or n_pc_corte < n_vig_corte)
+            )
+            if estrutura_ok and dentro_corte:
+                campos_vta.update({
+                    "computa_vta": "Sim",
+                    "tipo_financeiro": "Execucao Atualizada",
+                    "status_consolidacao": "COMPUTADO",
+                    "justificativa_vta": (
+                        "PC estruturalmente valido anterior a linha de corte; "
+                        "participa do VTA independentemente do pagamento."
+                    ),
+                })
+            elif estrutura_ok:
+                campos_vta.update({
+                    "computa_vta": "Nao",
+                    "tipo_financeiro": "Impacto Potencial",
+                    "status_consolidacao": "NAO_COMPUTADO",
+                    "justificativa_vta": (
+                        "PC no ciclo vigente ou posterior a linha de corte; "
+                        "nao entra na execucao historica (mesmo corte temporal)."
+                    ),
+                })
+            else:
+                campos_vta.update({
+                    "computa_vta": "Nao",
+                    "tipo_financeiro": "Impacto Potencial",
+                    "status_consolidacao": "EM_ANALISE",
+                    "justificativa_vta": (
+                        "PC sem valor ou ciclo validos; nao participa do VTA "
+                        "ate a complementacao dos dados."
+                    ),
                 })
         _validar_campos_vta(campos_vta, ident, r, resultado["alertas"])
         _atualizar_resumo_vta(resultado["resumo_vta"], campos_vta)
@@ -2594,11 +2666,14 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
             incremento if efeito_pc == "Sim"
             else 0.0 if efeito_pc == "Nao" else None
         )
-        if retro_lido is None and pago_norm in {"sim", "s", "true", "1", "yes"}:
+        # Etapa 27B: G="Sim" -> reconhecido; G="Nao" OU vazio -> potencial
+        # (vazio = pagamento nao confirmado; nunca zera silenciosamente).
+        pago_confirmado_fb = pago_norm in {"sim", "s", "true", "1", "yes"}
+        if retro_lido is None and pago_confirmado_fb:
             retro_lido = incremento_retroativo
-        if analise_lida is None and pago_norm in {"nao", "n", "false", "0", "no"}:
+        if analise_lida is None and not pago_confirmado_fb and valor not in (None, ""):
             analise_lida = vatual
-        if delta_lido is None and pago_norm in {"nao", "n", "false", "0", "no"}:
+        if delta_lido is None and not pago_confirmado_fb and valor not in (None, ""):
             delta_lido = incremento_retroativo
 
         registro = {
@@ -2656,6 +2731,13 @@ def _ler_itens_pc_v10(wb) -> dict[str, Any]:
                     f"NUMERO_PC duplicado: '{info['original']}' nas linhas "
                     f"{info['linhas']}."
                 )
+
+    if pagamentos_nao_confirmados:
+        resultado["alertas"].append(
+            f"{pagamentos_nao_confirmados} PC(s) sem PC_PAGO_A_CONTRATADA "
+            "informado: pagamento nao confirmado; retroativo classificado "
+            "como potencial."
+        )
 
     resultado["totais"] = {
         "total_original":   sum((i["valor_pc"] or 0.0) for i in resultado["itens"]),
@@ -3277,7 +3359,9 @@ def ler_masterfile_v10(
 
     modo = _norm(res["controle"].get("modo", ""))
     if modo == "pc":
-        res["itens_pc_v10"] = _ler_itens_pc_v10(wb)
+        res["itens_pc_v10"] = _ler_itens_pc_v10(
+            wb, ciclo_vigente=res["controle"].get("ciclo_vigente")
+        )
         for alerta in res["itens_pc_v10"].get("alertas", []):
             res["avisos"].append(f"itens_PC: {alerta}")
         res["vta_sombra"] = calcular_vta_sombra(

@@ -65,7 +65,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # padrao canonico N + exatamente 3 algarismos (espelho ^[Nn]\d{3}$) em
 # itens_Remanesc!B e posicao_contratual!Z; UX aditivos!M com WrapText
 # (owner: tools/aplicar_26h2_template.py) — pin reancorado.
-SHA256_TEMPLATE_ESPERADO = "aefa71abef17fa5fe230a598766285772d85d7fd02a1563c068b8d3316b9cb62"
+# Etapa 27B: G vazio deixa de ser erro estrutural e vira retroativo
+# potencial (itens_PC!I/J/K + MEMORIA!C10:C14); VTA independente de G
+# (owner: tools/aplicar_vta_pc_independente_27b.py) — pin reancorado.
+SHA256_TEMPLATE_ESPERADO = "30b85051a6ec54b9f9940ab3570c9df674596b38cbe2de2addf8595f6929b393"
 
 
 def _dados_calculadora() -> dict:

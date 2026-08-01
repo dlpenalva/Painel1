@@ -182,9 +182,14 @@ def test_formulas_pc_separam_nominal_reconhecido_analise_e_delta():
     assert "L2" not in ws["E2"].value
     assert "ROUND(D2*E2,2)" in ws["F2"].value
     assert 'L2="Sim",ROUND(F2-D2,2),0' in ws["H2"].value
-    assert 'G2="Nao"' in ws["I2"].value and "F2" in ws["I2"].value
+    # Etapa 27B: G="Nao" OU vazio -> potencial (I/J); somente G="Sim" zera.
+    assert ws["I2"].value.startswith('=IF(G2="Sim",0,')
+    assert "F2" in ws["I2"].value
+    assert ws["J2"].value.startswith('=IF(G2="Sim",0,')
     assert 'L2="Sim",ROUND(F2-D2,2),0' in ws["J2"].value
     assert "INICIO_EFEITO ausente: PC" in ws["K2"].value
+    # Etapa 27B: G vazio nao e erro estrutural; texto invalido continua sendo.
+    assert 'AND(G2<>"Sim",G2<>"Nao",G2<>"")' in ws["K2"].value
     assert "B2>=" in ws["L2"].value
     # M:T: Q soma H; R soma I; S soma J. Valor integral nao vira retroativo.
     assert "$H$2:$H$5001" in ws["Q2"].value
