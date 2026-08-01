@@ -320,11 +320,11 @@ def _montar_alternativas(
         ),
         _alternativa(
             MET_PC,
-            pcs["pagos_elegiveis"] > 0,
+            pcs["quantidade"] > 0,
             70 - (20 if pcs["sem_data"] else 0) - (15 if dupla.get("existe") else 0)
             - (10 if tem_pendencia else 0),
             CONF_MEDIA if not pcs["sem_data"] else CONF_BAIXA,
-            pcs["executado_atualizado_pago"],
+            pcs["devido"],
             {
                 "valor_em_analise": pcs["em_analise"],
                 "valor_reconhecido": pcs["reconhecido"],
@@ -335,7 +335,7 @@ def _montar_alternativas(
                 "vta": _round(vta.get("metodologia_sombra") or vta.get("oficial")),
                 "pcs_retroativo": pcs["origens_retroativo"],
             },
-            "Fallback excepcional: usa somente execucao de PCs definitivamente pagos; historicos, pendentes e nao pagos ficam fora.",
+            "Execucao estrutural por PCs validos, independente do pagamento; o pagamento classifica apenas o retroativo (reconhecido x potencial).",
             "Motor Temporal: DATA_PC contra linha temporal dos ciclos.",
             risco_dupla + (["Ha PC sem DATA_PC."] if pcs["sem_data"] else []),
         ),

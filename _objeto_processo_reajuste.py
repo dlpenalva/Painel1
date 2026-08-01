@@ -924,12 +924,19 @@ def _montar_memoria_por_ciclo(
         None,
     )
     selecao_automatica_unica = len(disponiveis) == 1
+    # Etapa 27B: a conferencia "pc" e pago-dependente (soma somente PCs
+    # pagos) e nao pode fabricar o VTA do metodo PC. O VTA por PC vem
+    # exclusivamente da composicao canonica (estrutural + linha de corte);
+    # indisponivel -> fail-closed com motivo tecnico, nunca proxy por
+    # pagamento nem zero. Fallbacks de financeiro/consumidos preservados.
     vta = next((
         c for c in conferencias
         if c["metodo"] == metodo_escolhido
+        and c["metodo"] != "pc"
         and c["disponivel"]
         and c["valor_total_atualizado"] is not None
     ), None)
+    vta_pc_fail_closed = metodo_escolhido == "pc"
     composicao = leitura.get("composicao_vta") or {}
     if (str(composicao.get("metodo") or "").lower() == "pc"
             and composicao.get("disponivel")
@@ -940,6 +947,7 @@ def _montar_memoria_por_ciclo(
         # a execucao e gerando a divergencia 26C.
         metodo_escolhido = "pc"
         selecao_automatica_unica = True
+        vta_pc_fail_closed = False
         saldo_comp = composicao.get("saldo_remanescente") or {}
         vta = {
             "metodo": "pc",
@@ -969,7 +977,7 @@ def _montar_memoria_por_ciclo(
             "criterio_selecao": (
                 "fonte padrao financeiro"
                 if metodo_escolhido == "financeiro" else (
-                    "fallback PC com pagamento definitivo"
+                    "composicao canonica PC (estrutural + linha de corte)"
                     if metodo_escolhido == "pc" else
                     "fallback consumidos como execucao paga"
                 )
@@ -978,6 +986,11 @@ def _montar_memoria_por_ciclo(
             "valor_total_atualizado": None, "metodo": metodo_escolhido,
             "natureza": "INDETERMINADO",
             "motivo": (
+                "VTA pelo metodo PC requer a composicao canonica (PCs "
+                "validos anteriores a linha de corte + remanescente do "
+                "mesmo corte); sem essa base o VTA nao e fabricado a "
+                "partir de PCs pagos (fail-closed)."
+                if vta_pc_fail_closed else
                 "Potencial restante nao informado; ha apenas execucao atualizada."
                 if metodo_escolhido else "Metodologia sem evidencias suficientes."
             )
