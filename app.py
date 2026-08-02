@@ -28,9 +28,9 @@ def _page(caminho: str, titulo: str, *, default: bool = False) -> st.Page:
 
 
 PAGINA_INICIO = _page("00_Calculadora_Reajustes.py", "Início", default=True)
-# Etapa 26D: nomenclatura visivel dos fluxos; rotas/constantes/keys intactas.
-PAGINA_UM_CICLO = _page("01_Calculo_Simples.py", "Primeiro Reajuste")
-PAGINA_MULTICICLO = _page("02_Calculo_Represados.py", "Reajustes Subsequentes")
+# Etapa 28A: nomenclatura visivel dos fluxos; rotas/constantes/keys intactas.
+PAGINA_UM_CICLO = _page("01_Calculo_Simples.py", "Analisar um único ciclo")
+PAGINA_MULTICICLO = _page("02_Calculo_Represados.py", "Analisar vários ciclos")
 PAGINA_UPLOAD = _page("03_Valor_Global.py", "Upload e docs")
 
 PAGINAS_PRINCIPAIS = (
@@ -383,8 +383,8 @@ def _render_sidebar() -> None:
             unsafe_allow_html=True,
         )
         st.page_link(PAGINA_INICIO, label="Início")
-        st.page_link(PAGINA_UM_CICLO, label="Primeiro Reajuste")
-        st.page_link(PAGINA_MULTICICLO, label="Reajustes Subsequentes")
+        st.page_link(PAGINA_UM_CICLO, label="Analisar um único ciclo")
+        st.page_link(PAGINA_MULTICICLO, label="Analisar vários ciclos")
         st.markdown('<div class="cl8us-side-group">Documentos</div>', unsafe_allow_html=True)
         st.page_link(PAGINA_UPLOAD, label="Upload e docs")
 

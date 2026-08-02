@@ -1873,7 +1873,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
 
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
     render_cabecalho_pagina(
-        "Primeiro Reajuste",
+        "Analisar um único ciclo",
         "",
     )
 
@@ -1882,9 +1882,11 @@ if not st.session_state.get("_calculadora_reajustes_embedded", False):
 contexto_contratual = {}
 
 opcoes_ciclo_analise = ["C1", "C2", "C3", "C4"]
+# Etapa 28A: rotulo de exibicao separado do valor interno (que segue "Cn").
 ciclo_analise = st.selectbox(
-    "Ciclo desta análise:",
+    "Qual ciclo deseja analisar?",
     options=opcoes_ciclo_analise,
+    format_func=lambda ciclo: f"Quero analisar {ciclo}",
     key="sim_ciclo_analise",
     help="Selecione o ciclo real objeto da apuração. C0 é apenas a base e não recebe reajuste.",
 )

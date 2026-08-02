@@ -14,7 +14,7 @@ MULTI = (ROOT / "pages" / "02_Calculo_Represados.py").read_text(encoding="utf-8"
 class TestCiclosC2EStamp(unittest.TestCase):
     def test_calculadora_simples_permite_c1_ate_c4(self):
         self.assertIn('opcoes_ciclo_analise = ["C1", "C2", "C3", "C4"]', SIMPLES)
-        self.assertIn('"Ciclo desta análise:"', SIMPLES)
+        self.assertIn('"Qual ciclo deseja analisar?"', SIMPLES)
         self.assertIn("primeiro_ciclo_num = _ciclo_para_numero(ciclo_analise)", SIMPLES)
 
     def test_multiciclo_permite_iniciar_em_c2_e_limita_em_c4(self):
@@ -34,7 +34,7 @@ class TestCiclosC2EStamp(unittest.TestCase):
         self.assertIn("Nenhum ciclo anterior concedido", MULTI)
         self.assertIn("Houve ciclo anterior concedido/formalizado", MULTI)
         self.assertIn("Situação desconhecida", MULTI)
-        self.assertIn("Último ciclo concedido/formalizado:", MULTI)
+        self.assertIn("Último ciclo formalizado anteriormente:", MULTI)
         self.assertIn("Marco temporal do último ciclo concedido/formalizado", MULTI)
         self.assertIn("'contexto_contratual_anterior': contexto_contratual", MULTI)
         self.assertNotIn("Situação anterior à análise:", SIMPLES)

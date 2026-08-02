@@ -87,18 +87,18 @@ with linha_2[0]:
     with st.container(border=True):
         _conteudo_card(
             "3 · Análise simples",
-            "Primeiro Reajuste",
+            "Analisar um único ciclo",
             "Use quando apenas um ciclo é objeto da apuração. Ao final, baixe o Arquivo Coleta Oficial já parametrizado.",
         )
-        if st.button("Abrir Primeiro Reajuste", use_container_width=True, key="abrir_um_ciclo_inicio"):
+        if st.button("Analisar um único ciclo", use_container_width=True, key="abrir_um_ciclo_inicio"):
             st.switch_page("pages/01_Calculo_Simples.py")
 
 with linha_2[1]:
     with st.container(border=True):
         _conteudo_card(
             "4 · Análise acumulada",
-            "Reajustes Subsequentes",
+            "Analisar vários ciclos",
             "Use para dois ou mais ciclos e inicie a apuração em qualquer ciclo entre C1 e C4.",
         )
-        if st.button("Abrir Reajustes Subsequentes", use_container_width=True, key="abrir_multiciclo_inicio"):
+        if st.button("Analisar vários ciclos", use_container_width=True, key="abrir_multiciclo_inicio"):
             st.switch_page("pages/02_Calculo_Represados.py")
