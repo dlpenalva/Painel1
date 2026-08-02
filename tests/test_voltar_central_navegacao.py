@@ -29,10 +29,21 @@ class TestVoltarParaCentral(unittest.TestCase):
         for nome in PAGINAS:
             fonte = (PAGES / nome).read_text(encoding="utf-8")
             self.assertIn("← Voltar para Central", fonte, f"{nome}: botao ausente")
-            self.assertIn(
-                f'st.switch_page("{DESTINO_COMUM}")', fonte,
-                f"{nome}: destino nao aponta para a pagina pos-upload",
-            )
+            if nome == "05_Garantia.py":
+                # Etapa 29B: retorno origem-aware. O destino padrao (pos-upload)
+                # permanece; quando a origem e a Central de Modelos, retorna para
+                # ela. O switch_page usa a variavel resolvida no clique.
+                self.assertIn(f'"{DESTINO_COMUM}"', fonte,
+                              f"{nome}: destino padrao pos-upload ausente")
+                self.assertIn("st.switch_page(_destino_voltar_garantia)", fonte,
+                              f"{nome}: switch origem-aware ausente")
+                self.assertIn("pages/14_Central_Modelos_Ferramentas.py", fonte,
+                              f"{nome}: retorno para a Central de Modelos ausente")
+            else:
+                self.assertIn(
+                    f'st.switch_page("{DESTINO_COMUM}")', fonte,
+                    f"{nome}: destino nao aponta para a pagina pos-upload",
+                )
 
     def test_adequacao_tem_apenas_um_botao_de_retorno(self):
         fonte = (PAGES / "12_Adequacao_Orcamentaria.py").read_text(encoding="utf-8")

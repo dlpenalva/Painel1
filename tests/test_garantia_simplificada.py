@@ -527,7 +527,9 @@ class PaginaSemResiduosDoModeloAntigoTests(unittest.TestCase):
         self.assertIn('st.session_state["arquivo_garantia_pdf"] = pdf_bytes', GARANTIA)
         self.assertIn('st.session_state["resultado_garantia"]', GARANTIA)
         self.assertIn("← Voltar para Central", GARANTIA)
-        self.assertIn('st.switch_page("pages/03_Valor_Global.py")', GARANTIA)
+        # Etapa 29B: retorno origem-aware — destino padrão preservado, switch via variável.
+        self.assertIn('"pages/03_Valor_Global.py"', GARANTIA)
+        self.assertIn("st.switch_page(_destino_voltar_garantia)", GARANTIA)
         self.assertIn("table.garantia-tabela th { background: #E6F0F7", GARANTIA)
         # Resíduos do modelo antigo removidos.
         self.assertNotIn("Método 1 — Delta da Garantia", GARANTIA)

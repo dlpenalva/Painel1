@@ -4891,6 +4891,21 @@ render_cabecalho_pagina(
     "",
 )
 
+# Etapa 29B.1: acesso direto à Central de Modelos e Ferramentas, visível antes
+# do fluxo de upload e independente de qualquer Coleta ou apuração em sessão.
+with st.container(border=True):
+    st.markdown(
+        '<span class="cl8us-docs-card-marker"></span>'
+        '<div class="cl8us-docs-card-title">Não possui uma Planilha de Coleta?</div>',
+        unsafe_allow_html=True,
+    )
+    st.caption(
+        "Acesse modelos em branco e ferramentas que podem ser utilizados sem "
+        "processamento de uma apuração."
+    )
+    if st.button("Abrir Modelos e Ferramentas", key="abrir_modelos_ferramentas_upload"):
+        st.switch_page("pages/14_Central_Modelos_Ferramentas.py")
+
 
 @st.cache_data(show_spinner=False)
 def _coleta_oficial_cacheada(assinatura: str, dados_calculadora: dict) -> bytes:  # noqa: ARG001
