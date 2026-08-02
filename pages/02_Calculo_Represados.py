@@ -1904,7 +1904,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
     return output.getvalue()
 if not st.session_state.get("_calculadora_reajustes_embedded", False):
     render_cabecalho_pagina(
-        "Reajustes Subsequentes",
+        "Analisar vários ciclos",
         "Ferramenta para análise contratual com mais de um ciclo de reajuste.",
     )
 
@@ -1931,11 +1931,11 @@ with st.sidebar:
     )
 
     st.markdown(
-        '<div class="cl8us-cycle-step">1 · Ciclo inicial desta análise</div>',
+        '<div class="cl8us-cycle-step">1 · Primeiro ciclo a analisar</div>',
         unsafe_allow_html=True,
     )
     ciclo_ini_analise = st.selectbox(
-        "Ciclo inicial desta análise:",
+        "Primeiro ciclo a analisar:",
         options=["C1", "C2", "C3", "C4"],
         key="rep_ciclo_inicial_analise",
         label_visibility="collapsed",
@@ -1969,7 +1969,7 @@ with st.sidebar:
         if _sit_anterior == "Houve ciclo anterior concedido/formalizado":
             _opcoes_ultimo_ciclo = [f"C{numero}" for numero in range(1, int(primeiro_ciclo_num))]
             _ultimo_ciclo_anterior = st.selectbox(
-                "Último ciclo concedido/formalizado:",
+                "Último ciclo formalizado anteriormente:",
                 options=_opcoes_ultimo_ciclo,
                 key="rep_ultimo_ciclo_anterior",
             )
@@ -2008,11 +2008,11 @@ with st.sidebar:
         st.session_state[chave_ciclo_final] = opcoes_ciclo_final[min(1, len(opcoes_ciclo_final) - 1)]
 
     st.markdown(
-        '<div class="cl8us-cycle-step final">2 · Ciclo final desta análise</div>',
+        '<div class="cl8us-cycle-step final">2 · Último ciclo a analisar</div>',
         unsafe_allow_html=True,
     )
     ciclo_fin_analise = st.selectbox(
-        "Ciclo final desta análise:",
+        "Último ciclo a analisar:",
         options=opcoes_ciclo_final,
         key=chave_ciclo_final,
         label_visibility="collapsed",
