@@ -3062,6 +3062,7 @@ def ler_masterfile_v10(
         "event_log_sombra": {}, "estado_contratual_sombra": {},
         "posicao_contratual_sombra": {},
         "posicao_contratual": {},
+        "ciclo_em_execucao": {},
         "resultados_xls": {},
         "objeto_processo": {},
         "execucao_saldo": {},          # v10.1 — entrada fiscal consolidada
@@ -3112,6 +3113,7 @@ def ler_masterfile_v10(
             "cobertura_temporal",
             "comparativo_VTA",
             "MEMORIA_RESULTADOS",
+            "CICLO_EM_EXECUCAO",
         }
         res["abas_ausentes"] = [
             a for a in ABAS_COLETA_OFICIAL
@@ -3332,6 +3334,17 @@ def ler_masterfile_v10(
     for alerta in res["itens_consumidos_v10"].get("alertas", []):
         origem = "ENTRADA_XLS_CONSUMIDOS" if layout_fiscal_definitivo else "itens_Consumidos"
         res["avisos"].append(f"{origem}: {alerta}")
+
+    # 29C.1: fotografia itemizada durante o ciclo. Leitura isolada e apenas
+    # diagnostica; nao substitui a posicao_contratual nem alimenta o VTA.
+    from _ciclo_em_execucao import ler_ciclo_em_execucao
+    res["ciclo_em_execucao"] = ler_ciclo_em_execucao(
+        wb,
+        itens_consumidos=res["itens_consumidos_v10"],
+    )
+    if res["ciclo_em_execucao"].get("utilizado"):
+        for alerta in res["ciclo_em_execucao"].get("alertas", []):
+            res["avisos"].append(alerta)
 
     parcelas_sombra = []
     parcelas_sombra.extend(_ler_parcelas_sombra_financeiro(wb))
