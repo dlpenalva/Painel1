@@ -102,3 +102,15 @@ with linha_2[1]:
         )
         if st.button("Analisar vários ciclos", use_container_width=True, key="abrir_multiciclo_inicio"):
             st.switch_page("pages/02_Calculo_Represados.py")
+
+# Etapa 29B: acesso a modelos em branco e ferramentas independentes (sem Coleta).
+linha_3 = st.columns(2, gap="large")
+with linha_3[0]:
+    with st.container(border=True):
+        _conteudo_card(
+            "5 · Modelos e ferramentas",
+            "Modelos e ferramentas",
+            "Acesse modelos em branco e ferramentas que podem ser utilizadas sem carregar uma Planilha de Coleta.",
+        )
+        if st.button("Abrir Modelos e Ferramentas", use_container_width=True, key="abrir_modelos_ferramentas_inicio"):
+            st.switch_page("pages/14_Central_Modelos_Ferramentas.py")

@@ -32,6 +32,9 @@ PAGINA_INICIO = _page("00_Calculadora_Reajustes.py", "Início", default=True)
 PAGINA_UM_CICLO = _page("01_Calculo_Simples.py", "Analisar um único ciclo")
 PAGINA_MULTICICLO = _page("02_Calculo_Represados.py", "Analisar vários ciclos")
 PAGINA_UPLOAD = _page("03_Valor_Global.py", "Upload e docs")
+# Etapa 29B: Central de Modelos e Ferramentas (acesso sem Coleta).
+PAGINA_MODELOS_FERRAMENTAS = _page(
+    "14_Central_Modelos_Ferramentas.py", "Modelos e ferramentas")
 
 PAGINAS_PRINCIPAIS = (
     PAGINA_INICIO,
@@ -387,6 +390,7 @@ def _render_sidebar() -> None:
         st.page_link(PAGINA_MULTICICLO, label="Analisar vários ciclos")
         st.markdown('<div class="cl8us-side-group">Documentos</div>', unsafe_allow_html=True)
         st.page_link(PAGINA_UPLOAD, label="Upload e docs")
+        st.page_link(PAGINA_MODELOS_FERRAMENTAS, label="Modelos e ferramentas")
 
         render_versao_sidebar()
 
@@ -399,7 +403,7 @@ _render_sidebar()
 # position="hidden" retira apenas o menu automático e deixa a navegação própria
 # acima como a interface operacional principal.
 pagina_atual = st.navigation(
-    [*PAGINAS_PRINCIPAIS, *PAGINAS_AUXILIARES],
+    [*PAGINAS_PRINCIPAIS, PAGINA_MODELOS_FERRAMENTAS, *PAGINAS_AUXILIARES],
     position="hidden",
 )
 pagina_atual.run()

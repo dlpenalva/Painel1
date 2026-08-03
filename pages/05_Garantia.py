@@ -129,8 +129,24 @@ def render_memoria_html(linha_do_tempo):
 
 css()
 render_cabecalho_pagina("Garantia Contratual", "")
+# Etapa 29C.1: ciclo de vida da origem em dois estados. A ponte de sessão
+# "origem_navegacao_garantia" (gravada pela Central de Modelos) é consumida
+# por pop já no primeiro render e convertida no query parameter exclusivo
+# "origem_garantia", que marca apenas a visita atual: sobrevive a reruns e ao
+# reload da própria Garantia, mas é encerrado pela navegação normal entre
+# páginas (sidebar/switch_page). Assim não existe origem residual em visitas
+# futuras; sem ponte e sem parâmetro, o retorno é Upload e docs.
+_PARAM_ORIGEM_GARANTIA = "origem_garantia"
+if st.session_state.pop("origem_navegacao_garantia", None) == "modelos_ferramentas":
+    st.query_params[_PARAM_ORIGEM_GARANTIA] = "modelos_ferramentas"
+if st.query_params.get(_PARAM_ORIGEM_GARANTIA) == "modelos_ferramentas":
+    _destino_voltar_garantia = "pages/14_Central_Modelos_Ferramentas.py"
+else:
+    _destino_voltar_garantia = "pages/03_Valor_Global.py"
 if st.button("← Voltar para Central", key="voltar_central_garantia"):
-    st.switch_page("pages/03_Valor_Global.py")
+    if _PARAM_ORIGEM_GARANTIA in st.query_params:
+        del st.query_params[_PARAM_ORIGEM_GARANTIA]
+    st.switch_page(_destino_voltar_garantia)
 st.caption("Calcule a garantia de 5% e a adequação decorrente das alterações do valor total do contrato.")
 
 # ------------------------------------------------------------

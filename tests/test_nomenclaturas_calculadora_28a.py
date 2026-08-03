@@ -114,8 +114,14 @@ class TestVariosCiclos(unittest.TestCase):
 
 class TestForaDeEscopo(unittest.TestCase):
     def test_nenhuma_central_sem_coleta(self):
-        for fonte in (APP, INICIO, SIMPLES, MULTI):
+        # Guard original da Etapa 28A (nomenclaturas): a 28A nao podia introduzir
+        # a Central de Modelos. A Etapa 29B implementa essa Central e a integra
+        # deliberadamente ao app.py (navegacao) e a pagina inicial (card), de modo
+        # que APP/INICIO passam a cita-la legitimamente. As paginas de calculo
+        # (um ciclo e multiciclo) permanecem fora de escopo e nao a referenciam.
+        for fonte in (SIMPLES, MULTI):
             self.assertNotIn("Central de Modelos", fonte)
+        for fonte in (APP, INICIO, SIMPLES, MULTI):
             self.assertNotIn("Central sem Coleta", fonte)
 
 
