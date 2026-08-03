@@ -43,7 +43,9 @@ NOME_ARQUIVO_COLETA_OFICIAL = "COLETA_REAJUSTE_OFICIAL.xlsx"
 # Nome user-facing entregue nos botoes de download da interface (§15).
 NOME_DOWNLOAD_COLETA = "Coleta_Reajuste.xlsx"
 
-# Ordem oficial das abas do novo modelo (fonte de verdade: o proprio XLS).
+# Ordem oficial das abas do novo modelo. CICLO_EM_EXECUCAO e acrescentada em
+# runtime (sem versionar outro binario XLSX) e as demais continuam tendo o
+# template oficial como fonte de verdade.
 # comparativo_VTA (aba de referencia adicionada via Excel COM) fica na 1a
 # posicao fisica que o Excel produz ao inseri-la; nao aparece na web e a aba
 # ativa original e preservada.
@@ -57,6 +59,7 @@ ABAS_COLETA_OFICIAL = [
     "itens_PC",
     "aditivos",
     "posicao_referencia",
+    "CICLO_EM_EXECUCAO",
     "posicao_contratual",
     "itens_RC",
     "historico_VU",
@@ -221,6 +224,11 @@ def obter_coleta_oficial_bytes() -> bytes:
             f"Template oficial nao encontrado: {TEMPLATE_COLETA_OFICIAL}"
         )
     wb = load_workbook(TEMPLATE_COLETA_OFICIAL, data_only=False)
+
+    # 29C.1: a nova visao operacional e criada em runtime. Isso preserva o
+    # template binario homologado e impede que artefatos XLSX entrem no Git.
+    from _ciclo_em_execucao import garantir_aba_ciclo_em_execucao
+    garantir_aba_ciclo_em_execucao(wb, limpar_entradas=True)
 
     faltantes = [a for a in ABAS_COLETA_OFICIAL if a not in wb.sheetnames]
     if faltantes:

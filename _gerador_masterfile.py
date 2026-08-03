@@ -575,6 +575,11 @@ def gerar_masterfile_preenchido(
     # abas obrigatorias proprio — 'historico' e ENTRADA_XLS_* nao existem.
     from _coleta_oficial import ABAS_COLETA_OFICIAL, eh_layout_coleta_oficial
     _vnova = eh_layout_coleta_oficial(wb)
+    if _vnova:
+        # 29C.1: garantia idempotente antes da fotografia de formulas. Uma aba
+        # agregada legada homonima nunca e substituida nem reinterpretada.
+        from _ciclo_em_execucao import garantir_aba_ciclo_em_execucao
+        garantir_aba_ciclo_em_execucao(wb)
     abas_exigidas = ABAS_COLETA_OFICIAL if _vnova else ABAS_OBRIGATORIAS
     faltantes = [aba for aba in abas_exigidas if _localizar_aba(wb, aba) is None]
     if faltantes:
