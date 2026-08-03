@@ -830,6 +830,13 @@ def validar_posicao_ciclo_lida(
         vu = _numero(registro.get("vu_atualizado"))
         check = _numero(registro.get("check_fisico"))
         erros_item: list[str] = []
+        status_xls = str(registro.get("status_xls") or "").strip()
+        status_xls_normalizado = status_xls.upper()
+        if status_xls_normalizado.startswith("INCOMPLETO:"):
+            completo = False
+            erros_item.append(f"STATUS_XLS_{status_xls_normalizado}")
+        elif status_xls_normalizado.startswith("ERRO:"):
+            erros_item.append(f"STATUS_XLS_{status_xls_normalizado}")
         if abertura is None:
             erros_item.append("REMANESCENTE_INICIAL_INDISPONIVEL")
         if delta is None:
