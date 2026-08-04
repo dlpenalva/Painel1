@@ -1,0 +1,4 @@
+# Arquivos derivados com dados de producao (NUNCA versionar).
+scratch/
+*.xlsx
+btovxtugy.txt

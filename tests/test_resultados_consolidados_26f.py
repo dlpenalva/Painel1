@@ -43,8 +43,12 @@ def test_quatro_tabelas_e_um_status_global(wb):
 
 def test_tabelas_usam_fontes_homologadas_sem_ref_quebrada(wb):
     ws = wb["RESULTADOS"]
-    assert ws["B10"].value == '=IFERROR(VTA_FINAL,"")'
-    assert ws["B11"].value == '=IFERROR(comparativo_VTA!$B$208,"")'
+    # Etapa VTA-posicoes: Tabela 1 passou a expor 3 referencias do VTA.
+    # FORMA 1 (posicao atual) em B10, FORMA 2 (ultima abertura) em B11 e o
+    # contrato integralmente reajustado (antigo B11) migrou para B12.
+    assert ws["B10"].value == '=IF(MEMORIA_RESULTADOS!$W$50="","",MEMORIA_RESULTADOS!$W$50)'
+    assert ws["B11"].value == '=IF(MEMORIA_RESULTADOS!$W$48="","",MEMORIA_RESULTADOS!$W$48)'
+    assert ws["B12"].value == '=IFERROR(comparativo_VTA!$B$208,"")'
     assert "RETRO_OFICIAL" in ws["D22"].value
     assert "posicao_contratual" in ws["C28"].value
     assert "historico_VU" in ws["C28"].value

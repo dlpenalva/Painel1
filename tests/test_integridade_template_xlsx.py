@@ -49,16 +49,23 @@ FORMULAS_POR_ABA = {
     # 26H: +398 formulas das colunas tecnicas ocultas Y (CICLO_NASCIMENTO)
     # e Z (EH_NOVO_ITEM), linhas 2:200.
     "posicao_contratual": 5174,
-    "itens_RC": 3200,
+    # Etapa VTA-posicoes: +1800 do bloco POSICAO ATUAL (AUTO) Q:Y (9 colunas
+    # x 200 linhas 3:202) via INDIRECT+ISERROR sobre CICLO_EM_EXECUCAO.
+    "itens_RC": 5000,
     "historico_VU": 3592,
     "cobertura_temporal": 15,
     # 3762 anteriores + 11 referencias para a tabela manual unica.
     # 26G: +5 (T26/T27 completude do remanescente; T28:T30 PCs sem efeito).
-    "MEMORIA_RESULTADOS": 3778,
+    # Etapa VTA-posicoes: +212 do bloco auxiliar das 3 referencias
+    # (W41:W52 = 12 formulas + AB2:AB201 = 200 formulas). B26/T25 intactos.
+    "MEMORIA_RESULTADOS": 3990,
     # 57 do prototipo + 4 selos por tabela + 1 premissa da estimativa - 1
     # helper J4 removido (status global agora agrega os selos H8/H14/H24/H33).
     # 26G: +5 (linha executiva A23:E23 dos PCs sem efeito financeiro).
-    "RESULTADOS": 66,
+    # Etapa VTA-posicoes: +7 liquidas na Tabela 1 (3 referencias +
+    # reconciliacao: B10/C10/H10, B11/C11/H11, B12, B13/H13 = 9 novas,
+    # menos as 2 antigas B10/B11 substituidas). H8 preservado.
+    "RESULTADOS": 73,
 }
 
 

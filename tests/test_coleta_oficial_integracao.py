@@ -68,7 +68,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # Etapa 27B: G vazio deixa de ser erro estrutural e vira retroativo
 # potencial (itens_PC!I/J/K + MEMORIA!C10:C14); VTA independente de G
 # (owner: tools/aplicar_vta_pc_independente_27b.py) — pin reancorado.
-SHA256_TEMPLATE_ESPERADO = "30b85051a6ec54b9f9940ab3570c9df674596b38cbe2de2addf8595f6929b393"
+# Etapa VTA-posicoes: 3 referencias do VTA na Tabela 1 de RESULTADOS
+# (POSICAO ATUAL / ULTIMA ABERTURA DISPONIVEL / CONTRATO INTEGRAL), bloco
+# auxiliar MEMORIA_RESULTADOS!V/W/AB e fotografia atual itens_RC!Q:Y via
+# INDIRECT+ISERROR sobre CICLO_EM_EXECUCAO. B26/T25 homologados intactos
+# (owner: tools/aplicar_vta_posicoes_tabela1.py) — pin reancorado.
+SHA256_TEMPLATE_ESPERADO = "c08622acfd0acb9e32a23866cbe3dd2b43b78840a7edb74d9142bac13433de4b"
 
 
 def _dados_calculadora() -> dict:
