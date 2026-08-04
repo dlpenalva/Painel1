@@ -366,6 +366,11 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
         "sintese": sintese,
         "identificacao": dados.get("identificacao") or {},
         "historico_vu": dados.get("historico_vu") or {},
+        "referencias_vta": (
+            (leitura_ou_objeto or {}).get("referencias_vta")
+            or (dados.get("referencias_vta") if isinstance(dados, dict) else None)
+            or {}
+        ),
     }
 
 
@@ -563,6 +568,10 @@ def gerar_termo_apostila(
     _ta_secao2_retroativo(doc, dados, campos_manuais)
     _ta_secao3_memoria_vta(doc, dados)
     _ta_secao4_composicao_vta(doc, dados)
+    _bloco_referencias_vta(
+        doc, dados,
+        titulo="4-A. Referências auditáveis do Valor Total Atualizado",
+    )
     _ta_secao5_valores_unitarios(doc, dados)
     _ta_secao6_aditivos(doc, dados)
     _ta_secoes_finais(doc, campos_manuais)
@@ -931,6 +940,104 @@ def _ta_secao4_composicao_vta(doc: Document, dados: dict) -> None:
     doc.add_paragraph()
 
 
+_MARC_POS_NAO_INFORMADA = "Não informada"
+
+
+def _fmt_data_ref(valor: Any) -> str | None:
+    if valor is None or (isinstance(valor, str) and not valor.strip()):
+        return None
+    try:
+        return valor.strftime("%d/%m/%Y")
+    except AttributeError:
+        return str(valor).strip()
+
+
+def _bloco_referencias_vta(doc: Document, dados: dict, *, titulo: str) -> None:
+    """Quadro auditavel das TRES referencias do VTA + reconciliacao + data.
+
+    OFICIAL (B26/VTA_FINAL) permanece o valor com efeito juridico; as outras
+    referencias sao apresentadas como REFERENCIA AUDITAVEL ou COMPARATIVO, nunca
+    promovidas a oficial. Quando a posicao atual (FORMA 1) nao esta informada,
+    a linha exibe "Nao informada" e a situacao explica a indisponibilidade.
+    Fonte: RESULTADOS!Tabela 1 (espelho de MEMORIA_RESULTADOS!W48/W50/W51/W52).
+    """
+    # Modelo em branco (29B): nao afirma referencias de VTA — mantem a
+    # neutralidade integral homologada. O bloco so aparece com dados reais.
+    if dados.get("_modo_branco"):
+        return
+    ref = dados.get("referencias_vta") or {}
+    _titulo_secao(doc, titulo)
+
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    _adicionar_run(p,
+        "O Valor Total Atualizado oficial, com efeito jurídico e operacional, "
+        "permanece o apurado pela cadeia homologada do Valor Total Atualizado do "
+        "Contrato. As referências abaixo são apresentadas exclusivamente para "
+        "conferência e auditoria, com classificação explícita, e não substituem "
+        "o valor oficial.")
+
+    data_pos = _fmt_data_ref(ref.get("data_posicao_atual"))
+    ciclo_vig = ref.get("ciclo_vigente")
+    ciclo_ab = ref.get("ciclo_ultima_abertura")
+    if data_pos or ciclo_vig or (ciclo_ab is not None):
+        pp = doc.add_paragraph()
+        pp.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        partes = []
+        if data_pos:
+            partes.append(f"data da posição atual: {data_pos}")
+        if ciclo_vig:
+            partes.append(f"ciclo vigente: {ciclo_vig}")
+        if ciclo_ab is not None:
+            partes.append(f"última abertura disponível: C{ciclo_ab}")
+        _adicionar_run(pp, "Posição de referência — " + "; ".join(partes) + ".")
+
+    _titulo_quadro(doc, "Quadro — Três referências do Valor Total Atualizado")
+    cabecalho = ["Referência", "Valor", "Classificação", "Situação / Fonte"]
+
+    def _moeda(v: Any) -> str:
+        n = _num_ou_none(v)
+        return formatar_moeda(n) if n is not None else _MARC_POS_NAO_INFORMADA
+
+    oficial = _vta_texto_doc(dados) or _MARC_POS_NAO_INFORMADA
+    f1 = ref.get("forma1_posicao_atual")
+    f1_sit = ref.get("forma1_situacao") or "Posição atual não informada"
+    f2_sit = ref.get("forma2_situacao") or "Última abertura disponível"
+    linhas = [
+        ["Valor Total Atualizado (cadeia homologada)", oficial, "OFICIAL",
+         "Cadeia homologada do VTA"],
+        ["VTA pela posição atual do contrato",
+         _MARC_POS_NAO_INFORMADA if f1 is None else _moeda(f1),
+         "REFERÊNCIA AUDITÁVEL", f1_sit],
+        ["VTA pela última posição de abertura disponível",
+         _moeda(ref.get("forma2_ultima_abertura")),
+         "REFERÊNCIA AUDITÁVEL", f2_sit],
+        ["Contrato original integralmente reajustado",
+         _moeda(ref.get("forma3_integral_reajustado")),
+         "COMPARATIVO", "Referência comparativa — não é o VTA oficial"],
+    ]
+    _adicionar_tabela(doc, cabecalho, linhas)
+
+    rec_v = _num_ou_none(ref.get("reconciliacao_valor"))
+    rec_s = ref.get("reconciliacao_status")
+    if rec_v is not None or rec_s:
+        prec = doc.add_paragraph()
+        prec.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        _adicionar_run(prec, "Reconciliação (posição atual − última abertura): ")
+        if rec_v is not None:
+            _adicionar_run(prec, formatar_moeda(rec_v), negrito=True)
+        if rec_s:
+            _adicionar_run(prec, f" — status: {rec_s}.")
+        else:
+            _adicionar_run(prec, ".")
+    razao = ref.get("fallback_razao")
+    if razao:
+        prz = doc.add_paragraph()
+        prz.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        _adicionar_run(prz, f"Observação sobre a última abertura: {razao}", italico=True)
+    doc.add_paragraph()
+
+
 def _ta_secao5_valores_unitarios(doc: Document, dados: dict) -> None:
     _titulo_secao(doc, "5. Dos valores unitários")
     _secao_valores_unitarios_por_ciclo(
@@ -1111,6 +1218,10 @@ def gerar_despacho_saneador(
     _ds_par5_quadro2(doc, dados)
     _ds_par6_quadro3(doc, dados, campos_manuais)
     _ds_par7_composicao(doc, dados)
+    _bloco_referencias_vta(
+        doc, dados,
+        titulo="7-A. Referências auditáveis do Valor Total Atualizado",
+    )
     _ds_bloco_historico_vu(doc, dados)
     _ds_par8_aditivos(doc, dados)
     _ds_par9_adequacao(doc, dados, campos_manuais)

@@ -78,7 +78,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # valido (owner: tools/aplicar_cobertura_ciclo.py). A editabilidade de
 # CICLO_EM_EXECUCAO (selectUnlockedCells) foi corrigida no gerador em runtime e
 # NAO altera este template. — pin reancorado.
-SHA256_TEMPLATE_ESPERADO = "6ef35c996227c0ad51a81e0383178a9502b0197b382667d81faddd90c10c0a49"
+# Etapa VTA (ajustes finais de layout): legibilidade da Tabela 1 (8:13), remocao
+# da linha "Fonte temporal de conferencia" em cobertura_temporal e CF dos 4
+# estados em itens_Remanesc. Sem alterar formula-fonte nem B26/T25. — reancorado.
+SHA256_TEMPLATE_ESPERADO = "4e62086a3090b0476aa6158a159485a5f7d036619abea5107429f7831d0032fe"
 
 
 def _dados_calculadora() -> dict:

@@ -461,7 +461,9 @@ def _criar_aba_itemizada(wb):
     ws = wb.create_sheet(ABA_CICLO_EM_EXECUCAO, indice)
     ws.sheet_properties.tabColor = "FF0F5B50"
     ws.sheet_view.showGridLines = False
-    ws.freeze_panes = f"A{PRIMEIRA_LINHA_ITEM}"
+    # Sem congelamento de paineis: navegacao livre pela planilha. As celulas
+    # automaticas seguem protegidas (locked); somente D5 e C13:C211 sao editaveis.
+    ws.freeze_panes = None
     ws.sheet_view.topLeftCell = "A1"
     ws.page_setup.orientation = "landscape"
     ws.page_setup.fitToWidth = 1

@@ -2,3 +2,6 @@
 scratch/
 *.xlsx
 btovxtugy.txt
+
+# Dumps de auditoria com dados de producao.
+*.txt

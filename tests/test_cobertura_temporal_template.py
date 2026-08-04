@@ -64,8 +64,10 @@ def test_reusa_painel_posicao_referencia():
         'INDIRECT("CICLO_EM_EXECUCAO!D5")))'
     )
     assert ws["B11"].value == "=posicao_referencia!$I$5"
-    assert ws["B22"].value == "=posicao_referencia!$I$5"     # observada (data)
-    assert ws["B23"].value == "=posicao_referencia!$I$8"     # observada (origem)
+    # Etapa VTA: linha "Fonte temporal de conferencia" (21) removida; as linhas
+    # seguintes subiram uma posicao (22->21 observada data, 23->22 origem).
+    assert ws["B21"].value == "=posicao_referencia!$I$5"     # observada (data)
+    assert ws["B22"].value == "=posicao_referencia!$I$8"     # observada (origem)
 
 
 def test_ultima_evidencia_nao_e_completo_ate():
@@ -120,14 +122,16 @@ def test_entradas_gcc_amarelas():
 def test_projecao_categoria_nova_laranja():
     ws = _wb()[ABA]
     assert ws["B16"].fill.fgColor.rgb == "FFFCE4D6"
-    assert ws["B24"].fill.fgColor.rgb == "FFFCE4D6"
-    assert "nao cria retroativo" in ws["B24"].value
+    # Etapa VTA: "Posicao projetada" subiu de B24 para B23 (linha 21 removida).
+    assert ws["B23"].fill.fgColor.rgb == "FFFCE4D6"
+    assert "nao cria retroativo" in ws["B23"].value
 
 
 def test_legenda_quatro_categorias():
     ws = _wb()[ABA]
-    assert "LEGENDA" in str(ws["A26"].value)
-    rotulos = [str(ws.cell(r, 1).value) for r in range(27, 31)]
+    # Etapa VTA: LEGENDA subiu de A26 para A25 (linha 21 removida).
+    assert "LEGENDA" in str(ws["A25"].value)
+    rotulos = [str(ws.cell(r, 1).value) for r in range(26, 30)]
     assert rotulos == ["FISCAL", "GCC", "AUTOMATICO", "PROJECAO"]
 
 

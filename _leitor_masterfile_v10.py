@@ -3023,6 +3023,81 @@ def _ler_resultados_xls(wb) -> dict[str, Any]:
     return resultado
 
 
+def _num_ou_none(v: Any) -> float | None:
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    return None
+
+
+def _ler_referencias_vta(wb) -> dict[str, Any]:
+    """Le as TRES REFERENCIAS do VTA da Tabela 1 (RESULTADOS!8:13) para AUDITORIA.
+
+    Superficie de leitura = a propria Tabela 1 executiva (rotulos + valores +
+    situacao), espelho de MEMORIA_RESULTADOS!W48/W50/W51/W52. Uso EXCLUSIVO de
+    apresentacao/auditoria nos documentos: NUNCA substitui VTA_FINAL/B26. Valores
+    vem do cache (data_only): sem recalculo, tudo None (fail-closed, sem inventar).
+
+    Classificacao fixa:
+      * forma1 (posicao atual)        -> REFERENCIA AUDITAVEL (vazia sem CICLO)
+      * forma2 (ultima abertura)      -> REFERENCIA AUDITAVEL
+      * forma3 (integral reajustado)  -> COMPARATIVO (nunca oficial)
+    """
+    out: dict[str, Any] = {
+        "disponivel": False,
+        "forma1_posicao_atual": None,
+        "forma2_ultima_abertura": None,
+        "forma3_integral_reajustado": None,
+        "reconciliacao_valor": None,
+        "reconciliacao_status": None,
+        "forma1_situacao": None,
+        "forma2_situacao": None,
+        "ciclo_ultima_abertura": None,
+        "fallback_razao": None,
+        "ciclo_vigente": None,
+        "data_posicao_atual": None,
+        "posicao_atual_disponivel": False,
+        "fontes": {
+            "forma1": "MEMORIA_RESULTADOS!W50 (RESULTADOS!B10)",
+            "forma2": "MEMORIA_RESULTADOS!W48 (RESULTADOS!B11)",
+            "forma3": "comparativo_VTA!B208 (RESULTADOS!B12)",
+            "reconciliacao": "MEMORIA_RESULTADOS!W51/W52 (RESULTADOS!B13/H13)",
+            "data_posicao": "CICLO_EM_EXECUCAO!D5",
+            "ciclo_vigente": "CONTROLE!B2",
+        },
+    }
+    if "RESULTADOS" not in wb.sheetnames:
+        return out
+    res = wb["RESULTADOS"]
+    out["disponivel"] = True
+    out["forma1_posicao_atual"] = _num_ou_none(res["B10"].value)
+    out["forma2_ultima_abertura"] = _num_ou_none(res["B11"].value)
+    out["forma3_integral_reajustado"] = _num_ou_none(res["B12"].value)
+    out["reconciliacao_valor"] = _num_ou_none(res["B13"].value)
+    st10, st11, st13 = res["H10"].value, res["H11"].value, res["H13"].value
+    out["forma1_situacao"] = str(st10).strip() if st10 not in (None, "") else None
+    out["forma2_situacao"] = str(st11).strip() if st11 not in (None, "") else None
+    out["reconciliacao_status"] = str(st13).strip() if st13 not in (None, "") else None
+    if "MEMORIA_RESULTADOS" in wb.sheetnames:
+        mem = wb["MEMORIA_RESULTADOS"]
+        w46 = mem["W46"].value
+        if isinstance(w46, (int, float)) and not isinstance(w46, bool):
+            out["ciclo_ultima_abertura"] = int(w46)
+        w47 = mem["W47"].value
+        out["fallback_razao"] = str(w47).strip() if w47 not in (None, "") else None
+    if "CONTROLE" in wb.sheetnames:
+        b2 = wb["CONTROLE"]["B2"].value
+        out["ciclo_vigente"] = str(b2).strip() if b2 not in (None, "") else None
+    if "CICLO_EM_EXECUCAO" in wb.sheetnames:
+        ciclo = wb["CICLO_EM_EXECUCAO"]
+        d5 = ciclo["D5"].value
+        out["data_posicao_atual"] = _norm_data(d5) if d5 not in (None, "") else None
+        a9 = ciclo["A9"].value  # total: nao-vazio => posicao completa e valida
+        out["posicao_atual_disponivel"] = isinstance(a9, (int, float)) and not isinstance(a9, bool)
+    return out
+
+
 def _detectar_versao(wb) -> str:
     if "CONTROLE" in wb.sheetnames:
         val = wb["CONTROLE"]["B10"].value
@@ -3240,6 +3315,9 @@ def ler_masterfile_v10(
     # RESULTADOS (novo modelo): valores nomeados para reconciliacao/auditoria
     # XLS x Python — nunca fonte exclusiva de calculo.
     res["resultados_xls"] = _ler_resultados_xls(wb)
+    # Tres referencias do VTA (auditoria/apresentacao): posicao atual, ultima
+    # abertura e integral reajustado. Nunca substitui o VTA oficial (B26).
+    res["referencias_vta"] = _ler_referencias_vta(wb)
 
     # Cadastro visivel de itens do contrato (fallback de VU/QTD_CONTRATADA
     # quando as abas ocultas nao vierem populadas pela Calculadora).

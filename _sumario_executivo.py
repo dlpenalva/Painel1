@@ -128,6 +128,9 @@ def montar_dados_sumario_executivo(
         "aditivos": _montar_secao_aditivos(dados_op, parametros),
         "observacoes": _montar_observacoes(objeto, pendencias),
         "campos_nao_confiaveis": sorted(campos_nc),
+        # Tres referencias do VTA (auditoria): posicao atual / ultima abertura /
+        # integral reajustado. Espelho de RESULTADOS!Tabela 1; nunca oficial.
+        "referencias_vta": leitura.get("referencias_vta") or {},
     }
 
 
@@ -784,6 +787,7 @@ def gerar_sumario_executivo_pdf(dados: dict[str, Any]) -> bytes:
 
     _bloco_identificacao(historia, dados, estilos)
     _bloco_sintese(historia, dados, estilos)
+    _bloco_referencias_vta_pdf(historia, dados, estilos)
     _bloco_ciclos(historia, dados, estilos)
     _bloco_financeiro(historia, dados, estilos)
     _bloco_itens(historia, dados, estilos)
@@ -1255,6 +1259,87 @@ def _bloco_aditivos(historia, dados, estilos) -> None:
         [largura * 0.40, largura * 0.12, largura * 0.24, largura * 0.24],
         estilos, alinhamentos_direita={2},
     ))
+
+
+def _ref_data_pos(valor: Any) -> str:
+    if valor is None or (isinstance(valor, str) and not valor.strip()):
+        return ""
+    try:
+        return valor.strftime("%d/%m/%Y")
+    except AttributeError:
+        return str(valor).strip()
+
+
+def _bloco_referencias_vta_pdf(historia, dados, estilos) -> None:
+    """Tres referencias do VTA (auditavel/comparativo) — nunca substitui o oficial.
+
+    Consome a posicao mais atual valida (FORMA 1) quando disponivel; caso
+    contrario apresenta a ultima abertura completa (FORMA 2) e informa
+    explicitamente a condicao, sem apresentar a abertura como posicao atual.
+    """
+    ref = dados.get("referencias_vta") or {}
+    if not ref.get("disponivel"):
+        return
+    historia.append(_paragrafo(
+        "Referências auditáveis do Valor Total Atualizado", estilos["secao"]
+    ))
+    sintese = dados.get("sintese") or {}
+    oficial = sintese.get("vta")
+    if oficial is None:
+        oficial = sintese.get("vta_previa")
+
+    data_pos = _ref_data_pos(ref.get("data_posicao_atual"))
+    ciclo_vig = ref.get("ciclo_vigente")
+    ciclo_ab = ref.get("ciclo_ultima_abertura")
+    f1 = ref.get("forma1_posicao_atual")
+    contexto = []
+    if data_pos:
+        contexto.append(f"data de corte da posição atual: {data_pos}")
+    elif f1 is None:
+        contexto.append(
+            "posição atual não informada — referência pela última posição de "
+            "abertura completa"
+        )
+    if ciclo_vig:
+        contexto.append(f"ciclo vigente: {ciclo_vig}")
+    if ciclo_ab is not None:
+        contexto.append(f"última abertura disponível: C{ciclo_ab}")
+    if contexto:
+        historia.append(_paragrafo("; ".join(contexto).capitalize() + ".",
+                                   estilos["normal"]))
+    historia.append(_paragrafo(
+        "O valor oficial, com efeito jurídico, permanece o da cadeia homologada "
+        "do Valor Total Atualizado do Contrato. As referências abaixo são apenas "
+        "para conferência.", estilos["normal"]))
+
+    largura = _largura_util()
+    marc = "Não informada"
+
+    def _m(v: Any) -> str:
+        return formatar_moeda(v) if isinstance(v, (int, float)) else marc
+
+    linhas = [
+        ["Referência", "Valor", "Classificação"],
+        ["Valor Total Atualizado (cadeia homologada)", _m(oficial), "OFICIAL"],
+        ["VTA pela posição atual do contrato",
+         marc if f1 is None else _m(f1), "REFERÊNCIA AUDITÁVEL"],
+        ["VTA pela última posição de abertura disponível",
+         _m(ref.get("forma2_ultima_abertura")), "REFERÊNCIA AUDITÁVEL"],
+        ["Contrato original integralmente reajustado",
+         _m(ref.get("forma3_integral_reajustado")), "COMPARATIVO"],
+    ]
+    historia.append(_tabela(
+        linhas, [largura * 0.50, largura * 0.25, largura * 0.25],
+        estilos, alinhamentos_direita={1},
+    ))
+    rec_v = ref.get("reconciliacao_valor")
+    rec_s = ref.get("reconciliacao_status")
+    if rec_s or isinstance(rec_v, (int, float)):
+        txt = "Reconciliação (posição atual − última abertura): "
+        txt += _m(rec_v) if isinstance(rec_v, (int, float)) else marc
+        if rec_s:
+            txt += f" — status: {rec_s}"
+        historia.append(_paragrafo(txt + ".", estilos["normal"]))
 
 
 def _bloco_observacoes(historia, dados, estilos) -> None:

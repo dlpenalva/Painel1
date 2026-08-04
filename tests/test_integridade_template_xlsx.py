@@ -53,7 +53,8 @@ FORMULAS_POR_ABA = {
     # x 200 linhas 3:202) via INDIRECT+ISERROR sobre CICLO_EM_EXECUCAO.
     "itens_RC": 5000,
     "historico_VU": 3592,
-    "cobertura_temporal": 15,
+    # Etapa VTA: -1 (linha "Fonte temporal de conferencia" removida; sem consumidor).
+    "cobertura_temporal": 14,
     # 3762 anteriores + 11 referencias para a tabela manual unica.
     # 26G: +5 (T26/T27 completude do remanescente; T28:T30 PCs sem efeito).
     # Etapa VTA-posicoes: +212 do bloco auxiliar das 3 referencias
