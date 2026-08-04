@@ -54,7 +54,15 @@ def test_titulo_e_banners():
 def test_reusa_painel_posicao_referencia():
     ws = _wb()[ABA]
     assert ws["B7"].value == "=posicao_referencia!$I$6"
-    assert ws["B8"].value == '=IF(posicao_referencia!$I$2,posicao_referencia!$I$5,"")'
+    # Correcao pos-implementacao: B8 (cobertura fisica ATUAL confirmada) passou a
+    # ter origem automatica em CICLO_EM_EXECUCAO (D5 quando A9 valido), via
+    # INDIRECT+ISERROR (compat. com arquivos sem a aba). B7/B11/B22/B23 seguem
+    # reutilizando posicao_referencia.
+    assert ws["B8"].value == (
+        '=IF(ISERROR(INDIRECT("CICLO_EM_EXECUCAO!A9")),"",'
+        'IF(INDIRECT("CICLO_EM_EXECUCAO!A9")="","",'
+        'INDIRECT("CICLO_EM_EXECUCAO!D5")))'
+    )
     assert ws["B11"].value == "=posicao_referencia!$I$5"
     assert ws["B22"].value == "=posicao_referencia!$I$5"     # observada (data)
     assert ws["B23"].value == "=posicao_referencia!$I$8"     # observada (origem)

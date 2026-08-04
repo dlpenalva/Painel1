@@ -750,9 +750,15 @@ def _criar_aba_itemizada(wb):
         ),
     )
 
+    # Protecao com celulas manuais editaveis. ATENCAO: em OOXML os atributos
+    # selectLockedCells/selectUnlockedCells sao flags de DESABILITAR selecao.
+    # O valor True em selectUnlockedCells impedia SELECIONAR (e portanto editar)
+    # exatamente as celulas de entrada (D5 e C13:C211), embora estivessem
+    # unlocked. Correcao: selectUnlockedCells=False -> os campos manuais ficam
+    # selecionaveis e editaveis; as formulas seguem protegidas por locked=True.
     ws.protection.sheet = True
     ws.protection.selectLockedCells = False
-    ws.protection.selectUnlockedCells = True
+    ws.protection.selectUnlockedCells = False
     _registrar_nome_layout(wb)
     return ws
 

@@ -73,7 +73,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # auxiliar MEMORIA_RESULTADOS!V/W/AB e fotografia atual itens_RC!Q:Y via
 # INDIRECT+ISERROR sobre CICLO_EM_EXECUCAO. B26/T25 homologados intactos
 # (owner: tools/aplicar_vta_posicoes_tabela1.py) — pin reancorado.
-SHA256_TEMPLATE_ESPERADO = "c08622acfd0acb9e32a23866cbe3dd2b43b78840a7edb74d9142bac13433de4b"
+# Correcoes pos-implementacao: cobertura_temporal A8/B8/C8 = "COBERTURA FISICA
+# ATUAL CONFIRMADA ATE", origem automatica em CICLO_EM_EXECUCAO!D5 quando A9
+# valido (owner: tools/aplicar_cobertura_ciclo.py). A editabilidade de
+# CICLO_EM_EXECUCAO (selectUnlockedCells) foi corrigida no gerador em runtime e
+# NAO altera este template. — pin reancorado.
+SHA256_TEMPLATE_ESPERADO = "6ef35c996227c0ad51a81e0383178a9502b0197b382667d81faddd90c10c0a49"
 
 
 def _dados_calculadora() -> dict:

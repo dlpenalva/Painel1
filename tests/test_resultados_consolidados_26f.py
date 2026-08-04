@@ -493,6 +493,10 @@ def test_fator_historico_fail_closed_e_rotulos_complementares(wb):
     assert "COUNT(parametros!$E$3:$E$6)=4" in formula
     assert 'parametros!$F$6,""' in formula
     cobertura = wb["cobertura_temporal"]
-    assert "ATUAL confirmada" in cobertura["A8"].value
-    assert "QTD_REM_ATUAL" in cobertura["C8"].value
+    # Correcao pos-implementacao: rotulo e ajuda da cobertura fisica ATUAL
+    # passaram a refletir a origem automatica em CICLO_EM_EXECUCAO (sem instruir
+    # o antigo preenchimento manual QTD_REM_ATUAL).
+    assert "COBERTURA FISICA ATUAL CONFIRMADA" in cobertura["A8"].value.upper()
+    assert "CICLO_EM_EXECUCAO" in cobertura["C8"].value
+    assert "QTD_REM_ATUAL" not in cobertura["C8"].value
     assert wb["financeiro"]["D2"].number_format == "0.0000"
