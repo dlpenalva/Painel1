@@ -34,6 +34,7 @@ from _sumario_executivo import (
     _num_ou_none,
 )
 from _objeto_processo_reajuste import obter_objeto_processo_reajuste
+from _reajuste_utils import FRASE_SEM_CICLOS_COMPUTADOS, expressao_quantidade_ciclos
 from _sanitizacao_documental import remover_emojis_leve
 
 # ---------------------------------------------------------------------------
@@ -1349,14 +1350,22 @@ def _ds_par4_quadro1(doc: Document, dados: dict, cm: dict) -> None:
         _run_campo_manual(p, "Valor original do contrato")
         _adicionar_run(p, ".")
     else:
-        n = len(dados.get("ciclos_reajuste") or [])
-        _adicionar_run(p, f"A análise de reajuste considerou {n} ciclo(s), com variação acumulada de ")
-        var = dados.get("var_acumulada")
-        if var is not None:
-            _adicionar_run(p, _fmt_pct_doc(var), negrito=True)
+        # Conta os ciclos efetivamente considerados, nao as linhas do Quadro 1:
+        # ciclos "Fora da apuracao" continuam no quadro para rastreabilidade,
+        # mas afirmar que foram considerados contradiz o proprio quadro.
+        # Mesma fonte canonica ja usada no item 3 e no Quadro 1 do Termo.
+        expressao = expressao_quantidade_ciclos(len(dados.get("ciclos_computados") or []))
+        if expressao is None:
+            _adicionar_run(p, FRASE_SEM_CICLOS_COMPUTADOS)
         else:
-            _run_campo_manual(p, "Variacao acumulada")
-        _adicionar_run(p, ". O valor original do contrato informado foi de ")
+            _adicionar_run(p, f"A análise de reajuste considerou {expressao}, com variação acumulada de ")
+            var = dados.get("var_acumulada")
+            if var is not None:
+                _adicionar_run(p, _fmt_pct_doc(var), negrito=True)
+            else:
+                _run_campo_manual(p, "Variacao acumulada")
+            _adicionar_run(p, ".")
+        _adicionar_run(p, " O valor original do contrato informado foi de ")
         _valor_moeda_ou_marcador(p, _campo(cm, "valor_original_contrato"), "Valor original do contrato")
         _adicionar_run(p, ".")
 

@@ -1,4 +1,97 @@
 import re
+import unicodedata
+
+# --- Quantidade de ciclos efetivamente considerados na apuracao -------------
+# Regra unica de contagem e de redacao, compartilhada por todos os documentos.
+# A frase do documento NAO pode contar linhas de quadro: um ciclo listado como
+# "Fora da apuracao" aparece no quadro para rastreabilidade, mas nao foi
+# considerado na analise.
+
+_CHAVES_COMPUTAR = ("computar", "COMPUTAR", "computar_nesta_apuracao",
+                    "COMPUTAR_NESTA_APURACAO")
+_CHAVES_TRATAMENTO = ("Tratamento financeiro do ciclo", "Tratamento financeiro",
+                      "tratamento_financeiro")
+_CHAVES_CLASSIFICACAO = ("Situação", "Situacao", "situacao",
+                         "Classificação", "Classificacao", "classificacao")
+
+# Classificacoes que excluem o ciclo da apuracao de forma explicita.
+_CLASSIFICACOES_EXCLUIDAS = ("fora da apuracao", "nao computado",
+                             "nao aplicavel", "nao se aplica")
+
+
+def _texto_normalizado(valor):
+    texto = "" if valor is None else str(valor)
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    return " ".join(texto.lower().split())
+
+
+_AUSENTE = object()
+
+
+def _valor_por_chave(ciclo, chaves):
+    """Devolve o valor da primeira chave PRESENTE; _AUSENTE se nenhuma existir.
+
+    A presenca da chave importa e e distinta do valor vazio: um ciclo que traz
+    COMPUTAR em branco nao esta autorizado ao calculo e NAO deve cair na regra
+    seguinte — vazio nunca vira "considerado".
+    """
+    for chave in chaves:
+        if chave in ciclo:
+            return ciclo.get(chave)
+    return _AUSENTE
+
+
+def ciclo_computado(ciclo):
+    """True quando o ciclo integra efetivamente a apuracao.
+
+    Ordem de precedencia (fonte canonica primeiro):
+      1. marcacao COMPUTAR do arquivo (parametros!COMPUTAR_NESTA_APURACAO);
+      2. tratamento financeiro consolidado ("Apurar");
+      3. classificacao/situacao exibida no quadro, que so exclui quando diz
+         explicitamente que o ciclo esta fora.
+    """
+    if not isinstance(ciclo, dict):
+        return False
+
+    marca = _valor_por_chave(ciclo, _CHAVES_COMPUTAR)
+    if marca is not _AUSENTE:
+        return _texto_normalizado(marca) == "sim"
+
+    tratamento = _valor_por_chave(ciclo, _CHAVES_TRATAMENTO)
+    if tratamento is not _AUSENTE:
+        return "apurar" in _texto_normalizado(tratamento)
+
+    classificacao = _valor_por_chave(ciclo, _CHAVES_CLASSIFICACAO)
+    if classificacao is not _AUSENTE:
+        texto = _texto_normalizado(classificacao)
+        return not any(marcador in texto for marcador in _CLASSIFICACOES_EXCLUIDAS)
+
+    return True
+
+
+def contar_ciclos_computados(ciclos):
+    """Quantidade de ciclos efetivamente considerados na apuracao."""
+    return sum(1 for ciclo in ciclos or [] if ciclo_computado(ciclo))
+
+
+def expressao_quantidade_ciclos(quantidade):
+    """'1 ciclo' / 'N ciclos'. None quando nenhum ciclo foi computado.
+
+    None sinaliza ao chamador que a frase de contagem nao deve ser afirmada:
+    sem ciclo computado nao houve analise de ciclos a declarar.
+    """
+    try:
+        total = int(quantidade)
+    except (TypeError, ValueError):
+        return None
+    if total <= 0:
+        return None
+    return "1 ciclo" if total == 1 else f"{total} ciclos"
+
+
+FRASE_SEM_CICLOS_COMPUTADOS = "Não foram identificados ciclos computados na apuração."
+
 
 # Etapa 26H: padrao canonico de NOVO ITEM (cadastro fisico via aditivo).
 # Etapa 26H.2: nomenclatura funcional aprovada = "N" + EXATAMENTE 3 algarismos

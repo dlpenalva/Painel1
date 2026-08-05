@@ -44,6 +44,11 @@ def aplicar_css_aditivos25_compacto():
     )
 # <<< UX_ADITIVOS_25_COMPACTO
 from _ui_utils import render_marca_topo, render_aviso_privacidade
+from _reajuste_utils import (
+    FRASE_SEM_CICLOS_COMPUTADOS,
+    contar_ciclos_computados,
+    expressao_quantidade_ciclos,
+)
 
 def moeda(valor):
     try:
@@ -741,7 +746,18 @@ def texto_contexto_analise(adm, res):
     fator = res.get("fator_acumulado", (adm or {}).get("fator_acumulado", (adm or {}).get("fator", 1.0)))
     df_ciclos = _ciclos_df_para_relatorio(adm, res)
     ciclos_validos = df_ciclos[df_ciclos["Ciclo"].astype(str).str.upper() != "C0"] if not df_ciclos.empty else pd.DataFrame()
-    qtd_ciclos = len(ciclos_validos)
+    # A frase declara os ciclos efetivamente considerados; o quadro segue
+    # listando todos, inclusive os classificados como fora da apuracao.
+    # A marcacao canonica vive em res["df_ciclos"], antes da derivacao acima.
+    df_origem = res.get("df_ciclos") if isinstance(res, dict) else None
+    if isinstance(df_origem, pd.DataFrame) and not df_origem.empty:
+        registros_origem = [
+            registro for registro in df_origem.to_dict("records")
+            if str(registro.get("Ciclo") or "").strip().upper() != "C0"
+        ]
+        expressao_ciclos = expressao_quantidade_ciclos(contar_ciclos_computados(registros_origem))
+    else:
+        expressao_ciclos = expressao_quantidade_ciclos(len(ciclos_validos))
     classificacoes = []
     if not ciclos_validos.empty:
         for _, row in ciclos_validos.iterrows():
@@ -767,10 +783,14 @@ def texto_contexto_analise(adm, res):
         )
     else:
         modo_txt = "O bloco financeiro serve para apurar o valor represado/retroativo. "
+    if expressao_ciclos:
+        frase_ciclos = f"Foram considerados {expressao_ciclos} de reajuste: {resumo_ciclos}. "
+    else:
+        frase_ciclos = f"{FRASE_SEM_CICLOS_COMPUTADOS} Ciclos registrados: {resumo_ciclos}. "
     return (
         "A análise consolida a admissibilidade dos pleitos de reajuste e a quantificação financeira apurada com base no Arquivo de Coleta. "
         "O C0 é tratado como ciclo-base inicial, sem aplicação de reajuste. "
-        f"Foram considerados {qtd_ciclos} ciclo(s) de reajuste: {resumo_ciclos}. "
+        f"{frase_ciclos}"
         f"Índice utilizado: {indice}. Fator acumulado considerado: {fator_fmt(fator)}. "
         "O Valor Total Atualizado do Contrato mantém a composição execução atualizada por ciclo + saldo remanescente atualizado + aditivos/supressões computáveis, quando aplicáveis. "
         f"{modo_txt}"
