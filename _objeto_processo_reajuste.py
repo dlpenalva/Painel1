@@ -351,6 +351,20 @@ def _montar_contrato(leitura: dict[str, Any]) -> dict[str, Any]:
     parametros = leitura.get("parametros_v10") or {}
     limitacoes: list[str] = []
 
+    # PAYLOAD CANONICO UNICO. No metodo PC, o retroativo oficial e a medida
+    # "ate o corte" do payload dos PCs — ja sem os PCs sem efeito financeiro e
+    # sem os posteriores a data de corte. Os seis documentos, os boxes e o XLS
+    # passam a ler a MESMA verdade. Sem PCs lidos (ou em outro metodo), o valor
+    # do XLS permanece como fonte, sem regressao.
+    totais_pc = (leitura.get("itens_pc_v10") or {}).get("totais_canonicos") or {}
+    ate_o_corte = totais_pc.get("ate_o_corte") or {}
+    modo_leitura = str(controle.get("modo") or "").strip().upper()
+    metodo_pc = "PC" in modo_leitura or "PEDIDO" in modo_leitura
+    retroativo_canonico = (
+        ate_o_corte.get("retroativo")
+        if metodo_pc and (ate_o_corte.get("quantidade") or 0) else None
+    )
+
     dados_basicos = {
         "modo_leitura": controle.get("modo"),
         "modo_leitura_original": controle.get("modo_bruto"),
@@ -359,7 +373,15 @@ def _montar_contrato(leitura: dict[str, Any]) -> dict[str, Any]:
         "valor_total_atualizado_oficial": resumo.get("valor_total_atualizado"),
         "execucao_atualizada_oficial": resumo.get("execucao_atualizada"),
         "saldo_remanescente_oficial": resumo.get("saldo_remanescente"),
-        "retroativo_oficial": resumo.get("retroativo"),
+        "retroativo_oficial": (
+            retroativo_canonico if retroativo_canonico is not None
+            else resumo.get("retroativo")
+        ),
+        "origem_retroativo_oficial": (
+            "totais_canonicos_pc.ate_o_corte" if retroativo_canonico is not None
+            else "resultados_xls"
+        ),
+        "totais_canonicos_pc": totais_pc,
     }
 
     data_corte = controle.get("data_corte")

@@ -88,7 +88,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # passou a distinguir vazio de zero (INDIRECT sobre celula vazia devolvia 0, o
 # que transformava pendencia em "zero confirmado"). As colunas oficiais
 # G/K/O/S/W/Y e as travas B26/T25 seguem intactas (formula e valor). — reancorado.
-SHA256_TEMPLATE_ESPERADO = "e740a9737245aeaa70573702f6a09d5b5bd59c1c7549a89f75e196711927710e"
+SHA256_TEMPLATE_ESPERADO = "7da0ca1aeda333b910771d64b84d48ef399ed9e114cee9786a37408998a9d835"
 
 
 def _dados_calculadora() -> dict:

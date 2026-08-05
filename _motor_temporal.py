@@ -246,6 +246,64 @@ def enquadrar_data_pc(
     return resultado.ciclo
 
 
+# --------------------------------------------------------------------------- #
+# Enquadramento temporal canonico de um PC (ciclo x intervalo precluso)
+# --------------------------------------------------------------------------- #
+ENQ_CICLO = "CICLO"
+ENQ_INTERVALO_PRECLUSO = "INTERVALO_PRECLUSO"
+ENQ_INDETERMINADO = "INDETERMINADO"
+
+
+@dataclass(frozen=True)
+class EnquadramentoTemporalPC:
+    """Resposta unica sobre onde a DATA_PC cai na linha temporal.
+
+    ``INTERVALO_PRECLUSO`` so pode nascer de uma lacuna contratual EXPRESSA na
+    fonte. Ciclos consecutivos sao contiguos por definicao (12 competencias
+    cada), portanto nao existe intervalo derivado do calendario: uma lacuna
+    entre C(n) e C(n+1) e sintoma de calendario corrompido — tipicamente o
+    INICIO_EFEITO_FINANCEIRO usado indevidamente como inicio de ciclo — e
+    resolve-se como ``INDETERMINADO``, que exige revisao.
+    """
+    tipo: str
+    ciclo: str | None = None
+    ciclo_anterior: str | None = None
+    ciclo_seguinte: str | None = None
+    rotulo: str = ""
+
+    @property
+    def valido(self) -> bool:
+        return self.tipo in (ENQ_CICLO, ENQ_INTERVALO_PRECLUSO)
+
+    @property
+    def e_precluso(self) -> bool:
+        return self.tipo == ENQ_INTERVALO_PRECLUSO
+
+
+def classificar_enquadramento_pc(
+    data_pc: Any,
+    por_ciclo: dict[str, dict[str, Any]],
+    ciclo_conferencia: str = "",
+) -> EnquadramentoTemporalPC:
+    """Enquadra a DATA_PC em um ciclo da linha temporal, ou indeterminado.
+
+    NAO existe categoria de intervalo derivada do calendario. Cada ciclo tem
+    exatamente 12 competencias consecutivas e ciclos consecutivos sao
+    contiguos, de modo que nenhuma data pode cair "entre" dois ciclos por
+    consequencia do INICIO_EFEITO_FINANCEIRO. Se ainda assim a linha temporal
+    apresentar lacuna, o registro fica INDETERMINADO e exige revisao — o
+    calendario e que precisa ser corrigido, nao o PC reclassificado.
+    """
+    data_norm = _como_data(data_pc)
+    if data_norm is None:
+        return EnquadramentoTemporalPC(ENQ_INDETERMINADO)
+
+    ciclo = enquadrar_data_pc(data_norm, por_ciclo, ciclo_conferencia)
+    if ciclo:
+        return EnquadramentoTemporalPC(ENQ_CICLO, ciclo=ciclo)
+    return EnquadramentoTemporalPC(ENQ_INDETERMINADO)
+
+
 def _itens_pc(res_leitor: dict[str, Any]) -> list[dict[str, Any]]:
     bloco = res_leitor.get("itens_pc")
     if isinstance(bloco, dict):

@@ -18,13 +18,24 @@ dependencia de execucao aqui.
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from typing import Any, Iterable
 import unicodedata
 
 
 CICLOS = ("C0", "C1", "C2", "C3", "C4")
 _ORDEM_CICLOS = {ciclo: i for i, ciclo in enumerate(CICLOS)}
+
+# --------------------------------------------------------------------------- #
+# REGRA CANONICA DO CALENDARIO CONTRATUAL (fonte unica)
+# --------------------------------------------------------------------------- #
+# Cada ciclo tem EXATAMENTE 12 competencias mensais consecutivas. As datas de
+# inicio e fim decorrem da data-base/aniversario contratual e de mais nada: a
+# janela usada para calcular o indice e o INICIO_EFEITO_FINANCEIRO sao
+# conceitos independentes e NUNCA deslocam DATA_INICIO, DATA_FIM nem o ciclo
+# seguinte. O inicio do efeito financeiro decide apenas a partir de qual
+# competencia DAQUELE ciclo o reajuste produz efeitos.
+MESES_POR_CICLO = 12
 
 
 @dataclass(frozen=True)
@@ -335,6 +346,122 @@ def _normalizar_ciclos(ciclos: Any) -> list[Any]:
             return list((ciclos.get("por_ciclo") or {}).values())
         return list(ciclos.values())
     return list(ciclos or [])
+
+
+def somar_meses(referencia: date, meses: int) -> date:
+    """Soma meses preservando o dia quando o mes de destino o comporta."""
+    total = referencia.year * 12 + (referencia.month - 1) + int(meses)
+    ano, indice = divmod(total, 12)
+    mes = indice + 1
+    if mes == 12:
+        ultimo_dia = 31
+    else:
+        ultimo_dia = (date(ano, mes + 1, 1) - timedelta(days=1)).day
+    return date(ano, mes, min(referencia.day, ultimo_dia))
+
+
+def competencias_do_ciclo(data_inicio: Any) -> tuple[date, ...]:
+    """As 12 competencias mensais consecutivas de um ciclo (dia 1 de cada mes).
+
+    Nao depende de INICIO_EFEITO_FINANCEIRO: meses anteriores ao inicio do
+    efeito integram o ciclo do mesmo jeito, apenas sem efeito financeiro.
+    """
+    inicio = _data_real(data_inicio)
+    if inicio is None:
+        return ()
+    primeiro = inicio.replace(day=1)
+    return tuple(somar_meses(primeiro, i) for i in range(MESES_POR_CICLO))
+
+
+def calendario_ciclos_contratuais(
+    ancora: Any,
+    ciclo_ancora: str = "C1",
+) -> dict[str, dict[str, date]]:
+    """Materializa C0-C4 a partir de UMA unica ancora contratual.
+
+    ``ancora`` e a DATA_INICIO do ciclo ``ciclo_ancora`` (por padrao o primeiro
+    aniversario contratual, inicio de C1). Todos os demais ciclos decorrem dela
+    em blocos exatos de 12 meses, para tras e para a frente. E a fonte unica do
+    calendario: nenhuma outra data (janela do indice, data do pedido, inicio do
+    efeito financeiro) participa desta materializacao.
+    """
+    inicio_ancora = _data_real(ancora)
+    if inicio_ancora is None:
+        alerta = _alerta(
+            "ERRO_GRAVE",
+            "ANCORA_CALENDARIO_INVALIDA",
+            f"Ancora do calendario contratual nao e uma data real: {ancora!r}.",
+        )
+        raise ErroGraveMotorPosicaoContratual(alerta.mensagem, (alerta,))
+    nome_ancora = _ciclo_normalizado(ciclo_ancora) or "C1"
+    if nome_ancora not in CICLOS:
+        alerta = _alerta(
+            "ERRO_GRAVE",
+            "CICLO_INVALIDO",
+            f"Ciclo-ancora desconhecido: {ciclo_ancora!r}; apenas C0-C4.",
+        )
+        raise ErroGraveMotorPosicaoContratual(alerta.mensagem, (alerta,))
+
+    base = inicio_ancora.replace(day=1)
+    indice_ancora = _ORDEM_CICLOS[nome_ancora]
+    calendario: dict[str, dict[str, date]] = {}
+    for ciclo in CICLOS:
+        deslocamento = (_ORDEM_CICLOS[ciclo] - indice_ancora) * MESES_POR_CICLO
+        inicio = somar_meses(base, deslocamento)
+        fim = somar_meses(inicio, MESES_POR_CICLO) - timedelta(days=1)
+        calendario[ciclo] = {
+            "ciclo": ciclo,
+            "data_inicio": inicio,
+            "data_fim": fim,
+        }
+    return calendario
+
+
+def divergencias_calendario_canonico(ciclos: Any) -> list[str]:
+    """Divergencias do calendario informado ante a regra dos 12 meses.
+
+    Devolve lista vazia quando cada ciclo tem exatamente 12 competencias
+    consecutivas e os ciclos sao contiguos (sem lacuna e sem sobreposicao).
+    Nao levanta excecao: e um diagnostico consumido por CHECK/STATUS.
+    """
+    registros = _normalizar_ciclos(ciclos)
+    por_ciclo: dict[str, tuple[date | None, date | None]] = {}
+    for reg in registros:
+        nome = _ciclo_normalizado(_valor(reg, "ciclo"))
+        if nome in CICLOS:
+            por_ciclo[nome] = (
+                _data_real(_valor(reg, "data_inicio")),
+                _data_real(_valor(reg, "data_fim")),
+            )
+
+    problemas: list[str] = []
+    for ciclo in CICLOS:
+        inicio, fim = por_ciclo.get(ciclo, (None, None))
+        if inicio is None or fim is None:
+            continue
+        esperado = somar_meses(inicio.replace(day=1), MESES_POR_CICLO) - timedelta(days=1)
+        if inicio.day != 1:
+            problemas.append(
+                f"{ciclo}: DATA_INICIO {inicio.isoformat()} nao e o primeiro dia do mes."
+            )
+        if fim != esperado:
+            problemas.append(
+                f"{ciclo}: periodo {inicio.isoformat()}..{fim.isoformat()} nao "
+                f"corresponde a 12 competencias consecutivas (fim esperado "
+                f"{esperado.isoformat()})."
+            )
+    for anterior, seguinte in zip(CICLOS, CICLOS[1:]):
+        _, fim_ant = por_ciclo.get(anterior, (None, None))
+        inicio_seg, _ = por_ciclo.get(seguinte, (None, None))
+        if fim_ant is None or inicio_seg is None:
+            continue
+        if inicio_seg != fim_ant + timedelta(days=1):
+            problemas.append(
+                f"{anterior}->{seguinte}: ciclos nao contiguos ({fim_ant.isoformat()} "
+                f"seguido de {inicio_seg.isoformat()}); nenhuma competencia pode "
+                f"ficar fora dos ciclos entre ciclos consecutivos."
+            )
+    return problemas
 
 
 def validar_linha_temporal(ciclos: Any) -> tuple[CicloContratual, ...]:

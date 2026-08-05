@@ -440,6 +440,19 @@ def adaptar_coleta_reajuste_para_documentos(
             "historico_vu": leitura.get("historico_vu") or {},
             "memoria_calculo": leitura.get("memoria_calculo") or {},
             "resultados_xls": leitura.get("resultados_xls") or {},
+            # Payload canonico unico dos PCs: as sete medidas separadas por
+            # significado (informado, ate o corte, enquadrado nos ciclos, com
+            # efeito, sem efeito no ciclo, intervalo precluso, retroativo). Os
+            # seis documentos e os boxes leem daqui — nenhum deles recalcula.
+            "totais_canonicos_pc": (
+                (leitura.get("itens_pc_v10") or {}).get("totais_canonicos") or {}
+            ),
+            "composicao_vta": leitura.get("composicao_vta") or {},
+            # Os proprios registros canonicos de itens_PC (ja enquadrados no
+            # ciclo, com efeito financeiro, valor considerado e marcador de
+            # corte). A Adequacao Orcamentaria na origem "Pedidos de Compra" le
+            # daqui, em vez de exigir redigitacao de NUMERO_PC/DATA_PC/VALOR_PC.
+            "itens_pc_v10": leitura.get("itens_pc_v10") or {},
             "_resultado_calculado_python": True,
         })
     return resultado_documental

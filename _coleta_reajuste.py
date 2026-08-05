@@ -169,14 +169,16 @@ def _ciclo_em_analise(ciclo: dict[str, Any]) -> bool:
 
 
 def _inicio_teorico(ciclo: dict[str, Any]) -> datetime | None:
+    """Início do ciclo declarado explicitamente pela calculadora.
+
+    Só o marco explícito (`inicio_ciclo`) serve de âncora do calendário
+    contratual. `data_base`/`periodo_inicio` são a janela do ÍNDICE — conceito
+    independente que jamais define DATA_INICIO/DATA_FIM nem desloca o ciclo
+    seguinte (ver `_montar_ciclos`).
+    """
     inicio_direto = _data(ciclo.get("inicio_ciclo"))
     if inicio_direto:
         return _primeiro_dia_mes(inicio_direto)
-    # Na calculadora, data_base/periodo_inicio é o início da janela do índice;
-    # o ciclo contratual se inicia no aniversário, doze meses depois.
-    ancora = _data(ciclo.get("data_base")) or _data(ciclo.get("periodo_inicio"))
-    if ancora:
-        return _primeiro_dia_mes(ancora + relativedelta(months=12))
     return None
 
 
@@ -197,19 +199,36 @@ def _montar_ciclos(dados: dict[str, Any]) -> tuple[list[dict[str, Any]], set[int
     if not alvos:
         raise ValueError("Nenhum ciclo foi marcado como objeto desta apuração.")
 
-    inicios = {n: inicio for n, ciclo in fornecidos.items() if (inicio := _inicio_teorico(ciclo))}
-    if not inicios:
-        ancora = _data(dados.get("data_base_original"))
+    # CALENDÁRIO CONTRATUAL — âncora única.
+    # Cada ciclo tem exatamente 12 competências mensais consecutivas. A âncora
+    # é tomada UMA vez (marco explícito mais antigo, senão a data-base original)
+    # e todos os demais ciclos decorrem dela em blocos de 12 meses. A janela do
+    # índice e o início do efeito financeiro não participam desta materialização.
+    explicitos = {n: inicio for n, ciclo in sorted(fornecidos.items())
+                  if (inicio := _inicio_teorico(ciclo))}
+    if explicitos:
+        ancora_numero = min(explicitos)
+        ancora_inicio = explicitos[ancora_numero]
+    else:
+        # Sem marco explícito, a âncora é a janela do índice do ciclo MAIS
+        # ANTIGO informado: só nele a janela coincide com o aniversário
+        # contratual. A janela dos ciclos SEGUINTES jamais é consultada — é ela
+        # que carrega o início do efeito financeiro e deslocava o calendário.
+        ancora_numero = min(fornecidos)
+        primeiro = fornecidos[ancora_numero]
+        ancora = (
+            _data(primeiro.get("data_base"))
+            or _data(primeiro.get("periodo_inicio"))
+            or _data(dados.get("data_base_original"))
+        )
         if not ancora:
             raise ValueError("Não foi possível identificar a data-base dos ciclos.")
-        inicios[min(fornecidos)] = _primeiro_dia_mes(ancora + relativedelta(months=12))
+        ancora_inicio = _primeiro_dia_mes(ancora + relativedelta(months=12))
 
-    # Preenche lacunas em blocos anuais, preservando os marcos explícitos da calculadora.
-    for numero in range(0, ultimo + 1):
-        if numero in inicios:
-            continue
-        referencia = min(inicios, key=lambda existente: abs(existente - numero))
-        inicios[numero] = inicios[referencia] + relativedelta(months=12 * (numero - referencia))
+    inicios = {
+        numero: ancora_inicio + relativedelta(months=12 * (numero - ancora_numero))
+        for numero in range(0, ultimo + 1)
+    }
 
     contexto = dados.get("contexto_contratual_anterior") or {}
     ultimo_contexto = _numero_ciclo(contexto.get("ultimo_ciclo_concedido"))

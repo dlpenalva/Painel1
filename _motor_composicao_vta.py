@@ -189,6 +189,33 @@ def _ciclo_num(ciclo: Any) -> int | None:
     return None
 
 
+def _valor_considerado(item: dict[str, Any]) -> float:
+    """Valor historico EFETIVAMENTE considerado de um PC.
+
+    Base paga somada ao retroativo reconhecido a pagar. PC sem efeito financeiro
+    e PC do intervalo precluso ficam no valor original — o fator matematico
+    integral existe como dado tecnico em VALOR_ATUALIZADO, mas nunca alimenta o
+    valor efetivo, o retroativo nem o VTA. Arquivos anteriores a essa medida
+    caem no comportamento anterior (VALOR_ATUALIZADO).
+    """
+    considerado = item.get("valor_historico_considerado")
+    if considerado not in (None, ""):
+        return _tofl(considerado)
+    return _tofl(item.get("valor_atualizado"))
+
+
+def _abertura(posicao: dict[str, Any], ciclo: int) -> Any:
+    """Fotografia da abertura do ciclo, sem aditivo de efeito posterior.
+
+    Cai em ``QTD_REM_AJUSTADA_Cn`` quando a camada temporal nao existe no
+    arquivo (modelos anteriores), preservando o resultado anterior.
+    """
+    valor = posicao.get(f"QTD_REM_ABERTURA_C{ciclo}")
+    if valor in (None, ""):
+        valor = posicao.get(f"QTD_REM_AJUSTADA_C{ciclo}")
+    return valor
+
+
 def _entra_no_calculo(item: dict[str, Any]) -> bool:
     return str(item.get("entra_no_calculo") or "Sim").strip().lower() in (
         "sim", "s", "true", "1"
@@ -237,26 +264,46 @@ def _composicao_vta_pc(
 
     vu_por_item = {h.get("item"): (h.get("vu_ciclos") or {}) for h in hist}
 
-    # Execucao PC por ciclo (VALOR_ATUALIZADO ja itemizado e arredondado).
+    # Execucao PC por ciclo. A medida e o VALOR_HISTORICO_CONSIDERADO (base paga
+    # + retroativo reconhecido): PC sem efeito financeiro entra pelo valor
+    # original, nunca pelo fator integral.
     pc_atual: dict[int, float] = {}
     pc_base: dict[int, float] = {}
     posteriores = 0
+    fora_do_corte = 0
     for it in itens_pc:
+        if not _entra_no_calculo(it):
+            continue
+        if not it.get("dentro_do_corte", True):
+            # PC posterior a data de corte unica: permanece no inventario do
+            # arquivo, mas nao entra em nenhum resultado ate o corte.
+            fora_do_corte += 1
+            continue
+        considerado = _valor_considerado(it)
+        # Nao ha categoria de execucao "entre ciclos": ciclos consecutivos sao
+        # contiguos e as competencias anteriores ao inicio do efeito financeiro
+        # pertencem ao proprio ciclo (efeito Nao, fator efetivo 1).
         n = _ciclo_num(it.get("ciclo"))
-        if n is None or not _entra_no_calculo(it):
+        if n is None:
             continue
         if n >= n_vig:
             # PC no corte vigente ou posterior: cobertura posterior e projecao,
             # nao desloca silenciosamente o corte oficial do VTA.
             posteriores += 1
             continue
-        pc_atual[n] = pc_atual.get(n, 0.0) + _tofl(it.get("valor_atualizado"))
+        pc_atual[n] = pc_atual.get(n, 0.0) + considerado
         pc_base[n] = pc_base.get(n, 0.0) + _tofl(it.get("valor_pc"))
     if posteriores:
         alertas.append(
             f"Composicao VTA-PC: {posteriores} PC(s) no ciclo vigente ({vigente}) "
             "ou posteriores nao entram na execucao (mesmo corte temporal; evita "
             "dupla contagem contra o remanescente). Seguem como diagnostico/projecao."
+        )
+    if fora_do_corte:
+        alertas.append(
+            f"Composicao VTA-PC: {fora_do_corte} PC(s) com DATA_PC posterior a "
+            "data de corte do contrato permanecem no inventario do arquivo e "
+            "nao compoem nenhum resultado ate o corte."
         )
 
     execucao: list[dict[str, Any]] = []
@@ -276,9 +323,9 @@ def _composicao_vta_pc(
         for p in posc:
             item = p.get("ITEM")
             vu_c0 = _tofl((vu_por_item.get(item) or {}).get("VU_C0"))
-            mov = _tofl(p.get("QTD_REM_AJUSTADA_C0")) - _tofl(
-                p.get("QTD_REM_AJUSTADA_C1")
-            )
+            # Movimentacao entre as ABERTURAS (fotografia temporalmente correta):
+            # aditivo com efeito no meio de C1 nao pode encolher a execucao de C0.
+            mov = _tofl(_abertura(p, 0)) - _tofl(_abertura(p, 1))
             c0_fisico += mov * vu_c0
         c0_fisico = round(c0_fisico, 2)
         if c0_fisico:
@@ -302,31 +349,90 @@ def _composicao_vta_pc(
             "fonte": "pc",
         })
 
-    # Remanescente fisico atualizado no ciclo vigente (item a item).
-    col_qtd = f"QTD_REM_AJUSTADA_C{n_vig}"
+    # Ciclo vigente: PRESENTE (execucao fisica ja informada pelo fiscal) e
+    # FUTURO (remanescente fisico atual x VU atualizado). A posicao fisica
+    # completa PREVALECE sobre qualquer estimativa por PCs; sem ela, mantem-se
+    # a fotografia da abertura + alteracoes posteriores (comportamento anterior).
     vu_key = f"VU_C{n_vig}"
+    fator_vig = _fator_do_ciclo(por_ciclo, vigente)
+    fisico = leitura.get("ciclo_em_execucao") or {}
+    fisico_ok = bool(
+        fisico.get("disponivel") and fisico.get("completo") and fisico.get("valido")
+    )
+
     rem = 0.0
     rem_base = 0.0
+    posterior_valor = 0.0
     for p in posc:
         item = p.get("ITEM")
-        vu = _tofl((vu_por_item.get(item) or {}).get(vu_key))
-        vu_orig = _tofl(p.get("VU_ORIGINAL"))
-        qtd = _tofl(p.get(col_qtd))
-        rem += round(round(vu, 2) * qtd, 2)
-        rem_base += round(round(vu_orig, 2) * qtd, 2)
+        vu = round(_tofl((vu_por_item.get(item) or {}).get(vu_key)), 2)
+        vu_orig = round(_tofl(p.get("VU_ORIGINAL")), 2)
+        qtd = _tofl(_abertura(p, n_vig))
+        rem += round(vu * qtd, 2)
+        rem_base += round(vu_orig * qtd, 2)
+        posterior_valor += round(
+            vu * _tofl(p.get(f"ALTERACAO_POSTERIOR_ABERTURA_C{n_vig}")), 2
+        )
     rem = round(rem, 2)
     rem_base = round(rem_base, 2)
+    posterior_valor = round(posterior_valor, 2)
+
+    presente = None
     saldo = None
-    if rem:
-        fator_vig = _fator_do_ciclo(por_ciclo, vigente)
+    if fisico_ok:
+        consumido = round(_tofl(fisico.get("total_valor_consumido")), 2)
+        remanescente = round(_tofl(fisico.get("total_valor_remanescente")), 2)
+        data_pos = fisico.get("data_posicao")
+        if consumido:
+            presente = {
+                "descricao": (
+                    f"{vigente} executado ate a posicao fisica"
+                    + (f" de {data_pos:%d/%m/%Y}" if hasattr(data_pos, "year") else "")
+                ),
+                "valor_base": consumido,
+                "fator_acumulado": fator_vig,
+                "valor_atualizado": consumido,
+                "ciclo": vigente,
+                "fonte": "posicao_fisica",
+            }
+        if remanescente:
+            saldo = {
+                "descricao": f"{vigente} remanescente fisico atual (por item)",
+                "valor_base": remanescente,
+                "fator_acumulado": fator_vig,
+                "valor_atualizado": remanescente,
+                "ciclo": vigente,
+                "fonte": "posicao_fisica",
+            }
+        alertas.append(
+            "Composicao VTA-PC: posicao fisica itemizada do ciclo vigente "
+            "completa e valida; ela PREVALECE sobre a estimativa por PCs "
+            "(nenhuma projecao por dias, media de consumo ou subtracao de PCs)."
+        )
+    elif rem:
+        if posterior_valor:
+            # Alteracoes com efeito posterior a abertura entram por componente
+            # proprio, uma unica vez (trava anti-dupla-contagem).
+            execucao.append({
+                "ciclo": vigente,
+                "descricao": (
+                    f"{vigente} alteracoes contratuais posteriores a abertura"
+                ),
+                "valor_base": posterior_valor,
+                "fator_acumulado": fator_vig,
+                "valor_atualizado": posterior_valor,
+                "fonte": "aditivo_posterior_abertura",
+            })
         saldo = {
-            "descricao": f"{vigente} remanescente atualizado (por item)",
+            "descricao": f"{vigente} remanescente na abertura (por item)",
             "valor_base": rem_base,
             "fator_acumulado": fator_vig,
             "valor_atualizado": rem,
             "ciclo": vigente,
             "fonte": "remanescente",
         }
+    if presente is not None:
+        execucao.append(presente)
 
     if not execucao and saldo is None:
         return {

@@ -277,9 +277,19 @@ def test_11_ab_espelha_y_com_abertura_selecionada():
 # 12. Execucao fisica implicita C0 (coluna X) preservada e coerente             #
 # --------------------------------------------------------------------------- #
 def test_12_execucao_fisica_implicita_c0(mem):
+    """C0 pela movimentacao entre as ABERTURAS temporalmente corretas.
+
+    A abertura de um ciclo e a quantidade declarada MENOS os deltas com data de
+    efeito posterior a ela (DELTA_POSTERIOR_ABERTURA_Cn, colunas AB/AC): um
+    aditivo do meio de C1 nao pode retroagir sobre a abertura de C1 e, por
+    consequencia, encolher a execucao de C0.
+    """
     wb = load_workbook(TEMPLATE)
     fx = wb["MEMORIA_RESULTADOS"]["X2"].value
-    assert "(posicao_contratual!$G2-posicao_contratual!$K2)*historico_VU!$C2" in fx
+    assert (
+        "((posicao_contratual!$G2-N(posicao_contratual!$AB2))"
+        "-(posicao_contratual!$K2-N(posicao_contratual!$AC2)))*historico_VU!$C2"
+    ) in fx
     # T21 = PC C0 quando existe, senao SUM(X). No arquivo real, valor coerente.
     assert isinstance(mem["T21"].value, (int, float)) and mem["T21"].value > 0
 

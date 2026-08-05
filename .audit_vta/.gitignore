@@ -5,3 +5,8 @@ btovxtugy.txt
 
 # Dumps de auditoria com dados de producao.
 *.txt
+
+# Logs de execucao das trilhas de regressao e dos gates de Excel real.
+# Sao evidencia da rodada, nao fonte: ficam fora do versionamento. Os dois
+# logs ja versionados em commits anteriores permanecem rastreados.
+logs/

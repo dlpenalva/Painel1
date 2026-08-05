@@ -4997,7 +4997,14 @@ if resultado:
     contagens = diagnostico_coleta.get("contagens", {})
     _ciclos_str = ", ".join(metadados.get("ciclos_em_analise", [])) or "—"
     _st_res = (metadados.get("status_resultados") or {})
-    _retro_val = (_st_res.get("valores") or {}).get("retroativo_oficial")
+    # Fonte canonica do retroativo reconhecido: o bloco "ate o corte" do payload
+    # unico dos PCs — ja sem os PCs sem efeito financeiro, sem os do intervalo
+    # precluso e sem os posteriores a data de corte. O valor do XLS permanece
+    # como queda para arquivos anteriores a essa medida (sem regressao).
+    _tc_pc = (resultado.get("totais_canonicos_pc") or {}) if resultado else {}
+    _retro_val = (_tc_pc.get("ate_o_corte") or {}).get("retroativo")
+    if _retro_val is None:
+        _retro_val = (_st_res.get("valores") or {}).get("retroativo_oficial")
     _retro_str = (
         "R$ " + f"{_retro_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
         if isinstance(_retro_val, (int, float)) else "—"
