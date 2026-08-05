@@ -86,7 +86,10 @@ def test_remanesc_formatacao_condicional_quatro_estados(wb):
         regras = por_faixa[faixa]
         assert len(regras) == 4, f"{faixa}: {len(regras)} regras"
         formulas = " ".join(str(rr.formula) for rr in regras)
-        assert "posicao_contratual!$Y" in formulas
+        # NAO APLICAVEL passou a olhar CICLO_NASCIMENTO_DATA (por data de efeito),
+        # espelhado localmente em itens_Remanesc!BI — regra de CF que referencia
+        # outra aba e migrada pelo Excel para a extensao x14, invisivel ao openpyxl.
+        assert "$BI" in formulas
         assert ">0" in formulas and "=0" in formulas
         assert any(getattr(rr, "stopIfTrue", False) for rr in regras)
 

@@ -296,7 +296,9 @@ def test_formulas_aplicam_janela_exata_e_nao_referenciam_vta(coleta_runtime):
     formula_consumo = ws["D13"].value
     formula_valor_consumido = ws["F13"].value
     formula_remanescente = ws["G13"].value
-    assert '">"&$F$3' in formula_delta
+    # A janela do periodo comeca no dia SEGUINTE a abertura: o aditivo datado NO
+    # dia da abertura pertence a fotografia de abertura (coluna B), uma unica vez.
+    assert '">="&(INT($F$3)+1)' in formula_delta
     assert '"<="&$D$5' in formula_delta
     assert "B13+I13-C13" in formula_consumo
     assert "D13*E13" in formula_valor_consumido
@@ -319,7 +321,8 @@ def test_novo_item_usa_data_de_nascimento_e_suprimido_fica_visivel(coleta_runtim
     assert '"<="&$D$5' in ws["O13"].value
     assert "$O13>0" in ws["A13"].value
     assert "posicao_contratual!$Z2" in ws["B13"].value
-    assert '"<="&$F$3' in ws["B13"].value
+    # Fronteira por DIA: aditivo com efeito ate a abertura compoe a coluna B.
+    assert '"<"&(INT($F$3)+1)' in ws["B13"].value
     regras = [str(regra.formula) for regras in ws.conditional_formatting._cf_rules.values() for regra in regras]
     assert any("ROUND($B13+$I13,2)=0" in regra for regra in regras)
 

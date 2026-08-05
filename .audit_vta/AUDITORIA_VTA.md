@@ -230,3 +230,220 @@ roteamento da posição atual de itens nascidos no meio do ciclo para
 NÃO deve ser somada de novo à FORMA 2 (a abertura já contém toda a base); na FORMA 1
 soma-se executado-até-data + remanescente-atual, cuja soma = base da abertura.
 ```
+
+---
+
+## 11. Correção temporal dos aditivos (DATA_EFEITO) — Regra 2 resolvida
+
+### 11.1 Causa técnica
+
+`posicao_contratual!Y` (CICLO_NASCIMENTO) é `=IF($E2>0,0,IF($I2>0,1,...))` — deriva
+da **quantidade contratada acumulada**, não da data. As colunas `DELTA_Cn`
+(`D/H/L/P/T`) agregam os aditivos por **rótulo de ciclo**
+(`SUMIFS(aditivos!L; item; ciclo="Cn")`), sem qualquer recorte de data dentro do
+ciclo. Consequência: um item incluído no 1º dia do C1 e outro incluído no meio do
+C1 recebem o mesmo `Y=1` e a mesma abertura `K = J + H`. A fotografia de abertura
+passava a conter quantidade que ainda não existia naquela data, e
+`itens_Remanesc` classificava como *aplicável/pendente* um campo que deveria ser
+**NÃO APLICÁVEL**.
+
+### 11.2 Regra canônica implementada
+
+```
+QTD CONTRATUAL NA ABERTURA DE Cn = quantidade-base + Σ deltas com DATA_EFEITO ≤ abertura(Cn)
+```
+
+Implementada por **decomposição do delta oficial**, sem alterar nenhuma fórmula da
+cadeia oficial:
+
+```
+DELTA_POSTERIOR_ABERTURA_Cn = SUMIFS(aditivos!L; item; ciclo="Cn"; data ≥ INT(abertura)+1)
+QTD_CONTRATUAL_ABERTURA_Cn  = QTD_CONTRATADA_Cn − DELTA_POSTERIOR_ABERTURA_Cn
+CICLO_NASCIMENTO_DATA       = menor n com QTD_CONTRATUAL_ABERTURA_Cn > 0
+```
+
+Como todo delta de ciclo anterior tem data ≤ abertura de `Cn`, a subtração isola
+exatamente a parcela do próprio ciclo cujo efeito é posterior à abertura. A
+fronteira é **por dia** (`≥ INT(abertura)+1`): um aditivo datado no dia da abertura
+permanece do lado da abertura mesmo se a célula carregar componente de hora.
+
+### 11.3 Células criadas
+
+| Aba | Colunas | Conteúdo |
+|---|---|---|
+| `posicao_contratual` | `AA` | `DATA_EFEITO_INICIAL` (informativa; `_xlfn.MINIFS` + `IFERROR`) |
+| `posicao_contratual` | `AB:AF` | `DELTA_POSTERIOR_ABERTURA_C0..C4` |
+| `posicao_contratual` | `AG:AK` | `QTD_CONTRATUAL_ABERTURA_C0..C4` |
+| `posicao_contratual` | `AL` | `CICLO_NASCIMENTO_DATA` |
+| `MEMORIA_RESULTADOS` | `AD2:AD201` | componente **alterações posteriores à abertura** (VU × delta posterior) |
+| `MEMORIA_RESULTADOS` | `AC2:AC201` | componente **remanescente na abertura** (`AB − AD`, residual exato) |
+| `MEMORIA_RESULTADOS` | `W53/W54` | somas dos dois componentes |
+| `MEMORIA_RESULTADOS` | `W55/W56` | trava anti-dupla-contagem e status |
+| `MEMORIA_RESULTADOS` | `W57` | itens incluídos após a abertura adotada (qtd) |
+| `itens_RC` | `Z:AC` | data de efeito, ciclo de nascimento por data, aplicabilidade, qtd na abertura |
+| `itens_Remanesc` | `BI` | espelho local de `CICLO_NASCIMENTO_DATA` (ver 11.6) |
+
+Células **alteradas**: `MEMORIA_RESULTADOS!W48` (recomposta) e
+`itens_Remanesc!F/H/J/L` (guarda `AL > n` ⇒ valor de abertura vazio).
+
+### 11.4 Aditivos posteriores à abertura e regra contra dupla contagem
+
+A FORMA 2 **não exclui** o item acrescido depois da abertura — ele entra por
+componente próprio:
+
+```
+W48 = T21 (C0 executado)
+    + ciclos encerrados (itens_PC!P, ciclos 1..W46−1)
+    + W53 (remanescente na abertura, temporalmente correto)
+    + W54 (alterações contratuais posteriores à abertura)
+```
+
+`AC` é definido como **residual** de `AB − AD`, portanto
+`W53 + W54 ≡ SUM(AB)` por construção — o mesmo total que a FORMA 2 tinha antes.
+`W55 = ROUND(SUM(AB) − (W53+W54), 2)` é a trava programática: qualquer parcela
+contada duas vezes a torna diferente de zero e `W56` passa a
+"REVISE - DUPLA CONTAGEM NA FORMA 2". O tool aborta se `|W55| > 0,005`.
+
+### 11.5 Impacto nas FORMAS 1 e 2
+
+* **FORMA 2** — total inalterado; a **leitura temporal** de cada parcela muda
+  (abertura vs. posterior). O fallback C4→C0 (`W46`) continua igual.
+* **FORMA 1** — `CICLO_EM_EXECUCAO` já era correta por data na coluna `A`
+  (item novo só aparece após a data de efeito) e na coluna `I`
+  (`abertura < data ≤ posição`). Corrigiu-se a lacuna do aditivo datado
+  **exatamente na abertura**, que não entrava nem na coluna `B` nem na `I`:
+  `B` passa a somar os deltas do ciclo com data `< INT(F3)+1` e `I` passa a
+  começar em `≥ INT(F3)+1`. Isso fecha a **divergência nº 1 da §9** e faz a
+  reconciliação FORMA 1 × FORMA 2 ser exata por construção.
+* O motor puro `calcular_posicao_ciclo_por_data` **não** soma delta de abertura.
+  `remanescente_inicio` é autoritativo: já reflete tudo com efeito até a abertura,
+  inclusive o aditivo datado no próprio dia da abertura. Quem soma esse delta —
+  uma única vez — é a coluna `B` da aba `CICLO_EM_EXECUCAO`, que monta o valor a
+  partir de `QTD_REM_BASE`. Reaplicá-lo no motor seria dupla contagem, e é isso
+  que `test_motor_puro_nao_reaplica_delta_da_abertura` fixa. A janela do período
+  no motor permanece `data_inicio < data_efeito ≤ posição`, estritamente
+  complementar à abertura.
+
+### 11.6 Por que o espelho `itens_Remanesc!BI`
+
+A formatação condicional dos 4 estados precisava passar a olhar
+`CICLO_NASCIMENTO_DATA`. O Excel migra para a **extensão x14** toda regra de CF
+que referencie outra planilha, e a x14 é invisível para o openpyxl — a mesma
+linhagem que gera cada Coleta no app. Com o espelho local `BI`, a CF continua
+OOXML padrão e sobrevive ao round-trip Excel → openpyxl.
+
+### 11.7 Confirmação das travas
+
+`MEMORIA_RESULTADOS!B26` (`VTA_FINAL`) e `T25` permanecem com **fórmula e valor
+originais**; `T21`/`T22`/`T23` e as colunas oficiais `G/K/O/S/W` e `Y` não foram
+tocadas — nenhuma coluna nova as alimenta. No arquivo real,
+`T25 = B26 = 13.468.851,41` antes e depois. O tool `aplicar_temporalidade_aditivos.py`
+compara fórmula **e** valor de `B26`/`T25` antes e depois e aborta na divergência;
+`tests/test_temporalidade_aditivos_data_efeito.py` repete a trava sobre o arquivo
+real e sobre o texto das fórmulas do template.
+
+---
+
+## 12. Regressão final particionada por isolamento do Excel COM
+
+### 12.1 Por que a regressão foi separada em duas trilhas
+
+As rodadas integrais R6, R7 e R8 (suíte inteira num único processo Python, ~80 min)
+**não concluíram**. Nenhuma delas apresentou falha de asserção antes da interrupção:
+as quedas foram de infraestrutura COM —
+
+* `RPC_E_DISCONNECTED` (0x80010108);
+* `RPC_E_CALL_REJECTED` (0x80010001);
+* encerramento anômalo do processo Python;
+* ausência de sumário final do pytest;
+* ausência de `EXIT=0`.
+
+Causa provável: acumulação de muitos módulos Excel COM no **mesmo** processo Python
+por tempo prolongado. A resposta não foi mascarar com retentativa nem instalar
+plugin de paralelismo (`pytest-xdist`/`pytest-forked` **não** foram instalados),
+e sim **particionar** a regressão por natureza de dependência.
+
+### 12.2 Identificação programática dos arquivos COM
+
+Classificação por leitura do fonte, marcadores `DispatchEx`, `win32com`,
+`pythoncom`, `Excel.Application`, **mais** a cadeia de imports locais (um teste que
+importa `tools/aplicar_*.py` com COM também é COM). Resultado: **19 arquivos COM**
+e **61 sem COM**, 80 arquivos no total.
+
+### 12.3 Composição e resultado real das trilhas
+
+| Trilha | Escopo | Processos | Início → Fim | Duração | EXIT | Colet. | Passed | Failed | Skipped |
+|---|---|---|---|---|---|---|---|---|---|
+| **A** | 61 arquivos sem COM | 1 | 05/08 01:04:16 → 01:40:25 | 36:06 | **0** | 768 | 768 | **0** | 0 |
+| **B** | 19 arquivos COM | 19 (um por arquivo) | 05/08 00:38:44 → 01:03:32 | 24:48 | **19 × 0** | 310 | 252 | **0** | 58 |
+
+Trilha A: `pytest -q --no-header -p no:cacheprovider -rf` com 19 `--ignore`,
+última linha literal `768 passed in 2166.05s (0:36:06)`.
+Log: `.audit_vta/logs/regressao_final_A_sem_com_20260804.log`.
+
+Trilha B: um processo Python **novo** por arquivo, em série, com verificação de
+`EXCEL.EXE` visível antes de cada arquivo (aborta e não encerra nada), remoção de
+instâncias **invisíveis** residuais e espera de liberação do COM entre arquivos.
+Consolidado (versionado): `.audit_vta/logs/regressao_final_B_com_consolidado_20260804.log`.
+Logs individuais em `.audit_vta/logs/com_final_20260804/` — evidência **local**, não
+versionada: o consolidado já traz, por arquivo, a última linha literal do pytest.
+
+Os 58 skips da Trilha B **não** são regressão: são testes *opt-in* por
+`RUN_EXCEL_INTEGRATION=1` (mesma condição em todas as rodadas R1–R10), mais um
+golden externo e um legado ausentes. A cobertura profunda de Excel vem do gate
+da §12.5, que exercita o COM de ponta a ponta.
+
+### 12.4 Prova de cobertura total
+
+```
+768 (sem COM) + 310 (COM) = 1.078
+pytest --collect-only -q  ->  1078 tests collected
+```
+
+Declaração precisa: **regressão completa validada em duas trilhas por necessidade
+de isolamento do Excel COM: 768 testes sem COM em uma execução e 310 testes COM em
+19 processos isolados.** Não houve execução integral única aprovada — R6/R7/R8
+permanecem apenas como histórico diagnóstico local.
+
+### 12.5 Gate no Excel real (instância nova, não reaproveitada da Trilha B)
+
+Cenários regerados do arquivo real com as ferramentas atuais e submetidos ao ciclo
+abrir → recalcular → salvar → fechar → reabrir. Log `EXIT=0` em
+`.audit_vta/logs/gate_excel_real_20260805.log` — evidência **local**, não versionada
+(os cenários `.xlsx` carregam dados de produção); os resultados estão transcritos
+integralmente nas tabelas abaixo.
+
+| Conferência | Cenário A (limpa) | Cenário B (preenchida) | Cenário C (N001/N002/N003) |
+|---|---|---|---|
+| Erros de fórmula após recálculo | NENHUM | NENHUM | NENHUM |
+| Reabertura sem reparo | sim | sim | sim |
+| Erros após reabertura | NENHUM | NENHUM | NENHUM |
+| `CICLO_EM_EXECUCAO` editável | aba ausente (sem posição atual) | `C13`/`D5` editáveis, `B13` protegida | `C13`/`D5` editáveis, `B13` protegida |
+| `itens_RC` alinhado item a item | bloco vazio, como esperado | 21 itens × 5 colunas | 24 itens × 5 colunas |
+| `B26` / `T25` | 13.468.851,41 | 13.468.851,41 | 13.474.882,21 (itens sintéticos injetados) |
+| FORMA 1 × FORMA 2 | posição não informada | ambas 13.468.851,41 — `W51=0`, **RECONCILIADO** | posição não informada |
+| Trava `W55` / `W56` | 0,00 / SEM DUPLA CONTAGEM | 0,00 / SEM DUPLA CONTAGEM | 0,00 / SEM DUPLA CONTAGEM |
+
+"NENHUM" é o resultado de `SpecialCells(xlCellTypeFormulas/Constants, xlErrors)` em
+todas as abas: cobre `#REF!`, `#VALUE!`, `#NAME?`, `#DIV/0!` e demais erros.
+
+Classificação temporal confirmada no Excel real (Cenário C, abertura do C1 =
+01/02/2026):
+
+| Item | Data de efeito | `AL` | Qtd na abertura C1 | Qtd na abertura C2 | `itens_RC` aplicável | Valor de abertura C1 |
+|---|---|---|---|---|---|---|
+| N001 | 15/06/2025 (meio do C0) | 1 | 10 | 10 | SIM | 1.030,79 |
+| N002 | 12/06/2026 (meio do C1) | 2 | 0 | 20 | NÃO APLICÁVEL | vazio |
+| N003 | 01/02/2026 (1º dia do C1) | 1 | 30 | 30 | SIM | 3.092,36 |
+
+N002 não bloqueou a abertura (FORMA 2 fechou normalmente), entrou como alteração
+contratual do período por componente próprio (`W54 = 2.000,00`, `W57 = 1`), não
+retroagiu e não foi contado duas vezes (`W55 = 0,00`).
+
+### 12.6 Confirmação de `B26`/`T25`
+
+Inalterados nos cenários A e B: `B26 = T25 = 13.468.851,41`, com as fórmulas
+homologadas (`B26` referencia `$T$25`; `T25 = ROUND($T$21+$T$22+$T$23,2)`).
+No Cenário C o valor muda apenas porque itens sintéticos foram **injetados** de
+propósito — não é violação de trava. O SHA-256 do template validado é
+`e740a9737245aeaa70573702f6a09d5b5bd59c1c7549a89f75e196711927710e`.

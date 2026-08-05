@@ -270,6 +270,11 @@ def calcular_posicao_ciclo_por_data(
         if novo and nascimento is not None and nascimento > posicao:
             continue
 
+        # Regra B: `remanescente_inicio` E AUTORITATIVO e ja reflete tudo com
+        # efeito ate a abertura — inclusive o aditivo datado no proprio dia da
+        # abertura. Some-lo aqui seria reaplicar o delta. Quem monta esse valor
+        # a partir de QTD_REM_BASE (a aba CICLO_EM_EXECUCAO) e que soma o delta
+        # da abertura, uma unica vez, na coluna B.
         abertura = cadastro["remanescente_inicio"]
         if novo and nascimento is not None and nascimento > inicio:
             abertura = 0.0
@@ -403,11 +408,22 @@ def _formula_abertura(linha: int, origem: int) -> str:
     escolha = "\"\""
     for ciclo, ref in reversed(tuple(por_ciclo.items())):
         escolha = f'IF($C$3="{ciclo}",{ref},{escolha})'
+    # Aditivos com DATA_EFEITO ate a abertura do ciclo ja integram a fotografia
+    # de abertura (Regra B: o delta entra uma unica vez, aqui e nao no periodo,
+    # pois a coluna I so soma movimentos com data ESTRITAMENTE posterior a $F$3).
+    delta_abertura = (
+        f'ROUND(SUMIFS(aditivos!$L$2:$L$200,'
+        f'aditivos!$A$2:$A$200,A{linha},'
+        f'aditivos!$C$2:$C$200,$C$3,'
+        f'aditivos!$B$2:$B$200,"<"&(INT($F$3)+1)),2)'
+    )
     return (
         f'=IF(A{linha}="","",IF(AND(posicao_contratual!$Z{origem},'
         f'COUNTIFS(aditivos!$A$2:$A$200,itens_Remanesc!$A{origem},'
-        f'aditivos!$B$2:$B$200,"<="&$F$3,'
-        f'aditivos!$L$2:$L$200,">0")=0),0,{escolha}))'
+        f'aditivos!$B$2:$B$200,"<"&(INT($F$3)+1),'
+        f'aditivos!$L$2:$L$200,">0")=0),0,'
+        f'IF(ISNUMBER({escolha}),ROUND({escolha}+{delta_abertura},2),'
+        f'IF({delta_abertura}>0,{delta_abertura},""))))'
     )
 
 
@@ -626,7 +642,7 @@ def _criar_aba_itemizada(wb):
             f'=IF(OR(A{linha}="",$D$5="",$F$3=""),"",'
             f'ROUND(SUMIFS(aditivos!$L$2:$L$200,'
             f'aditivos!$A$2:$A$200,A{linha},'
-            f'aditivos!$B$2:$B$200,">"&$F$3,'
+            f'aditivos!$B$2:$B$200,">="&(INT($F$3)+1),'
             f'aditivos!$B$2:$B$200,"<="&$D$5),2))'
         )
         ws.cell(linha, 10).value = (

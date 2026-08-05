@@ -81,7 +81,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # Etapa VTA (ajustes finais de layout): legibilidade da Tabela 1 (8:13), remocao
 # da linha "Fonte temporal de conferencia" em cobertura_temporal e CF dos 4
 # estados em itens_Remanesc. Sem alterar formula-fonte nem B26/T25. — reancorado.
-SHA256_TEMPLATE_ESPERADO = "4e62086a3090b0476aa6158a159485a5f7d036619abea5107429f7831d0032fe"
+# Temporalidade dos aditivos por DATA_EFEITO: colunas ocultas
+# posicao_contratual!AA:AL, decomposicao temporal da FORMA 2 em
+# MEMORIA_RESULTADOS (AC/AD + W48/W53:W57), bloco itens_RC!Z:AC, espelho
+# itens_Remanesc!BI e CF dos 4 estados reancorada nele. O bloco itens_RC!Q:Y
+# passou a distinguir vazio de zero (INDIRECT sobre celula vazia devolvia 0, o
+# que transformava pendencia em "zero confirmado"). As colunas oficiais
+# G/K/O/S/W/Y e as travas B26/T25 seguem intactas (formula e valor). — reancorado.
+SHA256_TEMPLATE_ESPERADO = "e740a9737245aeaa70573702f6a09d5b5bd59c1c7549a89f75e196711927710e"
 
 
 def _dados_calculadora() -> dict:

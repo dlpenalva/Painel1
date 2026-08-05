@@ -19,12 +19,14 @@ Regras cobertas:
   UMA vez (sem dupla contagem).
 * Regra 4: itens_Remanesc distingue visualmente os 4 estados (CF).
 
-RESSALVA DOCUMENTADA (Regra 2 x Regra 3): CICLO_NASCIMENTO deriva da QUANTIDADE
-(primeira coluna QTD_CONTRATADA_Cn>0), nao da DATA do aditivo. Logo um item
-nascido no 1o dia (Regra 3) e um nascido no meio do ciclo (Regra 2) recebem o
-MESMO Y e a MESMA abertura=delta. Distinguir os dois alteraria a FORMA 2
-(auditavel) e quebraria testes homologados (test_posicao_contratual_oficial):
-por isso e SINALIZADO para a fase de decisao, nao alterado silenciosamente.
+RESSALVA RESOLVIDA (Regra 2 x Regra 3): `posicao_contratual!Y` deriva da
+QUANTIDADE (primeira coluna QTD_CONTRATADA_Cn>0), nao da DATA do aditivo — logo
+um item nascido no 1o dia e outro nascido no meio do MESMO ciclo recebiam o
+mesmo Y. A distincao temporal passou a existir em `posicao_contratual!AL`
+(CICLO_NASCIMENTO_DATA), derivada da data de efeito, sem tocar em Y nem na
+cadeia oficial do VTA. Este modulo continua fixando o comportamento HOMOLOGADO
+da camada oficial (Y e as colunas G/K/O/S/W); a camada temporal e coberta por
+`tests/test_temporalidade_aditivos_data_efeito.py`.
 """
 from __future__ import annotations
 
@@ -76,7 +78,8 @@ def test_regra4_quatro_estados_visuais():
     for col, idx in (("E", 1), ("G", 2), ("I", 3), ("K", 4)):
         regras = por_faixa[f"{col}2:{col}201"]
         joined = " ".join(str(r.formula) for r in regras)
-        assert f"posicao_contratual!$Y2>{idx}" in joined
+        # NAO APLICAVEL passou a olhar o nascimento POR DATA, espelhado em BI.
+        assert f"$BI2>{idx}" in joined
         assert f"{col}2>0" in joined and f"{col}2=0" in joined and f'{col}2=""' in joined
 
 

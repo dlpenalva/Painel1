@@ -209,10 +209,200 @@ Regra: rodar o teste, ler contagem real, fixar o número novo (não estimar).
 13. Contrato integralmente reajustado permanece comparativo; nunca adotado (H12 fixo).
 14. Regressão: VTA oficial B26 inalterado; nomes definidos intactos; opcionalidade CICLO_EM_EXECUCAO.
 
+---
+
+## G. Temporalidade dos aditivos por DATA_EFEITO (executada)
+
+Fonte: `tools/aplicar_temporalidade_aditivos.py`.
+Cobertura: `tests/test_temporalidade_aditivos_data_efeito.py`.
+
+### G.1 posicao_contratual — colunas novas `AA:AL`, linhas 2:200 (ocultas)
+
+```
+AA  DATA_EFEITO_INICIAL
+    =IF($A2="","",IF(COUNTIFS(<criterios>)=0,"",
+       IFERROR(_xlfn.MINIFS(aditivos!$B$2:$B$200,<criterios>),"")))
+    <criterios> = aditivos!$A$2:$A$200,$A2, aditivos!$L$2:$L$200,"<>",
+                  aditivos!$L$2:$L$200,"<>0", aditivos!$B$2:$B$200,">0"
+
+AB..AF  DELTA_POSTERIOR_ABERTURA_C0..C4   (parametros!$C$2..$C$6)
+    =IF($A2="","",IF(parametros!$C$3="",0,
+       ROUND(SUMIFS(aditivos!$L$2:$L$200,
+                    aditivos!$A$2:$A$200,$A2,
+                    aditivos!$C$2:$C$200,"C1",
+                    aditivos!$B$2:$B$200,">="&(INT(parametros!$C$3)+1)),2)))
+
+AG..AK  QTD_CONTRATUAL_ABERTURA_C0..C4    (E/I/M/Q/U menos AB/AC/AD/AE/AF)
+    =IF($A2="","",IF(OR(NOT(ISNUMBER($I2)),NOT(ISNUMBER($AC2))),"",
+       ROUND($I2-$AC2,2)))
+
+AL  CICLO_NASCIMENTO_DATA
+    =IF($A2="","",IF(N($AG2)>0,0,IF(N($AH2)>0,1,IF(N($AI2)>0,2,
+       IF(N($AJ2)>0,3,IF(N($AK2)>0,4,""))))))
+```
+
+**Fronteira por dia** (`>=INT(abertura)+1`): imuniza a classificação contra
+células de data com componente de hora — o modo como o aditivo do 1º dia do ciclo
+era indevidamente empurrado para "posterior".
+
+### G.2 MEMORIA_RESULTADOS — decomposição temporal da FORMA 2
+
+```
+AD2:AD201  componente ALTERACOES POSTERIORES A ABERTURA
+    =IF(OR(posicao_contratual!$A2="",$W$46=""),0,
+      IF($AB2="","",IF(NOT(ISNUMBER(<post>)),0,ROUND(ROUND(<vu>,2)*<post>,2))))
+    <vu>   = CHOOSE($W$46+1,historico_VU!$C2..$G2)
+    <post> = CHOOSE($W$46+1,posicao_contratual!$AB2..$AF2)
+
+AC2:AC201  componente REMANESCENTE NA ABERTURA (residual — additividade exata)
+    =IF(OR(posicao_contratual!$A2="",$W$46=""),0,
+      IF(OR($AB2="",$AD2=""),"",ROUND($AB2-$AD2,2)))
+
+W53 =SUM($AC$2:$AC$201)
+W54 =SUM($AD$2:$AD$201)
+W55 =ROUND(SUM($AB$2:$AB$201)-($W$53+$W$54),2)      <- trava, deve ser 0,00
+W56 =IF(ABS($W$55)<=$D$4,"SEM DUPLA CONTAGEM","REVISE - DUPLA CONTAGEM NA FORMA 2")
+W57 =IF($W$46="","",SUMPRODUCT((posicao_contratual!$A$2:$A$200<>"")
+      *ISNUMBER(posicao_contratual!$AL$2:$AL$200)
+      *(posicao_contratual!$AL$2:$AL$200>$W$46)))
+
+W48 (REESCRITA)
+    =IF($W$46="","",ROUND($T$21
+       +SUMPRODUCT((ROW(itens_PC!$P$2:$P$6)-2>=1)*(ROW(itens_PC!$P$2:$P$6)-2<$W$46)
+                   *itens_PC!$P$2:$P$6)
+       +$W$53+$W$54,2))
+```
+
+Como `AC ≡ AB − AD`, vale `W53 + W54 ≡ SUM(AB)`: o **total** da FORMA 2 é
+idêntico ao anterior; muda a leitura temporal das parcelas. O aditivo posterior à
+abertura **não é excluído** do VTA auditável — entra por componente próprio, uma
+única vez.
+
+### G.3 itens_RC — bloco `Z:AC` (linhas 3:202, merge `Z1:AC1`)
+
+`Z` data de efeito · `AA` ciclo de nascimento por data · `AB` `SIM`/`NAO APLICAVEL`
+na abertura adotada (`W46`) · `AC` qtd contratual na abertura adotada.
+A fotografia oficial `A:P` permanece intacta.
+
+### G.4 itens_Remanesc
+
+* `BI2:BI200` — espelho local de `posicao_contratual!AL`. Necessário porque o
+  Excel migra para a extensão **x14** toda regra de formatação condicional que
+  referencie outra planilha, e a x14 é invisível ao openpyxl (linhagem que gera
+  cada Coleta). Com o espelho, a CF continua OOXML padrão.
+* CF dos 4 estados (`E/G/I/K`) passa a usar `$BI2 > n` na regra
+  **NÃO APLICÁVEL** (com `stopIfTrue`) e na regra de pendência.
+* `F/H/J/L` (VALOR_REM_INICIO_Cn) ganham a guarda
+  `AND(ISNUMBER(posicao_contratual!$AL2),posicao_contratual!$AL2>n)` ⇒ vazio.
+
+### G.5 _ciclo_em_execucao.py
+
+* `_formula_abertura` — coluna `B` soma os deltas do ciclo com
+  `data < INT($F$3)+1` sobre a base do fiscal (Regra B: delta do 1º dia entra na
+  abertura, uma única vez).
+* Coluna `I` (alterações do período) passa a `>= INT($F$3)+1`, complementar à
+  abertura — sem sobreposição, sem lacuna.
+* Motor puro `calcular_posicao_ciclo_por_data` — **inalterado no cálculo**:
+  `remanescente_inicio` é autoritativo e já contém o delta com efeito até a
+  abertura; o motor **não** o reaplica (seria dupla contagem). A janela do
+  período segue `data_inicio < data_efeito ≤ posição`, complementar à abertura.
+  Quem soma o delta da abertura, uma única vez, é a coluna `B` da aba.
+  Trava: `test_motor_puro_nao_reaplica_delta_da_abertura`.
+
+### G.6 Ordem de mutação (importante)
+
+1. openpyxl: fórmulas **e** formatação condicional;
+2. Excel COM: recalcular, verificar zero erros, conferir `W55`, salvar;
+3. reabrir somente-leitura: conferir travas `B26`/`T25` (fórmula **e** valor);
+4. openpyxl: conferir que a CF sobreviveu como OOXML padrão (aborta se migrou);
+5. promover.
+
+A CF **não** pode ser a última escrita (como em `aplicar_ajustes_finais_layout.py`):
+openpyxl não regrava valores em cache, e os leitores usam `data_only=True`.
+
+---
+
 ## F. Gate final (ordem)
 1. Aplicar mutação (Excel COM temp → recalc → 0 erros → salvar → reabrir sem reparo → promover template).
 2. `pytest -q` (regressão integral + 14 novos) — todos PASS.
 3. Atualizar contagens integridade.
 4. Excel COM: abrir template promovido + gerar Coleta do arquivo real, confirmar sem reparo, B26 = 13.468.851,41.
+5. `git add` + commit local (mensagem descritiva; Co-Authored-By). SEM push/PR/deploy.
+6. Relatório final (deliverables 1–17 da Seção 22).
+
+---
+
+## H. Regressão particionada por isolamento do Excel COM (executada)
+
+### H.1 Motivo
+
+A suíte inteira num único processo Python (~80 min) não conclui: R6/R7/R8 caíram
+por `RPC_E_DISCONNECTED` (0x80010108), `RPC_E_CALL_REJECTED` (0x80010001) e
+encerramento anômalo do processo, **sem** nenhuma falha de asserção antes da
+interrupção — e portanto sem sumário do pytest e sem `EXIT=0`. A causa provável é
+o acúmulo de módulos Excel COM no mesmo processo. Nenhuma dependência nova foi
+instalada (`pytest-xdist`/`pytest-forked` continuam **fora** do projeto).
+
+### H.2 Como separar (não usar lista manual)
+
+Classificar por leitura do fonte: marcadores `DispatchEx`, `win32com`, `pythoncom`,
+`Excel.Application` **e** a cadeia de imports locais (teste que importa
+`tools/aplicar_*.py` com COM conta como COM). Hoje: **19 COM / 61 sem COM**.
+
+### H.3 Trilha A — sem COM, uma única rodada
+
+```
+python -m pytest -q --no-header -p no:cacheprovider -rf --ignore=<19 arquivos COM>
+```
+
+Log: `.audit_vta/logs/regressao_final_A_sem_com_20260804.log`.
+Critério: 768 coletados, `EXIT=0`, 0 failed, sumário real presente.
+
+> Armadilha do runner `.bat`: em `echo EXIT=%ERRORLEVEL%>> log` o cmd lê o dígito
+> colado no `>>` como **handle** (`0`=stdin, `1`=stdout) — a linha desaparece do log
+> exatamente quando o código é `0`. Gravar como `>> "%LOG%" echo EXIT=%ERRORLEVEL%`
+> (redirecionamento antes) e usar `cmd /v:on` + `!ERRORLEVEL!` quando houver
+> encadeamento na mesma linha.
+
+### H.4 Trilha B — COM, um processo por arquivo
+
+Serial, nunca em paralelo, nunca dois arquivos COM no mesmo processo. Por arquivo:
+verificar `EXCEL.EXE` **visível** (se houver, abortar sem encerrar nada), remover
+instâncias **invisíveis** residuais, rodar `pytest tests/<arquivo>` em processo novo,
+registrar sumário e código de saída, limpar Excel invisível, aguardar liberação do COM.
+
+Consolidado: `.audit_vta/logs/regressao_final_B_com_consolidado_20260804.log`
+(colunas: arquivo, coletados, passed, failed, skipped, exit, duração, log individual).
+Individuais: `.audit_vta/logs/com_final_20260804/`.
+
+### H.5 Higiene obrigatória do ambiente
+
+Antes de qualquer rodada, confirmar que **não** há regressão integral ativa. Durante
+esta etapa foi encontrada uma rodada integral (`R9`) já em curso e, mais tarde, uma
+`R10` disparada por mecanismo destacado de sessão anterior, que rodou concorrente à
+primeira Trilha B e invalidou a premissa de isolamento — a trilha foi **refeita** em
+ambiente limpo e o lançador integral foi neutralizado
+(`run_regressao_integral.bat.DESABILITADO`). Detector correto de intruso:
+`python.exe -m pytest` **sem** arquivo alvo (procurar pelo nome do `.bat` gera falso
+positivo, pois o próprio comando de busca casa consigo mesmo).
+
+### H.6 Prova de cobertura
+
+```
+768 + 310 = 1.078  ==  pytest --collect-only -q  ->  1078 tests collected
+```
+
+Declarar sempre: **duas trilhas por isolamento do COM**, nunca "uma execução integral".
+
+---
+
+## F. Gate final (ordem)
+1. Aplicar mutação (Excel COM temp → recalc → 0 erros → salvar → reabrir sem reparo → promover template).
+2. Regressão particionada (Seção H): Trilha A `EXIT=0` + Trilha B 19 × `EXIT=0`, 0 failed.
+3. Atualizar contagens integridade.
+4. Excel COM em instância NOVA (`DispatchEx`, nunca reaproveitar a da Trilha B):
+   Coleta limpa e Coleta preenchida — abrir, recalcular, salvar, fechar, reabrir sem
+   reparo; zero erros de fórmula; `CICLO_EM_EXECUCAO` editável; `itens_RC` alinhado;
+   N001/N002/N003 classificados; FORMA 1 × FORMA 2 reconciliadas; B26 = 13.468.851,41.
 5. `git add` + commit local (mensagem descritiva; Co-Authored-By). SEM push/PR/deploy.
 6. Relatório final (deliverables 1–17 da Seção 22).
