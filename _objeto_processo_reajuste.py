@@ -507,16 +507,30 @@ def _montar_resultados(
     pago = _f(por_estado.get("pago"))
     em_analise = _valor_por_estado(por_estado, "analise")
     ciclos = (painel.get("situacao_reajuste") or {}).get("ciclos") or []
-    indice_por_ciclo = [
-        {
+    fator_derivado = _fatores_acumulados_por_percentual(ciclos)
+    indice_por_ciclo = []
+    for c in ciclos:
+        fator = c.get("fator_acumulado")
+        origem = "parametros_v10"
+        if _f_none(fator) is None:
+            # parametros!FATOR_ACUMULADO e formula: uma Coleta que nao passou
+            # pelo Excel nao traz valor calculado nela. O percentual do ciclo
+            # e entrada literal e continua disponivel, entao o fator segue
+            # sendo um dado da Coleta — apenas nao lido. Reconstruido aqui
+            # somente para a narrativa documental do indice acumulado; as
+            # cadeias de VTA, retroativo e posicao contratual nao usam este
+            # bloco e permanecem inalteradas.
+            derivado = fator_derivado.get(c.get("ciclo"))
+            if derivado is not None:
+                fator = derivado
+                origem = "parametros_v10.percentual_do_ciclo (fator recomposto)"
+        indice_por_ciclo.append({
             "ciclo": c.get("ciclo"),
             "indice_percentual": c.get("indice_percentual"),
-            "fator_acumulado": c.get("fator_acumulado"),
-            "indice_acumulado": _indice_acumulado(c.get("fator_acumulado")),
-            "origem": "parametros_v10",
-        }
-        for c in ciclos
-    ]
+            "fator_acumulado": fator,
+            "indice_acumulado": _indice_acumulado(fator),
+            "origem": origem,
+        })
     ultimo_indice = next(
         (c for c in reversed(indice_por_ciclo) if c.get("fator_acumulado") is not None),
         {},
@@ -1189,6 +1203,28 @@ def _indice_acumulado(fator: Any) -> float | None:
     if valor is None:
         return None
     return round(valor - 1.0, 10)
+
+
+def _fatores_acumulados_por_percentual(ciclos: list[dict[str, Any]]) -> dict[str, float]:
+    """Recompoe a cadeia de FATOR_ACUMULADO a partir do percentual de cada ciclo.
+
+    Espelha a formula da coluna parametros!F, que encadeia
+    ``F{r} = F{r-1} * (1 + E{r})`` e para de produzir valor no primeiro ciclo
+    sem percentual numerico. Serve apenas como recomposicao de um dado que ja
+    esta na Coleta (o percentual e entrada literal) quando o valor calculado
+    da formula nao foi gravado no arquivo.
+    """
+    derivados: dict[str, float] = {}
+    anterior = 1.0
+    for c in ciclos:
+        ciclo = c.get("ciclo")
+        pct = _f_none(c.get("indice_percentual"))
+        if pct is None:
+            break
+        anterior = anterior * (1.0 + pct)
+        if ciclo:
+            derivados[ciclo] = anterior
+    return derivados
 
 
 def _valor_por_estado(por_estado: dict[str, Any], marcador: str) -> float:

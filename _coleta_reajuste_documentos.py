@@ -35,6 +35,31 @@ def _data_br(valor: Any) -> str:
     return str(valor or "")
 
 
+def _cadeia_fator_acumulado(parametros) -> dict[int, float]:
+    """Reproduz em Python a cadeia da coluna FATOR_ACUMULADO (parametros!F2:F6).
+
+    A coluna F e formula: uma Coleta que nunca passou pelo Excel nao traz valor
+    calculado nela e openpyxl(data_only=True) devolve None. O percentual do
+    ciclo (coluna E) e entrada literal e permanece disponivel, de modo que o
+    fator acumulado continua sendo um dado da Coleta — apenas nao lido.
+
+    Espelha a formula do arquivo:
+        F2 = 1
+        F{r} = "" se E{r} nao for numero ou se F{r-1} nao for numero;
+               senao F{r-1} * (1 + E{r})
+    Linhas sem valor ficam ausentes do dicionario, como a formula deixa "".
+    """
+    cadeia: dict[int, float] = {2: 1.0}
+    anterior = 1.0
+    for row in range(3, 7):
+        pct = parametros[f"E{row}"].value
+        if isinstance(pct, bool) or not isinstance(pct, (int, float)):
+            break
+        anterior = anterior * (1.0 + float(pct))
+        cadeia[row] = anterior
+    return cadeia
+
+
 def _retroativo_python(memoria: dict[str, Any], metodo: str) -> float | None:
     total = 0.0
     evidencias = 0
@@ -98,11 +123,18 @@ def adaptar_coleta_reajuste_para_documentos(
 
     ciclos_rows = []
     fatores: dict[str, float] = {}
+    # Fallback acionado apenas quando a formula nao tem valor calculado: o
+    # valor gravado no arquivo continua tendo precedencia absoluta.
+    cadeia_fator = _cadeia_fator_acumulado(parametros)
     for row in range(2, 7):
         ciclo = str(parametros[f"B{row}"].value or "").upper()
         if not ciclo:
             continue
-        fator = _numero(parametros[f"F{row}"].value, 1.0)
+        fator_gravado = parametros[f"F{row}"].value
+        if fator_gravado in (None, ""):
+            fator = cadeia_fator.get(row, 1.0)
+        else:
+            fator = _numero(fator_gravado, 1.0)
         fatores[ciclo] = fator
         ciclos_rows.append(
             {
