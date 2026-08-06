@@ -635,12 +635,16 @@ def gerar_masterfile_preenchido(
                 parametros[f"{coluna}{linha}"].comment = None
             derivado = ciclos_completos.get(nome) or {}
             fonte = ciclo or derivado
+            # C/D sao marcos de ciclo lidos como MES/ANO: o template ja nasce com
+            # "mm/yyyy" em C2:D6 e o gerador nao pode rebaixar para dia/mes/ano.
+            # "mm/yyyy" e o codigo canonico do OOXML (en-US); o Excel pt-BR o
+            # renderiza como mm/aaaa. As celulas seguem sendo datas reais.
             if fonte.get("data_inicio"):
                 _escrever_entrada(parametros, f"C{linha}", fonte["data_inicio"])
-                parametros[f"C{linha}"].number_format = "dd/mm/yyyy"
+                parametros[f"C{linha}"].number_format = "mm/yyyy"
             if fonte.get("data_fim"):
                 _escrever_entrada(parametros, f"D{linha}", fonte["data_fim"])
-                parametros[f"D{linha}"].number_format = "dd/mm/yyyy"
+                parametros[f"D{linha}"].number_format = "mm/yyyy"
             if not ciclo:
                 if nome == "C0":
                     _escrever_entrada(parametros, f"E{linha}", 0.0)

@@ -68,7 +68,27 @@ ROOT = Path(__file__).resolve().parents[1]
 # Etapa 27B: G vazio deixa de ser erro estrutural e vira retroativo
 # potencial (itens_PC!I/J/K + MEMORIA!C10:C14); VTA independente de G
 # (owner: tools/aplicar_vta_pc_independente_27b.py) — pin reancorado.
-SHA256_TEMPLATE_ESPERADO = "30b85051a6ec54b9f9940ab3570c9df674596b38cbe2de2addf8595f6929b393"
+# Etapa VTA-posicoes: 3 referencias do VTA na Tabela 1 de RESULTADOS
+# (POSICAO ATUAL / ULTIMA ABERTURA DISPONIVEL / CONTRATO INTEGRAL), bloco
+# auxiliar MEMORIA_RESULTADOS!V/W/AB e fotografia atual itens_RC!Q:Y via
+# INDIRECT+ISERROR sobre CICLO_EM_EXECUCAO. B26/T25 homologados intactos
+# (owner: tools/aplicar_vta_posicoes_tabela1.py) — pin reancorado.
+# Correcoes pos-implementacao: cobertura_temporal A8/B8/C8 = "COBERTURA FISICA
+# ATUAL CONFIRMADA ATE", origem automatica em CICLO_EM_EXECUCAO!D5 quando A9
+# valido (owner: tools/aplicar_cobertura_ciclo.py). A editabilidade de
+# CICLO_EM_EXECUCAO (selectUnlockedCells) foi corrigida no gerador em runtime e
+# NAO altera este template. — pin reancorado.
+# Etapa VTA (ajustes finais de layout): legibilidade da Tabela 1 (8:13), remocao
+# da linha "Fonte temporal de conferencia" em cobertura_temporal e CF dos 4
+# estados em itens_Remanesc. Sem alterar formula-fonte nem B26/T25. — reancorado.
+# Temporalidade dos aditivos por DATA_EFEITO: colunas ocultas
+# posicao_contratual!AA:AL, decomposicao temporal da FORMA 2 em
+# MEMORIA_RESULTADOS (AC/AD + W48/W53:W57), bloco itens_RC!Z:AC, espelho
+# itens_Remanesc!BI e CF dos 4 estados reancorada nele. O bloco itens_RC!Q:Y
+# passou a distinguir vazio de zero (INDIRECT sobre celula vazia devolvia 0, o
+# que transformava pendencia em "zero confirmado"). As colunas oficiais
+# G/K/O/S/W/Y e as travas B26/T25 seguem intactas (formula e valor). — reancorado.
+SHA256_TEMPLATE_ESPERADO = "7da0ca1aeda333b910771d64b84d48ef399ed9e114cee9786a37408998a9d835"
 
 
 def _dados_calculadora() -> dict:

@@ -298,32 +298,51 @@ def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]
         raise ValueError("A Calculadora não informou nenhum ciclo entre C1 e C4.")
 
     data_base = _data(origem.get("data_base") or origem.get("data_base_original"))
-    inicios: dict[int, date] = {}
-    for numero, bruto in fornecidos.items():
-        inicio = _data(bruto.get("data_inicio") or bruto.get("inicio_ciclo"))
-        if inicio is None:
-            ancora = _data(bruto.get("data_base") or bruto.get("periodo_inicio"))
-            inicio = ancora + relativedelta(months=12) if ancora else None
+    # CALENDARIO CONTRATUAL — ancora unica.
+    # Cada ciclo tem exatamente 12 competencias mensais consecutivas, derivadas
+    # da data-base/aniversario contratual. A janela do indice (data_base /
+    # periodo_inicio de cada ciclo) e o INICIO_EFEITO_FINANCEIRO sao conceitos
+    # independentes: JAMAIS definem DATA_INICIO/DATA_FIM nem deslocam o ciclo
+    # seguinte. Por isso a ancora e tomada UMA unica vez — do ciclo explicito
+    # mais antigo — e todos os demais decorrem dela em blocos de 12 meses.
+    ancora_numero: int | None = None
+    ancora_inicio: date | None = None
+    for numero in sorted(fornecidos):
+        inicio = _data(fornecidos[numero].get("data_inicio")
+                       or fornecidos[numero].get("inicio_ciclo"))
         if inicio:
-            inicios[numero] = inicio.replace(day=1)
-    if not inicios and data_base:
+            ancora_numero, ancora_inicio = numero, inicio.replace(day=1)
+            break
+    if ancora_inicio is None:
+        # Sem marco explicito, a ancora e a janela do indice do ciclo MAIS
+        # ANTIGO informado: so nele a janela coincide com o aniversario
+        # contratual. A janela dos ciclos SEGUINTES jamais e consultada — e ela
+        # que carrega o inicio do efeito financeiro e deslocava o calendario.
         primeiro = min(fornecidos)
-        inicios[primeiro] = data_base.replace(day=1) + relativedelta(months=12 * primeiro)
-    if not inicios:
+        janela = _data(fornecidos[primeiro].get("data_base")
+                       or fornecidos[primeiro].get("periodo_inicio"))
+        if janela is not None:
+            ancora_numero = primeiro
+            ancora_inicio = janela.replace(day=1) + relativedelta(months=12)
+        elif data_base is not None:
+            ancora_numero = primeiro
+            ancora_inicio = (
+                data_base.replace(day=1) + relativedelta(months=12 * primeiro)
+            )
+    if ancora_inicio is None:
         raise ValueError("Não foi possível identificar a data-base dos ciclos da Calculadora.")
 
     ultimo = max(fornecidos)
-    for numero in range(0, ultimo + 1):
-        if numero in inicios:
-            continue
-        referencia = min(inicios, key=lambda existente: abs(existente - numero))
-        inicios[numero] = inicios[referencia] + relativedelta(months=12 * (numero - referencia))
+    inicios: dict[int, date] = {
+        numero: ancora_inicio + relativedelta(months=12 * (numero - ancora_numero))
+        for numero in range(0, max(ultimo, 4) + 1)
+    }
 
     ciclos = []
     for numero in range(1, ultimo + 1):
         bruto = fornecidos.get(numero, {})
         inicio = inicios[numero]
-        fim = _data(bruto.get("data_fim")) or (inicio + relativedelta(months=12) - relativedelta(days=1))
+        fim = inicio + relativedelta(months=12) - relativedelta(days=1)
         objeto_atual = bool(
             numero in fornecidos
             and bruto.get("objeto_analise_atual", not bruto.get("ciclo_ja_concedido", False))

@@ -348,7 +348,12 @@ class ColetaReajusteTests(unittest.TestCase):
 
         adapter = (ROOT / "_coleta_reajuste_documentos.py").read_text(encoding="utf-8")
         self.assertNotIn('if not diagnostico.get("pronto_para_consolidar"):', adapter)
-        self.assertIn('fator = _numero(parametros[f"F{row}"].value, 1.0)', adapter)
+        # O fator continua vindo de parametros!F; quando a formula nao tem
+        # valor calculado gravado, a cadeia e recomposta pelo percentual do
+        # ciclo (parametros!E), que e entrada literal.
+        self.assertIn('fator_gravado = parametros[f"F{row}"].value', adapter)
+        self.assertIn('fator = _numero(fator_gravado, 1.0)', adapter)
+        self.assertIn('fator = cadeia_fator.get(row, 1.0)', adapter)
         self.assertIn('"Data-base": _data_br(parametros[f"C{row}"].value)', adapter)
         self.assertIn('"Situação": parametros[f"G{row}"].value or ""', adapter)
         self.assertIn('"Variação": _numero(parametros[f"E{row}"].value)', adapter)

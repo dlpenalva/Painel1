@@ -249,6 +249,14 @@ def test_f_status_de_erro_do_excel_bloqueia_apenas_o_resultado_local():
 
 
 def test_nenhuma_formula_legada_depende_da_aba_opcional():
+    # A aba opcional pode ser CONSUMIDA por formulas de apresentacao, desde que
+    # SEMPRE via INDIRECT (a referencia vive dentro de um literal entre aspas e
+    # resolve para "" quando a aba nao existe — sem #REF!, sem reparo). O que
+    # continua PROIBIDO e a referencia DURA (fora de aspas), que criaria
+    # dependencia real da aba opcional. Removemos os literais e exigimos que o
+    # nome nao sobre no codigo da formula.
+    import re
+
     wb = load_workbook(io.BytesIO(obter_coleta_oficial_bytes()), data_only=False)
     referencias = []
     for ws in wb.worksheets:
@@ -257,11 +265,10 @@ def test_nenhuma_formula_legada_depende_da_aba_opcional():
         for row in ws.iter_rows():
             for cell in row:
                 valor = cell.value
-                if (
-                    isinstance(valor, str)
-                    and valor.startswith("=")
-                    and ABA_CICLO_EM_EXECUCAO in valor.upper()
-                ):
+                if not (isinstance(valor, str) and valor.startswith("=")):
+                    continue
+                sem_literais = re.sub(r'"[^"]*"', "", valor)
+                if ABA_CICLO_EM_EXECUCAO in sem_literais.upper():
                     referencias.append(f"{ws.title}!{cell.coordinate}:{valor}")
     assert referencias == []
 

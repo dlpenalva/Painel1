@@ -351,6 +351,20 @@ def _montar_contrato(leitura: dict[str, Any]) -> dict[str, Any]:
     parametros = leitura.get("parametros_v10") or {}
     limitacoes: list[str] = []
 
+    # PAYLOAD CANONICO UNICO. No metodo PC, o retroativo oficial e a medida
+    # "ate o corte" do payload dos PCs — ja sem os PCs sem efeito financeiro e
+    # sem os posteriores a data de corte. Os seis documentos, os boxes e o XLS
+    # passam a ler a MESMA verdade. Sem PCs lidos (ou em outro metodo), o valor
+    # do XLS permanece como fonte, sem regressao.
+    totais_pc = (leitura.get("itens_pc_v10") or {}).get("totais_canonicos") or {}
+    ate_o_corte = totais_pc.get("ate_o_corte") or {}
+    modo_leitura = str(controle.get("modo") or "").strip().upper()
+    metodo_pc = "PC" in modo_leitura or "PEDIDO" in modo_leitura
+    retroativo_canonico = (
+        ate_o_corte.get("retroativo")
+        if metodo_pc and (ate_o_corte.get("quantidade") or 0) else None
+    )
+
     dados_basicos = {
         "modo_leitura": controle.get("modo"),
         "modo_leitura_original": controle.get("modo_bruto"),
@@ -359,7 +373,15 @@ def _montar_contrato(leitura: dict[str, Any]) -> dict[str, Any]:
         "valor_total_atualizado_oficial": resumo.get("valor_total_atualizado"),
         "execucao_atualizada_oficial": resumo.get("execucao_atualizada"),
         "saldo_remanescente_oficial": resumo.get("saldo_remanescente"),
-        "retroativo_oficial": resumo.get("retroativo"),
+        "retroativo_oficial": (
+            retroativo_canonico if retroativo_canonico is not None
+            else resumo.get("retroativo")
+        ),
+        "origem_retroativo_oficial": (
+            "totais_canonicos_pc.ate_o_corte" if retroativo_canonico is not None
+            else "resultados_xls"
+        ),
+        "totais_canonicos_pc": totais_pc,
     }
 
     data_corte = controle.get("data_corte")
@@ -507,16 +529,30 @@ def _montar_resultados(
     pago = _f(por_estado.get("pago"))
     em_analise = _valor_por_estado(por_estado, "analise")
     ciclos = (painel.get("situacao_reajuste") or {}).get("ciclos") or []
-    indice_por_ciclo = [
-        {
+    fator_derivado = _fatores_acumulados_por_percentual(ciclos)
+    indice_por_ciclo = []
+    for c in ciclos:
+        fator = c.get("fator_acumulado")
+        origem = "parametros_v10"
+        if _f_none(fator) is None:
+            # parametros!FATOR_ACUMULADO e formula: uma Coleta que nao passou
+            # pelo Excel nao traz valor calculado nela. O percentual do ciclo
+            # e entrada literal e continua disponivel, entao o fator segue
+            # sendo um dado da Coleta — apenas nao lido. Reconstruido aqui
+            # somente para a narrativa documental do indice acumulado; as
+            # cadeias de VTA, retroativo e posicao contratual nao usam este
+            # bloco e permanecem inalteradas.
+            derivado = fator_derivado.get(c.get("ciclo"))
+            if derivado is not None:
+                fator = derivado
+                origem = "parametros_v10.percentual_do_ciclo (fator recomposto)"
+        indice_por_ciclo.append({
             "ciclo": c.get("ciclo"),
             "indice_percentual": c.get("indice_percentual"),
-            "fator_acumulado": c.get("fator_acumulado"),
-            "indice_acumulado": _indice_acumulado(c.get("fator_acumulado")),
-            "origem": "parametros_v10",
-        }
-        for c in ciclos
-    ]
+            "fator_acumulado": fator,
+            "indice_acumulado": _indice_acumulado(fator),
+            "origem": origem,
+        })
     ultimo_indice = next(
         (c for c in reversed(indice_por_ciclo) if c.get("fator_acumulado") is not None),
         {},
@@ -1189,6 +1225,28 @@ def _indice_acumulado(fator: Any) -> float | None:
     if valor is None:
         return None
     return round(valor - 1.0, 10)
+
+
+def _fatores_acumulados_por_percentual(ciclos: list[dict[str, Any]]) -> dict[str, float]:
+    """Recompoe a cadeia de FATOR_ACUMULADO a partir do percentual de cada ciclo.
+
+    Espelha a formula da coluna parametros!F, que encadeia
+    ``F{r} = F{r-1} * (1 + E{r})`` e para de produzir valor no primeiro ciclo
+    sem percentual numerico. Serve apenas como recomposicao de um dado que ja
+    esta na Coleta (o percentual e entrada literal) quando o valor calculado
+    da formula nao foi gravado no arquivo.
+    """
+    derivados: dict[str, float] = {}
+    anterior = 1.0
+    for c in ciclos:
+        ciclo = c.get("ciclo")
+        pct = _f_none(c.get("indice_percentual"))
+        if pct is None:
+            break
+        anterior = anterior * (1.0 + pct)
+        if ciclo:
+            derivados[ciclo] = anterior
+    return derivados
 
 
 def _valor_por_estado(por_estado: dict[str, Any], marcador: str) -> float:

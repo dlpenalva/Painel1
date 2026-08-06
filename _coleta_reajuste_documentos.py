@@ -35,6 +35,31 @@ def _data_br(valor: Any) -> str:
     return str(valor or "")
 
 
+def _cadeia_fator_acumulado(parametros) -> dict[int, float]:
+    """Reproduz em Python a cadeia da coluna FATOR_ACUMULADO (parametros!F2:F6).
+
+    A coluna F e formula: uma Coleta que nunca passou pelo Excel nao traz valor
+    calculado nela e openpyxl(data_only=True) devolve None. O percentual do
+    ciclo (coluna E) e entrada literal e permanece disponivel, de modo que o
+    fator acumulado continua sendo um dado da Coleta — apenas nao lido.
+
+    Espelha a formula do arquivo:
+        F2 = 1
+        F{r} = "" se E{r} nao for numero ou se F{r-1} nao for numero;
+               senao F{r-1} * (1 + E{r})
+    Linhas sem valor ficam ausentes do dicionario, como a formula deixa "".
+    """
+    cadeia: dict[int, float] = {2: 1.0}
+    anterior = 1.0
+    for row in range(3, 7):
+        pct = parametros[f"E{row}"].value
+        if isinstance(pct, bool) or not isinstance(pct, (int, float)):
+            break
+        anterior = anterior * (1.0 + float(pct))
+        cadeia[row] = anterior
+    return cadeia
+
+
 def _retroativo_python(memoria: dict[str, Any], metodo: str) -> float | None:
     total = 0.0
     evidencias = 0
@@ -98,11 +123,18 @@ def adaptar_coleta_reajuste_para_documentos(
 
     ciclos_rows = []
     fatores: dict[str, float] = {}
+    # Fallback acionado apenas quando a formula nao tem valor calculado: o
+    # valor gravado no arquivo continua tendo precedencia absoluta.
+    cadeia_fator = _cadeia_fator_acumulado(parametros)
     for row in range(2, 7):
         ciclo = str(parametros[f"B{row}"].value or "").upper()
         if not ciclo:
             continue
-        fator = _numero(parametros[f"F{row}"].value, 1.0)
+        fator_gravado = parametros[f"F{row}"].value
+        if fator_gravado in (None, ""):
+            fator = cadeia_fator.get(row, 1.0)
+        else:
+            fator = _numero(fator_gravado, 1.0)
         fatores[ciclo] = fator
         ciclos_rows.append(
             {
@@ -408,6 +440,19 @@ def adaptar_coleta_reajuste_para_documentos(
             "historico_vu": leitura.get("historico_vu") or {},
             "memoria_calculo": leitura.get("memoria_calculo") or {},
             "resultados_xls": leitura.get("resultados_xls") or {},
+            # Payload canonico unico dos PCs: as sete medidas separadas por
+            # significado (informado, ate o corte, enquadrado nos ciclos, com
+            # efeito, sem efeito no ciclo, intervalo precluso, retroativo). Os
+            # seis documentos e os boxes leem daqui — nenhum deles recalcula.
+            "totais_canonicos_pc": (
+                (leitura.get("itens_pc_v10") or {}).get("totais_canonicos") or {}
+            ),
+            "composicao_vta": leitura.get("composicao_vta") or {},
+            # Os proprios registros canonicos de itens_PC (ja enquadrados no
+            # ciclo, com efeito financeiro, valor considerado e marcador de
+            # corte). A Adequacao Orcamentaria na origem "Pedidos de Compra" le
+            # daqui, em vez de exigir redigitacao de NUMERO_PC/DATA_PC/VALOR_PC.
+            "itens_pc_v10": leitura.get("itens_pc_v10") or {},
             "_resultado_calculado_python": True,
         })
     return resultado_documental

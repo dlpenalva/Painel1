@@ -157,12 +157,15 @@ def test_vta_inclui_historico_do_c3_pre_efeito():
     res = ler_masterfile_v10(saida)
     comp = montar_composicao_vta(res)
     por_ciclo = {l["ciclo"]: l for l in comp["execucao_por_ciclo"]}
-    # C3 = PRE (efeito Nao) + POS (efeito Sim), ambos ATUALIZADOS: 2x 1076,10.
-    assert por_ciclo["C3"]["valor_atualizado"] == pytest.approx(2152.20, abs=0.01)
+    # A execucao do VTA usa o VALOR HISTORICO CONSIDERADO, nao o
+    # VALOR_ATUALIZADO: o PC anterior ao inicio do efeito financeiro pertence a
+    # C3 e permanece no valor original (fator efetivo 1, retroativo zero).
+    # C3 = PRE 1000,00 + POS 1076,10 = 2076,10.
+    assert por_ciclo["C3"]["valor_atualizado"] == pytest.approx(2076.10, abs=0.01)
     # C1 fora da apuracao permanece nominal (fator 1 pela memoria).
     assert por_ciclo["C1"]["valor_atualizado"] == pytest.approx(1000.00, abs=0.01)
-    # VTA = C0 fisico 400 + PCs C1..C3 (1000+1020+2152,20) + rem 440.
-    assert comp["vta_composicao"] == pytest.approx(5012.20, abs=0.01)
+    # VTA = C0 fisico 400 + PCs C1..C3 (1000+1020+2076,10) + rem 440.
+    assert comp["vta_composicao"] == pytest.approx(4936.10, abs=0.01)
 
 
 def test_compatibilidade_xls_antigo_recomputa_e_avisa():

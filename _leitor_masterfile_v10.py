@@ -42,7 +42,13 @@ from _estado_contratual_sombra import (
 )
 from _posicao_contratual_sombra import montar_posicao_contratual_sombra
 from _objeto_processo_reajuste import montar_objeto_processo_reajuste
-from _motor_temporal import enquadrar_data_pc
+from _motor_temporal import (
+    classificar_enquadramento_pc,
+    enquadrar_data_pc,
+    ENQ_CICLO,
+    ENQ_INDETERMINADO,
+    ENQ_INTERVALO_PRECLUSO,
+)
 
 
 # ---------------------------------------------------------------------------
@@ -1993,7 +1999,128 @@ def _ler_parcelas_sombra_aditivos(wb) -> list[dict[str, Any]]:
     return parcelas
 
 
-def _ler_itens_pc_v10(wb, ciclo_vigente: str | None = None) -> dict[str, Any]:
+def _apenas_data(valor: Any) -> Any:
+    """Reduz datetime a date para comparacao por dia (nunca por instante)."""
+    return valor.date() if hasattr(valor, "date") and hasattr(valor, "hour") else valor
+
+
+def _data_corte_valida(data_corte: Any) -> Any:
+    """Data de corte utilizavel (CONTROLE!B3) ou ``None`` quando ilegivel."""
+    corte = _normalizar_data(data_corte)
+    return _apenas_data(corte) if hasattr(corte, "year") else None
+
+
+def _totais_canonicos_pc(
+    itens: list[dict[str, Any]],
+    data_corte: Any = None,
+) -> dict[str, Any]:
+    """Medidas canonicas dos PCs, separadas por significado.
+
+    Distingue explicitamente o que a homologacao provou serem coisas diferentes:
+
+      * informado          — inventario integral do arquivo (todo PC valido);
+      * ate_o_corte        — subconjunto alcancado pela data de corte unica;
+      * enquadrado_ciclos  — PCs cuja DATA_PC cai dentro de um ciclo (C0..C4);
+      * com_efeito         — PCs que alcancaram o inicio do efeito financeiro;
+      * sem_efeito_ciclo   — dentro de ciclo, antes do inicio do efeito;
+      * intervalo_precluso — entre dois ciclos conhecidos, execucao sem reajuste;
+      * indeterminado      — sem faixa temporal justificavel (exige revisao).
+
+    Todos os valores "considerado" usam VALOR_HISTORICO_CONSIDERADO; nenhuma
+    medida aplica fator a PC sem efeito financeiro.
+    """
+    def _bloco() -> dict[str, float]:
+        return {"quantidade": 0, "valor_pc": 0.0, "valor_considerado": 0.0,
+                "retroativo": 0.0}
+
+    chaves = (
+        "informado", "ate_o_corte", "enquadrado_ciclos", "com_efeito",
+        "sem_efeito_ciclo", "intervalo_precluso", "indeterminado",
+        "posterior_ao_corte",
+    )
+    blocos = {chave: _bloco() for chave in chaves}
+    por_ciclo: dict[str, dict[str, float]] = {}
+
+    def _somar(bloco: dict[str, float], valor: float, considerado: float,
+               retro: float) -> None:
+        bloco["quantidade"] += 1
+        bloco["valor_pc"] += valor
+        bloco["valor_considerado"] += considerado
+        bloco["retroativo"] += retro
+
+    for item in itens:
+        if str(item.get("entra_no_calculo") or "Sim").strip().lower() not in (
+            "sim", "s", "true", "1"
+        ):
+            continue
+        if (item.get("campos_vta") or {}).get(
+            "status_consolidacao"
+        ) == "DESCARTADO_DUPLICIDADE":
+            continue
+        valor = float(item.get("valor_pc") or 0.0)
+        considerado = float(
+            item.get("valor_historico_considerado")
+            if item.get("valor_historico_considerado") is not None else valor
+        )
+        retro = float(item.get("retroativo_reconhecido_a_pagar") or 0.0)
+        enq = str(item.get("enquadramento") or ENQ_CICLO)
+        no_corte = bool(item.get("dentro_do_corte", True))
+
+        _somar(blocos["informado"], valor, considerado, retro)
+        if not no_corte:
+            _somar(blocos["posterior_ao_corte"], valor, considerado, retro)
+            continue
+        _somar(blocos["ate_o_corte"], valor, considerado, retro)
+
+        if enq == ENQ_INTERVALO_PRECLUSO:
+            _somar(blocos["intervalo_precluso"], valor, considerado, retro)
+            continue
+        if enq == ENQ_INDETERMINADO or not item.get("ciclo"):
+            _somar(blocos["indeterminado"], valor, considerado, retro)
+            continue
+
+        _somar(blocos["enquadrado_ciclos"], valor, considerado, retro)
+        destino = (
+            "com_efeito" if str(item.get("efeito_financeiro_pc") or "").strip()
+            == "Sim" else "sem_efeito_ciclo"
+        )
+        _somar(blocos[destino], valor, considerado, retro)
+        ciclo = str(item["ciclo"]).strip().upper()
+        _somar(por_ciclo.setdefault(ciclo, _bloco()), valor, considerado, retro)
+
+    for bloco in list(blocos.values()) + list(por_ciclo.values()):
+        for campo in ("valor_pc", "valor_considerado", "retroativo"):
+            bloco[campo] = round(bloco[campo], 2)
+
+    return {
+        **blocos,
+        "por_ciclo": por_ciclo,
+        "data_corte": _data_corte_valida(data_corte),
+        "corte_aplicado": _data_corte_valida(data_corte) is not None,
+    }
+
+
+def _pc_dentro_do_corte(data_pc: Any, data_corte: Any) -> bool:
+    """PC alcancado pela data de corte unica do contrato (CONTROLE!B3).
+
+    Sem data de corte informada, todo PC e alcancado (comportamento anterior).
+    Data de PC ilegivel tambem nao e excluida: exclusao exige prova de que a
+    data e posterior ao corte, nunca ausencia de informacao.
+    """
+    corte = _data_corte_valida(data_corte)
+    if corte is None:
+        return True
+    data = _normalizar_data(data_pc)
+    if not hasattr(data, "year"):
+        return True
+    return _apenas_data(data) <= corte
+
+
+def _ler_itens_pc_v10(
+    wb,
+    ciclo_vigente: str | None = None,
+    data_corte: Any = None,
+) -> dict[str, Any]:
     """Le itens_PC v10: registro financeiro SAP por cabecalho.
     Aceita PC de item especifico e PC global/agregado.
     Sem TIPO_PC, QTD ou VU — usa VALOR_PC como base financeira.
@@ -2171,6 +2298,17 @@ def _ler_itens_pc_v10(wb, ciclo_vigente: str | None = None) -> dict[str, Any]:
 
     parametros_pc = _ler_parametros_v10(wb)
     por_ciclo_pc = parametros_pc.get("por_ciclo") or {}
+
+    # Guarda fail-closed do calendario: cada ciclo com exatamente 12
+    # competencias consecutivas e ciclos contiguos. Uma lacuna aqui significa
+    # que DATA_INICIO/DATA_FIM foram materializados a partir da janela do
+    # indice ou do INICIO_EFEITO_FINANCEIRO — nenhuma competencia pode ficar
+    # fora dos ciclos entre ciclos consecutivos.
+    from _motor_posicao_contratual import divergencias_calendario_canonico
+    for problema in divergencias_calendario_canonico([
+        {"ciclo": nome, **(reg or {})} for nome, reg in por_ciclo_pc.items()
+    ]):
+        resultado["alertas"].append(f"Calendario de ciclos invalido: {problema}")
 
     def _inferir_ciclo_fator_valor(data_pc: Any, valor_pc: Any) -> tuple[Any, Any, Any]:
         data_norm = _normalizar_data(data_pc)
@@ -2459,9 +2597,24 @@ def _ler_itens_pc_v10(wb, ciclo_vigente: str | None = None) -> dict[str, Any]:
                 ciclo_norm = ciclo_inferido
                 inferencias_linha.append("CICLO_PC recomposto pela linha temporal")
 
+        # Enquadramento canonico da DATA_PC: ciclo, INTERVALO PRECLUSO entre
+        # dois ciclos conhecidos, ou indeterminado. O intervalo precluso e
+        # execucao VALIDA sem ciclo de reajuste — nunca erro, nunca atribuido
+        # ao ciclo anterior nem ao seguinte.
+        enquadramento = classificar_enquadramento_pc(data_pc, por_ciclo_pc)
+        if enquadramento.e_precluso:
+            ciclo = None
+            ciclo_norm = ""
+            inferencias_linha.append(
+                "DATA_PC entre ciclos conhecidos: " + enquadramento.rotulo
+            )
+
         from _efeitos_financeiros_pc import efeito_financeiro_pc
-        efeito_inferido = efeito_financeiro_pc(
-            data_pc, ciclo, por_ciclo_pc.get(ciclo_norm)
+        # Sem ciclo de reajuste nao ha inicio de efeito financeiro a alcancar:
+        # o efeito e "Nao" por definicao, sem indeterminacao.
+        efeito_inferido = (
+            "Nao" if enquadramento.e_precluso
+            else efeito_financeiro_pc(data_pc, ciclo, por_ciclo_pc.get(ciclo_norm))
         )
         if efeito_pc in (None, ""):
             efeito_pc = efeito_inferido
@@ -2498,6 +2651,12 @@ def _ler_itens_pc_v10(wb, ciclo_vigente: str | None = None) -> dict[str, Any]:
         # governando somente retroativo/status/cor.
         valor_num = _tofl(valor, default=None)
         vatual_cache = _tofl(vatual, default=None)
+        # Etapa 26C (preservada): VALOR_ATUALIZADO e o valor-base x fator
+        # historico integral do CICLO_PC, desacoplado do efeito financeiro. Quem
+        # governa resultado, retroativo, VTA e documentos e o VALOR HISTORICO
+        # CONSIDERADO (base + retroativo reconhecido), calculado adiante — nele,
+        # o PC anterior ao inicio do efeito usa fator efetivo 1 e permanece no
+        # valor original.
         fator_historico = _fator_pc_na_apuracao(ciclo_norm)
         fator = fator_historico
         vatual = (
@@ -2536,7 +2695,11 @@ def _ler_itens_pc_v10(wb, ciclo_vigente: str | None = None) -> dict[str, Any]:
             resultado["alertas"].append(
                 f"PC '{ident}': FATOR_ACUMULADO ausente ou invalido."
             )
-        if not layout_inteligente and ciclo in (None, "", "Fora dos ciclos"):
+        if (
+            not layout_inteligente
+            and not enquadramento.e_precluso
+            and ciclo in (None, "", "Fora dos ciclos")
+        ):
             resultado["alertas"].append(
                 f"PC '{ident}': DATA_PC fora dos ciclos ou ciclo nao calculado."
             )
@@ -2618,7 +2781,25 @@ def _ler_itens_pc_v10(wb, ciclo_vigente: str | None = None) -> dict[str, Any]:
                 n_pc_corte is not None
                 and (n_vig_corte is None or n_pc_corte < n_vig_corte)
             )
-            if estrutura_ok and dentro_corte:
+            precluso_ok = bool(
+                enquadramento.e_precluso
+                and valor_estrutural is not None and valor_estrutural > 0.0
+            )
+            if precluso_ok:
+                # Execucao valida entre dois ciclos conhecidos: compoe o total de
+                # PCs e a execucao historica do VTA pelo valor original, sem
+                # reajuste e sem retroativo. Nao integra nenhum ciclo.
+                campos_vta.update({
+                    "computa_vta": "Sim",
+                    "tipo_financeiro": "Execucao Sem Reajuste",
+                    "status_consolidacao": "COMPUTADO",
+                    "justificativa_vta": (
+                        f"{enquadramento.rotulo}: execucao valida entre ciclos "
+                        "conhecidos; compoe o VTA pelo valor original, sem "
+                        "reajuste e sem retroativo."
+                    ),
+                })
+            elif estrutura_ok and dentro_corte:
                 campos_vta.update({
                     "computa_vta": "Sim",
                     "tipo_financeiro": "Execucao Atualizada",
@@ -2676,15 +2857,42 @@ def _ler_itens_pc_v10(wb, ciclo_vigente: str | None = None) -> dict[str, Any]:
         if delta_lido is None and not pago_confirmado_fb and valor not in (None, ""):
             delta_lido = incremento_retroativo
 
+        # Medida canonica do valor historico EFETIVAMENTE considerado. Nao
+        # substitui VALOR_ATUALIZADO (que segue sendo o valor-base x fator
+        # historico integral, desacoplado do efeito): e o valor que a apuracao
+        # de fato reconhece — base paga mais o retroativo reconhecido a pagar.
+        # PC sem efeito financeiro e PC do intervalo precluso ficam no valor
+        # original; PC nao pago/em analise nao antecipa retroativo potencial.
+        retro_reconhecido = _tofl(retro_lido, default=0.0)
+        valor_hist_considerado = (
+            round(valor_num + retro_reconhecido, 2)
+            if valor_num is not None else None
+        )
+        check_lido = ws.cell(r, col_check).value if col_check else None
+        if enquadramento.e_precluso:
+            # O CHECK do XLS foi calculado antes de existir a classe do
+            # intervalo; aqui ele vira INFO valida, nunca erro.
+            check_lido = enquadramento.rotulo
+
         registro = {
             "linha":            r,
             "item_ou_grupo":    item_ou_grupo,
             "numero_pc":        num_pc,
             "data_pc":          data_pc,
             "ciclo":            ciclo,
+            "enquadramento":    enquadramento.tipo,
+            "enquadramento_rotulo": enquadramento.rotulo,
+            "ciclo_anterior_precluso": enquadramento.ciclo_anterior,
+            "ciclo_seguinte_precluso": enquadramento.ciclo_seguinte,
             "valor_pc":         _tofl(valor),
             "fator_acumulado":  _tofl(fator, default=None),
+            "fator_efetivo_considerado": (
+                1.0 if enquadramento.e_precluso or efeito_pc == "Nao"
+                else _tofl(fator, default=None)
+            ),
             "valor_atualizado": _tofl(vatual, default=None),
+            "valor_historico_considerado": valor_hist_considerado,
+            "dentro_do_corte":  _pc_dentro_do_corte(data_pc, data_corte),
             "efeito_financeiro_pc": efeito_pc,
             "retroativo_reconhecido_a_pagar": retro_lido,
             "valor_atualizado_em_analise": analise_lida,
@@ -2746,6 +2954,9 @@ def _ler_itens_pc_v10(wb, ciclo_vigente: str | None = None) -> dict[str, Any]:
         "count_unitarios":  len(resultado["pc_unitarios"]),
         "count_globais":    len(resultado["pc_globais"]),
     }
+    resultado["totais_canonicos"] = _totais_canonicos_pc(
+        resultado["itens"], data_corte
+    )
     resultado["masterfile_inteligente"]["linhas_lidas"] = len(resultado["itens"])
     resultado["masterfile_inteligente"]["linhas_com_inferencia"] = sum(
         1 for i in resultado["itens"] if i.get("layout_inteligente")
@@ -2897,6 +3108,36 @@ def _ler_execucao_saldo(wb) -> dict[str, Any]:
     return resultado
 
 
+def _materializar_aberturas_temporais(registro: dict[str, Any]) -> None:
+    """Deriva a fotografia da abertura de cada ciclo com temporalidade correta.
+
+    ``QTD_REM_AJUSTADA_Cn`` soma ao remanescente informado pelo fiscal TODOS os
+    deltas rotulados naquele ciclo, inclusive os de DATA_EFEITO posterior a
+    abertura — o que retroage o aditivo e altera a fotografia declarada. A
+    abertura canonica desconta essa parcela:
+
+        QTD_REM_ABERTURA_Cn = QTD_REM_AJUSTADA_Cn - DELTA_POSTERIOR_ABERTURA_Cn
+
+    Deltas de ciclos anteriores sempre tem efeito <= abertura de Cn, entao a
+    subtracao isola exatamente o que ainda nao existia naquela data. Sem a
+    coluna auxiliar (arquivos anteriores a essa camada), a abertura permanece
+    igual a QTD_REM_AJUSTADA_Cn: nenhuma regressao.
+    """
+    for n in range(5):
+        ajustada = registro.get(f"QTD_REM_AJUSTADA_C{n}")
+        posterior = registro.get(f"DELTA_POSTERIOR_ABERTURA_C{n}")
+        if isinstance(ajustada, (int, float)) and not isinstance(ajustada, bool) \
+                and isinstance(posterior, (int, float)) \
+                and not isinstance(posterior, bool):
+            registro[f"QTD_REM_ABERTURA_C{n}"] = round(
+                float(ajustada) - float(posterior), 2
+            )
+            registro[f"ALTERACAO_POSTERIOR_ABERTURA_C{n}"] = float(posterior)
+        else:
+            registro[f"QTD_REM_ABERTURA_C{n}"] = ajustada
+            registro[f"ALTERACAO_POSTERIOR_ABERTURA_C{n}"] = 0.0
+
+
 def _ler_posicao_contratual(wb, origem: bytes | str | None = None) -> dict[str, Any]:
     """Le a aba posicao_contratual do novo modelo oficial (por cabecalho).
 
@@ -2943,6 +3184,16 @@ def _ler_posicao_contratual(wb, origem: bytes | str | None = None) -> dict[str, 
             registro[cab] = v
             if v is not None:
                 valores_presentes += 1
+        # Camada temporal (colunas auxiliares, quando presentes): deltas com
+        # DATA_EFEITO POSTERIOR a abertura de cada ciclo. Ausentes em arquivos
+        # anteriores a essa camada — nesse caso a abertura cai no comportamento
+        # anterior, sem regressao.
+        for n in range(5):
+            for cab in (f"DELTA_POSTERIOR_ABERTURA_C{n}",
+                        f"QTD_CONTRATUAL_ABERTURA_C{n}"):
+                col_aux = _col(mapa, cab)
+                registro[cab] = ws.cell(r, col_aux).value if col_aux else None
+        _materializar_aberturas_temporais(registro)
         resultado["itens"].append(registro)
 
     if linhas_com_item and valores_presentes <= linhas_com_item:
@@ -3021,6 +3272,81 @@ def _ler_resultados_xls(wb) -> dict[str, Any]:
         resultado["valores"].get(n) is None for n in presentes_calc
     )
     return resultado
+
+
+def _num_ou_none(v: Any) -> float | None:
+    if isinstance(v, bool):
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    return None
+
+
+def _ler_referencias_vta(wb) -> dict[str, Any]:
+    """Le as TRES REFERENCIAS do VTA da Tabela 1 (RESULTADOS!8:13) para AUDITORIA.
+
+    Superficie de leitura = a propria Tabela 1 executiva (rotulos + valores +
+    situacao), espelho de MEMORIA_RESULTADOS!W48/W50/W51/W52. Uso EXCLUSIVO de
+    apresentacao/auditoria nos documentos: NUNCA substitui VTA_FINAL/B26. Valores
+    vem do cache (data_only): sem recalculo, tudo None (fail-closed, sem inventar).
+
+    Classificacao fixa:
+      * forma1 (posicao atual)        -> REFERENCIA AUDITAVEL (vazia sem CICLO)
+      * forma2 (ultima abertura)      -> REFERENCIA AUDITAVEL
+      * forma3 (integral reajustado)  -> COMPARATIVO (nunca oficial)
+    """
+    out: dict[str, Any] = {
+        "disponivel": False,
+        "forma1_posicao_atual": None,
+        "forma2_ultima_abertura": None,
+        "forma3_integral_reajustado": None,
+        "reconciliacao_valor": None,
+        "reconciliacao_status": None,
+        "forma1_situacao": None,
+        "forma2_situacao": None,
+        "ciclo_ultima_abertura": None,
+        "fallback_razao": None,
+        "ciclo_vigente": None,
+        "data_posicao_atual": None,
+        "posicao_atual_disponivel": False,
+        "fontes": {
+            "forma1": "MEMORIA_RESULTADOS!W50 (RESULTADOS!B10)",
+            "forma2": "MEMORIA_RESULTADOS!W48 (RESULTADOS!B11)",
+            "forma3": "comparativo_VTA!B208 (RESULTADOS!B12)",
+            "reconciliacao": "MEMORIA_RESULTADOS!W51/W52 (RESULTADOS!B13/H13)",
+            "data_posicao": "CICLO_EM_EXECUCAO!D5",
+            "ciclo_vigente": "CONTROLE!B2",
+        },
+    }
+    if "RESULTADOS" not in wb.sheetnames:
+        return out
+    res = wb["RESULTADOS"]
+    out["disponivel"] = True
+    out["forma1_posicao_atual"] = _num_ou_none(res["B10"].value)
+    out["forma2_ultima_abertura"] = _num_ou_none(res["B11"].value)
+    out["forma3_integral_reajustado"] = _num_ou_none(res["B12"].value)
+    out["reconciliacao_valor"] = _num_ou_none(res["B13"].value)
+    st10, st11, st13 = res["H10"].value, res["H11"].value, res["H13"].value
+    out["forma1_situacao"] = str(st10).strip() if st10 not in (None, "") else None
+    out["forma2_situacao"] = str(st11).strip() if st11 not in (None, "") else None
+    out["reconciliacao_status"] = str(st13).strip() if st13 not in (None, "") else None
+    if "MEMORIA_RESULTADOS" in wb.sheetnames:
+        mem = wb["MEMORIA_RESULTADOS"]
+        w46 = mem["W46"].value
+        if isinstance(w46, (int, float)) and not isinstance(w46, bool):
+            out["ciclo_ultima_abertura"] = int(w46)
+        w47 = mem["W47"].value
+        out["fallback_razao"] = str(w47).strip() if w47 not in (None, "") else None
+    if "CONTROLE" in wb.sheetnames:
+        b2 = wb["CONTROLE"]["B2"].value
+        out["ciclo_vigente"] = str(b2).strip() if b2 not in (None, "") else None
+    if "CICLO_EM_EXECUCAO" in wb.sheetnames:
+        ciclo = wb["CICLO_EM_EXECUCAO"]
+        d5 = ciclo["D5"].value
+        out["data_posicao_atual"] = _norm_data(d5) if d5 not in (None, "") else None
+        a9 = ciclo["A9"].value  # total: nao-vazio => posicao completa e valida
+        out["posicao_atual_disponivel"] = isinstance(a9, (int, float)) and not isinstance(a9, bool)
+    return out
 
 
 def _detectar_versao(wb) -> str:
@@ -3240,6 +3566,9 @@ def ler_masterfile_v10(
     # RESULTADOS (novo modelo): valores nomeados para reconciliacao/auditoria
     # XLS x Python — nunca fonte exclusiva de calculo.
     res["resultados_xls"] = _ler_resultados_xls(wb)
+    # Tres referencias do VTA (auditoria/apresentacao): posicao atual, ultima
+    # abertura e integral reajustado. Nunca substitui o VTA oficial (B26).
+    res["referencias_vta"] = _ler_referencias_vta(wb)
 
     # Cadastro visivel de itens do contrato (fallback de VU/QTD_CONTRATADA
     # quando as abas ocultas nao vierem populadas pela Calculadora).
@@ -3373,7 +3702,9 @@ def ler_masterfile_v10(
     modo = _norm(res["controle"].get("modo", ""))
     if modo == "pc":
         res["itens_pc_v10"] = _ler_itens_pc_v10(
-            wb, ciclo_vigente=res["controle"].get("ciclo_vigente")
+            wb,
+            ciclo_vigente=res["controle"].get("ciclo_vigente"),
+            data_corte=res["controle"].get("data_corte"),
         )
         for alerta in res["itens_pc_v10"].get("alertas", []):
             res["avisos"].append(f"itens_PC: {alerta}")

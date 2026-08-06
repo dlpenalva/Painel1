@@ -270,6 +270,11 @@ def calcular_posicao_ciclo_por_data(
         if novo and nascimento is not None and nascimento > posicao:
             continue
 
+        # Regra B: `remanescente_inicio` E AUTORITATIVO e ja reflete tudo com
+        # efeito ate a abertura — inclusive o aditivo datado no proprio dia da
+        # abertura. Some-lo aqui seria reaplicar o delta. Quem monta esse valor
+        # a partir de QTD_REM_BASE (a aba CICLO_EM_EXECUCAO) e que soma o delta
+        # da abertura, uma unica vez, na coluna B.
         abertura = cadastro["remanescente_inicio"]
         if novo and nascimento is not None and nascimento > inicio:
             abertura = 0.0
@@ -403,11 +408,22 @@ def _formula_abertura(linha: int, origem: int) -> str:
     escolha = "\"\""
     for ciclo, ref in reversed(tuple(por_ciclo.items())):
         escolha = f'IF($C$3="{ciclo}",{ref},{escolha})'
+    # Aditivos com DATA_EFEITO ate a abertura do ciclo ja integram a fotografia
+    # de abertura (Regra B: o delta entra uma unica vez, aqui e nao no periodo,
+    # pois a coluna I so soma movimentos com data ESTRITAMENTE posterior a $F$3).
+    delta_abertura = (
+        f'ROUND(SUMIFS(aditivos!$L$2:$L$200,'
+        f'aditivos!$A$2:$A$200,A{linha},'
+        f'aditivos!$C$2:$C$200,$C$3,'
+        f'aditivos!$B$2:$B$200,"<"&(INT($F$3)+1)),2)'
+    )
     return (
         f'=IF(A{linha}="","",IF(AND(posicao_contratual!$Z{origem},'
         f'COUNTIFS(aditivos!$A$2:$A$200,itens_Remanesc!$A{origem},'
-        f'aditivos!$B$2:$B$200,"<="&$F$3,'
-        f'aditivos!$L$2:$L$200,">0")=0),0,{escolha}))'
+        f'aditivos!$B$2:$B$200,"<"&(INT($F$3)+1),'
+        f'aditivos!$L$2:$L$200,">0")=0),0,'
+        f'IF(ISNUMBER({escolha}),ROUND({escolha}+{delta_abertura},2),'
+        f'IF({delta_abertura}>0,{delta_abertura},""))))'
     )
 
 
@@ -461,7 +477,9 @@ def _criar_aba_itemizada(wb):
     ws = wb.create_sheet(ABA_CICLO_EM_EXECUCAO, indice)
     ws.sheet_properties.tabColor = "FF0F5B50"
     ws.sheet_view.showGridLines = False
-    ws.freeze_panes = f"A{PRIMEIRA_LINHA_ITEM}"
+    # Sem congelamento de paineis: navegacao livre pela planilha. As celulas
+    # automaticas seguem protegidas (locked); somente D5 e C13:C211 sao editaveis.
+    ws.freeze_panes = None
     ws.sheet_view.topLeftCell = "A1"
     ws.page_setup.orientation = "landscape"
     ws.page_setup.fitToWidth = 1
@@ -624,7 +642,7 @@ def _criar_aba_itemizada(wb):
             f'=IF(OR(A{linha}="",$D$5="",$F$3=""),"",'
             f'ROUND(SUMIFS(aditivos!$L$2:$L$200,'
             f'aditivos!$A$2:$A$200,A{linha},'
-            f'aditivos!$B$2:$B$200,">"&$F$3,'
+            f'aditivos!$B$2:$B$200,">="&(INT($F$3)+1),'
             f'aditivos!$B$2:$B$200,"<="&$D$5),2))'
         )
         ws.cell(linha, 10).value = (
@@ -750,9 +768,15 @@ def _criar_aba_itemizada(wb):
         ),
     )
 
+    # Protecao com celulas manuais editaveis. ATENCAO: em OOXML os atributos
+    # selectLockedCells/selectUnlockedCells sao flags de DESABILITAR selecao.
+    # O valor True em selectUnlockedCells impedia SELECIONAR (e portanto editar)
+    # exatamente as celulas de entrada (D5 e C13:C211), embora estivessem
+    # unlocked. Correcao: selectUnlockedCells=False -> os campos manuais ficam
+    # selecionaveis e editaveis; as formulas seguem protegidas por locked=True.
     ws.protection.sheet = True
     ws.protection.selectLockedCells = False
-    ws.protection.selectUnlockedCells = True
+    ws.protection.selectUnlockedCells = False
     _registrar_nome_layout(wb)
     return ws
 

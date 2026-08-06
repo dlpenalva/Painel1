@@ -41,6 +41,11 @@ def aplicar_css_aditivos25_compacto():
     )
 # <<< UX_ADITIVOS_25_COMPACTO
 from _ui_utils import render_marca_topo, render_aviso_privacidade
+from _reajuste_utils import (
+    FRASE_SEM_CICLOS_COMPUTADOS,
+    contar_ciclos_computados,
+    expressao_quantidade_ciclos,
+)
 
 
 COLUNAS_INFOS = [
@@ -264,7 +269,19 @@ def montar_saneador_integrado(df_infos, resultado_vg, resultado_garantia, df_che
     modo_consumo_itens_ciclo = modo_apuracao == "Consumo por Itens/Ciclo"
 
     indice_resultado = texto_seguro(resultado_vg.get("indice") if vg_disponivel else None, indice_info)
-    qtd_ciclos = texto_seguro(resultado_vg.get("quantidade_ciclos") if vg_disponivel else None)
+    # Ciclos efetivamente considerados na apuracao — nao o total de linhas do
+    # quadro. Mesma regra compartilhada pelos demais documentos.
+    df_ciclos_vg = resultado_vg.get("df_ciclos") if vg_disponivel else None
+    if isinstance(df_ciclos_vg, pd.DataFrame) and not df_ciclos_vg.empty:
+        ciclos_vg = [
+            registro for registro in df_ciclos_vg.to_dict("records")
+            if str(registro.get("Ciclo") or "").strip().upper() != "C0"
+        ]
+        expressao_ciclos = expressao_quantidade_ciclos(contar_ciclos_computados(ciclos_vg))
+    else:
+        expressao_ciclos = expressao_quantidade_ciclos(
+            resultado_vg.get("quantidade_ciclos") if vg_disponivel else None
+        )
     valor_original = moeda(resultado_vg.get("valor_original_contrato", 0)) if vg_disponivel else "[campo a preencher]"
     valor_pago = moeda(resultado_vg.get("valor_pago_efetivo", resultado_vg.get("total_pago_faturado", 0))) if vg_disponivel else "[campo a preencher]"
     valor_teorico = moeda(resultado_vg.get("valor_teorico_calculado", resultado_vg.get("total_devido_reajustado", 0))) if vg_disponivel else "[campo a preencher]"
@@ -296,8 +313,11 @@ def montar_saneador_integrado(df_infos, resultado_vg, resultado_garantia, df_che
         (f"3. Quanto ao histórico anterior, foi informado que {houve_reajuste} quanto à existência de reajuste anterior, "
          f"com percentual já concedido de {percentual_anterior}, efeitos financeiros anteriores em {data_efeitos_anterior} "
          f"e último Termo de Apostila identificado como {ultimo_termo}."),
-        (f"4. A análise de reajuste considerou {qtd_ciclos} ciclo(s), com variação acumulada de {variacao}. "
-         f"O valor original do contrato informado foi de {valor_original}."),
+        ((f"4. A análise de reajuste considerou {expressao_ciclos}, com variação acumulada de {variacao}. "
+          f"O valor original do contrato informado foi de {valor_original}.")
+         if expressao_ciclos else
+         (f"4. {FRASE_SEM_CICLOS_COMPUTADOS} "
+          f"O valor original do contrato informado foi de {valor_original}.")),
         ("5. A área gestora encaminhou a execução sob a forma de itens consumidos por ciclo, sem apresentar base financeira mensal por competência. "
          f"Com base na premissa fiscal de equivalência entre consumo, medição/aprovação e faturamento devido, foi apurado Retroativo (itens consumidos/ciclo) de {moeda(resultado_vg.get('valor_retroativo_consumo_itens_ciclo', 0))}.{delta_ciclos}"
          if modo_consumo_itens_ciclo else

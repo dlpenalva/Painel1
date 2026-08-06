@@ -39,26 +39,55 @@ FORMULAS_POR_ABA = {
     # total dinamico de D/F — FORA da capacidade funcional e sem automacao
     # de input (o off-by-one B201 da 26H.1 foi apontado pela auditoria e
     # removido na 26H.2).
-    "itens_Remanesc": 9394,
+    # Temporalidade por DATA_EFEITO: +199 do espelho local BI2:BI200
+    # (CICLO_NASCIMENTO_DATA). A formatacao condicional dos 4 estados precisa
+    # referenciar a PROPRIA aba: o Excel migra para a extensao x14 (invisivel ao
+    # openpyxl) qualquer regra que aponte para outra planilha.
+    "itens_Remanesc": 9593,
     "itens_Consumidos": 1806,
     # Etapa 26G: grade escalada para a capacidade canonica (5.000 PCs
     # x 8 colunas de formula) + resumo lateral N2:T6.
-    "itens_PC": 40042,
+    # 45042 = 40042 anteriores + 5000 da coluna U (VALOR_CONSIDERADO, U2:U5001).
+    "itens_PC": 45042,
     "aditivos": 1393,
     "posicao_referencia": 2595,
     # 26H: +398 formulas das colunas tecnicas ocultas Y (CICLO_NASCIMENTO)
     # e Z (EH_NOVO_ITEM), linhas 2:200.
-    "posicao_contratual": 5174,
-    "itens_RC": 3200,
+    # Temporalidade por DATA_EFEITO: +2388 das colunas ocultas AA:AL
+    # (AA data de efeito, AB:AF delta posterior a abertura por ciclo,
+    # AG:AK qtd contratual na abertura por ciclo, AL ciclo de nascimento
+    # POR DATA), 12 colunas x 199 linhas 2:200.
+    "posicao_contratual": 7562,
+    # Etapa VTA-posicoes: +1800 do bloco POSICAO ATUAL (AUTO) Q:Y (9 colunas
+    # x 200 linhas 3:202) via INDIRECT+ISERROR sobre CICLO_EM_EXECUCAO.
+    # Temporalidade por DATA_EFEITO: +800 do bloco Z:AC (aplicabilidade
+    # temporal na abertura adotada), 4 colunas x 200 linhas 3:202.
+    "itens_RC": 5800,
     "historico_VU": 3592,
-    "cobertura_temporal": 15,
+    # Etapa VTA: -1 (linha "Fonte temporal de conferencia" removida; sem consumidor).
+    "cobertura_temporal": 14,
     # 3762 anteriores + 11 referencias para a tabela manual unica.
     # 26G: +5 (T26/T27 completude do remanescente; T28:T30 PCs sem efeito).
-    "MEMORIA_RESULTADOS": 3778,
+    # Etapa VTA-posicoes: +212 do bloco auxiliar das 3 referencias
+    # (W41:W52 = 12 formulas + AB2:AB201 = 200 formulas). B26/T25 intactos.
+    # Temporalidade por DATA_EFEITO: +405 da decomposicao temporal da FORMA 2
+    # (AC2:AC201 abertura temporal + AD2:AD201 alteracoes posteriores = 400,
+    # mais W53:W57 = 5; W48 e reescrita, nao acrescentada). B26/T25 intactos.
+    # Correcao dos ciclos: +6 auxiliares (T31 limite da data de corte e
+    # T33:T37, as cinco medidas canonicas). T21/T22/W48/X2:X201 sao reescritas
+    # (fonte trocada para o VALOR CONSIDERADO e para as aberturas temporais),
+    # nao acrescentadas. B26/T25 intactos.
+    "MEMORIA_RESULTADOS": 4401,
     # 57 do prototipo + 4 selos por tabela + 1 premissa da estimativa - 1
     # helper J4 removido (status global agora agrega os selos H8/H14/H24/H33).
     # 26G: +5 (linha executiva A23:E23 dos PCs sem efeito financeiro).
-    "RESULTADOS": 66,
+    # Etapa VTA-posicoes: +7 liquidas na Tabela 1 (3 referencias +
+    # reconciliacao: B10/C10/H10, B11/C11/H11, B12, B13/H13 = 9 novas,
+    # menos as 2 antigas B10/B11 substituidas). H8 preservado.
+    # Correcao dos ciclos: +12 da secao 5 (as doze medidas canonicas com nomes
+    # claros, B55:B66). B16:B20 e B36 sao reescritas — passam a respeitar a
+    # data de corte e a posicao fisica —, nao acrescentadas.
+    "RESULTADOS": 85,
 }
 
 
