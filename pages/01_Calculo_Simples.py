@@ -43,11 +43,11 @@ def aplicar_css_aditivos25_compacto():
         unsafe_allow_html=True,
     )
 # <<< UX_ADITIVOS_25_COMPACTO
-from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox
+from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox, render_referencia_temporal_anterior
 from _indice_utils import (calcular_ist_numero_indice, coletar_sgs_produtorio,
                            serie_sgs_do_indice)
 from _reajuste_utils import _competencias_mensais, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br
-from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, NOME_DOWNLOAD_COLETA, gerar_coleta_oficial_preenchida
+from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, gerar_coleta_oficial_preenchida, nome_download_coleta
 from _memoria_calculo import normalizar_memoria_calculo
 from _email_contratada import gerar_rascunho_email_contratada, render_email_contratada
 # Imports dos blocos auxiliares de orientação/coleta fiscal
@@ -2167,15 +2167,22 @@ if res:
     }
 
 
+    # Referencia temporal anterior ao ciclo analisado (C2+). Bloco somente
+    # leitura, derivado das datas ja apuradas acima; nada e recalculado.
+    render_referencia_temporal_anterior(st.session_state.get("dados_admissibilidade", {}))
+
     # >>> BOTAO_COLETA_SIMPLES_ESTAVEL_V1
     try:
         _bytes_coleta_estavel = gerar_coleta_oficial_preenchida(
             st.session_state.get("dados_admissibilidade", {})
         )
+        _nome_coleta_estavel = nome_download_coleta(
+            st.session_state.get("dados_admissibilidade", {})
+        )
         st.download_button(
             label="Baixar Arquivo Coleta Oficial",
             data=_bytes_coleta_estavel,
-            file_name=NOME_DOWNLOAD_COLETA,
+            file_name=_nome_coleta_estavel,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             help="Baixa o Arquivo Coleta Oficial pré-preenchido com os dados desta apuração.",
             type="primary",

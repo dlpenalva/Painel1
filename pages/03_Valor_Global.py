@@ -12,10 +12,10 @@ import streamlit.components.v1 as components
 
 from _coleta_oficial import (
     NOME_ARQUIVO_COLETA_OFICIAL,
-    NOME_DOWNLOAD_COLETA,
     TEMPLATE_COLETA_OFICIAL,
     assinatura_template_coleta,
     gerar_coleta_oficial_preenchida,
+    nome_download_coleta,
 )
 from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
 from _estado_apuracao_upload import apuracao_persistida_valida
@@ -4926,7 +4926,7 @@ with st.container(border=True):
             st.download_button(
                 "Baixar Arquivo Coleta Oficial",
                 data=_coleta_oficial_cacheada(_assinatura_coleta, _dados_calculadora_coleta),
-                file_name=NOME_DOWNLOAD_COLETA,
+                file_name=nome_download_coleta(_dados_calculadora_coleta),
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 type="primary",
                 key="download_coleta_documentos",

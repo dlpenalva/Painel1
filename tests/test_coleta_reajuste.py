@@ -338,8 +338,9 @@ class ColetaReajusteTests(unittest.TestCase):
         valores = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
         for fonte in (simples, multiplos):
             self.assertIn("gerar_coleta_oficial_preenchida", fonte)
-            # §15: o download user-facing sai como Coleta_Reajuste.xlsx.
-            self.assertIn("file_name=NOME_DOWNLOAD_COLETA", fonte)
+            # §15: o download user-facing mantem o nome-base Coleta_Reajuste e
+            # acrescenta os ciclos apurados (fallback = NOME_DOWNLOAD_COLETA).
+            self.assertIn("nome_download_coleta(", fonte)
         self.assertNotIn("render_botao_download_modelo_consumo(modelo_consumo)", multiplos)
         self.assertIn("processar_coleta_oficial_runtime", valores)
         self.assertNotIn("render_status_apuracao", valores)

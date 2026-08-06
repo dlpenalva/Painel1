@@ -441,6 +441,36 @@ def render_cobertura_temporal(cobertura):
                 st.info(texto)
 
 
+def render_referencia_temporal_anterior(dados_admissibilidade):
+    """Bloco somente leitura com a referencia temporal anterior ao ciclo analisado.
+
+    Exibido apenas depois da analise processada e apenas quando o primeiro
+    ciclo abrangido e C2 ou superior (C1 nao tem ciclo anterior). Nao ha nota
+    explicativa adicional e nenhum widget: o bloco so apresenta datas ja
+    apuradas pelo fluxo. Devolve o dicionario exibido, ou None quando o bloco
+    nao se aplica.
+    """
+    from _reajuste_utils import referencia_temporal_anterior
+
+    referencia = referencia_temporal_anterior(dados_admissibilidade)
+    if not referencia:
+        return None
+
+    ciclo = referencia["ciclo_analisado"]
+    with st.container(border=True):
+        st.markdown("**Referência temporal anterior ao ciclo analisado**")
+        st.markdown(f"Ciclo anterior: **{referencia['ciclo_anterior']}**")
+        st.markdown(
+            f"Período anual imediatamente anterior ao início dos efeitos do {ciclo}:  \n"
+            f"**{referencia['periodo_inicio']} a {referencia['periodo_fim']} — 12 meses**"
+        )
+        st.markdown(
+            f"Último dia anterior ao início dos efeitos do {ciclo}:  \n"
+            f"**{referencia['ultimo_dia_anterior']}**"
+        )
+    return referencia
+
+
 def render_aviso_privacidade(tem_upload=False, tem_download=False):
     """Aviso resumido de privacidade para páginas com upload e/ou download."""
     if not tem_upload and not tem_download:

@@ -43,6 +43,31 @@ NOME_ARQUIVO_COLETA_OFICIAL = "COLETA_REAJUSTE_OFICIAL.xlsx"
 # Nome user-facing entregue nos botoes de download da interface (§15).
 NOME_DOWNLOAD_COLETA = "Coleta_Reajuste.xlsx"
 
+
+def nome_download_coleta(dados_admissibilidade=None):
+    """Nome user-facing do download, com os ciclos abrangidos pela analise.
+
+    Mantem o nome-base atual e acrescenta os ciclos ja apurados, ordenados e
+    sem repeticao: Coleta_Reajuste_C1_C2.xlsx. Ciclo precluso tambem entra —
+    o nome representa o ESCOPO da apuracao, nao o resultado da admissibilidade.
+
+    Altera apenas o parametro `file_name` do download: conteudo, template,
+    abas e processamento do XLSX nao dependem desta funcao. Sem ciclos
+    recuperaveis com seguranca, devolve NOME_DOWNLOAD_COLETA (fallback).
+    """
+    from _reajuste_utils import ciclos_da_analise
+
+    try:
+        ciclos = ciclos_da_analise(dados_admissibilidade)
+    except Exception:
+        return NOME_DOWNLOAD_COLETA
+    if not ciclos:
+        return NOME_DOWNLOAD_COLETA
+
+    base, _, extensao = NOME_DOWNLOAD_COLETA.rpartition(".")
+    sufixo = "_".join(f"C{numero}" for numero in ciclos)
+    return f"{base}_{sufixo}.{extensao}"
+
 # Ordem oficial das abas do novo modelo. CICLO_EM_EXECUCAO e acrescentada em
 # runtime (sem versionar outro binario XLSX) e as demais continuam tendo o
 # template oficial como fonte de verdade.
