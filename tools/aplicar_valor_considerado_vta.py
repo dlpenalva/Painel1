@@ -45,7 +45,24 @@ XL_CELLTYPE_FORMULAS = -4123
 XL_CELLTYPE_CONSTANTS = 2
 XL_ERRORS = 16
 
+XL_PATTERN_NONE = -4142
+XL_LINE_STYLE_NONE = -4142
+# xlEdgeLeft, xlEdgeTop, xlEdgeBottom, xlEdgeRight.
+ARESTAS = (7, 8, 9, 10)
+# xlInsideHorizontal. Num intervalo de varias linhas, xlEdgeTop/xlEdgeBottom
+# desenham apenas as bordas EXTERNAS do bloco; sem esta aresta, as 5.000 linhas
+# de `U` ficariam sem as divisorias horizontais que `H` tem celula a celula.
+XL_INSIDE_HORIZONTAL = 12
+
 ULTIMA_LINHA_PC = 5001
+
+# Coluna-modelo da apresentacao de `itens_PC!U`. `H`
+# (RETROATIVO_RECONHECIDO_A_PAGAR) e uma das duas parcelas somadas por `U` e
+# tem exatamente o mesmo perfil: derivada, por linha, monetaria e viva em
+# 2:5001. O bloco de resumo por ciclo `M:T` NAO serve de modelo: vive apenas
+# nas linhas 2:7 e `T` (QTD_COM_CHECK) e contagem, nao moeda.
+COLUNA_MODELO_U = "H"
+LARGURA_U = 24
 
 # Soma, por ciclo, do VALOR CONSIDERADO (VALOR_PC_TOTAL + RETROATIVO).
 _CONSIDERADO_POR_CICLO = "(itens_PC!$O$2:$O$6+itens_PC!$Q$2:$Q$6)"
@@ -268,10 +285,91 @@ def _aplicar_memoria(wb) -> None:
     mem.Range(f"X2:X{ULTIMA_LINHA_POSICAO}").Formula = FORMULA_X_C0
 
 
+def _copiar_borda(borda_origem, borda_destino) -> None:
+    borda_destino.LineStyle = borda_origem.LineStyle
+    if borda_origem.LineStyle != XL_LINE_STYLE_NONE:
+        borda_destino.Weight = borda_origem.Weight
+        borda_destino.Color = borda_origem.Color
+
+
+def _copiar_apresentacao(origem, destino, divisorias_internas: bool = False) -> None:
+    """Replica a apresentacao de `origem` em `destino`, propriedade a propriedade.
+
+    Deliberadamente NAO usa `Copy()` + `PasteSpecial(xlPasteFormats)`: a colagem
+    de formatos arrasta junto as regras de formatacao condicional da origem, e a
+    coluna-modelo esta dentro de `A2:L5001`, que carrega o alerta de linha
+    incompleta. Copiar por propriedade mantem `U` livre de formatacao
+    condicional.
+    """
+    destino.NumberFormatLocal = origem.NumberFormatLocal
+    destino.HorizontalAlignment = origem.HorizontalAlignment
+    destino.VerticalAlignment = origem.VerticalAlignment
+    destino.WrapText = origem.WrapText
+
+    destino.Interior.Pattern = origem.Interior.Pattern
+    if origem.Interior.Pattern != XL_PATTERN_NONE:
+        destino.Interior.Color = origem.Interior.Color
+
+    destino.Font.Name = origem.Font.Name
+    destino.Font.Size = origem.Font.Size
+    destino.Font.Bold = origem.Font.Bold
+    destino.Font.Italic = origem.Font.Italic
+    destino.Font.Color = origem.Font.Color
+
+    for aresta in ARESTAS:
+        _copiar_borda(origem.Borders(aresta), destino.Borders(aresta))
+    if divisorias_internas:
+        # A divisoria entre linhas espelha a borda inferior da celula-modelo.
+        _copiar_borda(
+            origem.Borders(9), destino.Borders(XL_INSIDE_HORIZONTAL)
+        )
+
+    destino.Locked = origem.Locked
+
+
+def _aplicar_estilo_u(wb) -> None:
+    """Integra `itens_PC!U` a tabela A:L, sem tocar valor, formula ou rotulo.
+
+    `U` e uma coluna POR LINHA: a formula le `$D` (VALOR_PC) e `$H`
+    (RETROATIVO_RECONHECIDO_A_PAGAR) da propria linha, em `U2:U5001`. Ela
+    pertence, portanto, a tabela `A:L` -- e nao ao bloco de resumo por ciclo
+    `M:T`, que so vive nas linhas 2:7 e usa formato de contagem `#,##0`. A
+    coluna-modelo e `H`: derivada, por linha, monetaria e com o mesmo alcance.
+    """
+    ws = wb.Worksheets(ABA_ITENS_PC)
+
+    rotulo_antes = ws.Range("U1").Value
+    formulas_antes = (
+        str(ws.Range("U2").Formula),
+        str(ws.Range(f"U{ULTIMA_LINHA_PC}").Formula),
+    )
+
+    _copiar_apresentacao(ws.Range(f"{COLUNA_MODELO_U}1"), ws.Range("U1"))
+    _copiar_apresentacao(
+        ws.Range(f"{COLUNA_MODELO_U}2"),
+        ws.Range(f"U2:U{ULTIMA_LINHA_PC}"),
+        divisorias_internas=True,
+    )
+    ws.Columns("U").ColumnWidth = LARGURA_U
+
+    if ws.Range("U1").Value != rotulo_antes:
+        raise RuntimeError("itens_PC!U1 mudou de rotulo ao aplicar o estilo.")
+    formulas_depois = (
+        str(ws.Range("U2").Formula),
+        str(ws.Range(f"U{ULTIMA_LINHA_PC}").Formula),
+    )
+    if formulas_depois != formulas_antes:
+        raise RuntimeError(
+            f"Formulas de itens_PC!U mudaram ao aplicar o estilo: "
+            f"{formulas_antes!r} -> {formulas_depois!r}"
+        )
+
+
 def _aplicar_itens_pc(wb) -> None:
     ws = wb.Worksheets(ABA_ITENS_PC)
     ws.Range("U1").Value = ROTULO_U1
     ws.Range(f"U2:U{ULTIMA_LINHA_PC}").Formula = FORMULA_U_PC.format(linha=2)
+    _aplicar_estilo_u(wb)
 
 
 def _aplicar_resultados(wb) -> None:
@@ -370,7 +468,53 @@ def _verificar_sem_erros(wb) -> None:
         raise RuntimeError(f"Erros de formula apos recalculo: {problemas}")
 
 
-def aplicar(origem: Path, destino: Path) -> None:
+def _fechar_silencioso(wb) -> None:
+    """Fecha o workbook tolerando proxy COM ja desconectado.
+
+    So deve ser usado DEPOIS de um `Save()` bem-sucedido: a desconexao pos-Save
+    e um defeito da automacao, nao do arquivo gravado.
+    """
+    try:
+        wb.Close(SaveChanges=False)
+    except Exception:
+        pass
+
+
+def _reabrir_conferindo(caminho: Path) -> None:
+    """Abre `caminho` numa instancia nova do Excel e exige arquivo integro."""
+    pythoncom.CoInitialize()
+    excel = win32com.client.DispatchEx("Excel.Application")
+    excel.Visible = False
+    excel.DisplayAlerts = False
+    wb = None
+    try:
+        wb = excel.Workbooks.Open(
+            str(caminho), UpdateLinks=0, ReadOnly=True, CorruptLoad=0
+        )
+        abas = _nomes_abas(wb)
+        for obrig in (ABA_MEMORIA, ABA_RESULTADOS, ABA_ITENS_PC):
+            if obrig not in abas:
+                raise RuntimeError(f"Aba {obrig} ausente apos reabertura.")
+        _verificar_sem_erros(wb)
+    finally:
+        if wb is not None:
+            _fechar_silencioso(wb)
+        try:
+            excel.Quit()
+        except Exception:
+            pass
+        del wb
+        del excel
+        pythoncom.CoUninitialize()
+
+
+def aplicar(origem: Path, destino: Path, somente_estilo_u: bool = False) -> None:
+    """Aplica o pacote do valor considerado; com `somente_estilo_u`, so o estilo.
+
+    O modo `somente_estilo_u` existe para reparar arquivos que ja receberam a
+    camada de formulas de `U` quando ela ainda nascia sem apresentacao. Ele nao
+    escreve nenhuma formula: apenas veste `itens_PC!U`.
+    """
     origem = Path(origem).resolve()
     destino = Path(destino).resolve()
     if not origem.is_file():
@@ -398,12 +542,15 @@ def aplicar(origem: Path, destino: Path) -> None:
         _validar_origem(wb)
         travas_antes = _snapshot_travas(wb)
 
-        _aplicar_memoria(wb)
-        _aplicar_itens_pc(wb)
-        _aplicar_resultados(wb)
-        _aplicar_corte(wb)
-        _aplicar_totais_canonicos(wb)
-        _aplicar_guarda_aditivos(wb)
+        if somente_estilo_u:
+            _aplicar_estilo_u(wb)
+        else:
+            _aplicar_memoria(wb)
+            _aplicar_itens_pc(wb)
+            _aplicar_resultados(wb)
+            _aplicar_corte(wb)
+            _aplicar_totais_canonicos(wb)
+            _aplicar_guarda_aditivos(wb)
 
         travas_depois = _snapshot_travas(wb)
         if travas_antes != travas_depois:
@@ -419,23 +566,19 @@ def aplicar(origem: Path, destino: Path) -> None:
             wb.Worksheets(aba_ativa).Activate()
         wb.Save()
         salvo = True
-        wb.Close(SaveChanges=False)
-        wb = None
-
-        # Reabre sem reparo para provar zero-corrupcao.
-        wb = excel.Workbooks.Open(
-            str(tmp_xlsx), UpdateLinks=0, ReadOnly=True, CorruptLoad=0
-        )
-        abas = _nomes_abas(wb)
-        for obrig in (ABA_MEMORIA, ABA_RESULTADOS, ABA_ITENS_PC):
-            if obrig not in abas:
-                raise RuntimeError(f"Aba {obrig} ausente apos reabertura.")
-        wb.Close(SaveChanges=False)
+        # Em arquivos grandes esta instancia costuma se desconectar logo apos o
+        # Save ("O objeto chamado foi desconectado de seus clientes"). O arquivo
+        # ja esta gravado; a prova de zero-corrupcao e feita adiante, numa
+        # instancia NOVA do Excel, que e um teste mais forte que reusar esta.
+        _fechar_silencioso(wb)
         wb = None
     finally:
         if wb is not None:
-            wb.Close(SaveChanges=False)
-        excel.Quit()
+            _fechar_silencioso(wb)
+        try:
+            excel.Quit()
+        except Exception:
+            pass
         del wb
         del excel
         pythoncom.CoUninitialize()
@@ -443,6 +586,12 @@ def aplicar(origem: Path, destino: Path) -> None:
     if not salvo:
         shutil.rmtree(tmp_dir, ignore_errors=True)
         raise RuntimeError("Excel nao salvou; destino preservado.")
+
+    # Prova de zero-corrupcao: uma instancia NOVA precisa abrir o arquivo sem
+    # reparo, com as abas obrigatorias e sem erro de formula. Se falhar, o
+    # destino nao e tocado.
+    _reabrir_conferindo(tmp_xlsx)
+
     destino.parent.mkdir(parents=True, exist_ok=True)
     shutil.copyfile(tmp_xlsx, destino)
     shutil.rmtree(tmp_dir, ignore_errors=True)
@@ -452,9 +601,21 @@ def main() -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("origem", type=Path)
     parser.add_argument("destino", type=Path)
+    parser.add_argument(
+        "--somente-estilo-u",
+        action="store_true",
+        help=(
+            "Aplica apenas a apresentacao de itens_PC!U (cabecalho, fonte, "
+            "preenchimento, bordas, alinhamento, moeda, protecao e largura), "
+            "sem escrever nenhuma formula."
+        ),
+    )
     args = parser.parse_args()
-    aplicar(args.origem, args.destino)
-    print("Valor considerado aplicado ao VTA:", args.destino)
+    aplicar(args.origem, args.destino, somente_estilo_u=args.somente_estilo_u)
+    if args.somente_estilo_u:
+        print("Estilo de itens_PC!U aplicado:", args.destino)
+    else:
+        print("Valor considerado aplicado ao VTA:", args.destino)
 
 
 if __name__ == "__main__":
