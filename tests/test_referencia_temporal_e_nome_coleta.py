@@ -1,0 +1,346 @@
+"""Referencia temporal anterior ao ciclo analisado + nome do download da Coleta.
+
+Duas melhorias isoladas do fluxo da Calculadora:
+
+1. bloco somente leitura com a janela de 12 meses-calendario anterior ao inicio
+   dos efeitos do PRIMEIRO ciclo abrangido pela analise, exibido apenas para
+   C2 ou superior. NAO e o periodo de efeitos financeiros do ciclo anterior —
+   o ciclo anterior pode ter sido pedido com atraso;
+2. nome do arquivo no download com os ciclos apurados, inclusive preclusos.
+
+Nada aqui toca motor, admissibilidade, datas apuradas, indices, fatores,
+resultados ou o conteudo do XLSX.
+"""
+from __future__ import annotations
+
+import contextlib
+import io
+import sys
+import unittest
+import zipfile
+from pathlib import Path
+
+from openpyxl import load_workbook
+
+ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
+
+import _ui_utils  # noqa: E402
+from _coleta_oficial import (  # noqa: E402
+    ABAS_COLETA_OFICIAL,
+    NOME_DOWNLOAD_COLETA,
+    gerar_coleta_oficial_preenchida,
+    nome_download_coleta,
+)
+from _reajuste_utils import (  # noqa: E402
+    ciclos_da_analise,
+    numero_do_ciclo,
+    referencia_temporal_anterior,
+)
+
+
+def _partes_xlsx(conteudo):
+    """{parte OOXML: bytes} do XLSX, sem os metadados volateis do pacote."""
+    with zipfile.ZipFile(io.BytesIO(conteudo)) as zf:
+        return {
+            nome: zf.read(nome)
+            for nome in sorted(zf.namelist())
+            if nome != "docProps/core.xml"
+        }
+
+
+def _ciclo(rotulo, financeiro_inicio, situacao="Tempestivo", data_base=None):
+    """Entrada de ciclo no formato que a analise ja produz (dados_admissibilidade)."""
+    ciclo = {
+        "ciclo": rotulo,
+        "financeiro_inicio": financeiro_inicio,
+        "situacao": situacao,
+        "percentual_aplicado": 0.04,
+    }
+    if data_base is not None:
+        # Ancora do calendario contratual, exigida so pela geracao do XLSX.
+        ciclo["data_base"] = data_base
+    return ciclo
+
+
+def _dados(*ciclos):
+    return {"origem": "Reajuste Simples", "indice": "IPCA (433)", "ciclos": list(ciclos)}
+
+
+# Cenarios manuais exigidos na validacao.
+SO_C1 = _dados(_ciclo("C1", "01/02/2024"))
+SO_C2 = _dados(_ciclo("C2", "01/02/2025"))
+SO_C3 = _dados(_ciclo("C3", "01/02/2026"))
+C1_C2 = _dados(_ciclo("C1", "01/02/2024"), _ciclo("C2", "01/02/2025"))
+C2_C3 = _dados(_ciclo("C2", "01/02/2025"), _ciclo("C3", "01/02/2026"))
+COM_PRECLUSO = _dados(
+    _ciclo("C2", "01/02/2025", situacao="Precluso"),
+    _ciclo("C3", "01/02/2026", situacao="Tempestivo"),
+)
+# Mesmo escopo C2+C3, com a ancora contratual que a geracao do XLSX exige.
+XLSX_C2_C3 = _dados(
+    _ciclo("C2", "01/02/2025", data_base="01/02/2025"),
+    _ciclo("C3", "01/02/2026", data_base="01/02/2026"),
+)
+
+
+class _StSomenteLeitura:
+    """Stub de streamlit: registra markdown e recusa qualquer widget interativo."""
+
+    def __init__(self):
+        self.markdowns = []
+        self.containers = []
+
+    def container(self, **kwargs):
+        self.containers.append(kwargs)
+        return contextlib.nullcontext()
+
+    def markdown(self, texto, **kwargs):
+        self.markdowns.append(str(texto))
+
+    def __getattr__(self, nome):
+        raise AssertionError(f"bloco somente leitura nao pode usar st.{nome}")
+
+    @property
+    def texto(self):
+        return "\n".join(self.markdowns)
+
+
+def _renderizar(dados):
+    st_falso = _StSomenteLeitura()
+    original = _ui_utils.st
+    _ui_utils.st = st_falso
+    try:
+        retorno = _ui_utils.render_referencia_temporal_anterior(dados)
+    finally:
+        _ui_utils.st = original
+    return retorno, st_falso
+
+
+class TestCiclosDaAnalise(unittest.TestCase):
+    def test_numero_do_ciclo_aceita_rotulo_apurado_e_recusa_lixo(self):
+        self.assertEqual(numero_do_ciclo("C3"), 3)
+        self.assertEqual(numero_do_ciclo(" c3 "), 3)
+        self.assertEqual(numero_do_ciclo("3"), 3)
+        self.assertEqual(numero_do_ciclo(3), 3)
+        for invalido in (None, "", "Ciclo 3", "C", "C3A", True, 3.5, -1):
+            self.assertIsNone(numero_do_ciclo(invalido), invalido)
+
+    def test_cenarios_manuais_de_escopo(self):
+        self.assertEqual(ciclos_da_analise(SO_C1), (1,))
+        self.assertEqual(ciclos_da_analise(SO_C2), (2,))
+        self.assertEqual(ciclos_da_analise(SO_C3), (3,))
+        self.assertEqual(ciclos_da_analise(C1_C2), (1, 2))
+        self.assertEqual(ciclos_da_analise(C2_C3), (2, 3))
+
+    def test_ciclo_precluso_permanece_no_escopo(self):
+        # O escopo da apuracao nao e o resultado da admissibilidade.
+        self.assertEqual(ciclos_da_analise(COM_PRECLUSO), (2, 3))
+
+    def test_ordena_numericamente_e_nao_repete(self):
+        dados = _dados(
+            _ciclo("C3", "01/02/2026"),
+            _ciclo("C1", "01/02/2024"),
+            _ciclo("C2", "01/02/2025"),
+            _ciclo("C2", "01/02/2025"),
+        )
+        self.assertEqual(ciclos_da_analise(dados), (1, 2, 3))
+
+    def test_entrada_insegura_devolve_vazio(self):
+        for entrada in (None, {}, [], "C1", {"ciclos": None}, {"ciclos": []},
+                        {"ciclos": ["C1"]}, {"ciclos": [{"ciclo": "Ciclo 1"}]}):
+            self.assertEqual(ciclos_da_analise(entrada), (), entrada)
+
+
+class TestNomeDownloadColeta(unittest.TestCase):
+    def test_nome_base_preservado(self):
+        self.assertEqual(NOME_DOWNLOAD_COLETA, "Coleta_Reajuste.xlsx")
+
+    def test_cenarios_manuais_de_nome(self):
+        self.assertEqual(nome_download_coleta(SO_C1), "Coleta_Reajuste_C1.xlsx")
+        self.assertEqual(nome_download_coleta(SO_C2), "Coleta_Reajuste_C2.xlsx")
+        self.assertEqual(nome_download_coleta(SO_C3), "Coleta_Reajuste_C3.xlsx")
+        self.assertEqual(nome_download_coleta(C1_C2), "Coleta_Reajuste_C1_C2.xlsx")
+        self.assertEqual(nome_download_coleta(C2_C3), "Coleta_Reajuste_C2_C3.xlsx")
+
+    def test_precluso_entra_no_nome_sem_marcar_situacao(self):
+        nome = nome_download_coleta(COM_PRECLUSO)
+        self.assertEqual(nome, "Coleta_Reajuste_C2_C3.xlsx")
+        for proibido in ("precluso", "Precluso", "tempestivo", "Tempestivo"):
+            self.assertNotIn(proibido, nome)
+
+    def test_fallback_mantem_o_nome_atual(self):
+        for entrada in (None, {}, {"ciclos": []}, {"ciclos": [{"ciclo": "-"}]}, "lixo"):
+            self.assertEqual(nome_download_coleta(entrada), NOME_DOWNLOAD_COLETA, entrada)
+
+    def test_sempre_xlsx_e_sem_ciclo_repetido(self):
+        dados = _dados(_ciclo("C4", "01/02/2027"), _ciclo("C4", "01/02/2027"),
+                       _ciclo("C2", "01/02/2025"))
+        self.assertEqual(nome_download_coleta(dados), "Coleta_Reajuste_C2_C4.xlsx")
+
+    def test_nao_altera_os_dados_da_analise(self):
+        antes = repr(C2_C3)
+        nome_download_coleta(C2_C3)
+        self.assertEqual(repr(C2_C3), antes)
+
+
+class TestReferenciaTemporalAnterior(unittest.TestCase):
+    def test_c1_nao_tem_referencia_anterior(self):
+        self.assertIsNone(referencia_temporal_anterior(SO_C1))
+        self.assertIsNone(referencia_temporal_anterior(C1_C2))
+
+    def test_exemplo_canonico_do_c3(self):
+        ref = referencia_temporal_anterior(SO_C3)
+        self.assertEqual(ref["ciclo_analisado"], "C3")
+        self.assertEqual(ref["ciclo_anterior"], "C2")
+        self.assertEqual(ref["periodo_inicio"], "01/02/2025")
+        self.assertEqual(ref["periodo_fim"], "31/01/2026")
+        self.assertEqual(ref["ultimo_dia_anterior"], "31/01/2026")
+        self.assertEqual(ref["meses"], 12)
+
+    def test_c2_usa_o_proprio_inicio_dos_efeitos(self):
+        ref = referencia_temporal_anterior(SO_C2)
+        self.assertEqual(ref["ciclo_anterior"], "C1")
+        self.assertEqual(ref["periodo_inicio"], "01/02/2024")
+        self.assertEqual(ref["periodo_fim"], "31/01/2025")
+
+    def test_referencia_e_do_primeiro_ciclo_abrangido(self):
+        # C2+C3 e ciclo precluso: a ancora e sempre o primeiro ciclo.
+        for dados in (C2_C3, COM_PRECLUSO):
+            ref = referencia_temporal_anterior(dados)
+            self.assertEqual(ref["ciclo_analisado"], "C2", dados)
+            self.assertEqual(ref["ciclo_anterior"], "C1", dados)
+            self.assertEqual(ref["periodo_inicio"], "01/02/2024", dados)
+            self.assertEqual(ref["periodo_fim"], "31/01/2025", dados)
+
+    def test_meses_calendario_e_nao_365_dias(self):
+        # 01/03/2025 - 12 meses-calendario = 01/03/2024 (ano bissexto pelo meio);
+        # 365 dias corridos dariam 02/03/2024.
+        ref = referencia_temporal_anterior(_dados(_ciclo("C2", "01/03/2025")))
+        self.assertEqual(ref["periodo_inicio"], "01/03/2024")
+        self.assertEqual(ref["periodo_fim"], "28/02/2025")
+
+    def test_inicio_no_meio_do_mes(self):
+        ref = referencia_temporal_anterior(_dados(_ciclo("C3", "15/02/2026")))
+        self.assertEqual(ref["periodo_inicio"], "15/02/2025")
+        self.assertEqual(ref["periodo_fim"], "14/02/2026")
+
+    def test_inicio_em_29_de_fevereiro_bissexto(self):
+        ref = referencia_temporal_anterior(_dados(_ciclo("C2", "29/02/2024")))
+        self.assertEqual(ref["periodo_inicio"], "28/02/2023")
+        self.assertEqual(ref["periodo_fim"], "28/02/2024")
+
+    def test_sem_data_apurada_nao_afirma_periodo(self):
+        for valor in (None, "", "  ", "data invalida"):
+            dados = _dados(_ciclo("C3", valor))
+            self.assertIsNone(referencia_temporal_anterior(dados), valor)
+
+    def test_entrada_insegura_nao_exibe_bloco(self):
+        for entrada in (None, {}, {"ciclos": []}, "lixo"):
+            self.assertIsNone(referencia_temporal_anterior(entrada), entrada)
+
+
+class TestRenderizacaoDoBloco(unittest.TestCase):
+    def test_c1_nao_renderiza_nada(self):
+        retorno, st_falso = _renderizar(SO_C1)
+        self.assertIsNone(retorno)
+        self.assertEqual(st_falso.markdowns, [])
+        self.assertEqual(st_falso.containers, [])
+
+    def test_texto_do_bloco_para_c3(self):
+        retorno, st_falso = _renderizar(SO_C3)
+        self.assertIsNotNone(retorno)
+        texto = st_falso.texto
+        self.assertIn("Referência temporal anterior ao ciclo analisado", texto)
+        self.assertIn("Ciclo anterior: **C2**", texto)
+        self.assertIn(
+            "Período anual imediatamente anterior ao início dos efeitos do C3:", texto
+        )
+        self.assertIn("01/02/2025 a 31/01/2026 — 12 meses", texto)
+        self.assertIn("Último dia anterior ao início dos efeitos do C3:", texto)
+        self.assertIn("31/01/2026", texto)
+
+    def test_bloco_e_somente_leitura(self):
+        _, st_falso = _renderizar(SO_C3)
+        self.assertEqual(st_falso.containers, [{"border": True}])
+        # O stub levanta AssertionError em qualquer st.<widget>; chegar aqui
+        # significa que apenas container/markdown foram usados.
+
+    def test_nao_atribui_o_periodo_aos_efeitos_do_ciclo_anterior(self):
+        _, st_falso = _renderizar(SO_C3)
+        texto = st_falso.texto.lower()
+        for proibido in (
+            "efeitos financeiros do ciclo anterior",
+            "período de efeitos financeiros",
+            "periodo de efeitos financeiros",
+            "efeitos do c2",
+        ):
+            self.assertNotIn(proibido, texto)
+
+    def test_sem_nota_explicativa_adicional(self):
+        _, st_falso = _renderizar(SO_C3)
+        texto = st_falso.texto.lower()
+        for proibido in ("observação", "observacao", "nota:", "atenção", "atencao"):
+            self.assertNotIn(proibido, texto)
+
+    def test_bloco_do_multiciclo_ancora_no_primeiro_ciclo(self):
+        _, st_falso = _renderizar(C2_C3)
+        texto = st_falso.texto
+        self.assertIn("Ciclo anterior: **C1**", texto)
+        self.assertIn("01/02/2024 a 31/01/2025 — 12 meses", texto)
+        self.assertNotIn("C3", texto)
+
+
+class TestXlsxIntacto(unittest.TestCase):
+    """O conteudo do XLSX nao depende do nome do download nem do bloco novo."""
+
+    def test_conteudo_da_coleta_independe_do_nome_do_arquivo(self):
+        antes = gerar_coleta_oficial_preenchida(XLSX_C2_C3)
+        self.assertEqual(nome_download_coleta(XLSX_C2_C3), "Coleta_Reajuste_C2_C3.xlsx")
+        self.assertIsNotNone(referencia_temporal_anterior(XLSX_C2_C3))
+        depois = gerar_coleta_oficial_preenchida(XLSX_C2_C3)
+        # Bytes brutos nunca coincidem: o zip carimba a hora de cada membro.
+        # O que precisa ser identico e o conteudo (partes OOXML).
+        self.assertEqual(_partes_xlsx(antes), _partes_xlsx(depois))
+
+    def test_abas_preservadas_na_ordem_oficial(self):
+        wb = load_workbook(io.BytesIO(gerar_coleta_oficial_preenchida(XLSX_C2_C3)))
+        self.assertEqual(wb.sheetnames, ABAS_COLETA_OFICIAL)
+
+
+class TestFiacaoNasPaginas(unittest.TestCase):
+    SIMPLES = (ROOT / "pages" / "01_Calculo_Simples.py").read_text(encoding="utf-8")
+    MULTIPLO = (ROOT / "pages" / "02_Calculo_Represados.py").read_text(encoding="utf-8")
+    UPLOAD = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
+    INICIO = (ROOT / "pages" / "00_Calculadora_Reajustes.py").read_text(encoding="utf-8")
+
+    def test_paginas_de_download_usam_o_nome_com_ciclos(self):
+        for fonte in (self.SIMPLES, self.MULTIPLO, self.UPLOAD):
+            self.assertIn("nome_download_coleta(", fonte)
+            self.assertNotIn("file_name=NOME_DOWNLOAD_COLETA", fonte)
+        # Simples calcula o nome em variavel (padrao de _bytes_coleta_estavel).
+        self.assertIn("file_name=_nome_coleta_estavel", self.SIMPLES)
+        self.assertIn("file_name=nome_download_coleta(", self.MULTIPLO)
+        self.assertIn("file_name=nome_download_coleta(", self.UPLOAD)
+
+    def test_download_do_modelo_em_branco_mantem_o_nome_atual(self):
+        # Pagina inicial entrega o modelo sem analise: fallback preservado.
+        self.assertIn("file_name=NOME_DOWNLOAD_COLETA", self.INICIO)
+
+    def test_bloco_renderizado_apos_a_analise_e_antes_do_download(self):
+        for fonte in (self.SIMPLES, self.MULTIPLO):
+            self.assertIn("render_referencia_temporal_anterior(", fonte)
+            pos_dados = fonte.index("st.session_state['dados_admissibilidade'] = {")
+            pos_bloco = fonte.index("render_referencia_temporal_anterior(")
+            pos_download = fonte.index("nome_download_coleta(")
+            self.assertLess(pos_dados, pos_bloco)
+            self.assertLess(pos_bloco, pos_download)
+
+    def test_pagina_de_upload_nao_exibe_o_bloco(self):
+        self.assertNotIn("render_referencia_temporal_anterior", self.UPLOAD)
+        self.assertNotIn("render_referencia_temporal_anterior", self.INICIO)
+
+
+if __name__ == "__main__":
+    unittest.main()

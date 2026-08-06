@@ -46,11 +46,11 @@ def aplicar_css_aditivos25_compacto():
         unsafe_allow_html=True,
     )
 # <<< UX_ADITIVOS_25_COMPACTO
-from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox
+from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox, render_referencia_temporal_anterior
 from _indice_utils import (calcular_ist_numero_indice, coletar_sgs_produtorio,
                            serie_sgs_do_indice)
 from _reajuste_utils import _competencias_mensais, _data_para_datetime, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br, _percentual_formatado
-from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, NOME_DOWNLOAD_COLETA, gerar_coleta_oficial_preenchida
+from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, gerar_coleta_oficial_preenchida, nome_download_coleta
 from _memoria_calculo import normalizar_memoria_calculo
 from _email_contratada import render_email_contratada
 
@@ -2536,11 +2536,15 @@ if historico_coleta:
         'ciclos': historico_coleta,
     }
 
+    # Referencia temporal anterior ao ciclo analisado (C2+). Bloco somente
+    # leitura, derivado das datas ja apuradas acima; nada e recalculado.
+    render_referencia_temporal_anterior(st.session_state['dados_admissibilidade'])
+
     st.download_button(
         label="Baixar Arquivo Coleta Oficial",
         type="primary",
         data=gerar_coleta_oficial_preenchida(st.session_state['dados_admissibilidade']),
-        file_name=NOME_DOWNLOAD_COLETA,
+        file_name=nome_download_coleta(st.session_state['dados_admissibilidade']),
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=False,
     )
