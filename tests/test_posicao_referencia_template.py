@@ -50,11 +50,32 @@ def test_cabecalhos_visiveis():
     ]
 
 
-def test_unico_campo_manual():
+def test_aba_totalmente_automatica():
+    """A posicao fisica e informada UMA vez, em CICLO_EM_EXECUCAO.
+
+    posicao_referencia deixou de ter campo manual: QTD_REM_ATUAL (B) busca a
+    quantidade declarada por ITEM, sem depender da mesma linha fisica, sem
+    somar as duas abas e sem copiar valor estatico.
+    """
     ws = _wb()[ABA]
-    for col in ("A", "C", "D", "E", "F"):
-        assert str(ws[f"{col}2"].value).startswith("=")
-    assert ws["B2"].value in (None, "")
+    for col in ("A", "B", "C", "D", "E", "F"):
+        assert str(ws[f"{col}2"].value).startswith("="), col
+    b2 = ws["B2"].value
+    assert 'INDIRECT("CICLO_EM_EXECUCAO!$C$13:$C$211")' in b2
+    assert 'MATCH($A2,INDIRECT("CICLO_EM_EXECUCAO!$A$13:$A$211"),0)' in b2
+    assert "+" not in b2 and "SUM" not in b2          # nunca soma as duas abas
+    assert ws["B2"].fill.fgColor.rgb != "FFFFF2CC"    # sem destaque de entrada
+    assert bool(ws.protection.sheet)                  # celulas automaticas protegidas
+
+
+def test_data_ciclo_e_origem_derivam_de_ciclo_em_execucao():
+    ws = _wb()[ABA]
+    assert 'INDIRECT("CICLO_EM_EXECUCAO!$D$5")' in str(ws["I9"].value)
+    assert "$I$9" in str(ws["I1"].value)              # ciclo da data informada
+    assert "$I$9" in str(ws["I2"].value)              # completude
+    assert "$I$9" in str(ws["I5"].value)              # data de referencia
+    assert "POSICAO FISICA INFORMADA - " in str(ws["I8"].value)
+    assert "CONTROLE!$B$3" not in str(ws["I1"].value)
 
 
 def test_qtd_contratada_usa_data_do_aditivo_e_data_referencia():

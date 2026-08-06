@@ -153,7 +153,11 @@ def test_achado_c_selos_por_tabela_e_premissa(wb):
     )
     assert 'SEARCH("CONFERIR",MEMORIA_RESULTADOS!$F$36)' in str(ws["H24"].value)
     assert '"ESTIMADO"' in str(ws["H33"].value)
-    assert "posicao_referencia!$I$2" in str(ws["H33"].value)
+    # A premissa da posicao fisica passou a ser o STATUS derivado da fonte
+    # unica (posicao_referencia!I10 = VALIDADO/ESTIMADO/REVISE), que ja embute
+    # a completude antes lida em I2 e acrescenta a validacao temporal.
+    assert "posicao_referencia!$I$10" in str(ws["H33"].value)
+    assert '"REVISE"' in str(ws["H33"].value)
     global_formula = str(ws["B3"].value)
     for selo in ("$H$8", "$H$14", "$H$24", "$H$33"):
         assert selo in global_formula
@@ -496,7 +500,7 @@ def test_fator_historico_fail_closed_e_rotulos_complementares(wb):
     # Correcao pos-implementacao: rotulo e ajuda da cobertura fisica ATUAL
     # passaram a refletir a origem automatica em CICLO_EM_EXECUCAO (sem instruir
     # o antigo preenchimento manual QTD_REM_ATUAL).
-    assert "COBERTURA FISICA ATUAL CONFIRMADA" in cobertura["A8"].value.upper()
+    assert "DATA DA POSIÇÃO FÍSICA" in cobertura["A8"].value
     assert "CICLO_EM_EXECUCAO" in cobertura["C8"].value
     assert "QTD_REM_ATUAL" not in cobertura["C8"].value
     assert wb["financeiro"]["D2"].number_format == "0.0000"

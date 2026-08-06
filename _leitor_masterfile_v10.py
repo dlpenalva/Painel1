@@ -99,10 +99,16 @@ def _norm_data(valor: Any):
 
 
 # Rotulos canonicos da aba cobertura_temporal (leitura por prefixo).
+# Cada chave aceita o rotulo atual e os legados: arquivos gerados antes da
+# padronizacao das datas continuam sendo lidos sem conversao.
 _ROTULOS_COBERTURA_TEMPORAL = {
-    "data_analise": "data da analise",
-    "financeiro_confirmado_completo_ate": "financeiro confirmado completo ate",
-    "pc_confirmado_completo_ate": "pc confirmado completo ate",
+    "data_analise": ("data de geracao/analise", "data da analise"),
+    "financeiro_confirmado_completo_ate": (
+        "financeiro conferido ate", "financeiro confirmado completo ate",
+    ),
+    "pc_confirmado_completo_ate": (
+        "pcs conferidos ate", "pc confirmado completo ate",
+    ),
 }
 
 
@@ -125,8 +131,13 @@ def _ler_cobertura_temporal(wb) -> dict[str, Any]:
         return vazio
     ws = wb["cobertura_temporal"]
     saida: dict[str, Any] = {"ok": True}
-    for chave, prefixo in _ROTULOS_COBERTURA_TEMPORAL.items():
-        saida[chave] = _norm_data(_valor_por_prefixo(ws, prefixo))
+    for chave, prefixos in _ROTULOS_COBERTURA_TEMPORAL.items():
+        valor = None
+        for prefixo in prefixos:
+            valor = _norm_data(_valor_por_prefixo(ws, prefixo))
+            if valor is not None:
+                break
+        saida[chave] = valor
     return saida
 
 
@@ -134,14 +145,20 @@ def _ler_posicao_fisica_fiscal(wb):
     """Itens da base (itens_Remanesc!A) e a fotografia recente do fiscal.
 
     Fornece ao motor de cobertura temporal os dois insumos da posicao fisica
-    ATUAL: a lista de itens e o remanescente informado manualmente em
-    posicao_referencia!B (QTD_REM_ATUAL), alinhado por LINHA a itens_Remanesc.
+    ATUAL: a lista de itens e o remanescente declarado pelo fiscal.
+
+    FONTE UNICA: a quantidade vem de CICLO_EM_EXECUCAO!C13:C211 (entrada manual
+    real, imune a cache de formula). posicao_referencia!B e apenas a memoria
+    automatica derivada dela e so e consultada em arquivos legados, gerados
+    antes da unificacao, nos quais aquela coluna ainda era digitada.
+
     Zero conta como informado; celula vazia nao entra (a fotografia so e
     completa quando TODOS os itens tem quantidade). Nao le formula nem inventa.
     """
     if "itens_Remanesc" not in wb.sheetnames:
         return [], {}
     ir = wb["itens_Remanesc"]
+    cee = wb["CICLO_EM_EXECUCAO"] if "CICLO_EM_EXECUCAO" in wb.sheetnames else None
     pr = wb["posicao_referencia"] if "posicao_referencia" in wb.sheetnames else None
     itens_base: list[str] = []
     remanescente: dict[str, float] = {}
@@ -153,10 +170,14 @@ def _ler_posicao_fisica_fiscal(wb):
         if not cod:
             continue
         itens_base.append(cod)
-        if pr is not None:
-            q = pr.cell(r, 2).value
-            if isinstance(q, (int, float)) and not isinstance(q, bool):
-                remanescente[cod] = float(q)
+        q = None
+        if cee is not None:
+            # itens_Remanesc!A{r} corresponde a CICLO_EM_EXECUCAO!C{r+11}.
+            q = cee.cell(r + 11, 3).value
+        if not isinstance(q, (int, float)) or isinstance(q, bool):
+            q = pr.cell(r, 2).value if pr is not None else None
+        if isinstance(q, (int, float)) and not isinstance(q, bool):
+            remanescente[cod] = float(q)
     return itens_base, remanescente
 
 
@@ -3497,7 +3518,10 @@ def ler_masterfile_v10(
     c = wb["CONTROLE"]
     modo_bruto = str(_achar_valor(c, "modo de leitura") or "").strip()
     ciclo      = _achar_valor(c, "ciclo vigente (em execucao)")
-    corte      = _achar_valor(c, "data de corte (unica p/ contrato)")
+    # Rotulo padronizado ("DATA DE CORTE DA APURACAO") e o legado
+    # ("Data de corte (unica p/ contrato)") apontam para a MESMA celula
+    # (CONTROLE!B3): a leitura por prefixo aceita os dois sem conversao.
+    corte      = _valor_por_prefixo(c, "data de corte")
     indice     = _achar_valor(c, "indice utilizado")
     res["controle"] = {
         "modo":          _normalizar_modo(modo_bruto),
