@@ -39,7 +39,8 @@ B8_ESPERADA = (
 # --------------------------------------------------------------------------- #
 def test_rotulo_ajuda_e_formula_automatica():
     ws = load_workbook(TEMPLATE)["cobertura_temporal"]
-    assert str(ws["A8"].value).upper() == "COBERTURA FISICA ATUAL CONFIRMADA ATE"
+    # Datas padronizadas: um unico texto para o conceito "posicao fisica".
+    assert str(ws["A8"].value) == "DATA DA POSIÇÃO FÍSICA — AUTO (CICLO_EM_EXECUCAO)"
     assert ws["B8"].value == B8_ESPERADA
     ajuda = str(ws["C8"].value)
     assert "CICLO_EM_EXECUCAO" in ajuda

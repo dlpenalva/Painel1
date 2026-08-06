@@ -117,12 +117,16 @@ def test_historico_vu_temporal(wb_template):
 def test_posicao_referencia_temporal(wb_template):
     ws = wb_template["posicao_referencia"]
     i2 = str(ws["I2"].value)
-    # POSICAO ATUAL COMPLETA?: exige QTD_REM_ATUAL apenas dos itens vigentes
-    # na data de corte (nascimento <= ciclo da data); zero explicito valido.
-    assert "SUMPRODUCT" in i2
-    assert "posicao_contratual!$Y$2:$Y$200" in i2
-    assert "ISNUMBER($B$2:$B$200)" in i2
+    # POSICAO ATUAL COMPLETA?: a temporalidade continua exigida, mas agora e
+    # apurada na FONTE UNICA da posicao fisica. CICLO_EM_EXECUCAO!A9 so tem
+    # valor quando todos os itens VIGENTES na data (nascimento <= ciclo, nao
+    # suprimidos) tem quantidade confirmada — zero explicito valido.
+    assert 'IFERROR(INDIRECT("CICLO_EM_EXECUCAO!$A$9")<>"",FALSE)' in i2
     assert "COUNT($B$2:$B$200)>=" not in i2  # regra antiga (sem temporalidade)
+    # a fotografia posterior ao corte nunca conta como posicao atual completa
+    assert "$I$9<=CONTROLE!$B$3" in i2
+    # a temporalidade do item segue viva na consolidacao auditavel
+    assert "NAO APLICAVEL" in str(ws.parent["itens_RC"]["AB3"].value)
     f2 = str(ws["F2"].value)
     assert "ITEM POSTERIOR A REFERENCIA" in f2
     assert f2.count("(") == f2.count(")")

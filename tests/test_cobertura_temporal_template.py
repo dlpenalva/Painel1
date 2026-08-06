@@ -72,10 +72,9 @@ def test_reusa_painel_posicao_referencia():
 
 def test_ultima_evidencia_nao_e_completo_ate():
     ws = _wb()[ABA]
-    # rotulos deixam claro que MAX e ultima evidencia, nao "completo ate".
-    assert "Ultima evidencia Financeiro" in str(ws["A12"].value)
-    assert "completo ate" not in str(ws["A12"].value).lower().replace("nao e completo ate", "")
-    assert "Ultima evidencia PC" in str(ws["A14"].value)
+    # rotulos deixam claro que a evidencia nao e "conferido ate".
+    assert "ÚLTIMA COMPETÊNCIA FINANCEIRA COM PAGAMENTO" in str(ws["A12"].value)
+    assert "CONFERID" not in str(ws["A12"].value).upper()
     # Bug P0 corrigido: ultima evidencia Financeiro = ultima linha com VALOR
     # (financeiro!C) numerico, NAO a MAX da coluna de competencias (grade futura).
     assert "MAX(financeiro!$A$2:$A$200)" not in str(ws["B12"].value)
@@ -83,18 +82,42 @@ def test_ultima_evidencia_nao_e_completo_ate():
     # linha TOTAL (A vazia) que gerava falsa evidencia Financeiro.
     assert "ISNUMBER(financeiro!$A$2:$A$200)" in ws["B12"].value
     assert "ISNUMBER(financeiro!$C$2:$C$200)" in ws["B12"].value
-    assert "MAX(itens_PC!$B$2:$B$5001)" in ws["B14"].value
+
+
+def test_ultimo_pc_considerado_ate_o_corte():
+    """PC posterior ao corte fica cadastrado, mas nao define a cobertura."""
+    ws = _wb()[ABA]
+    assert str(ws["A14"].value) == "ÚLTIMO PC CONSIDERADO ATÉ O CORTE — AUTO"
+    formula = str(ws["B14"].value)
+    # a cobertura oficial e limitada pela data de corte da apuracao
+    assert "CONTROLE!$B$3" in formula
+    assert "itens_PC!$B$2:$B$5001<=CONTROLE!$B$3" in formula
+    # campo proprio informa a existencia de PCs posteriores, sem trata-los como erro
+    assert str(ws["A17"].value) == "EXISTEM PCS POSTERIORES AO CORTE?"
+    posteriores = str(ws["B17"].value)
+    assert '">"&CONTROLE!$B$3' in posteriores
+    assert "SIM - ULTIMO PC CADASTRADO EM " in posteriores
+    assert '"NAO"' in posteriores
 
 
 def test_campos_gcc_confirmacao_completa():
     ws = _wb()[ABA]
-    # dois novos campos GCC (amarelo de entrada), SEM formula.
-    assert "Financeiro confirmado completo ate" in str(ws["A13"].value)
-    assert "PC confirmado completo ate" in str(ws["A15"].value)
+    # dois campos GCC opcionais (amarelo de entrada), SEM formula.
+    assert str(ws["A13"].value) == "FINANCEIRO CONFERIDO ATÉ — OPCIONAL"
+    assert str(ws["A15"].value) == "PCS CONFERIDOS ATÉ — OPCIONAL"
     assert ws["B13"].value in (None, "")
     assert ws["B15"].value in (None, "")
     assert ws["B13"].fill.fgColor.rgb == "FFFEF9C3"
     assert ws["B15"].fill.fgColor.rgb == "FFFEF9C3"
+
+
+def test_data_de_geracao_analise_e_automatica():
+    """A data administrativa nao e mais pedida ao GCC nem confundida com o corte."""
+    ws = _wb()[ABA]
+    assert str(ws["A4"].value) == "DATA DE GERAÇÃO/ANÁLISE — AUTO"
+    assert str(ws["B4"].value).startswith("=")
+    assert "CONTROLE!$B$14" in str(ws["B4"].value)
+    assert ws["B4"].fill.fgColor.rgb != "FFFEF9C3"
 
 
 def test_projecao_fail_closed_usa_cobertura_confirmada():
@@ -116,7 +139,9 @@ def test_modo_temporal_seis_estados():
 def test_entradas_gcc_amarelas():
     ws = _wb()[ABA]
     amarelas = [r for r in range(4, 25) if ws.cell(r, 2).fill.fgColor.rgb == "FFFEF9C3"]
-    assert amarelas == [4, 13, 15]     # data analise + 2 confirmacoes GCC
+    # A data de geracao/analise (linha 4) virou automatica: restam as duas
+    # coberturas opcionais informadas pelo GCC.
+    assert amarelas == [13, 15]
 
 
 def test_projecao_categoria_nova_laranja():

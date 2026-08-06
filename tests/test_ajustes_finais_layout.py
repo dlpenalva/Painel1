@@ -56,14 +56,23 @@ def test_tabela1_larguras_sem_desproporcao(wb):
 # --------------------------------------------------------------------------- #
 # 2. cobertura_temporal: conferencia removida, sem orfaos, leitura por rotulo   #
 # --------------------------------------------------------------------------- #
+def _sem_acento(texto: str) -> str:
+    """Mesma normalizacao do leitor oficial (_leitor_masterfile_v10._norm)."""
+    import unicodedata
+    t = unicodedata.normalize("NFKD", texto)
+    return "".join(ch for ch in t if not unicodedata.combining(ch))
+
+
 def test_cobertura_conferencia_removida(wb):
     ws = wb["cobertura_temporal"]
     rotulos = [str(ws.cell(r, 1).value or "").strip().lower() for r in range(1, 30)]
     assert not any(r == "fonte temporal de conferencia" for r in rotulos)
     assert any(r == "fonte temporal principal" for r in rotulos)
-    for rot in ("data da analise", "financeiro confirmado completo ate",
-                "pc confirmado completo ate"):
-        assert any(r.startswith(rot) for r in rotulos), rot
+    # Datas padronizadas: um rotulo por conceito (nada de dois textos para a
+    # mesma pergunta). Os prefixos abaixo sao os lidos pelo leitor oficial.
+    for rot in ("data de geracao/analise", "financeiro conferido ate",
+                "pcs conferidos ate"):
+        assert any(_sem_acento(r).startswith(rot) for r in rotulos), rot
 
 
 def test_cobertura_sem_referencia_orfa(wb):

@@ -50,7 +50,10 @@ FORMULAS_POR_ABA = {
     # 45042 = 40042 anteriores + 5000 da coluna U (VALOR_CONSIDERADO, U2:U5001).
     "itens_PC": 45042,
     "aditivos": 1393,
-    "posicao_referencia": 2595,
+    # Fonte unica da posicao fisica: +199 de QTD_REM_ATUAL (B2:B200), que deixou
+    # de ser digitada e passou a buscar CICLO_EM_EXECUCAO por ITEM, e +3 do
+    # painel (I9 data da posicao fisica, I10 status, I11 validacao temporal).
+    "posicao_referencia": 2797,
     # 26H: +398 formulas das colunas tecnicas ocultas Y (CICLO_NASCIMENTO)
     # e Z (EH_NOVO_ITEM), linhas 2:200.
     # Temporalidade por DATA_EFEITO: +2388 das colunas ocultas AA:AL
@@ -65,7 +68,9 @@ FORMULAS_POR_ABA = {
     "itens_RC": 5800,
     "historico_VU": 3592,
     # Etapa VTA: -1 (linha "Fonte temporal de conferencia" removida; sem consumidor).
-    "cobertura_temporal": 14,
+    # Padronizacao das datas: +2 (B4 data de geracao/analise, agora automatica,
+    # e B17 EXISTEM PCS POSTERIORES AO CORTE?).
+    "cobertura_temporal": 16,
     # 3762 anteriores + 11 referencias para a tabela manual unica.
     # 26G: +5 (T26/T27 completude do remanescente; T28:T30 PCs sem efeito).
     # Etapa VTA-posicoes: +212 do bloco auxiliar das 3 referencias

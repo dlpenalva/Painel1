@@ -36,12 +36,13 @@ CELULA_INICIO_CICLO = "F3"
 CELULA_FIM_CICLO_TECNICA = "H3"
 CELULA_DATA_POSICAO = "D5"
 CELULA_TOTAL = "A9"
+CELULA_VALIDACAO_TEMPORAL = "A11"
 CELULA_VERSAO = "H2"
 
 COLUNAS_VISIVEIS = (
     "ITEM (AUTO)",
     "QTD REMANESCENTE NO INÍCIO DO CICLO (AUTO)",
-    "QTD REMANESCENTE NA DATA ATUAL (PREENCHER)",
+    "QTD REMANESCENTE NA DATA DA POSIÇÃO (PREENCHER)",
     "QTD CONSUMIDA NO CICLO ATÉ A DATA (AUTO)",
     "VU ATUALIZADO (AUTO)",
     "VALOR CONSUMIDO (AUTO)",
@@ -57,6 +58,9 @@ COLUNAS_TECNICAS = (
     "QTD_REGISTROS_CONSUMO",
     "QTD_EVENTOS_POSITIVOS_ATE_DATA",
 )
+
+# Cor unica das abas que exigem (ou podem exigir) preenchimento manual.
+COR_ABA_ENTRADA = "FFFFC000"
 
 FORMATO_QTD = "#,##0.00"
 FORMATO_MOEDA = "R$ #,##0.00"
@@ -475,7 +479,8 @@ def _criar_aba_itemizada(wb):
         else len(wb.sheetnames)
     )
     ws = wb.create_sheet(ABA_CICLO_EM_EXECUCAO, indice)
-    ws.sheet_properties.tabColor = "FF0F5B50"
+    # Dourado/amarelo: mesma cor das demais abas que exigem preenchimento.
+    ws.sheet_properties.tabColor = COR_ABA_ENTRADA
     ws.sheet_view.showGridLines = False
     # Sem congelamento de paineis: navegacao livre pela planilha. As celulas
     # automaticas seguem protegidas (locked); somente D5 e C13:C211 sao editaveis.
@@ -513,7 +518,7 @@ def _criar_aba_itemizada(wb):
     )
 
     ws.merge_cells("A1:G1")
-    ws["A1"] = "POSIÇÃO ATUAL DO REMANESCENTE NO CICLO EM EXECUÇÃO"
+    ws["A1"] = "POSIÇÃO FÍSICA ATUAL DO REMANESCENTE NO CICLO EM EXECUÇÃO"
     ws["A1"].font = Font(name="Aptos Display", size=16, bold=True, color=branco)
     ws["A1"].fill = PatternFill("solid", fgColor=verde)
     ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
@@ -549,7 +554,7 @@ def _criar_aba_itemizada(wb):
     ws.row_dimensions[3].height = 28
 
     ws.merge_cells("A5:C5")
-    ws["A5"] = "DATA DA POSIÇÃO ATUAL (PREENCHER)"
+    ws["A5"] = "DATA DA POSIÇÃO FÍSICA (PREENCHER)"
     ws.merge_cells("D5:G5")
     ws["D5"] = None
     for coord in ("A5", "D5"):
@@ -570,8 +575,8 @@ def _criar_aba_itemizada(wb):
     ws["A7"] = "VALOR TOTAL ATUALIZADO REMANESCENTE NA DATA DA POSIÇÃO (AUTO)"
     ws.merge_cells("A8:G8")
     ws["A8"] = (
-        '=IF($D$5="","Data da posição: [PREENCHER]",'
-        '"Data da posição: "&RIGHT("0"&DAY($D$5),2)&"/"&'
+        '=IF($D$5="","Data da posicao fisica: [PREENCHER]",'
+        '"Data da posicao fisica: "&RIGHT("0"&DAY($D$5),2)&"/"&'
         'RIGHT("0"&MONTH($D$5),2)&"/"&YEAR($D$5))'
     )
     ws.merge_cells("A9:G10")
@@ -596,6 +601,29 @@ def _criar_aba_itemizada(wb):
     ws.row_dimensions[8].height = 23
     ws.row_dimensions[9].height = 26
     ws.row_dimensions[10].height = 26
+
+    # Validacao temporal da fotografia contra a DATA DE CORTE DA APURACAO
+    # (CONTROLE!B3). A data de corte nunca e alterada em silencio: a posicao
+    # posterior ao corte apenas deixa de representar a apuracao encerrada.
+    ws.merge_cells("A11:G11")
+    ws[CELULA_VALIDACAO_TEMPORAL] = (
+        '=IF($D$5="","",'
+        'IF(NOT(ISNUMBER(CONTROLE!$B$3)),'
+        '"DATA DE CORTE DA APURACAO NAO INFORMADA EM CONTROLE!B3.",'
+        'IF($D$5>CONTROLE!$B$3,"POSICAO FISICA POSTERIOR A DATA DE CORTE.",'
+        'IF($D$5=CONTROLE!$B$3,'
+        '"POSICAO FISICA NA DATA DE CORTE - REFERENCIA VALIDADA.",'
+        '"POSICAO FISICA ANTERIOR A DATA DE CORTE - REFERENCIA ESTIMADA."))))'
+    )
+    ws[CELULA_VALIDACAO_TEMPORAL].font = Font(
+        name="Aptos", size=10, bold=True, color="FF3F2A00"
+    )
+    ws[CELULA_VALIDACAO_TEMPORAL].fill = PatternFill("solid", fgColor="FFFFF2CC")
+    ws[CELULA_VALIDACAO_TEMPORAL].alignment = Alignment(
+        horizontal="center", vertical="center", wrap_text=True
+    )
+    ws[CELULA_VALIDACAO_TEMPORAL].border = borda
+    ws.row_dimensions[11].height = 22
 
     cores_cabecalho = (cinza, verde, verde, laranja, azul, azul, azul)
     for coluna, (rotulo, cor) in enumerate(zip(COLUNAS_VISIVEIS, cores_cabecalho), start=1):
@@ -708,8 +736,11 @@ def _criar_aba_itemizada(wb):
     )
     dv_data.errorTitle = "Data fora do ciclo"
     dv_data.error = "Informe uma data válida dentro do ciclo em execução."
-    dv_data.promptTitle = "Data da posição atual"
-    dv_data.prompt = "Única data de referência da nova fotografia itemizada."
+    dv_data.promptTitle = "Data da posição física"
+    dv_data.prompt = (
+        "Data em que o fiscal confirmou as quantidades remanescentes. "
+        "Deve ser igual ou anterior à data de corte da apuração (CONTROLE!B3)."
+    )
     dv_data.showErrorMessage = True
     dv_data.showInputMessage = True
     ws.add_data_validation(dv_data)
@@ -728,8 +759,11 @@ def _criar_aba_itemizada(wb):
         "Informe zero ou uma quantidade não negativa que não supere o "
         "remanescente inicial acrescido das alterações do período."
     )
-    dv_qtd.promptTitle = "Remanescente atual"
-    dv_qtd.prompt = "Vazio = não confirmado; zero = saldo confirmado em zero."
+    dv_qtd.promptTitle = "Remanescente na data da posição"
+    dv_qtd.prompt = (
+        "Fonte única da posição física: esta quantidade alimenta automaticamente "
+        "posicao_referencia. Vazio = não confirmado; zero = saldo confirmado em zero."
+    )
     dv_qtd.showErrorMessage = True
     dv_qtd.showInputMessage = True
     ws.add_data_validation(dv_qtd)

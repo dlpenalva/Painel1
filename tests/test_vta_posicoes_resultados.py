@@ -201,8 +201,11 @@ def test_05_sem_ciclo_execucao_forma1_indisponivel(mem, real_mutado):
 def test_06_ciclo_incompleto_a9_vazio_zera_disponibilidade():
     wb = load_workbook(TEMPLATE)  # formulas
     f49 = wb["MEMORIA_RESULTADOS"]["W49"].value
-    assert 'INDIRECT("CICLO_EM_EXECUCAO!A9")' in f49
+    assert 'INDIRECT("CICLO_EM_EXECUCAO!$A$9")' in f49
     assert "ISERROR" in f49 and '=""' in f49  # A9 vazio ou erro => 0
+    # Fotografia POSTERIOR a data de corte tambem zera a disponibilidade: uma
+    # posicao futura nao representa a apuracao encerrada em data anterior.
+    assert 'INDIRECT("CICLO_EM_EXECUCAO!$D$5")>CONTROLE!$B$3' in f49
 
 
 # --------------------------------------------------------------------------- #
