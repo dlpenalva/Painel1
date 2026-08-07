@@ -111,7 +111,12 @@ def test_destaque_do_seletor_de_ciclo_e_restrito_ao_proprio_campo():
     assert 'key="sim_ciclo_analise"' in PAGINA_CICLO_UNICO
     # O seletor recebe destaque proprio via a classe que o Streamlit publica
     # para widgets com key — nunca por um seletor global de selectbox.
-    assert '.st-key-sim_ciclo_analise [data-baseweb="select"]' in PAGINA_CICLO_UNICO
+    # O campo interno e alcancado por data-testid + role. data-baseweb="select"
+    # nao existe mais no Streamlit de producao (1.59.2) e nao pode voltar a ser
+    # a ancora do destaque: com ele, so o rotulo era realcado.
+    assert '.st-key-sim_ciclo_analise [data-testid="stSelectbox"] div[role="group"]' in (
+        PAGINA_CICLO_UNICO
+    )
     blocos = [
         bloco
         for bloco in re.findall(r"<style>(.*?)</style>", PAGINA_CICLO_UNICO, re.S)
@@ -126,6 +131,13 @@ def test_destaque_do_seletor_de_ciclo_e_restrito_ao_proprio_campo():
     assert seletores
     for seletor in seletores:
         assert seletor.startswith(".st-key-sim_ciclo_analise"), seletor
+    # Regressao de 07/08/2026: a regra dependia de data-baseweb="select", que o
+    # Streamlit 1.59.2 nao emite. O campo ficava sem fundo/borda/acento.
+    assert "data-baseweb" not in blocos[0]
+    # O destaque tem de alcancar o CAMPO, nao apenas o rotulo.
+    alvos_de_campo = [s for s in seletores if '[data-testid="stSelectbox"]' in s]
+    assert len(alvos_de_campo) >= 1, seletores
+    assert any("label" in s for s in seletores), seletores
 
 
 # ---------------------------------------------------------------------------

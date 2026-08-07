@@ -1886,15 +1886,20 @@ opcoes_ciclo_analise = ["C1", "C2", "C3", "C4"]
 # st-key-<key> que o Streamlit publica no container do proprio widget: nenhum
 # outro selectbox da aplicacao e afetado, e o comportamento do campo (opcoes,
 # valor, estado, foco) permanece o do tema global.
+# O campo interno e alcancado por data-testid + role: o Streamlit 1.59.2 (versao
+# de producao) deixou de emitir data-baseweb="select", atributo em que a primeira
+# versao desta regra se apoiava — o rotulo pegava o destaque e o campo nao.
+# div[role="group"] e o proprio elemento que o tema pinta (raiz do controle) e e
+# descendente, nao filho posicional: sobrevive a insercao de wrappers.
 st.markdown(
     """
     <style>
-    .st-key-sim_ciclo_analise [data-baseweb="select"] > div {
+    .st-key-sim_ciclo_analise [data-testid="stSelectbox"] div[role="group"] {
         background: var(--cl8us-blue-soft, #E7F1F8) !important;
         border-color: #9CBBD4 !important;
         box-shadow: inset 3px 0 0 0 #123B63 !important;
     }
-    .st-key-sim_ciclo_analise [data-baseweb="select"] > div:hover {
+    .st-key-sim_ciclo_analise [data-testid="stSelectbox"] div[role="group"]:hover {
         border-color: var(--cl8us-focus, #2C6F9E) !important;
     }
     .st-key-sim_ciclo_analise label p {
