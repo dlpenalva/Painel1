@@ -161,6 +161,54 @@ def _escrever_entrada(ws, coordenada: str, valor: Any) -> None:
     cell.value = valor
 
 
+# Analise de um unico ciclo: a "variacao historica integral ate o ciclo vigente"
+# (CONTROLE!B10) pressupoe a serie completa de ciclos, que essa analise nao
+# carrega — e por isso a formula do template resulta em vazio. Declarar a
+# ausencia e mais informativo para o fiscal do que a celula em branco.
+AVISO_HISTORICO_CICLO_UNICO = "Histórico anterior não incluído nesta análise."
+
+
+def _nota_variacao_ciclo_unico(ciclo: str, percentual: float) -> str:
+    """Nota da variacao apurada, no mesmo padrao percentual de parametros!E."""
+    formatado = f"{percentual * 100:.2f}".replace(".", ",")
+    return f"Variação apurada do ciclo único ({ciclo}): {formatado}%"
+
+
+def _aplicar_resumo_ciclo_unico(controle, computados) -> set[str]:
+    """Completa o quadro RESUMO quando a apuracao abrange um unico ciclo.
+
+    `computados` sao os pares (ciclo, percentual) com COMPUTAR_NESTA_APURACAO =
+    "Sim", isto e, a mesma contagem que CONTROLE!B9 apresenta — a substituicao
+    acontece apenas quando B9 = 1, mantendo o quadro internamente coerente. No
+    multiciclo nada muda: as formulas do template permanecem.
+
+    B10 (variacao historica integral) declara a ausencia de historico: nenhuma
+    formula do arquivo a consome.
+
+    B11 (fator historico integral) NAO e tocada — ela alimenta
+    comparativo_VTA!B208 e RESULTADOS!H5/D6/H8, e substitui-la deslocaria o
+    motor. A variacao ja apurada do ciclo e apenas REAPRESENTADA em C11, a
+    coluna de notas da propria aba (ver C3), que nenhuma formula consome: nao ha
+    recalculo do indice nem nova fonte de verdade.
+
+    Retorna as coordenadas cujas formulas foram legitimamente substituidas.
+    """
+    if len(computados) != 1:
+        return set()
+    ciclo, percentual = computados[0]
+    controle["B10"].value = AVISO_HISTORICO_CICLO_UNICO
+    controle["B10"].number_format = "@"
+    # A celula e centralizada para numeros; com texto longo, o transbordo
+    # centralizado invade A10 (ocupada) e corta o inicio da frase. Alinhada a
+    # esquerda, ela transborda so para C10:D10, que estao vazias.
+    controle["B10"].alignment = Alignment(horizontal="left", vertical="center")
+    if isinstance(percentual, (int, float)) and not isinstance(percentual, bool):
+        _escrever_entrada(
+            controle, "C11", _nota_variacao_ciclo_unico(ciclo, float(percentual))
+        )
+    return {"CONTROLE!B10"}
+
+
 
 def _completar_periodos_ciclos(ciclos: dict[str, Any], data_corte=None) -> dict[str, Any]:
     """Garante que C0-C4 existam temporalmente, sem pular nem compactar ciclo (v10.5.2).
@@ -622,6 +670,7 @@ def gerar_masterfile_preenchido(
     ciclos_completos = _completar_periodos_ciclos(ciclos, dados_calculadora.get("data_corte"))
     _registrar_inicio_efeitos_financeiros(wb, ciclos_completos)
 
+    ciclos_computados: list[tuple[str, Any]] = []
     for linha, nome in enumerate(("C0", "C1", "C2", "C3", "C4"), start=2):
         ciclo = ciclos.get(nome)
         if _vnova:
@@ -663,6 +712,8 @@ def gerar_masterfile_preenchido(
             )
             efeito_raw = str(ciclo.get("possui_efeito_financeiro") or "")
             computar = "Sim" if efeito_raw.upper() in ("SIM", "S") else "Nao"
+            if computar == "Sim":
+                ciclos_computados.append((nome, ciclo.get("percentual")))
             _escrever_entrada(parametros, f"A{linha}", computar)
             _escrever_entrada(parametros, f"G{linha}", ciclo.get("situacao"))
             parametros[f"G{linha}"].fill = PatternFill("solid", fgColor="FFEDEDED")
@@ -737,6 +788,11 @@ def gerar_masterfile_preenchido(
         # os cabecalhos J1:R1 e ignorado sem erro.
         from _memoria_calculo import escrever_memoria_calculo
         escrever_memoria_calculo(parametros, ciclos)
+        # Unica substituicao autorizada de formula do template: CONTROLE!B10 na
+        # analise de um ciclo so. As coordenadas devolvidas saem da fotografia
+        # para que a trava continue valendo integralmente no restante do arquivo.
+        for coordenada in _aplicar_resumo_ciclo_unico(controle, ciclos_computados):
+            formulas_antes.pop(coordenada, None)
     elif _v102 and "parametros" in wb.sheetnames:
         _preencher_memoria_fator(parametros, ciclos)
 

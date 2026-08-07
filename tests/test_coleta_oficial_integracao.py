@@ -88,7 +88,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # passou a distinguir vazio de zero (INDIRECT sobre celula vazia devolvia 0, o
 # que transformava pendencia em "zero confirmado"). As colunas oficiais
 # G/K/O/S/W/Y e as travas B26/T25 seguem intactas (formula e valor). — reancorado.
-SHA256_TEMPLATE_ESPERADO = "7da0ca1aeda333b910771d64b84d48ef399ed9e114cee9786a37408998a9d835"
+# Etapa UI (acabamento visual): parametros!G2:G6 padronizada, A17:G20 sem
+# bordas residuais, novo rotulo em parametros!G10, painel posicao_referencia!H:I
+# encerrando em H11, coluna C de cobertura_temporal legivel e, em RESULTADOS,
+# H8 legivel + A8 horizontal + bordas da tabela 5 (A54:C66). Somente
+# apresentacao e um rotulo: a fotografia de formulas do arquivo e identica
+# (tools/aplicar_acabamento_visual_coleta.py trava isso). — reancorado.
+SHA256_TEMPLATE_ESPERADO = "3dc5676c79282aa56a86ad000402342842c53aa59b108bed1695a03cdb311696"
 
 
 def _dados_calculadora() -> dict:

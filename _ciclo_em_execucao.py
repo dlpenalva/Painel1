@@ -496,7 +496,6 @@ def _criar_aba_itemizada(wb):
     branco = "FFFFFFFF"
     verde = "FF0F5B50"
     verde_auto = "FFE8F5F1"
-    verde_input = "FFC6EFCE"
     laranja = "FFE67E22"
     laranja_claro = "FFFCE4D6"
     azul = "FF1F4E78"
@@ -508,10 +507,18 @@ def _criar_aba_itemizada(wb):
 
     fina = Side(style="thin", color="FFB7B7B7")
     media_verde = Side(style="medium", color=verde)
+    media_laranja = Side(style="medium", color=laranja)
     grossa_azul = Side(style="thick", color=azul)
     borda = Border(left=fina, right=fina, top=fina, bottom=fina)
-    borda_input = Border(
+    borda_realce = Border(
         left=media_verde, right=media_verde, top=media_verde, bottom=media_verde
+    )
+    # Laranja identifica campo de preenchimento em todo o arquivo (D5 dourado,
+    # cobertura_temporal!B16/B23). A coluna C (unica entrada itemizada) segue o
+    # mesmo codigo; o verde fica reservado ao que e automatico/read-only.
+    borda_entrada = Border(
+        left=media_laranja, right=media_laranja,
+        top=media_laranja, bottom=media_laranja,
     )
     borda_total = Border(
         left=grossa_azul, right=grossa_azul, top=grossa_azul, bottom=grossa_azul
@@ -522,7 +529,7 @@ def _criar_aba_itemizada(wb):
     ws["A1"].font = Font(name="Aptos Display", size=16, bold=True, color=branco)
     ws["A1"].fill = PatternFill("solid", fgColor=verde)
     ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
-    ws["A1"].border = borda_input
+    ws["A1"].border = borda_realce
     ws.row_dimensions[1].height = 30
 
     ws.merge_cells("A3:B3")
@@ -625,7 +632,8 @@ def _criar_aba_itemizada(wb):
     ws[CELULA_VALIDACAO_TEMPORAL].border = borda
     ws.row_dimensions[11].height = 22
 
-    cores_cabecalho = (cinza, verde, verde, laranja, azul, azul, azul)
+    # C = preenchimento (laranja); D = derivada por formula (verde).
+    cores_cabecalho = (cinza, verde, laranja, verde, azul, azul, azul)
     for coluna, (rotulo, cor) in enumerate(zip(COLUNAS_VISIVEIS, cores_cabecalho), start=1):
         celula = ws.cell(LINHA_CABECALHO, coluna, rotulo)
         celula.fill = PatternFill("solid", fgColor=cor)
@@ -705,16 +713,16 @@ def _criar_aba_itemizada(wb):
                 horizontal="left" if coluna == 1 else "right",
                 vertical="center",
             )
-            celula.border = borda_input if coluna == 3 else borda
+            celula.border = borda_entrada if coluna == 3 else borda
             if coluna == 1:
                 celula.fill = PatternFill("solid", fgColor=cinza_claro)
             elif coluna == 2:
                 celula.fill = PatternFill("solid", fgColor=verde_auto)
             elif coluna == 3:
-                celula.fill = PatternFill("solid", fgColor=verde_input)
+                celula.fill = PatternFill("solid", fgColor=laranja_claro)
                 celula.protection = Protection(locked=False)
             elif coluna == 4:
-                celula.fill = PatternFill("solid", fgColor=laranja_claro)
+                celula.fill = PatternFill("solid", fgColor=verde_auto)
             else:
                 celula.fill = PatternFill("solid", fgColor=azul_claro)
             if coluna in (2, 3, 4):
