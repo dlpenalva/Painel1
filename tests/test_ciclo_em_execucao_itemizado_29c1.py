@@ -249,11 +249,13 @@ def test_aba_runtime_tem_sete_colunas_visiveis_e_marcador_oculto(coleta_runtime)
 def test_layout_visual_cores_por_natureza_e_total_executivo(coleta_runtime):
     _, wb = coleta_runtime
     ws = wb[ABA_CICLO_EM_EXECUCAO]
-    assert ws["B12"].fill.fgColor.rgb == ws["C12"].fill.fgColor.rgb == "FF0F5B50"
+    # Laranja = campo de preenchimento (C, unica entrada itemizada da aba);
+    # verde = informacao automatica/read-only (B derivada, D por formula).
+    assert ws["B12"].fill.fgColor.rgb == ws["D12"].fill.fgColor.rgb == "FF0F5B50"
     assert ws["B13"].fill.fgColor.rgb == "FFE8F5F1"
-    assert ws["C13"].fill.fgColor.rgb == "FFC6EFCE"
-    assert ws["D12"].fill.fgColor.rgb == "FFE67E22"
-    assert ws["D13"].fill.fgColor.rgb == "FFFCE4D6"
+    assert ws["C12"].fill.fgColor.rgb == "FFE67E22"
+    assert ws["C13"].fill.fgColor.rgb == "FFFCE4D6"
+    assert ws["D13"].fill.fgColor.rgb == "FFE8F5F1"
     assert all(ws[f"{c}12"].fill.fgColor.rgb == "FF1F4E78" for c in "EFG")
     assert all(ws[f"{c}13"].fill.fgColor.rgb == "FFDDEBF7" for c in "EFG")
     assert ws["A7"].value == (

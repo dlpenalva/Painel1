@@ -1882,6 +1882,29 @@ if not st.session_state.get("_calculadora_reajustes_embedded", False):
 contexto_contratual = {}
 
 opcoes_ciclo_analise = ["C1", "C2", "C3", "C4"]
+# Destaque leve e LOCALIZADO do seletor de ciclo. O escopo vem da classe
+# st-key-<key> que o Streamlit publica no container do proprio widget: nenhum
+# outro selectbox da aplicacao e afetado, e o comportamento do campo (opcoes,
+# valor, estado, foco) permanece o do tema global.
+st.markdown(
+    """
+    <style>
+    .st-key-sim_ciclo_analise [data-baseweb="select"] > div {
+        background: var(--cl8us-blue-soft, #E7F1F8) !important;
+        border-color: #9CBBD4 !important;
+        box-shadow: inset 3px 0 0 0 #123B63 !important;
+    }
+    .st-key-sim_ciclo_analise [data-baseweb="select"] > div:hover {
+        border-color: var(--cl8us-focus, #2C6F9E) !important;
+    }
+    .st-key-sim_ciclo_analise label p {
+        font-weight: 600 !important;
+        color: #123B63 !important;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 # Etapa 28A: rotulo de exibicao separado do valor interno (que segue "Cn").
 ciclo_analise = st.selectbox(
     "Qual ciclo deseja analisar?",
