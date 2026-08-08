@@ -419,7 +419,9 @@ def _evento_historico_principal_contexto(contexto):
     if data_base:
         obs_partes.append(f"Data-base: {data_base}")
     if data_pedido:
-        obs_partes.append(f"Data do pedido/efeitos financeiros: {data_pedido}")
+        # Data do pedido e início dos efeitos financeiros são conceitos
+        # distintos: o contexto histórico registra apenas a data do pedido.
+        obs_partes.append(f"Data do pedido: {data_pedido}")
     if percentual_txt and percentual_txt != '0,00%':
         obs_partes.append(f"Percentual aplicado: {percentual_txt}")
     if ref:
@@ -1963,7 +1965,7 @@ dt_fim_ap = dt_base + relativedelta(months=11)
 dt_aniv = dt_base + relativedelta(years=1)
 dt_limite = dt_aniv + relativedelta(days=90)
 
-# Regra de Admissibilidade
+# Regra de Admissibilidade (DATA EXATA do pedido x janela de 90 dias)
 if dt_solic < dt_aniv:
     if dt_solic.year == dt_aniv.year and dt_solic.month == dt_aniv.month:
         status_ped = "🟡 ADMISSÍVEL - RESSALVA"
@@ -1973,6 +1975,17 @@ elif dt_solic <= dt_limite:
     status_ped = "✅ TEMPESTIVO"
 else:
     status_ped = "❌ PRECLUSO"
+
+# REGRA PÉTREA — TEMPESTIVO*: pedido tempestivo em competência posterior à
+# data-base retarda o início dos efeitos financeiros para a competência do
+# pedido. Distinção de APRESENTAÇÃO: internamente o status jurídico segue
+# TEMPESTIVO (nenhum motor ou fórmula depende do asterisco).
+efeito_financeiro_retardado = bool(
+    status_ped == "✅ TEMPESTIVO"
+    and (dt_solic.year, dt_solic.month) > (dt_aniv.year, dt_aniv.month)
+)
+if efeito_financeiro_retardado:
+    status_ped = "✅ TEMPESTIVO*"
 
 if "IST" in tipo_idx:
     res = get_ist_local(dt_base, dt_fim_ap)
@@ -2100,9 +2113,23 @@ if res:
         dt_ref_mes = dt_referencia_pedido.replace(day=1)
         return dt_ref_mes if dt_ref_mes > dt_inicio_mes else dt_inicio_mes
 
-    _referencia_inicio_financeiro_v3 = data_inicio_efeito_negocial if superacao_negocial and data_inicio_efeito_negocial else dt_solic
-    inicio_efeito_financeiro = _inicio_financeiro_mensal_por_pedido_v3(dt_aniv, _referencia_inicio_financeiro_v3)
-    fim_efeito_financeiro = (dt_aniv.replace(day=1) + relativedelta(months=12)) - relativedelta(days=1)
+    # PRECLUSO sem acordo NÃO possui efeitos financeiros: nenhuma data
+    # artificial e nenhuma âncora derivada do pedido precluso — o próximo
+    # ciclo usa o fallback teórico de 12 meses. Somente o acordo negocial
+    # cria a nova âncora (competência da data pactuada).
+    preclusao_sem_efeito = (
+        "PRECLUSO" in status_ped.upper() and not superacao_negocial
+    )
+    if preclusao_sem_efeito:
+        inicio_efeito_financeiro = None
+        fim_efeito_financeiro = None
+    else:
+        _referencia_inicio_financeiro_v3 = data_inicio_efeito_negocial if superacao_negocial and data_inicio_efeito_negocial else dt_solic
+        inicio_efeito_financeiro = _inicio_financeiro_mensal_por_pedido_v3(dt_aniv, _referencia_inicio_financeiro_v3)
+        # Regra pétrea do interregno: o período de efeitos cobre 12 competências a
+        # partir do INÍCIO DOS EFEITOS (o próximo reajuste nasce 12 meses depois
+        # dele), e não mais 12 meses fixos a partir do aniversário teórico.
+        fim_efeito_financeiro = (inicio_efeito_financeiro + relativedelta(months=12)) - relativedelta(days=1)
 
     st.subheader("Relatório de Apuração")
     percentual_aplicado_fmt = f"{percentual_aplicado * 100:,.2f}%".replace('.', ',')
@@ -2115,9 +2142,7 @@ if res:
     #   Ciclo/pedido > Periodo de apuracao do indice > Janela de
     #   Admissibilidade (90 dias) > Resultado > Variacao apurada >
     #   Percentual aplicado (SOMENTE se divergir) > Indice > efeitos.
-    preclusao_sem_efeito = (
-        "PRECLUSO" in status_ped.upper() and not superacao_negocial
-    )
+    # (preclusao_sem_efeito ja definido acima, antes do calculo dos efeitos)
     if superacao_negocial:
         inicio_negocial_txt = inicio_efeito_financeiro.strftime('%d/%m/%Y')
         relatorio_simples = f"""
@@ -2147,6 +2172,12 @@ if res:
             if preclusao_sem_efeito
             else f"Início dos efeitos financeiros: {inicio_efeito_financeiro.strftime('%d/%m/%Y')}."
         )
+        linha_legenda_retardo = (
+            "\n\n        \\* Pedido realizado dentro da janela de admissibilidade, "
+            "mas em competência posterior à data-base. Os efeitos financeiros "
+            "iniciam na competência do pedido."
+            if efeito_financeiro_retardado else ""
+        )
         relatorio_simples = f"""
         **{ciclo_label}:** Pedido realizado em {dt_solic.strftime('%d/%m/%Y')}.  
         Período de apuração do índice: {janela_str}.  
@@ -2154,7 +2185,7 @@ if res:
         Resultado: {situacao_aplicada}.  
         Variação apurada: {v_fmt}.  
         {linha_percentual_aplicado}Índice: {tipo_idx}.  
-        {linha_efeitos}{observacao_ciclo_negativo}
+        {linha_efeitos}{observacao_ciclo_negativo}{linha_legenda_retardo}
         """
     st.info(relatorio_simples)
 
@@ -2167,9 +2198,16 @@ if res:
         dt_ref_mes = dt_referencia_pedido.replace(day=1)
         return dt_ref_mes if dt_ref_mes > dt_inicio_mes else dt_inicio_mes
 
-    _referencia_inicio_financeiro = data_inicio_efeito_negocial if superacao_negocial and data_inicio_efeito_negocial else dt_solic
-    inicio_efeito_financeiro = _inicio_financeiro_mensal_por_pedido(dt_aniv, _referencia_inicio_financeiro)
-    fim_efeito_financeiro = (dt_aniv.replace(day=1) + relativedelta(months=12)) - relativedelta(days=1)
+    # PRECLUSO sem acordo: sem efeitos financeiros (mesma regra do bloco v3).
+    if preclusao_sem_efeito:
+        inicio_efeito_financeiro = None
+        fim_efeito_financeiro = None
+    else:
+        _referencia_inicio_financeiro = data_inicio_efeito_negocial if superacao_negocial and data_inicio_efeito_negocial else dt_solic
+        inicio_efeito_financeiro = _inicio_financeiro_mensal_por_pedido(dt_aniv, _referencia_inicio_financeiro)
+        # Regra pétrea do interregno: 12 competências a partir do início dos
+        # efeitos financeiros (mesma regra do bloco v3 acima).
+        fim_efeito_financeiro = (inicio_efeito_financeiro + relativedelta(months=12)) - relativedelta(days=1)
 
     ciclo_unico = {
         'ciclo': ciclo_label,
@@ -2187,6 +2225,7 @@ if res:
         'referencia_documental': referencia_documental.strip(),
         'ciclo_negativo': bool(ciclo_negativo),
         'tratamento_ciclo_negativo': tratamento_negativo,
+        'efeito_financeiro_retardado': bool(efeito_financeiro_retardado),
         'variacao': float(percentual_aplicado),
         'variacao_formatada': f"{percentual_aplicado*100:,.2f}%".replace('.', ','),
         'fator': float(fator_ciclo_efetivo),

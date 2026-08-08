@@ -197,8 +197,10 @@ def test_dropdown_e_formatacao_condicional_sao_dinamicos():
 
 
 def test_data_canonica_fica_auditavel_em_metadado_do_xls():
+    # Regra petrea (etapa 30): o inicio dos efeitos e a COMPETENCIA (dia 1);
+    # o dia exato do pedido pertence somente a admissibilidade.
     wb = _wb()
-    assert "CL8US_INICIO_EFEITO:C1=2024-04-18" in wb.properties.keywords
+    assert "CL8US_INICIO_EFEITO:C1=2024-04-01" in wb.properties.keywords
 
 
 def test_limites_operacionais_convergem_na_linha_73():
@@ -292,10 +294,13 @@ def test_variantes_nao_literais_de_g_sao_bloqueadas(efeito):
 
 
 def test_fronteiras_reais_simples_e_multiciclo_chegam_ao_gerador():
+    # Regra petrea (etapa 30): H e a COMPETENCIA (dia 1) do inicio dos
+    # efeitos; a granularidade financeira segue mensal, entao os marcadores
+    # G por competencia permanecem identicos aos da regra anterior.
     simples = normalizar_dados_calculadora(_dados())
-    assert simples["ciclos"][0]["inicio_efeito_financeiro"] == date(2024, 4, 18)
+    assert simples["ciclos"][0]["inicio_efeito_financeiro"] == date(2024, 4, 1)
     wb_simples = _wb(_dados())
-    assert "CL8US_INICIO_EFEITO:C1=2024-04-18" in wb_simples.properties.keywords
+    assert "CL8US_INICIO_EFEITO:C1=2024-04-01" in wb_simples.properties.keywords
     assert wb_simples["financeiro"][f"G{_linha_competencia(wb_simples['financeiro'], 2024, 4)}"].value == "Sim"
 
     multi = _dados()
@@ -306,7 +311,7 @@ def test_fronteiras_reais_simples_e_multiciclo_chegam_ao_gerador():
         "objeto_analise_atual": True,
     })
     wb_multi = _wb(multi)
-    assert "C1=2024-04-18,C2=2025-05-20" in wb_multi.properties.keywords
+    assert "C1=2024-04-01,C2=2025-05-01" in wb_multi.properties.keywords
     assert wb_multi["financeiro"][f"G{_linha_competencia(wb_multi['financeiro'], 2025, 4)}"].value == "Nao"
     assert wb_multi["financeiro"][f"G{_linha_competencia(wb_multi['financeiro'], 2025, 5)}"].value == "Sim"
 

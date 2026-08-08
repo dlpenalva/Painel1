@@ -199,6 +199,26 @@ def _limpar_residuos(wb) -> None:
                 cell.value = None
 
 
+def _garantir_dropdown_metodo(wb) -> None:
+    """CONTROLE!B1 sempre oferece os rotulos canonicos do metodo.
+
+    Fonte unica: _metodo_apuracao.OPCOES_DROPDOWN. O template binario
+    homologado permanece intacto; a lista da validacao de dados e
+    reescrita em runtime, de modo que NOVAS Coletas ofereçam
+    "Financeiro (Mensalidade)" sem exibir o rotulo legado
+    "Principal (Financeiro)" — que segue aceito na LEITURA como alias.
+    """
+    from _metodo_apuracao import OPCOES_DROPDOWN
+
+    if "CONTROLE" not in wb.sheetnames:
+        return
+    ws = wb["CONTROLE"]
+    lista = '"' + ",".join(OPCOES_DROPDOWN) + '"'
+    for dv in ws.data_validations.dataValidation:
+        if dv.type == "list" and str(dv.sqref) == "B1":
+            dv.formula1 = lista
+
+
 def _validar_estrutura_itens_pc(wb) -> None:
     """Barreira contra regressao critica: itens_PC jamais pode sair esvaziada.
 
@@ -262,6 +282,7 @@ def obter_coleta_oficial_bytes() -> bytes:
         )
 
     _limpar_residuos(wb)
+    _garantir_dropdown_metodo(wb)
     _validar_estrutura_itens_pc(wb)
 
     wb.calculation.calcMode = "auto"
@@ -323,13 +344,22 @@ def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]
         raise ValueError("A Calculadora não informou nenhum ciclo entre C1 e C4.")
 
     data_base = _data(origem.get("data_base") or origem.get("data_base_original"))
-    # CALENDARIO CONTRATUAL — ancora unica.
-    # Cada ciclo tem exatamente 12 competencias mensais consecutivas, derivadas
-    # da data-base/aniversario contratual. A janela do indice (data_base /
-    # periodo_inicio de cada ciclo) e o INICIO_EFEITO_FINANCEIRO sao conceitos
-    # independentes: JAMAIS definem DATA_INICIO/DATA_FIM nem deslocam o ciclo
-    # seguinte. Por isso a ancora e tomada UMA unica vez — do ciclo explicito
-    # mais antigo — e todos os demais decorrem dela em blocos de 12 meses.
+    # CALENDARIO CONTRATUAL — REGRA PETREA DO INTERREGNO E DOS EFEITOS.
+    # A ancora inicial e tomada UMA unica vez (marco explicito do ciclo mais
+    # antigo, senao a janela do indice desse ciclo, senao a data-base
+    # original). A partir dela, o ciclo seguinte NAO decorre de blocos fixos:
+    #
+    #   DATA_INICIO(Cn+1) = COMPETENCIA(INICIO_EFEITO_FINANCEIRO(Cn)) + 12m
+    #
+    # nunca ANTES do marco teorico (DATA_INICIO(Cn) + 12m) — o retardo dos
+    # efeitos so POSTERGA o proximo reajuste, jamais o antecipa. Ciclo sem
+    # inicio de efeito (ex.: precluso sem acordo) usa o fallback teorico
+    # (+12m), sem inventar ancora financeira. DATA_FIM(Cn) e sempre a vespera
+    # de DATA_INICIO(Cn+1): ciclos contiguos, sem lacuna e sem sobreposicao —
+    # um ciclo pode ter MAIS de 12 competencias quando o seguinte foi
+    # retardado, e as competencias intermediarias permanecem enquadradas nele.
+    # A janela do indice (data_base/periodo_inicio dos ciclos seguintes) segue
+    # sem participar da materializacao. A DATA DE PAGAMENTO nunca participa.
     ancora_numero: int | None = None
     ancora_inicio: date | None = None
     for numero in sorted(fornecidos):
@@ -341,8 +371,7 @@ def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]
     if ancora_inicio is None:
         # Sem marco explicito, a ancora e a janela do indice do ciclo MAIS
         # ANTIGO informado: so nele a janela coincide com o aniversario
-        # contratual. A janela dos ciclos SEGUINTES jamais e consultada — e ela
-        # que carrega o inicio do efeito financeiro e deslocava o calendario.
+        # contratual. A janela dos ciclos SEGUINTES jamais e consultada.
         primeiro = min(fornecidos)
         janela = _data(fornecidos[primeiro].get("data_base")
                        or fornecidos[primeiro].get("periodo_inicio"))
@@ -358,16 +387,53 @@ def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]
         raise ValueError("Não foi possível identificar a data-base dos ciclos da Calculadora.")
 
     ultimo = max(fornecidos)
-    inicios: dict[int, date] = {
-        numero: ancora_inicio + relativedelta(months=12 * (numero - ancora_numero))
-        for numero in range(0, max(ultimo, 4) + 1)
-    }
+
+    def _efeito_competencia(numero: int) -> date | None:
+        """Inicio dos efeitos financeiros do ciclo, normalizado a competencia.
+
+        O dia exato do pedido pertence a admissibilidade; para o regime
+        financeiro e para o interregno vale o PRIMEIRO DIA do mes.
+        """
+        bruto = fornecidos.get(numero) or {}
+        efeito = _data(
+            bruto.get("inicio_efeito_financeiro")
+            or bruto.get("financeiro_inicio")
+            or bruto.get("inicio_financeiro")
+        )
+        return efeito.replace(day=1) if efeito else None
+
+    inicios: dict[int, date] = {ancora_numero: ancora_inicio}
+    for numero in range(ancora_numero + 1, ultimo + 1):
+        teorico = inicios[numero - 1] + relativedelta(months=12)
+        efeito_anterior = _efeito_competencia(numero - 1)
+        candidato = (
+            efeito_anterior + relativedelta(months=12)
+            if efeito_anterior is not None else teorico
+        )
+        inicios[numero] = max(candidato, teorico)
+    for numero in range(ancora_numero - 1, -1, -1):
+        # Ciclos anteriores a ancora nao carregam inicio de efeito proprio:
+        # blocos teoricos de 12 meses para tras (comportamento preservado).
+        inicios[numero] = inicios[numero + 1] - relativedelta(months=12)
+
+    def _fim_do_ciclo(numero: int) -> date:
+        if numero < ultimo:
+            return inicios[numero + 1] - relativedelta(days=1)
+        # Ultimo ciclo informado: o fim ja reserva o espaco do proximo
+        # reajuste (12 meses apos o inicio dos efeitos, nunca antes do
+        # teorico), para que C3/C4 futuros sejam derivados da nova ancora.
+        teorico = inicios[numero] + relativedelta(months=12)
+        efeito = _efeito_competencia(numero)
+        candidato = (
+            efeito + relativedelta(months=12) if efeito is not None else teorico
+        )
+        return max(candidato, teorico) - relativedelta(days=1)
 
     ciclos = []
     for numero in range(1, ultimo + 1):
         bruto = fornecidos.get(numero, {})
         inicio = inicios[numero]
-        fim = inicio + relativedelta(months=12) - relativedelta(days=1)
+        fim = _fim_do_ciclo(numero)
         objeto_atual = bool(
             numero in fornecidos
             and bruto.get("objeto_analise_atual", not bruto.get("ciclo_ja_concedido", False))
@@ -378,16 +444,18 @@ def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]
             "data_inicio": inicio,
             "data_fim": fim,
             "data_pedido": _data(bruto.get("data_pedido")),
-            # Data final ja decidida pela Calculadora. O gerador apenas a
-            # propaga; nao recria tempestividade, negociacao ou excecoes.
-            "inicio_efeito_financeiro": _data(
-                bruto.get("inicio_efeito_financeiro")
-                or bruto.get("financeiro_inicio")
-                or bruto.get("inicio_financeiro")
-            ),
+            # Data final ja decidida pela Calculadora, normalizada a
+            # COMPETENCIA (dia 1). O gerador apenas a propaga; nao recria
+            # tempestividade, negociacao ou excecoes.
+            "inicio_efeito_financeiro": _efeito_competencia(numero),
             "percentual": _percentual(bruto),
             "possui_efeito_financeiro": "Sim" if objeto_atual else "Não",
             "situacao": bruto.get("situacao_aplicada") or bruto.get("situacao") or "",
+            # Apresentacao TEMPESTIVO*: flag interna (a exibicao usa o
+            # asterisco; formulas e motores nunca dependem dele).
+            "efeito_financeiro_retardado": bool(
+                bruto.get("efeito_financeiro_retardado")
+            ),
         })
 
     marco_inicial = data_base or inicios.get(0) or min(inicios.values())

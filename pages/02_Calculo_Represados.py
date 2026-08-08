@@ -470,7 +470,9 @@ def _evento_historico_principal_contexto(contexto):
     if data_base:
         obs_partes.append(f"Data-base: {data_base}")
     if data_pedido:
-        obs_partes.append(f"Data do pedido/efeitos financeiros: {data_pedido}")
+        # Data do pedido e início dos efeitos financeiros são conceitos
+        # distintos: o contexto histórico registra apenas a data do pedido.
+        obs_partes.append(f"Data do pedido: {data_pedido}")
     if percentual_txt and percentual_txt != '0,00%':
         obs_partes.append(f"Percentual aplicado: {percentual_txt}")
     if ref:
@@ -2066,7 +2068,7 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
     # histórico informado na lateral serve apenas como âncora e contexto do XLS.
     ciclo_ja_concedido = False
 
-    # Lógica de Admissibilidade preservada.
+    # Lógica de Admissibilidade preservada (DATA EXATA do pedido x janela).
     if dt_ped < d_aniv:
         if dt_ped.year == d_aniv.year and dt_ped.month == d_aniv.month:
             sit_emoji = "🟡 ADMISSÍVEL - RESSALVA"
@@ -2081,13 +2083,34 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         sit_emoji = "❌ PRECLUSO"
         situacao_limpa = "PRECLUSO"
 
-    # Regra de ancoragem do próximo ciclo preservada.
-    if situacao_limpa == "TEMPESTIVO":
-        data_base_proximo_ciclo = dt_ped
+    # REGRA PÉTREA — EFEITOS FINANCEIROS E INTERREGNO:
+    # a admissibilidade usa a data exata; o EFEITO FINANCEIRO usa a
+    # COMPETÊNCIA mensal (primeiro dia do mês). Pedido tempestivo em
+    # competência posterior à data-base retarda o início dos efeitos para a
+    # competência do pedido (exibição TEMPESTIVO*, sem criar estado jurídico
+    # novo) e o próximo reajuste nasce 12 meses após o início dos efeitos
+    # financeiros do ciclo anterior. A data de pagamento nunca participa.
+    if situacao_limpa == "PRECLUSO":
+        inicio_efeito_financeiro = None
+        efeito_financeiro_retardado = False
+    else:
+        _ref_efeito = dt_ped if dt_ped >= d_aniv else d_aniv
+        inicio_efeito_financeiro = _ref_efeito.replace(day=1)
+        efeito_financeiro_retardado = bool(
+            situacao_limpa == "TEMPESTIVO"
+            and (dt_ped.year, dt_ped.month) > (d_aniv.year, d_aniv.month)
+        )
+    if efeito_financeiro_retardado:
+        sit_emoji = "✅ TEMPESTIVO*"
+
+    # Próximo interregno: competência do início dos efeitos + 12 meses (a
+    # âncora do ciclo seguinte É o início dos efeitos do anterior). Preclusão
+    # sem acordo não possui efeito financeiro: preserva-se a âncora teórica
+    # atual (d_aniv), sem inventar início de efeito.
+    if inicio_efeito_financeiro is not None:
+        data_base_proximo_ciclo = inicio_efeito_financeiro
     else:
         data_base_proximo_ciclo = d_aniv
-
-    inicio_efeito_financeiro = None if situacao_limpa == "PRECLUSO" else (dt_ped if dt_ped >= d_aniv else d_aniv)
 
     superacao_negocial = False
     percentual_negocial = 0.0
@@ -2137,13 +2160,16 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
                 )
                 if not justificativa_negocial.strip():
                     st.info("A justificativa deve ser preenchida para fins de memória processual antes da instrução final.")
-                inicio_efeito_financeiro = data_inicio_efeito_negocial
+                # Início financeiro negocial normalizado à COMPETÊNCIA
+                # (regra pétrea: efeito financeiro é mensal; o dia exato
+                # pertence à admissibilidade/documentação do acordo).
+                inicio_efeito_financeiro = data_inicio_efeito_negocial.replace(day=1)
                 # Regra de ancoragem negocial:
                 # se um ciclo precluso for admitido por negociação entre as partes, a âncora
-                # do ciclo seguinte é arrastada para a data de início dos efeitos financeiros
-                # pactuada para o ciclo admitido. Consequentemente, o próximo ciclo somente
-                # estará apto após 12 meses desse novo marco.
-                data_base_proximo_ciclo = data_inicio_efeito_negocial
+                # do ciclo seguinte é arrastada para a competência de início dos efeitos
+                # financeiros pactuada para o ciclo admitido. Consequentemente, o próximo
+                # ciclo somente estará apto após 12 meses desse novo marco.
+                data_base_proximo_ciclo = inicio_efeito_financeiro
                 st.info(
                     f"Com a admissão negocial do C{i}, o próximo ciclo será ancorado em "
                     f"{data_base_proximo_ciclo.strftime('%d/%m/%Y')} e somente estará apto "
@@ -2160,6 +2186,7 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         'sit_emoji': sit_emoji,
         'situacao_limpa': situacao_limpa,
         'inicio_efeito_financeiro': inicio_efeito_financeiro,
+        'efeito_financeiro_retardado': bool(efeito_financeiro_retardado),
         'ciclo_ja_concedido': bool(ciclo_ja_concedido),
         'superacao_negocial': bool(superacao_negocial),
         'percentual_negocial': float(percentual_negocial),
@@ -2269,6 +2296,7 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
     sit_emoji = dados_ciclo['sit_emoji']
     situacao_limpa = dados_ciclo['situacao_limpa']
     inicio_efeito_financeiro = dados_ciclo['inicio_efeito_financeiro']
+    efeito_financeiro_retardado = bool(dados_ciclo.get('efeito_financeiro_retardado', False))
     ciclo_ja_concedido = bool(dados_ciclo.get('ciclo_ja_concedido', False))
     superacao_negocial = bool(dados_ciclo.get('superacao_negocial', False))
     percentual_negocial = float(dados_ciclo.get('percentual_negocial', 0.0) or 0.0)
@@ -2302,6 +2330,12 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
         - Janela de Admissibilidade (90 dias): {janela_adm}
         - Situação: {sit_emoji}
         """)
+        if efeito_financeiro_retardado:
+            st.caption(
+                "\\* Pedido realizado dentro da janela de admissibilidade, mas em "
+                "competência posterior à data-base. Os efeitos financeiros iniciam "
+                "na competência do pedido."
+            )
 
         if not validacao_indice.get("ok", False):
             _render_alerta_indice_ausente(validacao_indice, f"C{i}")
@@ -2453,6 +2487,7 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             'fator': float(fator_ciclo),
             'fator_acumulado': float(fator_acum),
             'ciclo_calculado': ciclo_calculado,
+            'efeito_financeiro_retardado': bool(efeito_financeiro_retardado),
             'financeiro_inicio': _formatar_data(inicio_efeito_financeiro),
             'financeiro_fim': '',
             'periodo_inicio': _formatar_data(periodo_inicio),
@@ -2544,6 +2579,12 @@ if historico:
             {linha_aplicado}Índice: {idx_sel}.  
             {linha_efeitos}
             \n\n"""
+    if any(c.get('efeito_financeiro_retardado') for c in historico_coleta):
+        corpo_relatorio += (
+            "\n            \\* Pedido realizado dentro da janela de admissibilidade, "
+            "mas em competência posterior à data-base. Os efeitos financeiros "
+            "iniciam na competência do pedido.\n"
+        )
     st.info(corpo_relatorio)
 
 if historico_coleta:

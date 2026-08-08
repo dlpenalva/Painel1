@@ -259,11 +259,13 @@ class EnquadramentoTemporalPC:
     """Resposta unica sobre onde a DATA_PC cai na linha temporal.
 
     ``INTERVALO_PRECLUSO`` so pode nascer de uma lacuna contratual EXPRESSA na
-    fonte. Ciclos consecutivos sao contiguos por definicao (12 competencias
-    cada), portanto nao existe intervalo derivado do calendario: uma lacuna
-    entre C(n) e C(n+1) e sintoma de calendario corrompido — tipicamente o
-    INICIO_EFEITO_FINANCEIRO usado indevidamente como inicio de ciclo — e
-    resolve-se como ``INDETERMINADO``, que exige revisao.
+    fonte. Ciclos consecutivos sao contiguos por definicao (no minimo 12
+    competencias cada; um ciclo se estende quando o reajuste seguinte teve o
+    inicio dos efeitos retardado), portanto nao existe intervalo derivado do
+    calendario: uma lacuna entre C(n) e C(n+1) e sintoma de calendario
+    corrompido — tipicamente o INICIO_EFEITO_FINANCEIRO usado indevidamente
+    como inicio de ciclo SEM estender o ciclo anterior — e resolve-se como
+    ``INDETERMINADO``, que exige revisao.
     """
     tipo: str
     ciclo: str | None = None
@@ -288,11 +290,12 @@ def classificar_enquadramento_pc(
     """Enquadra a DATA_PC em um ciclo da linha temporal, ou indeterminado.
 
     NAO existe categoria de intervalo derivada do calendario. Cada ciclo tem
-    exatamente 12 competencias consecutivas e ciclos consecutivos sao
-    contiguos, de modo que nenhuma data pode cair "entre" dois ciclos por
-    consequencia do INICIO_EFEITO_FINANCEIRO. Se ainda assim a linha temporal
-    apresentar lacuna, o registro fica INDETERMINADO e exige revisao — o
-    calendario e que precisa ser corrigido, nao o PC reclassificado.
+    no minimo 12 competencias consecutivas (estende-se quando o reajuste
+    seguinte foi retardado) e ciclos consecutivos sao contiguos, de modo que
+    nenhuma data pode cair "entre" dois ciclos por consequencia do
+    INICIO_EFEITO_FINANCEIRO. Se ainda assim a linha temporal apresentar
+    lacuna, o registro fica INDETERMINADO e exige revisao — o calendario e
+    que precisa ser corrigido, nao o PC reclassificado.
     """
     data_norm = _como_data(data_pc)
     if data_norm is None:

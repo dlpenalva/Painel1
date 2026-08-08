@@ -6,10 +6,16 @@ aliases legados e os codigos internos — para nao espalhar condicionais
 diferentes por varias abas/modulos.
 
 Codigos internos:
-    "principal"  -> Principal (Financeiro)
+    "principal"  -> Financeiro (Mensalidade)
     "pc"         -> PC (Pedidos de Compra)
     "d"          -> Itens Consumidos
     ""           -> nenhum metodo selecionado (SELECIONE AQUI / pendente)
+
+REGRA DE COMPATIBILIDADE DO METODO (permanente):
+    * rotulo novo (user-facing) = "Financeiro (Mensalidade)";
+    * codigo interno = "principal" (NUNCA renomear);
+    * "Principal (Financeiro)" permanece alias legado aceito — arquivos
+      antigos continuam sendo lidos e normalizados para "principal".
 """
 from __future__ import annotations
 
@@ -18,7 +24,7 @@ from typing import Any
 
 # Rotulos oficiais do dropdown de CONTROLE!B1 (ordem e a exibida ao usuario).
 SELECIONE_AQUI = "SELECIONE AQUI"
-ROTULO_PRINCIPAL = "Principal (Financeiro)"
+ROTULO_PRINCIPAL = "Financeiro (Mensalidade)"
 ROTULO_PC = "PC (Pedidos de Compra)"
 ROTULO_CONSUMIDOS = "Itens Consumidos"
 OPCOES_DROPDOWN = [SELECIONE_AQUI, ROTULO_PRINCIPAL, ROTULO_PC, ROTULO_CONSUMIDOS]
@@ -36,9 +42,10 @@ _ROTULO_POR_CODIGO = {
 # Aliases legados + novos rotulos -> codigo interno. Chaves ja normalizadas
 # (minusculas, sem acento). Nao quebrar Coletas anteriormente geradas.
 _ALIASES = {
-    # Principal / Financeiro
+    # Financeiro (Mensalidade) — rotulo atual + aliases legados
+    "financeiro (mensalidade)": "principal",
     "principal": "principal",
-    "principal (financeiro)": "principal",
+    "principal (financeiro)": "principal",  # alias legado (nao remover)
     "financeiro": "principal",
     # PC / Pedidos de Compra
     "pc": "pc",
