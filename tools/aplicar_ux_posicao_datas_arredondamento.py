@@ -543,35 +543,62 @@ def _aplicar_arredondamento(wb) -> None:
     estado_ir = _sem_protecao(ir)
     # VALOR_REM_INICIO_Cn = ARRED(QTD_REM_AJUSTADA_Cn x VU_ATUALIZADO_Cn; 2)
     remanescente = {
-        "F": ("posicao_contratual!K2", "historico_VU!D2", 1),
-        "H": ("posicao_contratual!O2", "historico_VU!E2", 2),
-        "J": ("posicao_contratual!S2", "historico_VU!F2", 3),
-        "L": ("posicao_contratual!W2", "historico_VU!G2", 4),
+        "F": ("posicao_contratual!K", "historico_VU!D", 1),
+        "H": ("posicao_contratual!O", "historico_VU!E", 2),
+        "J": ("posicao_contratual!S", "historico_VU!F", 3),
+        "L": ("posicao_contratual!W", "historico_VU!G", 4),
     }
-    formulas: dict[str, str] = {}
+    # calculo normal do item, por linha (referencias relativas de linha)
+    normais: dict[str, dict[int, str]] = {}
     for col, (qtd, vu, indice) in remanescente.items():
-        formulas[col] = (
-            f'=IF(FALSE,ROUND(SUMIF($A1:A$2,"<>",${col}1:{col}$2),2),'
-            f'IF(OR(A2="",AND(ISNUMBER(posicao_contratual!$AL2),'
-            f'posicao_contratual!$AL2>{indice}),{qtd}="",'
-            f'NOT(ISNUMBER({vu}))),"",ROUND({qtd}*{vu},2)))'
-        )
+        normais[col] = {
+            r: (
+                f'IF(OR(A{r}="",AND(ISNUMBER(posicao_contratual!$AL{r}),'
+                f'posicao_contratual!$AL{r}>{indice}),{qtd}{r}="",'
+                f'NOT(ISNUMBER({vu}{r}))),"",ROUND({qtd}{r}*{vu}{r},2))'
+            )
+            for r in (2, 3)
+        }
     # VALOR_EXECUTADO_Cn = ARRED(QTD_EXECUTADA_Cn x VU_ATUALIZADO_Cn; 2)
     executado = {
-        "N": ("M2", "historico_VU!D2"),
-        "P": ("O2", "historico_VU!E2"),
-        "R": ("Q2", "historico_VU!F2"),
-        "AC": ("AB2", "historico_VU!C2"),
+        "N": ("M", "historico_VU!D"),
+        "P": ("O", "historico_VU!E"),
+        "R": ("Q", "historico_VU!F"),
+        "T": ("S", "historico_VU!G"),
+        "AC": ("AB", "historico_VU!C"),
     }
     for col, (qtd, vu) in executado.items():
-        formulas[col] = (
-            f'=IF(FALSE,ROUND(SUMIF($A1:A$2,"<>",${col}1:{col}$2),2),'
-            f'IF(OR({qtd}="",NOT(ISNUMBER({vu}))),"",ROUND({qtd}*{vu},2)))'
+        normais[col] = {
+            r: (
+                f'IF(OR({qtd}{r}="",NOT(ISNUMBER({vu}{r}))),"",'
+                f'ROUND({qtd}{r}*{vu}{r},2))'
+            )
+            for r in (2, 3)
+        }
+    # REGRA PERMANENTE — linha dinamica TOTAL de itens_Remanesc: a primeira
+    # linha vazia apos o ultimo ITEM totaliza TODAS as colunas de VALOR
+    # financeiro aplicaveis (mesma deteccao dinamica da coluna D). Coluna
+    # integralmente vazia permanece vazia (guarda COUNT); a linha 2 nunca e a
+    # linha TOTAL; a linha 201 e o fallback de lotacao maxima (199 itens).
+    # NUNCA desativar a totalizacao com IF(FALSE,...).
+    for col, por_linha in normais.items():
+        f2 = f"={por_linha[2]}"
+        f3 = (
+            f'=IF(AND(A3="",A2<>"",COUNTIF(A4:$A${FIM},"<>")=0),'
+            f'IF(COUNT({col}$2:{col}2)=0,"",'
+            f'ROUND(SUMIF($A$2:A2,"<>",{col}$2:{col}2),2)),{por_linha[3]})'
         )
-    _conferir_ascii_e_parenteses(*formulas.values())
-    for col, formula in formulas.items():
-        ir.Range(f"{col}2:{col}{FIM}").Formula = formula
-    _exigir_formulas(ir, [f"{col}2:{col}{FIM}" for col in formulas])
+        f201 = (
+            f'=IF($A${FIM}<>"",IF(COUNT({col}$2:{col}${FIM})=0,"",'
+            f'ROUND(SUMIF($A$2:$A${FIM},"<>",{col}$2:{col}${FIM}),2)),"")'
+        )
+        _conferir_ascii_e_parenteses(f2, f3, f201)
+        ir.Range(f"{col}2").Formula = f2
+        # A formula da linha 3 preenche a faixa inteira: o Excel ajusta as
+        # referencias relativas linha a linha, exatamente como a coluna D.
+        ir.Range(f"{col}3:{col}{FIM}").Formula = f3
+        ir.Range(f"{col}{FIM + 1}").Formula = f201
+    _exigir_formulas(ir, [f"{col}2:{col}{FIM + 1}" for col in normais])
     _restaurar_protecao(ir, estado_ir)
 
     ad = wb.Worksheets("aditivos")

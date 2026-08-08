@@ -43,7 +43,11 @@ FORMULAS_POR_ABA = {
     # (CICLO_NASCIMENTO_DATA). A formatacao condicional dos 4 estados precisa
     # referenciar a PROPRIA aba: o Excel migra para a extensao x14 (invisivel ao
     # openpyxl) qualquer regra que aponte para outra planilha.
-    "itens_Remanesc": 9593,
+    # Linha dinamica TOTAL (correcao definitiva): +200 da coluna T
+    # (VALOR_EXECUTADO_C4), que estava sem formula em 2:200 e sem o fallback
+    # de lotacao maxima em T201 (owner:
+    # tools/aplicar_total_dinamico_itens_remanesc.py).
+    "itens_Remanesc": 9793,
     "itens_Consumidos": 1806,
     # Etapa 26G: grade escalada para a capacidade canonica (5.000 PCs
     # x 8 colunas de formula) + resumo lateral N2:T6.

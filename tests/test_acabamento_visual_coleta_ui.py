@@ -2,8 +2,9 @@
 
 Protege exatamente o que a etapa alterou, sem ampliar escopo:
 
-  * CONTROLE!B10 declara a ausencia de historico na analise de UM ciclo e o
-    multiciclo continua com a formula do template;
+  * na analise de UM ciclo, CONTROLE!A10/B10 apresentam a variacao apurada
+    (valor percentual numerico canonico), C10 declara a ausencia de historico
+    e C11 fica vazia; o multiciclo continua com a formula do template;
   * CONTROLE!B11 (fator historico integral) permanece formula nos dois casos —
     ela alimenta comparativo_VTA!B208 e RESULTADOS!H5/H8;
   * nova semantica de parametros!G10, sem terceira opcao e sem mexer nas
@@ -28,7 +29,10 @@ import pytest
 from openpyxl import load_workbook
 
 from _coleta_oficial import gerar_coleta_oficial_preenchida, obter_coleta_oficial_bytes
-from _gerador_masterfile import AVISO_HISTORICO_CICLO_UNICO
+from _gerador_masterfile import (
+    AVISO_HISTORICO_CICLO_UNICO,
+    ROTULO_VARIACAO_CICLO_UNICO,
+)
 
 RAIZ = Path(__file__).resolve().parents[1]
 PAGINA_CICLO_UNICO = (RAIZ / "pages" / "01_Calculo_Simples.py").read_text(
@@ -144,30 +148,39 @@ def test_destaque_do_seletor_de_ciclo_e_restrito_ao_proprio_campo():
 # 2. CONTROLE!B10 / B11
 # ---------------------------------------------------------------------------
 
-def test_ciclo_unico_declara_ausencia_de_historico_em_b10(unico):
+def test_ciclo_unico_apresenta_variacao_apurada_em_a10_b10(unico):
+    """A10/B10 apresentam a variacao canonica ja apurada; nada e recalculado."""
     ctl = unico["CONTROLE"]
-    assert ctl["B10"].value == AVISO_HISTORICO_CICLO_UNICO
+    assert ctl["A10"].value == ROTULO_VARIACAO_CICLO_UNICO
+    assert ROTULO_VARIACAO_CICLO_UNICO == "Variação apurada do ciclo analisado"
+    # B10 = valor percentual NUMERICO, o mesmo que o gerador gravou em
+    # parametros!E5 (percentual canonico do C3 vindo da Calculadora).
+    assert ctl["B10"].value == pytest.approx(0.0308)
+    assert unico["parametros"]["E5"].value == pytest.approx(0.0308)
+    assert ctl["B10"].number_format == "0.00%"
+
+
+def test_ciclo_unico_declara_ausencia_de_historico_em_c10(unico):
+    ctl = unico["CONTROLE"]
+    assert ctl["C10"].value == AVISO_HISTORICO_CICLO_UNICO
     assert (
         AVISO_HISTORICO_CICLO_UNICO
         == "Histórico anterior não incluído nesta análise."
     )
-    assert "N/A" not in str(ctl["B10"].value)
-    assert ctl["B10"].number_format == "@"
+    assert "N/A" not in str(ctl["C10"].value)
+    assert ctl["C10"].number_format == "@"
 
 
-def test_ciclo_unico_reapresenta_a_variacao_apurada_em_c11(unico):
-    """A variacao vem do resultado ja apurado; C11 e nota, nao fonte de verdade."""
-    ctl = unico["CONTROLE"]
-    assert ctl["C11"].value == "Variação apurada do ciclo único (C3): 3,08%"
-    # Mesmo numero que o gerador gravou em parametros!E5 (percentual do C3).
-    assert unico["parametros"]["E5"].value == pytest.approx(0.0308)
-    # C11 e a coluna de notas da propria aba (ver C3) e nao entra em formula.
-    assert not str(ctl["C11"].value).startswith("=")
+def test_ciclo_unico_deixa_c11_vazia(unico):
+    """A nota textual anterior saiu de C11: A10/B10 ja apresentam a variacao."""
+    assert unico["CONTROLE"]["C11"].value is None
 
 
 def test_multiciclo_mantem_a_formula_de_b10_e_nao_recebe_nota(multiciclo, em_branco):
     assert multiciclo["CONTROLE"]["B10"].value == em_branco["CONTROLE"]["B10"].value
     assert str(multiciclo["CONTROLE"]["B10"].value).startswith("=")
+    assert multiciclo["CONTROLE"]["A10"].value == em_branco["CONTROLE"]["A10"].value
+    assert multiciclo["CONTROLE"]["C10"].value is None
     assert multiciclo["CONTROLE"]["C11"].value is None
 
 
