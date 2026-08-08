@@ -149,10 +149,12 @@ def test_destaque_do_seletor_de_ciclo_e_restrito_ao_proprio_campo():
 # ---------------------------------------------------------------------------
 
 def test_ciclo_unico_apresenta_variacao_apurada_em_a10_b10(unico):
-    """A10/B10 apresentam a variacao canonica ja apurada; nada e recalculado."""
+    """A10/B10 apresentam a variacao canonica DESTA analise (ETAPA 31)."""
+    from _gerador_masterfile import ROTULO_VARIACAO_ANALISE
+
     ctl = unico["CONTROLE"]
-    assert ctl["A10"].value == ROTULO_VARIACAO_CICLO_UNICO
-    assert ROTULO_VARIACAO_CICLO_UNICO == "Variação apurada do ciclo analisado"
+    assert ctl["A10"].value == ROTULO_VARIACAO_ANALISE
+    assert ROTULO_VARIACAO_ANALISE == "Variação apurada nesta análise"
     # B10 = valor percentual NUMERICO, o mesmo que o gerador gravou em
     # parametros!E5 (percentual canonico do C3 vindo da Calculadora).
     assert ctl["B10"].value == pytest.approx(0.0308)
@@ -176,30 +178,42 @@ def test_ciclo_unico_deixa_c11_vazia(unico):
     assert unico["CONTROLE"]["C11"].value is None
 
 
-def test_multiciclo_mantem_a_formula_de_b10_e_nao_recebe_nota(multiciclo, em_branco):
-    assert multiciclo["CONTROLE"]["B10"].value == em_branco["CONTROLE"]["B10"].value
-    assert str(multiciclo["CONTROLE"]["B10"].value).startswith("=")
-    assert multiciclo["CONTROLE"]["A10"].value == em_branco["CONTROLE"]["A10"].value
-    assert multiciclo["CONTROLE"]["C10"].value is None
-    assert multiciclo["CONTROLE"]["C11"].value is None
+def test_multiciclo_apresenta_variacao_total_composta_em_b10(multiciclo):
+    """ETAPA 31: B10 nao fica vazio por falta de historico — apresenta a
+    variacao TOTAL composta DESTA analise (fonte canonica)."""
+    from _gerador_masterfile import ROTULO_VARIACAO_ANALISE
+
+    ctl = multiciclo["CONTROLE"]
+    assert ctl["A10"].value == ROTULO_VARIACAO_ANALISE
+    assert ctl["B10"].value == pytest.approx(1.0449 * 1.0316 * 1.0308 - 1)
+    assert ctl["B10"].number_format == "0.00%"
+    assert ctl["C10"].value is None
+    assert ctl["C11"].value is None
 
 
 @pytest.mark.parametrize("fixture", ["unico", "multiciclo"])
-def test_b11_permanece_formula_pois_alimenta_o_motor(fixture, request, em_branco):
-    """B11 e consumida por comparativo_VTA!B208 e RESULTADOS!H5/H8."""
+def test_b11_e_o_fator_desta_analise(fixture, request, em_branco):
+    """ETAPA 31: A11/B11 apresentam o fator desta analise (B11 = 1 + B10,
+    sobre o decimal integral). B11 segue alimentando comparativo_VTA!B208 e
+    RESULTADOS!H5/H8 — a formula downstream permanece intacta."""
+    from _gerador_masterfile import ROTULO_FATOR_ANALISE
+
     wb = request.getfixturevalue(fixture)
-    assert wb["CONTROLE"]["B11"].value == em_branco["CONTROLE"]["B11"].value
+    assert wb["CONTROLE"]["A11"].value == ROTULO_FATOR_ANALISE
+    assert wb["CONTROLE"]["B11"].value == '=IF(ISNUMBER(B10),1+B10,"")'
     assert wb["comparativo_VTA"]["B208"].value == (
         em_branco["comparativo_VTA"]["B208"].value
     )
 
 
 def test_nenhuma_outra_formula_do_template_muda(unico, multiciclo, em_branco):
+    substituiveis = {"CONTROLE!B10", "CONTROLE!B11"}
     base = _formulas(em_branco)
-    esperado = {k: v for k, v in base.items() if k != "CONTROLE!B10"}
+    esperado = {k: v for k, v in base.items() if k not in substituiveis}
     for wb in (unico, multiciclo):
         atual = _formulas(wb)
-        atual.pop("CONTROLE!B10", None)
+        for coord in substituiveis:
+            atual.pop(coord, None)
         assert atual == esperado
 
 

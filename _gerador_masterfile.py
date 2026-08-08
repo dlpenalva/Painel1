@@ -179,63 +179,96 @@ LEGENDA_TEMPESTIVO_RETARDADO = (
 )
 
 
-def _aplicar_resumo_ciclo_unico(controle, computados) -> set[str]:
-    """Completa o quadro RESUMO quando a apuracao abrange um unico ciclo.
+ROTULO_VARIACAO_ANALISE = "Variação apurada nesta análise"
+ROTULO_FATOR_ANALISE = "Fator apurado nesta análise"
 
-    `computados` sao os pares (ciclo, percentual) com COMPUTAR_NESTA_APURACAO =
-    "Sim", isto e, a mesma contagem que CONTROLE!B9 apresenta — a substituicao
-    acontece apenas quando B9 = 1, mantendo o quadro internamente coerente. No
-    multiciclo nada muda: as formulas do template permanecem.
 
-    Apresentacao do ciclo unico:
-      * A10 rotula a variacao apurada do proprio ciclo analisado;
-      * B10 recebe a variacao canonica ja apurada pela Calculadora como VALOR
-        percentual numerico — nada e recalculado: e o mesmo percentual gravado
-        em parametros!F;
-      * C10 declara a ausencia de historico anterior nesta analise;
-      * C11 fica vazia (a nota textual anterior foi absorvida por A10/B10).
+def _variacao_total_analise(dados_calculadora, computados):
+    """Variacao total composta DESTA analise (decimal canonico) ou ``None``.
 
-    B11 (fator historico integral) NAO e tocada — ela alimenta
-    comparativo_VTA!B208 e RESULTADOS!H5/D6/H8, e substitui-la deslocaria o
-    motor; ela pode inclusive resultar vazia quando o historico necessario nao
-    esta disponivel, e esse comportamento permanece.
+    Fonte primaria: resultado canonico da Calculadora no payload
+    (``variacao_acumulada``) — o mesmo numero exibido no resultado da
+    Calculadora. Fallback: composicao dos percentuais canonicos dos ciclos
+    computados (mesmos valores gravados em parametros!E). Jamais reconstroi
+    pelo historico incompleto do XLS nem por valores arredondados exibidos.
+    """
+    bruto = (dados_calculadora or {}).get("variacao_acumulada")
+    if isinstance(bruto, (int, float)) and not isinstance(bruto, bool):
+        return float(bruto)
+    fator = 1.0
+    algum = False
+    for _nome, percentual in computados:
+        if isinstance(percentual, (int, float)) and not isinstance(percentual, bool):
+            fator *= 1.0 + float(percentual)
+            algum = True
+        else:
+            return None
+    return fator - 1.0 if algum else None
 
-    Sem percentual numerico canonico nao ha valor a apresentar em B10:
-    mantem-se a declaracao textual de ausencia de historico (comportamento
-    anterior), sem inventar numero.
+
+def _aplicar_resumo_apuracao(controle, computados, dados_calculadora=None) -> set[str]:
+    """CONTROLE!A10:B11 apresentam O RESULTADO DA ANALISE ATUAL (ETAPA 31).
+
+    O quadro nao depende mais da existencia de historico integral de
+    C1..Cn-1 fora da analise (a formula antiga de B11 exigia parametros!E de
+    TODOS os ciclos anteriores e ficava vazia sem eles):
+
+      * A10 = "Variação apurada nesta análise";
+      * B10 = variacao TOTAL canonica desta analise (ciclo unico: variacao do
+        proprio ciclo; multiciclo: variacao total composta) — VALOR numerico
+        vindo do resultado canonico da Calculadora, nada recalculado;
+      * A11 = "Fator apurado nesta análise";
+      * B11 = 1 + B10 (formula sobre o decimal integral de B10, nunca sobre o
+        valor arredondado exibido).
+
+    Nenhuma linha e excluida ou deslocada: apenas titulos, fonte e
+    comportamento de B10/B11 mudam. No ciclo unico, C10 segue declarando que
+    o historico anterior nao integra esta analise.
+
+    Sem numero canonico disponivel, nada e substituido (fail-closed): as
+    formulas do template permanecem, sem inventar valor.
 
     Retorna as coordenadas cujas formulas foram legitimamente substituidas.
     """
-    if len(computados) != 1:
-        return set()
-    _ciclo, percentual = computados[0]
-    if isinstance(percentual, (int, float)) and not isinstance(percentual, bool):
-        _escrever_entrada(controle, "A10", ROTULO_VARIACAO_CICLO_UNICO)
-        controle["B10"].value = float(percentual)
-        controle["B10"].number_format = "0.00%"
+    variacao = _variacao_total_analise(dados_calculadora, computados)
+    if variacao is None:
+        if not computados:
+            return set()
+        # fail-closed: declara a ausencia sem inventar numero (comportamento
+        # legado do ciclo unico, agora valido para qualquer contagem).
+        controle["B10"].value = AVISO_HISTORICO_CICLO_UNICO
+        controle["B10"].number_format = "@"
+        # A celula e centralizada para numeros; com texto longo, o transbordo
+        # centralizado invade A10 (ocupada) e corta o inicio da frase.
+        # Alinhada a esquerda, ela transborda so para C10:D10, que estao
+        # vazias.
+        controle["B10"].alignment = Alignment(horizontal="left", vertical="center")
+        return {"CONTROLE!B10"}
+    _escrever_entrada(controle, "A10", ROTULO_VARIACAO_ANALISE)
+    controle["B10"].value = float(variacao)
+    controle["B10"].number_format = "0.00%"
+    _escrever_entrada(controle, "A11", ROTULO_FATOR_ANALISE)
+    controle["B11"].value = '=IF(ISNUMBER(B10),1+B10,"")'
+    if len(computados) == 1:
         _escrever_entrada(controle, "C10", AVISO_HISTORICO_CICLO_UNICO)
         controle["C10"].number_format = "@"
         # O aviso transborda para D10 (vazia); alinhado a esquerda para nao
         # sobrepor B10 (ocupada) quando centralizado.
         controle["C10"].alignment = Alignment(horizontal="left", vertical="center")
-        return {"CONTROLE!B10"}
-    controle["B10"].value = AVISO_HISTORICO_CICLO_UNICO
-    controle["B10"].number_format = "@"
-    # A celula e centralizada para numeros; com texto longo, o transbordo
-    # centralizado invade A10 (ocupada) e corta o inicio da frase. Alinhada a
-    # esquerda, ela transborda so para C10:D10, que estao vazias.
-    controle["B10"].alignment = Alignment(horizontal="left", vertical="center")
-    return {"CONTROLE!B10"}
+    return {"CONTROLE!B10", "CONTROLE!B11"}
 
 
 
 def _completar_periodos_ciclos(ciclos: dict[str, Any], data_corte=None) -> dict[str, Any]:
-    """Garante que C0-C4 existam temporalmente, sem pular nem compactar ciclo (v10.5.2).
+    """Garante que C0-C4 existam temporalmente, sem pular nem compactar ciclo.
 
-    COMPUTAR_NESTA_APURACAO = Nao (ou ciclo ausente na Calculadora) NAO apaga o
-    ciclo da linha do tempo: o periodo faltante e derivado dos vizinhos —
-    data_inicio = data_fim do ciclo anterior + 1 dia; data_fim = data_inicio do
-    proximo ciclo conhecido - 1 dia (ou +12 meses quando nao ha proximo).
+    ETAPA 31 — cada janela derivada tem EXATAMENTE 12 competencias:
+    data_fim = data_inicio + 12 meses - 1 dia, SEMPRE. O inicio de um ciclo
+    derivado decorre da ancora financeira do anterior —
+    data_inicio(Cn+1) = COMPETENCIA(INICIO_EFEITO_FINANCEIRO(Cn)) + 12m,
+    nunca antes do marco teorico (data_inicio(Cn) + 12m); sem ancora, vale o
+    marco teorico. O eventual intervalo entre data_fim(Cn) e
+    data_inicio(Cn+1) e INTENCIONAL e nao e preenchido.
     O ciclo seguinte nunca herda o periodo do ciclo nao computado.
     Ciclos derivados ficam com possui_efeito_financeiro="Não".
     """
@@ -246,24 +279,33 @@ def _completar_periodos_ciclos(ciclos: dict[str, Any], data_corte=None) -> dict[
         c.setdefault("ciclo", nome)
         completos[nome] = c
 
-    # forward: deriva data_inicio a partir do fim do anterior
+    def _competencia_efeito(reg: dict[str, Any]):
+        efeito = reg.get("inicio_efeito_financeiro")
+        if isinstance(efeito, datetime):
+            efeito = efeito.date()
+        return efeito.replace(day=1) if isinstance(efeito, date) else None
+
+    # forward: deriva data_inicio pela ancora financeira do ciclo anterior
     for i, nome in enumerate(nomes):
         c = completos[nome]
         if not c.get("data_inicio") and i > 0:
-            fim_ant = completos[nomes[i - 1]].get("data_fim")
-            if fim_ant:
-                c["data_inicio"] = fim_ant + timedelta(days=1)
+            anterior = completos[nomes[i - 1]]
+            inicio_ant = anterior.get("data_inicio")
+            if isinstance(inicio_ant, datetime):
+                inicio_ant = inicio_ant.date()
+            if isinstance(inicio_ant, date):
+                teorico = inicio_ant + relativedelta(months=12)
+                efeito_ant = _competencia_efeito(anterior)
+                candidato = (
+                    efeito_ant + relativedelta(months=12)
+                    if efeito_ant is not None else teorico
+                )
+                c["data_inicio"] = max(candidato, teorico)
                 c["_derivado"] = True
         if not c.get("data_fim") and c.get("data_inicio"):
-            prox_ini = None
-            for j in range(i + 1, len(nomes)):
-                prox_ini = (ciclos.get(nomes[j]) or {}).get("data_inicio")
-                if prox_ini:
-                    break
-            if prox_ini and prox_ini > c["data_inicio"]:
-                c["data_fim"] = prox_ini - timedelta(days=1)
-            else:
-                c["data_fim"] = c["data_inicio"] + relativedelta(months=12) - timedelta(days=1)
+            # Janela de exatamente 12 competencias; nunca estica ate o
+            # proximo ciclo conhecido (o intervalo eventual e intencional).
+            c["data_fim"] = c["data_inicio"] + relativedelta(months=12) - timedelta(days=1)
             c["_derivado"] = True
 
     # backward: deriva data_inicio/fim de ciclos iniciais ausentes (ex.: C0)
@@ -315,28 +357,31 @@ def _preencher_financeiro(ws, ciclos: dict[str, Any], data_corte_fallback=None, 
           mensais iniciam a partir da linha 7.
     """
     if novo:
-        # Novo modelo oficial: competencias mensais consecutivas do MES do
-        # marco inicial (inicio de C0) ate o MES da data de corte — todos os
-        # ciclos existentes, de C0 ao vigente, ficam representados, nenhum
-        # ciclo anterior e omitido e nenhuma competencia posterior ao corte
-        # e inventada (nao ha obrigacao de 60 meses). Valor interno = dia 1,
-        # exibicao mm/aaaa. Coluna B (CICLO) e formula do template — nunca
-        # escrita. C (valor pago) e do fiscal; G recebe a decisao inicial da
-        # Calculadora e permanece editavel pelo fiscal.
+        # Novo modelo oficial — ETAPA 31 (REGRA PETREA): a grade e SEMPRE a
+        # CRONOLOGIA CONTRATUAL COMPLETA — 60 competencias mensais
+        # consecutivas do MES do marco inicial (inicio cronologico de C0) ao
+        # marco + 59 meses (5 ciclos x 12). A quantidade de linhas NAO
+        # depende de data_corte, do ultimo ciclo analisado, de efeito
+        # financeiro ou de pedido: competencia futura dentro dos 60 meses
+        # pertence normalmente ao seu bloco (o corte limita apenas a
+        # execucao informada/valores, jamais a cronologia estrutural).
+        # O CICLO de cada competencia e o bloco fixo de 12 meses contado do
+        # marco — NUNCA a janela de reajuste parametros!C:D e NUNCA o inicio
+        # dos efeitos (H). Valor interno = dia 1, exibicao mm/aaaa. Coluna B
+        # (CICLO) e formula — nunca escrita. C (valor pago) e do fiscal; G
+        # recebe a decisao inicial da Calculadora e permanece editavel.
         marco = marco_inicial
         if isinstance(marco, datetime):
             marco = marco.date()
-        corte = data_corte_fallback
-        if isinstance(corte, datetime):
-            corte = corte.date()
         for linha in range(2, 74):
             _escrever_entrada(ws, f"A{linha}", None)
             _escrever_entrada(ws, f"C{linha}", None)
             _escrever_entrada(ws, f"G{linha}", None)
-        if not isinstance(marco, date) or not isinstance(corte, date):
-            return  # marco/corte vazio ou invalido: nao inventa competencias
+        if not isinstance(marco, date):
+            return  # marco vazio ou invalido: nao inventa competencias
         competencia = marco.replace(day=1)
-        limite = corte.replace(day=1)
+        # Ultima competencia da cronologia: marco + 59 meses (60a competencia).
+        limite = competencia + relativedelta(months=59)
         necessarias = (
             (limite.year - competencia.year) * 12
             + (limite.month - competencia.month) + 1
@@ -353,18 +398,15 @@ def _preencher_financeiro(ws, ciclos: dict[str, Any], data_corte_fallback=None, 
         while competencia <= limite:
             _escrever_entrada(ws, f"A{linha}", competencia)
             ws[f"A{linha}"].number_format = "MM/YYYY"
-            ciclo_competencia = None
-            for nome in ("C0", "C1", "C2", "C3", "C4"):
-                candidato = ciclos.get(nome) or {}
-                inicio = candidato.get("data_inicio")
-                fim = candidato.get("data_fim")
-                if isinstance(inicio, datetime):
-                    inicio = inicio.date()
-                if isinstance(fim, datetime):
-                    fim = fim.date()
-                if isinstance(inicio, date) and isinstance(fim, date) and inicio <= competencia <= fim:
-                    ciclo_competencia = candidato
-                    break
+            # CICLO cronologico: bloco fixo de 12 meses contado do marco.
+            meses_do_marco = (
+                (competencia.year - marco.year) * 12
+                + (competencia.month - marco.month)
+            )
+            indice_ciclo = meses_do_marco // 12
+            ciclo_competencia = (
+                ciclos.get(f"C{indice_ciclo}") if 0 <= indice_ciclo <= 4 else None
+            )
             efeito = "Nao"
             if ciclo_competencia:
                 computavel = str(
@@ -816,11 +858,21 @@ def gerar_masterfile_preenchido(
         # os cabecalhos J1:R1 e ignorado sem erro.
         from _memoria_calculo import escrever_memoria_calculo
         escrever_memoria_calculo(parametros, ciclos)
-        # Unica substituicao autorizada de formula do template: CONTROLE!B10 na
-        # analise de um ciclo so. As coordenadas devolvidas saem da fotografia
-        # para que a trava continue valendo integralmente no restante do arquivo.
-        for coordenada in _aplicar_resumo_ciclo_unico(controle, ciclos_computados):
-            formulas_antes.pop(coordenada, None)
+        # Unica substituicao autorizada de formula do template: CONTROLE!B10 e
+        # CONTROLE!B11 apresentando o resultado canonico DESTA analise
+        # (ETAPA 31). A fotografia e ressincronizada SOMENTE nessas
+        # coordenadas (B10 vira valor e sai; B11 vira a formula 1+B10), para
+        # que a trava continue valendo integralmente no restante do arquivo.
+        substituidas = _aplicar_resumo_apuracao(
+            controle, ciclos_computados, dados_calculadora
+        )
+        if substituidas:
+            fotografia_atual = _formulas(wb)
+            for coordenada in substituidas:
+                if coordenada in fotografia_atual:
+                    formulas_antes[coordenada] = fotografia_atual[coordenada]
+                else:
+                    formulas_antes.pop(coordenada, None)
     elif _v102 and "parametros" in wb.sheetnames:
         _preencher_memoria_fator(parametros, ciclos)
 

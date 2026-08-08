@@ -219,6 +219,119 @@ def _garantir_dropdown_metodo(wb) -> None:
             dv.formula1 = lista
 
 
+def _garantir_formulas_cronologia_execucao(wb) -> None:
+    """CICLO por cronologia fixa da execucao — ETAPA 31.
+
+    Reescreve em runtime as formulas de enquadramento de CICLO do template
+    (financeiro!B, itens_PC!C, aditivos!C): o ciclo de um fato/competencia da
+    EXECUCAO e o bloco fixo de 12 meses contado do inicio cronologico de C0
+    (parametros!C2), com 60 competencias no total (C0..C4). A janela de
+    reajuste parametros!C:D deixa de enquadrar a execucao — ela pode conter
+    intervalo intencional quando o reajuste seguinte foi retardado, e nenhum
+    fato valido pode cair "Fora dos ciclos" por causa desse intervalo.
+    O template binario homologado permanece intacto (mesma estrategia do
+    dropdown do metodo).
+    """
+    ref = "parametros!$C$2"
+
+    def _meses(celula: str) -> str:
+        return (
+            f"(YEAR({celula})-YEAR({ref}))*12+MONTH({celula})-MONTH({ref})"
+        )
+
+    def _bloco(celula: str, minusculo: bool) -> str:
+        prefixo = '"c"' if minusculo else '"C"'
+        return (
+            f'IF(NOT(ISNUMBER({ref})),"Fora dos ciclos",'
+            f'IF(OR({celula}<{ref},{_meses(celula)}>59),"Fora dos ciclos",'
+            f'{prefixo}&INT(({_meses(celula)})/12)))'
+        )
+
+    def _reescrever(nome_aba: str, coluna: int, montar) -> None:
+        if nome_aba not in wb.sheetnames:
+            return
+        ws = wb[nome_aba]
+        for r in range(2, ws.max_row + 1):
+            atual = ws.cell(r, coluna).value
+            if (
+                isinstance(atual, str)
+                and atual.startswith("=")
+                and "parametros!$C$" in atual
+            ):
+                ws.cell(r, coluna).value = montar(r)
+
+    _reescrever(
+        "financeiro", 2,
+        lambda r: f'=IF($A{r}="","",{_bloco(f"$A{r}", True)})',
+    )
+    _reescrever(
+        "itens_PC", 3,
+        lambda r: (
+            f'=IF(B{r}="","",IF(NOT(ISNUMBER(B{r})),"DATA_PC invalida",'
+            f'{_bloco(f"B{r}", False)}))'
+        ),
+    )
+    _reescrever(
+        "aditivos", 3,
+        lambda r: (
+            f'=IF(B{r}="","",IFERROR({_bloco(f"B{r}", False)},'
+            f'"Fora dos ciclos"))'
+        ),
+    )
+
+
+def _garantir_fator_historico_desacoplado(wb) -> None:
+    """Desacopla o fator DESTA analise do fator HISTORICO integral (31.1).
+
+    CONTROLE!B11 passou a ser o fator apurado NESTA analise (1 + B10); o
+    template, porem, tem tres consumidores criados quando B11 significava o
+    fator HISTORICO integral. A fonte canonica visivel do historico passa a
+    ser RESULTADOS!H5 (o titulo de G5 ja e "Fator histórico integral"):
+
+      * RESULTADOS!H5 recebe a logica historica fail-closed que vivia em
+        CONTROLE!B11 antes da Etapa 31 (C0=1; Cn somente com parametros!E
+        completo de C1..Cn -> parametros!F do ciclo vigente; senao vazio —
+        historico faltante JAMAIS e inventado);
+      * RESULTADOS!H8 valida a existencia de $H$5 (nao mais de B11);
+      * comparativo_VTA!B208 multiplica pelo RESULTADOS!$H$5;
+      * RESULTADOS!C12 (texto auditavel) passa a citar RESULTADOS!H5.
+
+    O template binario homologado permanece intacto (mesma estrategia do
+    dropdown e da cronologia da execucao).
+    """
+    formula_historica = (
+        '=IFERROR(IF(UPPER(CONTROLE!$B$2)="C0",1,'
+        'IF(UPPER(CONTROLE!$B$2)="C1",'
+        'IF(COUNT(parametros!$E$3:$E$3)=1,parametros!$F$3,""),'
+        'IF(UPPER(CONTROLE!$B$2)="C2",'
+        'IF(COUNT(parametros!$E$3:$E$4)=2,parametros!$F$4,""),'
+        'IF(UPPER(CONTROLE!$B$2)="C3",'
+        'IF(COUNT(parametros!$E$3:$E$5)=3,parametros!$F$5,""),'
+        'IF(UPPER(CONTROLE!$B$2)="C4",'
+        'IF(COUNT(parametros!$E$3:$E$6)=4,parametros!$F$6,""),""))))),"")'
+    )
+    if "RESULTADOS" in wb.sheetnames:
+        res = wb["RESULTADOS"]
+        atual_h5 = str(res["H5"].value or "")
+        if "CONTROLE!$B$11" in atual_h5:
+            res["H5"].value = formula_historica
+        atual_h8 = str(res["H8"].value or "")
+        if "CONTROLE!$B$11" in atual_h8:
+            res["H8"].value = atual_h8.replace("CONTROLE!$B$11", "$H$5")
+        atual_c12 = str(res["C12"].value or "")
+        if "CONTROLE!B11" in atual_c12:
+            res["C12"].value = atual_c12.replace(
+                "CONTROLE!B11", "RESULTADOS!H5"
+            )
+    if "comparativo_VTA" in wb.sheetnames:
+        cv = wb["comparativo_VTA"]
+        atual_b208 = str(cv["B208"].value or "")
+        if "CONTROLE!$B$11" in atual_b208:
+            cv["B208"].value = atual_b208.replace(
+                "CONTROLE!$B$11", "RESULTADOS!$H$5"
+            )
+
+
 def _validar_estrutura_itens_pc(wb) -> None:
     """Barreira contra regressao critica: itens_PC jamais pode sair esvaziada.
 
@@ -283,6 +396,8 @@ def obter_coleta_oficial_bytes() -> bytes:
 
     _limpar_residuos(wb)
     _garantir_dropdown_metodo(wb)
+    _garantir_formulas_cronologia_execucao(wb)
+    _garantir_fator_historico_desacoplado(wb)
     _validar_estrutura_itens_pc(wb)
 
     wb.calculation.calcMode = "auto"
@@ -344,20 +459,24 @@ def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]
         raise ValueError("A Calculadora não informou nenhum ciclo entre C1 e C4.")
 
     data_base = _data(origem.get("data_base") or origem.get("data_base_original"))
-    # CALENDARIO CONTRATUAL — REGRA PETREA DO INTERREGNO E DOS EFEITOS.
+    # JANELA DO REAJUSTE (parametros!C:D) — REGRA PETREA DA ETAPA 31.
     # A ancora inicial e tomada UMA unica vez (marco explicito do ciclo mais
     # antigo, senao a janela do indice desse ciclo, senao a data-base
-    # original). A partir dela, o ciclo seguinte NAO decorre de blocos fixos:
+    # original). O inicio do ciclo seguinte decorre da ancora financeira:
     #
     #   DATA_INICIO(Cn+1) = COMPETENCIA(INICIO_EFEITO_FINANCEIRO(Cn)) + 12m
     #
     # nunca ANTES do marco teorico (DATA_INICIO(Cn) + 12m) — o retardo dos
     # efeitos so POSTERGA o proximo reajuste, jamais o antecipa. Ciclo sem
     # inicio de efeito (ex.: precluso sem acordo) usa o fallback teorico
-    # (+12m), sem inventar ancora financeira. DATA_FIM(Cn) e sempre a vespera
-    # de DATA_INICIO(Cn+1): ciclos contiguos, sem lacuna e sem sobreposicao —
-    # um ciclo pode ter MAIS de 12 competencias quando o seguinte foi
-    # retardado, e as competencias intermediarias permanecem enquadradas nele.
+    # (+12m), sem inventar ancora financeira. TODA janela C:D tem EXATAMENTE
+    # 12 competencias: DATA_FIM(Cn) = DATA_INICIO(Cn) + 12m - 1 dia, SEMPRE.
+    # O retardo NUNCA alonga o proprio ciclo; ele desloca o INICIO do ciclo
+    # seguinte, o que pode abrir um INTERVALO INTENCIONAL entre DATA_FIM(Cn)
+    # e DATA_INICIO(Cn+1). Esse intervalo NAO e erro e NAO e preenchido: as
+    # competencias nele apenas ainda nao pertencem a nenhuma janela de
+    # reajuste — a execucao contratual segue a cronologia fixa de 12 meses
+    # (conceito independente; ver calendario cronologico da execucao).
     # A janela do indice (data_base/periodo_inicio dos ciclos seguintes) segue
     # sem participar da materializacao. A DATA DE PAGAMENTO nunca participa.
     ancora_numero: int | None = None
@@ -416,24 +535,13 @@ def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]
         # blocos teoricos de 12 meses para tras (comportamento preservado).
         inicios[numero] = inicios[numero + 1] - relativedelta(months=12)
 
-    def _fim_do_ciclo(numero: int) -> date:
-        if numero < ultimo:
-            return inicios[numero + 1] - relativedelta(days=1)
-        # Ultimo ciclo informado: o fim ja reserva o espaco do proximo
-        # reajuste (12 meses apos o inicio dos efeitos, nunca antes do
-        # teorico), para que C3/C4 futuros sejam derivados da nova ancora.
-        teorico = inicios[numero] + relativedelta(months=12)
-        efeito = _efeito_competencia(numero)
-        candidato = (
-            efeito + relativedelta(months=12) if efeito is not None else teorico
-        )
-        return max(candidato, teorico) - relativedelta(days=1)
-
     ciclos = []
     for numero in range(1, ultimo + 1):
         bruto = fornecidos.get(numero, {})
         inicio = inicios[numero]
-        fim = _fim_do_ciclo(numero)
+        # Janela de EXATAMENTE 12 competencias; eventual retardo do reajuste
+        # seguinte abre um intervalo intencional, jamais alonga esta janela.
+        fim = inicio + relativedelta(months=12) - relativedelta(days=1)
         objeto_atual = bool(
             numero in fornecidos
             and bruto.get("objeto_analise_atual", not bruto.get("ciclo_ja_concedido", False))

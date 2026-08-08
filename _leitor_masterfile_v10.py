@@ -1789,11 +1789,13 @@ def _to_float_sombra(valor: Any, default: float = 0.0) -> float:
 
 
 def _ciclo_por_competencia(wb, competencia: Any) -> str:
-    """Deriva o rotulo do ciclo (C0..C4) da competencia pela aba parametros.
+    """Deriva o rotulo do ciclo (C0..C4) da competencia pela CRONOLOGIA FIXA.
 
-    Espelha a formula LOOKUP de financeiro!B: rotulo (col B) do ultimo
-    DATA_INICIO (col C, layout novo) <= competencia; antes do primeiro
-    inicio, C0. Usado quando financeiro!B e formula sem cache.
+    ETAPA 31 — espelha a formula de financeiro!B: bloco fixo de 12 meses
+    contado do inicio cronologico do ciclo mais antigo com DATA_INICIO real
+    em parametros (nao a janela de reajuste C:D, que pode conter intervalo
+    intencional). Antes da ancora, C0; alem de C4, o ultimo bloco nao e
+    extrapolado (devolve ""). Usado quando financeiro!B e formula sem cache.
     """
     if not isinstance(competencia, (date, datetime)):
         return ""
@@ -1802,24 +1804,29 @@ def _ciclo_por_competencia(wb, competencia: Any) -> str:
         params = wb["parametros"]
     except KeyError:
         return ""
-    pares = []
+    ancora = None
+    indice_ancora = 0
     for r in range(2, 7):
-        rotulo = str(params.cell(r, 2).value or "").strip()
+        rotulo = str(params.cell(r, 2).value or "").strip().upper()
         inicio = params.cell(r, 3).value
         if isinstance(inicio, datetime):
             inicio = inicio.date()
-        if rotulo and isinstance(inicio, date):
-            pares.append((inicio, rotulo))
-    if not pares:
+        if rotulo in ("C0", "C1", "C2", "C3", "C4") and isinstance(inicio, date):
+            ancora = inicio.replace(day=1)
+            indice_ancora = int(rotulo[1])
+            break
+    if ancora is None:
         return ""
-    pares.sort()
-    if comp < pares[0][0]:
+    meses = (comp.year - ancora.year) * 12 + (comp.month - ancora.month)
+    if meses >= 0:
+        indice = indice_ancora + meses // 12
+    else:
+        indice = indice_ancora - ((-meses + 11) // 12)
+    if indice < 0:
         return "C0"
-    rotulo = pares[0][1]
-    for inicio, label in pares:
-        if inicio <= comp:
-            rotulo = label
-    return rotulo
+    if indice > 4:
+        return ""
+    return f"C{indice}"
 
 
 def _ler_parcelas_sombra_financeiro(wb) -> list[dict[str, Any]]:

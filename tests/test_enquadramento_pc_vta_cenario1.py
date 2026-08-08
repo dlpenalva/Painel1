@@ -259,12 +259,13 @@ def test_fronteiras_dos_ciclos_pertencem_aos_ciclos():
 
 
 def test_lacuna_no_calendario_nunca_vira_categoria_de_intervalo():
-    """Item 5: calendario corrompido nao reclassifica o PC — exige revisao."""
+    """ETAPA 31: gap entre janelas de reajuste nao reclassifica o PC como
+    intervalo/precluso — a data enquadra pela CRONOLOGIA fixa da execucao."""
     enq = classificar_enquadramento_pc(date(2026, 1, 15), POR_CICLO_LACUNA)
-    assert enq.tipo == ENQ_INDETERMINADO
+    assert enq.tipo == ENQ_CICLO
+    assert enq.ciclo == "C2"
     assert enq.tipo != ENQ_INTERVALO_PRECLUSO
     assert not enq.e_precluso
-    assert enq.ciclo is None
 
 
 def test_data_sem_faixa_justificavel_continua_indeterminada():

@@ -254,11 +254,13 @@ def test_financeiro_comeca_em_c0_na_linha_2_multiciclo() -> None:
     inicio_c0 = _dia(wb["parametros"]["C2"].value)
     assert _dia(financeiro["A2"].value) == inicio_c0 == date(2023, 10, 1)
     ativas = [r for r in range(2, 74) if financeiro[f"A{r}"].value is not None]
-    assert ativas == list(range(2, 38))  # 36 meses: C0 + C1 + C2 ate o corte
+    # ETAPA 31 (regra petrea): SEMPRE a cronologia completa de 60 meses
+    # (C0..C4), independentemente da data de corte da analise.
+    assert ativas == list(range(2, 62))
     for r in ativas:
         assert _dia(financeiro[f"A{r}"].value) >= inicio_c0
-    assert _dia(financeiro[f"A{ativas[-1]}"].value) == date(2026, 9, 1)
-    for r in range(38, 74):
+    assert _dia(financeiro[f"A{ativas[-1]}"].value) == date(2028, 9, 1)
+    for r in range(62, 74):
         assert financeiro[f"A{r}"].value is None
         assert financeiro[f"G{r}"].value is None
 
