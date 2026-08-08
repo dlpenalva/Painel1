@@ -27,14 +27,20 @@ CICLOS = ("C0", "C1", "C2", "C3", "C4")
 _ORDEM_CICLOS = {ciclo: i for i, ciclo in enumerate(CICLOS)}
 
 # --------------------------------------------------------------------------- #
-# REGRA CANONICA DO CALENDARIO CONTRATUAL (fonte unica)
+# REGRA CANONICA DO CALENDARIO CONTRATUAL (fonte unica) — ETAPA 31
 # --------------------------------------------------------------------------- #
-# Cada ciclo tem EXATAMENTE 12 competencias mensais consecutivas. As datas de
-# inicio e fim decorrem da data-base/aniversario contratual e de mais nada: a
-# janela usada para calcular o indice e o INICIO_EFEITO_FINANCEIRO sao
-# conceitos independentes e NUNCA deslocam DATA_INICIO, DATA_FIM nem o ciclo
-# seguinte. O inicio do efeito financeiro decide apenas a partir de qual
-# competencia DAQUELE ciclo o reajuste produz efeitos.
+# Existem DOIS calendarios independentes, ambos com ciclos de EXATAMENTE 12
+# competencias mensais consecutivas:
+#   * CRONOLOGIA DA EXECUCAO: blocos fixos decorrentes da data-base original
+#     (5 x 12 = 60 competencias, sem lacuna) — enquadra financeiro, PC e
+#     aditivos; nada a desloca (nem a janela do indice, nem o
+#     INICIO_EFEITO_FINANCEIRO);
+#   * JANELA DO REAJUSTE (parametros!C:D): 12 competencias por ciclo; o
+#     INICIO_EFEITO_FINANCEIRO (H) desloca o INICIO da janela SEGUINTE
+#     (H+12m), podendo abrir intervalo intencional entre janelas — sem
+#     jamais alongar a janela do proprio ciclo.
+# O inicio do efeito financeiro decide apenas a partir de qual competencia o
+# NOVO reajuste produz delta; nunca exclui valor executado nem muda o ciclo.
 MESES_POR_CICLO = 12
 
 
@@ -420,17 +426,41 @@ def calendario_ciclos_contratuais(
     return calendario
 
 
-def divergencias_calendario_canonico(ciclos: Any) -> list[str]:
-    """Divergencias do calendario informado ante a regra canonica dos ciclos.
+def calendario_execucao_por_ciclo(ciclos: Any) -> dict[str, dict[str, date]]:
+    """Cronologia FIXA da execucao (C0..C4) derivada das janelas informadas.
 
-    REGRA PETREA — INTERREGNO E EFEITOS: cada ciclo tem NO MINIMO 12
-    competencias mensais consecutivas, inicia no primeiro dia do mes e fecha
-    na vespera de uma competencia; ciclos consecutivos sao contiguos (sem
-    lacuna e sem sobreposicao). Um ciclo pode ter MAIS de 12 competencias
-    quando o reajuste seguinte teve o inicio dos efeitos financeiros
-    retardado — o proximo ciclo nasce 12 meses apos o inicio dos efeitos do
-    anterior, e as competencias intermediarias permanecem enquadradas no
-    ciclo anterior. Nao levanta excecao: e um diagnostico de CHECK/STATUS.
+    ETAPA 31 — a execucao contratual segue blocos fixos de 12 meses (5 x 12 =
+    60 competencias), ancorados no inicio cronologico do ciclo mais antigo
+    com DATA_INICIO real. As janelas de reajuste (parametros!C:D) NAO
+    enquadram a execucao: com o retardo dos efeitos elas podem conter
+    intervalo intencional, e nenhum fato valido pode ficar sem ciclo por
+    causa dele. Devolve ``{}`` quando nenhuma ancora real existe.
+    """
+    registros = _normalizar_ciclos(ciclos)
+    inicios: dict[str, date] = {}
+    for reg in registros:
+        nome = _ciclo_normalizado(_valor(reg, "ciclo"))
+        inicio = _data_real(_valor(reg, "data_inicio"))
+        if nome in CICLOS and inicio is not None and nome not in inicios:
+            inicios[nome] = inicio
+    for nome in CICLOS:  # ancora = ciclo mais antigo com DATA_INICIO real
+        if nome in inicios:
+            return calendario_ciclos_contratuais(inicios[nome], nome)
+    return {}
+
+
+def divergencias_calendario_canonico(ciclos: Any) -> list[str]:
+    """Divergencias das JANELAS DE REAJUSTE (parametros!C:D) ante a regra.
+
+    REGRA PETREA — ETAPA 31: cada janela C:D tem EXATAMENTE 12 competencias
+    mensais consecutivas (inicia no dia 1 e fecha na vespera de uma
+    competencia). O retardo dos efeitos financeiros NUNCA alonga a propria
+    janela; ele desloca o INICIO da janela seguinte, de modo que um
+    INTERVALO INTENCIONAL entre DATA_FIM(Cn) e DATA_INICIO(Cn+1) e
+    PERMITIDO (o proximo reajuste ainda nao nasceu). Sobreposicao segue
+    proibida. A cronologia da EXECUCAO (blocos fixos de 12 meses, sem
+    lacuna) e conceito independente e nao e validada aqui. Nao levanta
+    excecao: e um diagnostico de CHECK/STATUS.
     """
     registros = _normalizar_ciclos(ciclos)
     por_ciclo: dict[str, tuple[date | None, date | None]] = {}
@@ -447,32 +477,29 @@ def divergencias_calendario_canonico(ciclos: Any) -> list[str]:
         inicio, fim = por_ciclo.get(ciclo, (None, None))
         if inicio is None or fim is None:
             continue
-        minimo = somar_meses(inicio.replace(day=1), MESES_POR_CICLO) - timedelta(days=1)
+        esperado = somar_meses(inicio.replace(day=1), MESES_POR_CICLO) - timedelta(days=1)
         if inicio.day != 1:
             problemas.append(
                 f"{ciclo}: DATA_INICIO {inicio.isoformat()} nao e o primeiro dia do mes."
             )
-        if fim < minimo:
+        if fim != esperado:
             problemas.append(
                 f"{ciclo}: periodo {inicio.isoformat()}..{fim.isoformat()} nao "
                 f"corresponde a 12 competencias consecutivas (fim esperado "
-                f"{minimo.isoformat()})."
-            )
-        elif (fim + timedelta(days=1)).day != 1:
-            problemas.append(
-                f"{ciclo}: DATA_FIM {fim.isoformat()} nao fecha uma competencia "
-                f"mensal completa (vespera do primeiro dia do mes seguinte)."
+                f"{esperado.isoformat()})."
             )
     for anterior, seguinte in zip(CICLOS, CICLOS[1:]):
         _, fim_ant = por_ciclo.get(anterior, (None, None))
         inicio_seg, _ = por_ciclo.get(seguinte, (None, None))
         if fim_ant is None or inicio_seg is None:
             continue
-        if inicio_seg != fim_ant + timedelta(days=1):
+        # Intervalo INTENCIONAL entre janelas e permitido (reajuste seguinte
+        # retardado); sobreposicao ou inversao permanecem proibidas.
+        if inicio_seg <= fim_ant:
             problemas.append(
-                f"{anterior}->{seguinte}: ciclos nao contiguos ({fim_ant.isoformat()} "
-                f"seguido de {inicio_seg.isoformat()}); nenhuma competencia pode "
-                f"ficar fora dos ciclos entre ciclos consecutivos."
+                f"{anterior}->{seguinte}: janelas sobrepostas ({fim_ant.isoformat()} "
+                f"seguido de {inicio_seg.isoformat()}); a janela seguinte deve "
+                f"iniciar apos o fim da anterior."
             )
     return problemas
 

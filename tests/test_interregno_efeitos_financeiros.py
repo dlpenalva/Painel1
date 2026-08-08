@@ -1,19 +1,29 @@
 # -*- coding: utf-8 -*-
-"""Etapa 30 — REGRA PETREA do interregno pelos efeitos financeiros + metodo.
+"""Etapas 30/31 — interregno pelos efeitos financeiros + metodo.
 
-Cobre os cenarios obrigatorios do enunciado:
+A ETAPA 31 corrigiu a premissa temporal da Etapa 30: NAO existe uma unica
+linha temporal. Tres conceitos independentes:
 
+  * JANELA DO REAJUSTE (parametros!C:D): EXATAMENTE 12 competencias por
+    ciclo; DATA_INICIO(Cn+1) = COMPETENCIA(H(Cn)) + 12m (fallback teorico
+    +12m sem ancora); o retardo NUNCA alonga o proprio ciclo — ele abre um
+    INTERVALO INTENCIONAL entre D(Cn) e C(Cn+1), que e PERMITIDO;
+  * CRONOLOGIA DA EXECUCAO: blocos fixos de 12 meses da data-base original
+    (5 x 12 = 60 competencias, sem lacuna) — enquadra financeiro, PC e
+    aditivos; H nunca muda o CICLO;
+  * EFEITO FINANCEIRO (parametros!H): gate SOMENTE do novo delta — nunca
+    exclui valor executado, quantidade, VTA ou posicao contratual.
+
+Cenarios cobertos:
   A) tempestivo no mesmo mes da data-base -> efeito desde a competencia da
-     data-base; proxima data-base 12 meses depois;
+     data-base; proximo reajuste 12 meses depois;
   B) tempestivo em competencia posterior (TEMPESTIVO*) -> efeito desde a
-     competencia do pedido; proxima data-base 12 meses apos o efeito;
-  C) caso real multiciclo: C2 com efeito em 06/2026 -> C3 = 06/2027..05/2028
-     e C4 = 06/2028..05/2029, sem lacuna de enquadramento (04-05/2027
-     permanecem no C2, com efeito);
+     competencia do pedido; o PROXIMO ciclo nasce 12 meses apos o efeito e
+     a janela atual NAO se alonga;
+  C) caso real multiciclo: C2 (04/2026..03/2027) com efeito em 06/2026 ->
+     C3 = 06/2027..05/2028 e C4 = 06/2028..05/2029; gap intencional
+     04-05/2027 nas janelas; a execucao segue enquadrando pela cronologia;
   D) sem retardo -> linha temporal identica ao baseline.
-
-E as fronteiras de PC/aditivo na nova ancora (31/05/2027 x 01/06/2027), alem
-da renomeacao do metodo Financeiro (Mensalidade) com alias legado.
 
 REGRA PETREA — INTERREGNO E EFEITOS (registro permanente):
   * pagamento nunca e marco;
@@ -24,18 +34,15 @@ REGRA PETREA — INTERREGNO E EFEITOS (registro permanente):
     desde a competencia do pedido;
   * proximo reajuste = 12 meses apos o inicio dos efeitos financeiros do
     anterior;
-  * todos os consumidores temporais usam uma linha temporal canonica;
-  * nenhuma execucao valida fica sem enquadramento por causa do
-    deslocamento.
+  * nenhuma execucao valida fica sem enquadramento: a cronologia da
+    execucao nao tem lacuna, ainda que as janelas de reajuste tenham.
 
 REGRA DE COMPATIBILIDADE DO METODO:
   * rotulo novo = "Financeiro (Mensalidade)";
   * codigo interno = "principal";
   * "Principal (Financeiro)" permanece alias legado aceito.
 
-SEPARACAO REGIME x PERIODO DO INDICE (gate conceitual da etapa 30):
-  * parametros!DATA_INICIO/DATA_FIM = REGIME/enquadramento da execucao —
-    pode exceder 12 competencias quando o reajuste seguinte e retardado;
+SEPARACAO REGIME x PERIODO DO INDICE:
   * PERIODO DE APURACAO DO INDICE = exatamente 12 competencias, ancorado no
     inicio dos efeitos financeiros do reajuste anterior (ancora..ancora+11m);
   * nenhum motor de indice consome parametros!C:D.
@@ -110,8 +117,10 @@ def test_cenario_b_retardado_efeito_na_competencia_do_pedido():
     # marco/2025 pertence ao ciclo, mas sem efeito (gate G/H do financeiro).
     assert c1["inicio_efeito_financeiro"] == date(2025, 4, 1)
     assert c1["efeito_financeiro_retardado"] is True
-    # Proxima data-base = 01/04/2026: C1 estende ate 31/03/2026.
-    assert c1["data_fim"] == date(2026, 3, 31)
+    # ETAPA 31: a janela NUNCA se alonga — 12 competencias exatas
+    # (03/2025..02/2026). O retardo desloca o INICIO do proximo ciclo
+    # (04/2026), abrindo intervalo intencional em 03/2026.
+    assert c1["data_fim"] == date(2026, 2, 28)
     reg = {
         "computar_nesta_apuracao": "Sim",
         "inicio_efeito_financeiro": c1["inicio_efeito_financeiro"],
@@ -176,8 +185,9 @@ def _dia(valor):
 def test_cenario_c_parametros_projeta_c3_e_c4_pela_nova_ancora(wb_caso_real):
     par = wb_caso_real["parametros"]
     assert _dia(par["C4"].value) == date(2026, 4, 1)    # C2 inicia 04/2026
-    assert _dia(par["D4"].value) == date(2027, 5, 31)   # C2 estende ate 05/2027
+    assert _dia(par["D4"].value) == date(2027, 3, 31)   # 12 competencias EXATAS
     assert _dia(par["H4"].value) == date(2026, 6, 1)    # efeito na competencia
+    # Gap intencional 04-05/2027: C3 nasce 12 meses apos o efeito do C2.
     assert _dia(par["C5"].value) == date(2027, 6, 1)    # C3 = 06/2027
     assert _dia(par["D5"].value) == date(2028, 5, 31)   # ...a 05/2028
     assert _dia(par["C6"].value) == date(2028, 6, 1)    # C4 = 06/2028
@@ -190,20 +200,34 @@ def test_cenario_c_status_tempestivo_asterisco_e_legenda(wb_caso_real):
     assert par["A7"].value == LEGENDA_TEMPESTIVO_RETARDADO
 
 
-def test_cenario_c_competencias_intermediarias_sem_lacuna(wb_caso_real):
-    """04/2027 e 05/2027 pertencem ao C2, com efeito financeiro Sim."""
+def test_cenario_c_grade_cronologica_completa_60_meses(wb_caso_real):
+    """Grade do financeiro: SEMPRE a cronologia contratual completa.
+
+    ETAPA 31 (regra petrea): 60 competencias (5 x 12) do marco de C0
+    (04/2024) a 03/2029, independentemente de data_corte ou do ultimo ciclo
+    analisado. 04/2026 e 05/2026 pertencem ao C2 cronologico sem efeito
+    (Nao); competencias futuras (C3/C4 cronologicos, ainda sem reajuste
+    valido) permanecem na grade com efeito Nao — futuro nao significa
+    ausencia de ciclo. O gap 04-05/2027 existe apenas nas JANELAS de
+    parametros, jamais na grade da execucao.
+    """
     fin = wb_caso_real["financeiro"]
     grade = {}
     for row in range(2, 74):
         comp = fin[f"A{row}"].value
         if comp is not None:
             grade[(comp.year, comp.month)] = fin[f"G{row}"].value
+    assert len(grade) == 60
+    assert min(grade) == (2024, 4) and max(grade) == (2029, 3)
     assert grade[(2026, 4)] == "Nao"   # antes do efeito do C2
     assert grade[(2026, 5)] == "Nao"
     assert grade[(2026, 6)] == "Sim"   # efeito inicia 06/2026
-    assert grade[(2027, 4)] == "Sim"   # intermediarias enquadradas no C2
-    assert grade[(2027, 5)] == "Sim"
-    assert (2027, 6) not in grade      # C3 futuro: fora da grade da apuracao
+    assert grade[(2027, 3)] == "Sim"   # ultima competencia do C2 cronologico
+    # Futuro dentro dos 60 meses: pertence ao ciclo cronologico (C3/C4),
+    # sem reajuste valido ainda -> efeito Nao (nada inventado).
+    assert grade[(2027, 4)] == "Nao"
+    assert grade[(2027, 6)] == "Nao"
+    assert grade[(2029, 3)] == "Nao"
     # Sequencia mensal continua, sem buracos.
     chaves = sorted(grade)
     for (a, b) in zip(chaves, chaves[1:]):
@@ -235,23 +259,37 @@ def _por_ciclo_caso_real(wb) -> dict:
     }
 
 
-def test_fronteira_pc_na_nova_ancora(wb_caso_real):
-    """PC em 31/05/2027 -> C2; PC em 01/06/2027 -> C3 (linha canonica)."""
+def test_fronteira_pc_na_cronologia_da_execucao(wb_caso_real):
+    """PC enquadra pela CRONOLOGIA fixa: 31/03/2027 -> C2; 01/04/2027 -> C3.
+
+    ETAPA 31: datas dentro do gap intencional das janelas de parametros
+    (04-05/2027) NAO ficam indeterminadas — pertencem ao C3 cronologico.
+    """
     por_ciclo = _por_ciclo_caso_real(wb_caso_real)
-    antes = classificar_enquadramento_pc(date(2027, 5, 31), por_ciclo)
-    depois = classificar_enquadramento_pc(date(2027, 6, 1), por_ciclo)
+    antes = classificar_enquadramento_pc(date(2027, 3, 31), por_ciclo)
+    depois = classificar_enquadramento_pc(date(2027, 4, 1), por_ciclo)
+    no_gap = classificar_enquadramento_pc(date(2027, 5, 31), por_ciclo)
+    apos_gap = classificar_enquadramento_pc(date(2027, 6, 1), por_ciclo)
     assert antes.tipo == ENQ_CICLO and antes.ciclo == "C2"
     assert depois.tipo == ENQ_CICLO and depois.ciclo == "C3"
+    assert no_gap.tipo == ENQ_CICLO and no_gap.ciclo == "C3"
+    assert apos_gap.tipo == ENQ_CICLO and apos_gap.ciclo == "C3"
 
 
-def test_fronteira_aditivo_na_nova_ancora(wb_caso_real):
-    """Aditivos usam a MESMA linha temporal canonica (sem regra exclusiva)."""
+def test_fronteira_aditivo_na_cronologia_da_execucao(wb_caso_real):
+    """Aditivos usam a MESMA cronologia da execucao (sem regra exclusiva)."""
+    from _motor_posicao_contratual import calendario_execucao_por_ciclo
+
     por_ciclo = _por_ciclo_caso_real(wb_caso_real)
-    linha = [
+    execucao = calendario_execucao_por_ciclo([
         {"ciclo": nome, **reg} for nome, reg in por_ciclo.items()
-    ]
-    assert determinar_ciclo_por_data(date(2027, 5, 31), linha).ciclo == "C2"
-    assert determinar_ciclo_por_data(date(2027, 6, 1), linha).ciclo == "C3"
+    ])
+    linha = list(execucao.values())
+    assert determinar_ciclo_por_data(date(2027, 3, 31), linha).ciclo == "C2"
+    assert determinar_ciclo_por_data(date(2027, 4, 1), linha).ciclo == "C3"
+    # Aditivo dentro do gap das janelas de reajuste: fato contratual valido,
+    # enquadrado no C3 cronologico — jamais desaparece.
+    assert determinar_ciclo_por_data(date(2027, 5, 31), linha).ciclo == "C3"
 
 
 # --------------------------------------------------------------------------- #
@@ -323,16 +361,30 @@ def test_precluso_sem_efeito_usa_fallback_teorico():
     ("01/04/2025", date(2026, 4, 1)),
 ])
 def test_interregno_12_meses_apos_o_efeito(efeito, proximo):
+    """O PROXIMO ciclo nasce 12 meses apos o inicio dos efeitos (H+12m);
+    a janela do ciclo atual permanece com 12 competencias exatas."""
+    from _gerador_masterfile import _completar_periodos_ciclos
+
     retardado = efeito != "01/03/2025"
     dados = normalizar_dados_calculadora(_payload_ciclo_unico(efeito, retardado))
     c1 = dados["ciclos"][0]
-    assert c1["data_fim"] + timedelta(days=1) == proximo
+    # Janela do C1 sempre com 12 competencias exatas (03/2025..02/2026).
+    assert (c1["data_inicio"], c1["data_fim"]) == (date(2025, 3, 1), date(2026, 2, 28))
+    completos = _completar_periodos_ciclos({"C1": c1})
+    assert completos["C2"]["data_inicio"] == proximo
 
 
 def test_interregno_efeito_junho_2026_gera_junho_2027():
+    from _gerador_masterfile import _completar_periodos_ciclos
+
     dados = normalizar_dados_calculadora(_payload_caso_real())
     c2 = next(c for c in dados["ciclos"] if c["ciclo"] == "C2")
-    assert c2["data_fim"] + timedelta(days=1) == date(2027, 6, 1)
+    # Janela do C2: 12 competencias exatas (04/2026..03/2027).
+    assert c2["data_fim"] == date(2027, 3, 31)
+    # O C3 nasce 12 meses apos o inicio dos efeitos do C2 (gap intencional
+    # 04-05/2027 entre as janelas).
+    completos = _completar_periodos_ciclos({c["ciclo"]: c for c in dados["ciclos"]})
+    assert completos["C3"]["data_inicio"] == date(2027, 6, 1)
 
 
 # --------------------------------------------------------------------------- #
@@ -458,7 +510,9 @@ def test_fluxo_real_precluso_com_acordo_ancora_na_competencia_pactuada():
     norm = normalizar_dados_calculadora(adm)
     c1 = next(c for c in norm["ciclos"] if c["ciclo"] == "C1")
     assert c1["inicio_efeito_financeiro"] == date(2025, 8, 1)
-    assert c1["data_fim"] == date(2026, 7, 31)
+    # ETAPA 31: a janela do C1 NAO se alonga (12 competencias exatas:
+    # 03/2025..02/2026); a ancora do acordo desloca apenas o proximo ciclo.
+    assert c1["data_fim"] == date(2026, 2, 28)
 
     wb = load_workbook(
         io.BytesIO(gerar_coleta_oficial_preenchida(adm)), data_only=False
@@ -476,21 +530,24 @@ def _total_meses(ini: date, fim: date) -> int:
     return (fim.year * 12 + fim.month) - (ini.year * 12 + ini.month) + 1
 
 
-def test_regime_estendido_nao_altera_o_periodo_do_indice():
+def test_janela_do_reajuste_nao_altera_o_periodo_do_indice():
     """Caso obrigatorio do gate: C2 teorico 04/2026, efeito 06/2026.
 
-    REGIME C2 = 04/2026..05/2027 (14 competencias) e a janela do INDICE do
-    C3 = 06/2026..05/2027 (exatamente 12 competencias, ancorada no inicio
-    dos efeitos de C2). Sao dimensoes distintas: o regime estendido jamais
-    contamina a apuracao do indice.
+    ETAPA 31 — JANELA C2 = 04/2026..03/2027 (12 competencias EXATAS; o
+    retardo nao a alonga) e a janela do INDICE do C3 = 06/2026..05/2027
+    (12 competencias, ancorada no inicio dos efeitos de C2). Sao dimensoes
+    distintas: nenhuma contamina a outra, e o C3 nasce 12 meses apos o
+    efeito do C2 (06/2027), abrindo gap intencional 04-05/2027.
     """
     from dateutil.relativedelta import relativedelta
 
+    from _gerador_masterfile import _completar_periodos_ciclos
+
     dados = normalizar_dados_calculadora(_payload_caso_real())
     c2 = next(c for c in dados["ciclos"] if c["ciclo"] == "C2")
-    # REGIME (enquadramento da execucao): estendido a 14 competencias.
-    assert (c2["data_inicio"], c2["data_fim"]) == (date(2026, 4, 1), date(2027, 5, 31))
-    assert _total_meses(c2["data_inicio"], c2["data_fim"]) == 14
+    # JANELA DO REAJUSTE: 12 competencias exatas, sempre.
+    assert (c2["data_inicio"], c2["data_fim"]) == (date(2026, 4, 1), date(2027, 3, 31))
+    assert _total_meses(c2["data_inicio"], c2["data_fim"]) == 12
     # PERIODO DO INDICE do proximo reajuste: ancora = competencia do inicio
     # dos efeitos do anterior; janela = ancora..ancora+11m = 12 competencias.
     ancora_indice_c3 = c2["inicio_efeito_financeiro"]
@@ -498,8 +555,9 @@ def test_regime_estendido_nao_altera_o_periodo_do_indice():
     assert ancora_indice_c3 == date(2026, 6, 1)
     assert fim_indice_c3 == date(2027, 5, 1)
     assert _total_meses(ancora_indice_c3, fim_indice_c3) == 12
-    # REGIME de aplicacao do C3 comeca 12 meses apos o efeito do C2.
-    assert c2["data_fim"] + timedelta(days=1) == date(2027, 6, 1)
+    # JANELA de aplicacao do C3 comeca 12 meses apos o efeito do C2.
+    completos = _completar_periodos_ciclos({c["ciclo"]: c for c in dados["ciclos"]})
+    assert completos["C3"]["data_inicio"] == date(2027, 6, 1)
 
 
 def test_paginas_ancoram_o_indice_em_12_competencias():

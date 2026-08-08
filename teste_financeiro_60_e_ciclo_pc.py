@@ -52,13 +52,14 @@ def _dados(marco=date(2023, 1, 1), efeito_c1="Nao"):
 def main() -> int:
     ent = obter_coleta_oficial_bytes()
 
-    # ---- competencias do marco (C0) ate a data de corte ----
-    # marco 01/2023, corte 30/06/2025 -> 30 competencias em A2:A31
+    # ---- ETAPA 31 (regra petrea): SEMPRE a cronologia completa ----
+    # marco 01/2023 -> 60 competencias em A2:A61 (01/2023..12/2027),
+    # INDEPENDENTE da data de corte (aqui 30/06/2025, bem anterior).
     preenchido = gerar_masterfile_preenchido(_dados(), ent)
     wb = load_workbook(io.BytesIO(preenchido))
     fin = wb["financeiro"]
-    comps = [fin.cell(r, 1).value for r in range(2, 32)]
-    check("30 competencias em A2:A31 (marco ate corte)",
+    comps = [fin.cell(r, 1).value for r in range(2, 62)]
+    check("60 competencias em A2:A61 (cronologia completa, corte nao limita)",
           all(v is not None for v in comps))
     check("1a competencia = mes do marco (01/2023)",
           comps[0].year == 2023 and comps[0].month == 1, str(comps[0]))
@@ -70,13 +71,13 @@ def main() -> int:
           comps[12].year == 2024 and comps[12].month == 1)
     check("25a competencia (01/2025) — inicio de C2 (vigente)",
           comps[24].year == 2025 and comps[24].month == 1)
-    check("ultima competencia = mes do corte (06/2025)",
-          comps[29].year == 2025 and comps[29].month == 6, str(comps[29]))
+    check("60a competencia = marco + 59 meses (12/2027)",
+          comps[59].year == 2027 and comps[59].month == 12, str(comps[59]))
     seq_ok = all(
         (comps[i].year, comps[i].month) ==
         (comps[i - 1].year + (comps[i - 1].month == 12),
          1 if comps[i - 1].month == 12 else comps[i - 1].month + 1)
-        for i in range(1, 30)
+        for i in range(1, 60)
     )
     check("sequencia mensal continua, sem saltos/duplicidades", seq_ok)
     check("valor interno = dia 1 do mes",
@@ -86,11 +87,11 @@ def main() -> int:
     check("formato de exibicao mm/aaaa",
           fin["A2"].number_format.upper() == "MM/YYYY",
           fin["A2"].number_format)
-    check("apos o corte (A32 em diante) sem competencia inventada",
-          all(fin.cell(r, 1).value is None for r in range(32, 74)))
+    check("apos os 60 meses (A62 em diante) sem competencia inventada",
+          all(fin.cell(r, 1).value is None for r in range(62, 74)))
     check("coluna B (CICLO) segue formula, nunca escrita",
           all(str(fin.cell(r, 2).value or "").startswith("=")
-              for r in range(2, 32)))
+              for r in range(2, 62)))
     # cobertura: todos os ciclos de C0 ao vigente aparecem no financeiro
     wb_do_cob = load_workbook(io.BytesIO(preenchido), data_only=True)
     ciclos_cobertos = {_ciclo_por_competencia(wb_do_cob, v) for v in comps}
@@ -104,38 +105,24 @@ def main() -> int:
         check(f"marco {rotulo}: coluna A permanece vazia",
               all(f2.cell(r, 1).value is None for r in range(2, 74)))
 
-    # ---- capacidade da grade (nunca truncar em silencio) ----
-    # 01/2023..12/2028 = 72 competencias = capacidade exata da grade A2:A73
+    # ---- ETAPA 31: cronologia da execucao NUNCA excede 60 competencias ----
+    # marco 01/2023 -> C0..C4 = 01/2023..12/2027 (5 x 12 = 60). Corte alem
+    # do fim cronologico de C4 nao inventa 61a/62a competencia: a grade
+    # fecha em 12/2027.
     d_lim = _dados()
     d_lim["data_corte"] = date(2028, 12, 31)
     p_lim = gerar_masterfile_preenchido(d_lim, ent)
     f_lim = load_workbook(io.BytesIO(p_lim))["financeiro"]
     comps_lim = [f_lim.cell(r, 1).value for r in range(2, 74)]
-    check("periodo no limite exato (72): grade completa A2:A73",
-          all(v is not None for v in comps_lim))
-    check("periodo no limite exato: ultima = 12/2028 (nenhuma truncada)",
-          comps_lim[-1] is not None
-          and comps_lim[-1].year == 2028 and comps_lim[-1].month == 12,
-          str(comps_lim[-1]))
-
-    # 01/2023..01/2029 = 73 competencias = 1 mes acima do limite
-    d_est = _dados()
-    d_est["data_corte"] = date(2029, 1, 31)
-    erro_capacidade = None
-    xls_parcial = None
-    try:
-        xls_parcial = gerar_masterfile_preenchido(d_est, ent)
-    except ValueError as exc:
-        erro_capacidade = str(exc)
-    check("um mes acima do limite: geracao interrompida",
-          erro_capacidade is not None)
-    check("nenhum XLS parcial entregue", xls_parcial is None)
-    check("mensagem clara com necessario (73) e capacidade (72)",
-          erro_capacidade is not None
-          and "exige 73 competencias" in erro_capacidade
-          and "no maximo 72" in erro_capacidade
-          and "Revise o marco inicial ou a data de corte" in erro_capacidade,
-          str(erro_capacidade))
+    preenchidas = [v for v in comps_lim if v is not None]
+    check("cronologia limitada a 60 competencias (nunca 61/62)",
+          len(preenchidas) == 60, str(len(preenchidas)))
+    check("ultima competencia = 12/2027 (fim cronologico de C4)",
+          bool(preenchidas)
+          and preenchidas[-1].year == 2027 and preenchidas[-1].month == 12,
+          str(preenchidas[-1] if preenchidas else None))
+    check("nenhuma competencia alem de C4 inventada (A62+ vazias)",
+          all(v is None for v in comps_lim[60:]))
 
     # ---- derivacao de ciclo sem cache (leitor) ----
     wb_do = load_workbook(io.BytesIO(preenchido), data_only=True)

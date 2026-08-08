@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """Regressao permanente do calendario de ciclos e do enquadramento temporal.
 
-REGRA PETREA — INTERREGNO E EFEITOS (atualizada na etapa 30):
+REGRA PETREA — INTERREGNO E EFEITOS (atualizada na ETAPA 31):
   * pagamento nunca e marco temporal;
   * admissibilidade usa a data exata do pedido;
   * efeito financeiro usa a COMPETENCIA mensal;
@@ -9,11 +9,14 @@ REGRA PETREA — INTERREGNO E EFEITOS (atualizada na etapa 30):
   * tempestivo em mes posterior dentro da janela = TEMPESTIVO* (apresentacao)
     e efeito desde a competencia do pedido;
   * o proximo reajuste nasce 12 meses apos o INICIO DOS EFEITOS FINANCEIROS
-    do reajuste anterior — quando ha retardo, o ciclo anterior se ESTENDE ate
-    a vespera do novo marco (mais de 12 competencias), sem lacuna e sem
-    sobreposicao;
-  * cada ciclo tem NO MINIMO 12 competencias mensais consecutivas;
-  * todos os consumidores temporais usam a mesma linha temporal canonica.
+    do reajuste anterior — a janela do ciclo anterior NAO se alonga (12
+    competencias EXATAS, sempre); o retardo abre um INTERVALO INTENCIONAL
+    entre as janelas de reajuste (parametros!C:D), que e permitido;
+  * cada janela de reajuste tem EXATAMENTE 12 competencias mensais
+    consecutivas;
+  * a EXECUCAO (financeiro, PC, aditivos) enquadra pela CRONOLOGIA FIXA de
+    blocos de 12 meses (5 x 12 = 60 competencias, sem lacuna) — nenhum fato
+    valido fica sem ciclo por causa do intervalo entre janelas.
 
 Dentro de um ciclo, o INICIO_EFEITO_FINANCEIRO decide somente a partir de
 qual competencia DAQUELE ciclo o reajuste produz efeitos (gate G/H da aba
@@ -663,37 +666,52 @@ def test_38_modelo_em_branco_permanece_neutro():
 # --------------------------------------------------------------------------- #
 # Guardas do calendario corrompido (a regressao que esta suite impede)
 # --------------------------------------------------------------------------- #
-def test_calendario_com_lacuna_e_recusado():
+def test_calendario_com_sobreposicao_e_recusado():
+    """ETAPA 31: o gap entre janelas e INTENCIONAL e permitido; sobreposicao
+    e janela sem 12 competencias exatas continuam recusadas."""
     problemas = divergencias_calendario_canonico([
         {"ciclo": nome, **reg} for nome, reg in POR_CICLO_LACUNA.items()
     ])
-    # C2 deslocado para marco abre lacuna antes dele e passa a sobrepor C3.
-    assert [p.split(":")[0] for p in problemas] == ["C1->C2", "C2->C3"]
-    assert all("nao contiguos" in p for p in problemas)
-    assert "2025-12-31" in problemas[0] and "2026-03-01" in problemas[0]
-    # Um periodo que nao some 12 competencias tambem e recusado.
+    # C2 deslocado para marco: o gap C1->C2 e permitido (nao e problema);
+    # a sobreposicao C2->C3 permanece recusada.
+    assert [p.split(":")[0] for p in problemas] == ["C2->C3"]
+    assert all("sobrepostas" in p for p in problemas)
+    # Um periodo que nao some 12 competencias exatas tambem e recusado.
     curto = divergencias_calendario_canonico([
         {"ciclo": "C1", "data_inicio": date(2025, 1, 1),
          "data_fim": date(2025, 10, 31)},
     ])
     assert any("12 competencias consecutivas" in p for p in curto)
+    # Janela ALONGADA (13 competencias) tambem e recusada: o retardo do
+    # reajuste seguinte NUNCA alonga a janela do ciclo atual.
+    longo = divergencias_calendario_canonico([
+        {"ciclo": "C1", "data_inicio": date(2025, 1, 1),
+         "data_fim": date(2026, 1, 31)},
+    ])
+    assert any("12 competencias consecutivas" in p for p in longo)
 
 
-def test_lacuna_nunca_vira_intervalo_precluso():
+def test_gap_de_janelas_nao_vira_indeterminado_nem_precluso():
+    """ETAPA 31: data no gap intencional das janelas enquadra pela
+    CRONOLOGIA fixa da execucao — jamais INDETERMINADO ou precluso."""
     enq = classificar_enquadramento_pc(date(2026, 1, 15), POR_CICLO_LACUNA)
-    assert enq.tipo == ENQ_INDETERMINADO
+    assert enq.tipo == ENQ_CICLO
+    assert enq.ciclo == "C2"
     assert enq.tipo != ENQ_INTERVALO_PRECLUSO
+    assert enq.tipo != ENQ_INDETERMINADO
 
 
 def test_gerador_da_coleta_encadeia_pelo_inicio_dos_efeitos():
-    """Regra petrea do interregno: C(n+1) nasce 12 meses apos o INICIO DOS
-    EFEITOS FINANCEIROS de C(n); a janela do indice continua sem redefinir
-    ciclo algum, e o ciclo anterior se estende ate a vespera do novo marco."""
+    """Regra petrea do interregno (ETAPA 31): C(n+1) nasce 12 meses apos o
+    INICIO DOS EFEITOS FINANCEIROS de C(n); a janela do indice continua sem
+    redefinir ciclo algum; a janela do ciclo anterior NAO se alonga — o
+    espaco entre elas e um intervalo intencional."""
     dados = normalizar_dados_calculadora({
         "data_base_original": "01/01/2024",
         "ciclos": [
             # C1 com efeito retardado para marco/2025 (TEMPESTIVO*):
-            # C2 nasce em marco/2026 e C1 se estende ate 28/02/2026.
+            # C2 nasce em marco/2026; C1 fecha em 31/12/2025 (12 comp.)
+            # e o intervalo 01-02/2026 e intencional.
             {"ciclo": "C1", "data_inicio": date(2025, 1, 1),
              "financeiro_inicio": date(2025, 3, 1), "percentual": 0.0449},
             # Janela do indice de C2 (data_base) segue sem participar da
@@ -704,15 +722,18 @@ def test_gerador_da_coleta_encadeia_pelo_inicio_dos_efeitos():
     })
     por_ciclo = {c["ciclo"]: c for c in dados["ciclos"]}
     assert por_ciclo["C1"]["data_inicio"] == date(2025, 1, 1)
-    assert por_ciclo["C1"]["data_fim"] == date(2026, 2, 28)
+    # Janela de 12 competencias EXATAS: o retardo nunca a alonga.
+    assert por_ciclo["C1"]["data_fim"] == date(2025, 12, 31)
     assert por_ciclo["C2"]["data_inicio"] == date(2026, 3, 1)
     # C2 com efeito em 03/2026 (mesma competencia do novo inicio do ciclo):
-    # sem novo retardo, C3 nasceria em 03/2027 e C2 fecha em 28/02/2027.
+    # janela de 12 competencias, fechando em 28/02/2027.
     assert por_ciclo["C2"]["data_fim"] == date(2027, 2, 28)
     # O inicio do efeito financeiro segue preservado (competencia, dia 1).
     assert por_ciclo["C2"]["inicio_efeito_financeiro"] == date(2026, 3, 1)
-    # Sem lacuna e sem sobreposicao entre os ciclos informados.
-    assert por_ciclo["C2"]["data_inicio"] == por_ciclo["C1"]["data_fim"] + timedelta(days=1)
+    # Intervalo intencional entre as janelas (01-02/2026): permitido e
+    # nunca preenchido artificialmente.
+    assert por_ciclo["C2"]["data_inicio"] > por_ciclo["C1"]["data_fim"] + timedelta(days=1)
+    assert divergencias_calendario_canonico(list(por_ciclo.values())) == []
 
 
 def test_gerador_sem_retardo_mantem_blocos_de_12_meses():

@@ -341,21 +341,32 @@ def test_cenario5_fronteira_exata_fim(tmp_path: Path) -> None:
 
 @pytestmark_com
 def test_cenario6_gap_entre_ciclos(tmp_path: Path) -> None:
+    """ETAPA 31: gap intencional entre janelas de reajuste NAO exclui a
+    competencia — a formula de runtime enquadra pela cronologia fixa (bloco
+    de 12 meses contado de parametros!C2)."""
+    from _coleta_oficial import _garantir_formulas_cronologia_execucao
+
     caminho = _preparar_template(tmp_path)
     ciclos = [
         (0, date(2023, 1, 1), date(2023, 12, 31)),
-        (1, date(2024, 1, 1), date(2024, 6, 30)),
-        (2, date(2024, 9, 1), date(2025, 8, 31)),
+        (1, date(2024, 1, 1), date(2024, 12, 31)),
+        # C2 retardado: janela nasce 03/2025; 01-02/2025 ficam no gap.
+        (2, date(2025, 3, 1), date(2026, 2, 28)),
     ]
-    competencias = [date(2024, 7, 1), date(2024, 8, 1)]
+    competencias = [date(2025, 1, 1), date(2025, 2, 1)]
     _escrever_parametros_e_competencias(caminho, ciclos, competencias)
+    wb = load_workbook(caminho, data_only=False)
+    _garantir_formulas_cronologia_execucao(wb)
+    wb.save(caminho)
 
     def inspecionar(pasta):
         ws = pasta.Worksheets("financeiro")
         return [ws.Cells(row, 2).Value for row in (2, 3)]
 
     resultados = _recalcular_e_ler(caminho, inspecionar)
-    assert all(v == "Fora dos ciclos" for v in resultados), f"Gap deve ser 'Fora dos ciclos': {resultados}"
+    assert all(v == "c2" for v in resultados), (
+        f"Gap intencional deve enquadrar pela cronologia (c2): {resultados}"
+    )
 
 
 # ------------------------------------------------------------------

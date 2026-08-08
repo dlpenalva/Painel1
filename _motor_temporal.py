@@ -32,6 +32,7 @@ from datetime import date, datetime
 from typing import Any
 
 from _motor_posicao_contratual import (
+    calendario_execucao_por_ciclo,
     determinar_ciclo_por_data,
     ErroGraveMotorPosicaoContratual,
 )
@@ -209,10 +210,25 @@ def _extrair_ciclos(res_leitor: dict[str, Any]) -> dict[str, dict[str, Any]]:
 
 
 def _linha_temporal_para_motor(por_ciclo: dict[str, dict[str, Any]]) -> list[dict[str, Any]]:
-    """Monta a estrutura de ciclos que o motor de posicao valida (C0-C4)."""
+    """Monta a linha temporal da EXECUCAO que o motor de posicao valida.
+
+    ETAPA 31 — o enquadramento da execucao usa a CRONOLOGIA FIXA (blocos de
+    12 meses ancorados no inicio cronologico do ciclo mais antigo), nunca as
+    janelas de reajuste parametros!C:D — que podem conter intervalo
+    intencional quando o reajuste seguinte foi retardado. Sem ancora real,
+    devolve as datas cruas (o motor de posicao acusa a linha incompleta).
+    """
+    execucao = calendario_execucao_por_ciclo([
+        {
+            "ciclo": ciclo,
+            "data_inicio": _como_data((por_ciclo.get(ciclo) or {}).get("data_inicio")),
+            "data_fim": _como_data((por_ciclo.get(ciclo) or {}).get("data_fim")),
+        }
+        for ciclo in CICLOS
+    ])
     linha: list[dict[str, Any]] = []
     for ciclo in CICLOS:
-        reg = por_ciclo.get(ciclo, {})
+        reg = execucao.get(ciclo) or por_ciclo.get(ciclo, {})
         linha.append({
             "ciclo": ciclo,
             "data_inicio": _como_data(reg.get("data_inicio")),
@@ -256,16 +272,15 @@ ENQ_INDETERMINADO = "INDETERMINADO"
 
 @dataclass(frozen=True)
 class EnquadramentoTemporalPC:
-    """Resposta unica sobre onde a DATA_PC cai na linha temporal.
+    """Resposta unica sobre onde a DATA_PC cai na linha temporal da execucao.
 
-    ``INTERVALO_PRECLUSO`` so pode nascer de uma lacuna contratual EXPRESSA na
-    fonte. Ciclos consecutivos sao contiguos por definicao (no minimo 12
-    competencias cada; um ciclo se estende quando o reajuste seguinte teve o
-    inicio dos efeitos retardado), portanto nao existe intervalo derivado do
-    calendario: uma lacuna entre C(n) e C(n+1) e sintoma de calendario
-    corrompido — tipicamente o INICIO_EFEITO_FINANCEIRO usado indevidamente
-    como inicio de ciclo SEM estender o ciclo anterior — e resolve-se como
-    ``INDETERMINADO``, que exige revisao.
+    ``INTERVALO_PRECLUSO`` so pode nascer de uma lacuna contratual EXPRESSA
+    na fonte. O enquadramento usa a CRONOLOGIA FIXA da execucao (blocos de
+    12 meses, 60 competencias, sem lacuna) — ETAPA 31: as janelas de
+    reajuste parametros!C:D podem conter intervalo intencional quando o
+    reajuste seguinte foi retardado, e esse intervalo JAMAIS deixa um fato
+    da execucao sem ciclo. ``INDETERMINADO`` fica reservado a data invalida
+    ou cronologia sem ancora real, que exige revisao.
     """
     tipo: str
     ciclo: str | None = None
@@ -287,15 +302,15 @@ def classificar_enquadramento_pc(
     por_ciclo: dict[str, dict[str, Any]],
     ciclo_conferencia: str = "",
 ) -> EnquadramentoTemporalPC:
-    """Enquadra a DATA_PC em um ciclo da linha temporal, ou indeterminado.
+    """Enquadra a DATA_PC em um ciclo da cronologia da execucao.
 
-    NAO existe categoria de intervalo derivada do calendario. Cada ciclo tem
-    no minimo 12 competencias consecutivas (estende-se quando o reajuste
-    seguinte foi retardado) e ciclos consecutivos sao contiguos, de modo que
-    nenhuma data pode cair "entre" dois ciclos por consequencia do
-    INICIO_EFEITO_FINANCEIRO. Se ainda assim a linha temporal apresentar
-    lacuna, o registro fica INDETERMINADO e exige revisao — o calendario e
-    que precisa ser corrigido, nao o PC reclassificado.
+    NAO existe categoria de intervalo derivada do calendario: a cronologia
+    da execucao tem blocos fixos de 12 competencias, contiguos por
+    construcao, de modo que nenhuma data pode cair "entre" dois ciclos por
+    consequencia do INICIO_EFEITO_FINANCEIRO ou do intervalo intencional das
+    janelas de reajuste (ETAPA 31). O registro so fica INDETERMINADO com
+    data invalida ou cronologia sem ancora real — o calendario e que precisa
+    ser corrigido, nao o PC reclassificado.
     """
     data_norm = _como_data(data_pc)
     if data_norm is None:
