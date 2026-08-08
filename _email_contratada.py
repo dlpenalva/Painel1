@@ -178,13 +178,22 @@ def _bloco_memoria_ciclo(numero: str, memoria: list[Mapping[str, Any]]) -> str |
             metodo_fonte = str(registro.get("metodo_fonte") or "").strip()
             if metodo_fonte:
                 finais.append(f"Método/Fonte: {metodo_fonte}")
-    for posicao, registro in enumerate(tipo_indice):
+    # IST: a memoria canonica pode trazer a serie mensal completa de
+    # numeros-indice; o TXT apresenta APENAS o inicial e o final (o metodo e
+    # a divisao entre eles) — a serie integral permanece na memoria do XLS.
+    indices_validos = []
+    for registro in tipo_indice:
         competencia = _competencia_mm_aaaa(registro.get("competencia"))
         valor = _numero_indice(registro.get("valor_indice"))
         if competencia is None or valor is None:
             continue
-        rotulo = "inicial" if posicao == 0 else "final"
-        indices.append(f"Número-índice {rotulo} ({competencia}): {valor}")
+        indices_validos.append((competencia, valor))
+    if indices_validos:
+        competencia, valor = indices_validos[0]
+        indices.append(f"Número-índice inicial ({competencia}): {valor}")
+        if len(indices_validos) > 1:
+            competencia, valor = indices_validos[-1]
+            indices.append(f"Número-índice final ({competencia}): {valor}")
 
     corpo = mensais or indices
     if not corpo and not finais:
@@ -223,6 +232,60 @@ def _secao_memoria_calculo(ciclos: Iterable[Mapping[str, Any]] | None) -> str:
     return "\n\nMEMÓRIA DE CÁLCULO\n\n" + "\n\n".join(blocos)
 
 
+def _ciclos_com_memoria(ciclos: Iterable[Mapping[str, Any]] | None) -> list[str]:
+    """Numeros dos ciclos que POSSUEM memoria de calculo no payload."""
+    numeros: list[str] = []
+    for ciclo in ciclos or []:
+        if not isinstance(ciclo, Mapping):
+            continue
+        numero = _numero_ciclo(str(ciclo.get("ciclo") or ciclo.get("Ciclo") or ""))
+        if numero is None:
+            continue
+        memoria = ciclo.get("memoria_calculo")
+        if isinstance(memoria, (list, tuple)) and memoria:
+            numeros.append(numero)
+    return numeros
+
+
+def _conferir_entrega_da_memoria(
+    ciclos: Iterable[Mapping[str, Any]] | None, corpo: str
+) -> None:
+    """FAIL-CLOSED da comunicacao: memoria disponivel TEM de chegar ao TXT.
+
+    Regra funcional: se um ciclo foi processado e a memoria de calculo
+    detalhada existe no sistema, o TXT correspondente DEVE conter a memoria.
+    Nunca mais "memoria sumiu -> gera TXT silenciosamente sem memoria": se a
+    secao (ou o bloco de um ciclo com memoria) nao puder ser gerada, o erro e
+    controlado e visivel — nada de TXT incompleto entregue em silencio.
+    """
+    esperados = _ciclos_com_memoria(ciclos)
+    if not esperados:
+        return
+    if "MEMÓRIA DE CÁLCULO" not in corpo:
+        raise ValueError(
+            "A memória de cálculo dos ciclos "
+            + ", ".join(esperados)
+            + " existe no sistema, mas a seção MEMÓRIA DE CÁLCULO não pôde ser "
+            "gerada no TXT. Comunicação bloqueada para não entregar documento "
+            "incompleto."
+        )
+    secao = corpo.split("MEMÓRIA DE CÁLCULO", 1)[1]
+    faltantes = [n for n in esperados if f"Ciclo {n}\n" not in secao]
+    if faltantes:
+        raise ValueError(
+            "A memória de cálculo do(s) ciclo(s) "
+            + ", ".join(faltantes)
+            + " existe no sistema, mas o bloco correspondente não pôde ser "
+            "gerado no TXT. Comunicação bloqueada para não entregar documento "
+            "incompleto."
+        )
+
+
+def montar_txt_download(assunto: str, corpo: str) -> bytes:
+    """Bytes EXATOS entregues ao botao de download do rascunho (.txt)."""
+    return f"ASSUNTO: {assunto}\n\n{corpo}".encode("utf-8-sig")
+
+
 def gerar_rascunho_email_contratada(
     ciclos: Iterable[Mapping[str, Any]] | None,
     numero_contrato: str | None = None,
@@ -256,6 +319,8 @@ def gerar_rascunho_email_contratada(
     # Memoria de calculo DO INDICE (pre-apuracao: percentuais e fatores, nunca
     # valores financeiros do contrato), reapresentada do payload dos ciclos.
     corpo += _secao_memoria_calculo(ciclos)
+    # FAIL-CLOSED: memoria disponivel no payload TEM de estar no corpo.
+    _conferir_entrega_da_memoria(ciclos, corpo)
     # Blindagem final: nenhum arquivo entregue pode conter emoji.
     return ASSUNTO_EMAIL_CONTRATADA, remover_emojis(corpo)
 
@@ -267,8 +332,19 @@ def render_email_contratada(
     indice: str | None = None,
     key: str,
 ) -> None:
-    """Exibe a comunicacao pre-apuracao e o botao de download do rascunho."""
-    assunto, corpo = gerar_rascunho_email_contratada(ciclos, numero_contrato, indice)
+    """Exibe a comunicacao pre-apuracao e o botao de download do rascunho.
+
+    FAIL-CLOSED: se a memoria de calculo disponivel nao puder ser entregue no
+    TXT, o erro e mostrado ao usuario e o download NAO e oferecido — nunca um
+    documento silenciosamente incompleto.
+    """
+    try:
+        assunto, corpo = gerar_rascunho_email_contratada(
+            ciclos, numero_contrato, indice
+        )
+    except ValueError as exc:
+        st.error(f"Comunicação à Contratada indisponível: {exc}")
+        return
     st.markdown(
         '<div style="background:#FFF9E8;border:1.5px solid #E8B923;border-radius:16px;'
         'padding:20px 24px;margin:18px 0 8px 0;">'
@@ -285,7 +361,7 @@ def render_email_contratada(
     )
     st.download_button(
         "Baixar rascunho (.txt)",
-        data=f"ASSUNTO: {assunto}\n\n{corpo}".encode("utf-8-sig"),
+        data=montar_txt_download(assunto, corpo),
         file_name="Comunicacao_Contratada_Reajuste.txt",
         mime="text/plain; charset=utf-8",
         type="primary",

@@ -1998,8 +1998,8 @@ if res:
     janela_str = f"{pd.to_datetime(periodo_inicio).strftime('%m/%Y')} a {pd.to_datetime(periodo_fim).strftime('%m/%Y')}"
     janela_adm_str = f"{dt_aniv.strftime('%d/%m/%Y')} a {dt_limite.strftime('%d/%m/%Y')}"
 
-    st.write(f"- **Intervalo do {ciclo_label}:** {janela_str}")
-    st.write(f"- **Janela de Admissibilidade:** {janela_adm_str}")
+    st.write(f"- **Período de apuração do índice:** {janela_str}")
+    st.write(f"- **Janela de Admissibilidade (90 dias):** {janela_adm_str}")
     st.write(f"- **Situação:** {status_ped}")
 
     # Acordo negocial: preserva o diagnóstico automático, mas permite aplicar percentual manual.
@@ -2110,29 +2110,51 @@ if res:
         "\n        Observação: a variação final do ciclo foi negativa; para composição acumulada, o percentual aplicado foi limitado a 0,00%."
         if ciclo_negativo and not superacao_negocial else ""
     )
+    # Redacao padronizada (apresentacao apenas — nenhuma regra matematica,
+    # data calculada ou regra de admissibilidade muda aqui):
+    #   Ciclo/pedido > Periodo de apuracao do indice > Janela de
+    #   Admissibilidade (90 dias) > Resultado > Variacao apurada >
+    #   Percentual aplicado (SOMENTE se divergir) > Indice > efeitos.
+    preclusao_sem_efeito = (
+        "PRECLUSO" in status_ped.upper() and not superacao_negocial
+    )
     if superacao_negocial:
         inicio_negocial_txt = inicio_efeito_financeiro.strftime('%d/%m/%Y')
         relatorio_simples = f"""
-        **{ciclo_label}:** Pedido realizado em {dt_solic.strftime('%d/%m/%Y')}. Intervalo do {ciclo_label}: {janela_str}.  
-        Janela de Admissibilidade: {janela_adm_str}.  
+        **{ciclo_label}:** Pedido realizado em {dt_solic.strftime('%d/%m/%Y')}.  
+        Período de apuração do índice: {janela_str}.  
+        Janela de Admissibilidade (90 dias): {janela_adm_str}.  
         **Resultado automático:** {situacao_automatica}.  
         **Tratamento aplicado:** (*) ciclo admitido por negociação entre as partes.  
-        Variação apurada pelo índice: {v_fmt}.  
+        Variação apurada: {v_fmt}.  
         Percentual aplicado por acordo: {percentual_aplicado_fmt}.  
-        Índice {tipo_idx}.  
-        Data de início dos efeitos financeiros por acordo: {inicio_negocial_txt}.
+        Índice: {tipo_idx}.  
+        Início dos efeitos financeiros por acordo: {inicio_negocial_txt}.
 
         (*) O diagnóstico automático de preclusão foi preservado. O ciclo foi considerado aplicável por decisão negocial registrada pelo usuário.
         """
     else:
+        # Percentual aplicado aparece SOMENTE quando diverge da variacao
+        # apurada (ex.: ciclo negativo aplicado a 0,00%). No caso ordinario,
+        # uma unica linha de variacao — sem "no acumulado"/"acumulada".
+        linha_percentual_aplicado = (
+            f"Percentual aplicado: {percentual_aplicado_fmt}.  \n        "
+            if percentual_aplicado_fmt != v_fmt and not preclusao_sem_efeito
+            else ""
+        )
+        linha_efeitos = (
+            "Efeitos financeiros: não aplicáveis."
+            if preclusao_sem_efeito
+            else f"Início dos efeitos financeiros: {inicio_efeito_financeiro.strftime('%d/%m/%Y')}."
+        )
         relatorio_simples = f"""
-        **{ciclo_label}:** Pedido realizado em {dt_solic.strftime('%d/%m/%Y')}. Intervalo do {ciclo_label}: {janela_str}.  
-        Janela de Admissibilidade: {janela_adm_str}.  
+        **{ciclo_label}:** Pedido realizado em {dt_solic.strftime('%d/%m/%Y')}.  
+        Período de apuração do índice: {janela_str}.  
+        Janela de Admissibilidade (90 dias): {janela_adm_str}.  
         Resultado: {situacao_aplicada}.  
-        Variação apurada pelo índice: {v_fmt}. Percentual aplicado no acumulado: {percentual_aplicado_fmt}.  
-        Variação acumulada: {percentual_aplicado_fmt}.  
-        Índice {tipo_idx}.  
-        Data de início dos efeitos financeiros: {inicio_efeito_financeiro.strftime('%d/%m/%Y')}.{observacao_ciclo_negativo}
+        Variação apurada: {v_fmt}.  
+        {linha_percentual_aplicado}Índice: {tipo_idx}.  
+        {linha_efeitos}{observacao_ciclo_negativo}
         """
     st.info(relatorio_simples)
 
@@ -2230,5 +2252,10 @@ if res:
             indice=_adm_email.get("indice"),
             key="btn_baixar_email_contratada_simples_v1",
         )
-    except Exception:
-        pass
+    except Exception as _e_email_contratada:
+        # Nunca falhar em silencio: a ausencia da Comunicacao precisa ser
+        # visivel para o usuario (regra funcional da comunicacao).
+        st.warning(
+            "Não foi possível gerar a Comunicação à Contratada: "
+            f"{_e_email_contratada}"
+        )

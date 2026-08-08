@@ -10,9 +10,12 @@ from pathlib import Path
 
 import re
 
+import pytest
+
 from _email_contratada import (
     ASSUNTO_EMAIL_CONTRATADA,
     gerar_rascunho_email_contratada,
+    montar_txt_download,
 )
 from _sanitizacao_documental import contem_emoji
 
@@ -207,6 +210,46 @@ def test_ciclo_sem_memoria_nao_gera_secao():
     assert "MEMÓRIA DE CÁLCULO" not in corpo
     assert corpo.rstrip().endswith("informações acima.")
     _sem_valores_financeiros(corpo)
+
+
+def test_fail_closed_memoria_inconsistente_gera_erro_controlado():
+    """Memoria existe no payload mas nao pode virar secao -> ValueError.
+
+    Nunca mais "memoria sumiu -> TXT silenciosamente incompleto".
+    """
+    memoria_invalida = [{"tipo": "MES", "ordem": 1}]  # sem competencia/valor
+    with pytest.raises(ValueError, match="MEMÓRIA DE CÁLCULO|bloco"):
+        gerar_rascunho_email_contratada(
+            [{"ciclo": "C1", "situacao_aplicada": "Tempestivo",
+              "variacao_formatada": "3,27%", "financeiro_inicio": "13/02/2026",
+              "memoria_calculo": memoria_invalida}],
+            numero_contrato="CT-1/2026", indice="IPCA",
+        )
+
+
+def test_fail_closed_nao_dispara_com_memoria_valida_nem_sem_memoria():
+    # com memoria valida: secao presente, sem erro
+    _, corpo = gerar_rascunho_email_contratada(
+        [{"ciclo": "C3", "situacao_aplicada": "Tempestivo",
+          "variacao_formatada": "4,30%", "financeiro_inicio": "01/02/2026",
+          "memoria_calculo": MEMORIA_MENSAL_C3}],
+        numero_contrato="CT-1/2026", indice="INPC",
+    )
+    assert "MEMÓRIA DE CÁLCULO" in corpo
+    # sem memoria: comportamento normal (sem secao, sem erro)
+    _, corpo = gerar_rascunho_email_contratada(
+        [{"ciclo": "C1", "situacao_aplicada": "Tempestivo",
+          "variacao_formatada": "3,27%", "financeiro_inicio": "13/02/2026"}],
+        numero_contrato="CT-1/2026", indice="IPCA",
+    )
+    assert "MEMÓRIA DE CÁLCULO" not in corpo
+
+
+def test_montar_txt_download_sao_os_bytes_do_botao():
+    """Os bytes finais do download: BOM utf-8-sig + ASSUNTO + corpo."""
+    dados = montar_txt_download("Assunto X", "Corpo Y")
+    assert dados == "ASSUNTO: Assunto X\n\nCorpo Y".encode("utf-8-sig")
+    assert dados.decode("utf-8-sig").startswith("ASSUNTO: Assunto X")
 
 
 def test_integrado_nas_duas_calculadoras():
