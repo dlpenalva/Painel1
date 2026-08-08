@@ -120,6 +120,109 @@ def _linhas_ciclos(ciclos: Iterable[Mapping[str, Any]] | None) -> list[str]:
     return linhas
 
 
+def _competencia_mm_aaaa(iso: Any) -> str | None:
+    """'2025-02-01' -> '02/2025'. Sem data valida, sem linha (nao inventa)."""
+    texto = str(iso or "").strip()
+    partes = texto.split("-")
+    if len(partes) < 2 or not (partes[0].isdigit() and partes[1].isdigit()):
+        return None
+    return f"{int(partes[1]):02d}/{partes[0]}"
+
+
+def _fator_6_casas(valor: Any) -> str | None:
+    try:
+        return f"{float(valor):.6f}".replace(".", ",")
+    except (TypeError, ValueError):
+        return None
+
+
+def _numero_indice(valor: Any) -> str | None:
+    """Numero-indice em 4 casas, como no bloco parametros!N (formato 0.0000)."""
+    try:
+        return f"{float(valor):.4f}".replace(".", ",")
+    except (TypeError, ValueError):
+        return None
+
+
+def _bloco_memoria_ciclo(numero: str, memoria: list[Mapping[str, Any]]) -> str | None:
+    """Formata a memoria de UM ciclo. Reapresenta o payload; nao recalcula.
+
+    MES    -> uma linha 'mm/aaaa: x,xx%' por competencia presente na memoria.
+    INDICE -> competencia e numero-indice inicial e final (IST nunca vira
+              memoria mensal ficticia).
+    RESULTADO -> Fator apurado / Variacao apurada / Metodo/Fonte canonicos.
+    """
+    mensais: list[str] = []
+    indices: list[str] = []
+    finais: list[str] = []
+    registros = [r for r in memoria if isinstance(r, Mapping)]
+    tipo_indice = [
+        r for r in registros
+        if str(r.get("tipo") or "").strip().upper() == "INDICE"
+    ]
+    for registro in registros:
+        tipo = str(registro.get("tipo") or "").strip().upper()
+        if tipo == "MES":
+            competencia = _competencia_mm_aaaa(registro.get("competencia"))
+            taxa = registro.get("valor_indice")
+            if competencia is None or taxa in (None, ""):
+                continue
+            mensais.append(f"{competencia}: {_percentual(taxa)}")
+        elif tipo == "RESULTADO":
+            fator = _fator_6_casas(registro.get("fator_acumulado"))
+            if fator is not None:
+                finais.append(f"Fator apurado: {fator}")
+            variacao = registro.get("variacao_final")
+            if variacao not in (None, ""):
+                finais.append(f"Variação apurada: {_percentual(variacao)}")
+            metodo_fonte = str(registro.get("metodo_fonte") or "").strip()
+            if metodo_fonte:
+                finais.append(f"Método/Fonte: {metodo_fonte}")
+    for posicao, registro in enumerate(tipo_indice):
+        competencia = _competencia_mm_aaaa(registro.get("competencia"))
+        valor = _numero_indice(registro.get("valor_indice"))
+        if competencia is None or valor is None:
+            continue
+        rotulo = "inicial" if posicao == 0 else "final"
+        indices.append(f"Número-índice {rotulo} ({competencia}): {valor}")
+
+    corpo = mensais or indices
+    if not corpo and not finais:
+        return None
+    partes = [f"Ciclo {numero}", ""]
+    if corpo:
+        partes.extend(corpo)
+        partes.append("")
+    partes.extend(finais)
+    return "\n".join(partes).rstrip()
+
+
+def _secao_memoria_calculo(ciclos: Iterable[Mapping[str, Any]] | None) -> str:
+    """Secao MEMORIA DE CALCULO: um bloco por ciclo que POSSUI memoria.
+
+    Reutiliza exclusivamente `memoria_calculo` ja produzida/normalizada pelo
+    sistema (registros MES/INDICE/RESULTADO). Ciclo sem memoria nao gera
+    bloco; sem nenhum bloco, a secao inteira e omitida.
+    """
+    blocos: list[str] = []
+    for ciclo in ciclos or []:
+        if not isinstance(ciclo, Mapping):
+            continue
+        nome = str(ciclo.get("ciclo") or ciclo.get("Ciclo") or "").strip()
+        numero = _numero_ciclo(nome)
+        if numero is None:
+            continue
+        memoria = ciclo.get("memoria_calculo")
+        if not isinstance(memoria, (list, tuple)) or not memoria:
+            continue
+        bloco = _bloco_memoria_ciclo(numero, list(memoria))
+        if bloco:
+            blocos.append(bloco)
+    if not blocos:
+        return ""
+    return "\n\nMEMÓRIA DE CÁLCULO\n\n" + "\n\n".join(blocos)
+
+
 def gerar_rascunho_email_contratada(
     ciclos: Iterable[Mapping[str, Any]] | None,
     numero_contrato: str | None = None,
@@ -150,6 +253,9 @@ def gerar_rascunho_email_contratada(
         "Solicitamos, assim, manifestação de concordância quanto às informações "
         "acima."
     )
+    # Memoria de calculo DO INDICE (pre-apuracao: percentuais e fatores, nunca
+    # valores financeiros do contrato), reapresentada do payload dos ciclos.
+    corpo += _secao_memoria_calculo(ciclos)
     # Blindagem final: nenhum arquivo entregue pode conter emoji.
     return ASSUNTO_EMAIL_CONTRATADA, remover_emojis(corpo)
 

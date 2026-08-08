@@ -2,7 +2,9 @@
 
 Cobre: 1 ciclo; varios ciclos; precluso sem efeito; tempestivo com data;
 data dd/mm/aaaa; indice amigavel; ausencia de valores financeiros/retroativo/
-VTA; ausencia de "planilha anexa" e de "valores validados".
+VTA; ausencia de "planilha anexa" e de "valores validados"; secao MEMORIA DE
+CALCULO reapresentando a memoria do indice do payload (mensal e IST/INDICE),
+uma secao por ciclo com memoria, nada para ciclo sem memoria.
 """
 from pathlib import Path
 
@@ -26,8 +28,10 @@ def _sem_valores_financeiros(corpo: str) -> None:
     assert "valor retroativo" not in low
     assert "remanescente" not in low
     assert "unitári" not in low
-    # Nenhum valor monetario com centavos
-    assert not re.search(r"R?\$?\s*\d{1,3}(\.\d{3})*,\d{2}(?!%)", corpo)
+    # Nenhum valor monetario com centavos. O lookahead exclui percentuais
+    # ("4,30%"), fator apurado (6 casas: "1,043031") e numero-indice (4 casas:
+    # "104,5600") da memoria de calculo — que nao sao valores financeiros.
+    assert not re.search(r"R?\$?\s*\d{1,3}(\.\d{3})*,\d{2}(?![\d%])", corpo)
 
 
 def test_um_ciclo_tempestivo_com_data():
@@ -102,6 +106,107 @@ def test_contrato_e_indice_ausentes_usam_marcadores():
     _, corpo = gerar_rascunho_email_contratada([], numero_contrato=None, indice=None)
     assert "[CONTRATO]" in corpo
     assert "[ÍNDICE]" in corpo
+
+
+MEMORIA_MENSAL_C3 = [
+    {"tipo": "MES", "ordem": 1, "competencia": "2025-02-01",
+     "valor_indice": 0.0148},
+    {"tipo": "MES", "ordem": 2, "competencia": "2025-03-01",
+     "valor_indice": 0.0051},
+    {"tipo": "MES", "ordem": 3, "competencia": "2026-01-01",
+     "valor_indice": 0.0039},
+    {"tipo": "RESULTADO", "ordem": 4, "fator_acumulado": 1.043031,
+     "variacao_final": 0.0430,
+     "metodo_fonte": "Produtorio de taxas mensais (SGS/BCB)"},
+]
+
+MEMORIA_IST_C2 = [
+    {"tipo": "INDICE", "ordem": 1, "competencia": "2025-02-01",
+     "valor_indice": 104.56},
+    {"tipo": "INDICE", "ordem": 2, "competencia": "2026-01-01",
+     "valor_indice": 108.91},
+    {"tipo": "RESULTADO", "ordem": 3, "fator_acumulado": 1.0416,
+     "variacao_final": 0.0416,
+     "metodo_fonte": "Divisao de Numero-Indice (IST/Anatel)"},
+]
+
+
+def test_memoria_mensal_no_ciclo_unico():
+    _, corpo = gerar_rascunho_email_contratada(
+        [{"ciclo": "C3", "situacao_aplicada": "Tempestivo",
+          "variacao_formatada": "4,30%", "financeiro_inicio": "01/02/2026",
+          "memoria_calculo": MEMORIA_MENSAL_C3}],
+        numero_contrato="CT-99/2026", indice="INPC",
+    )
+    # A secao entra DEPOIS da frase final, com duas quebras de linha.
+    assert "informações acima.\n\nMEMÓRIA DE CÁLCULO\n\nCiclo 3\n\n" in corpo
+    assert "02/2025: 1,48%" in corpo
+    assert "03/2025: 0,51%" in corpo
+    assert "01/2026: 0,39%" in corpo
+    assert "Fator apurado: 1,043031" in corpo
+    assert "Variação apurada: 4,30%" in corpo
+    assert "Método/Fonte: Produtorio de taxas mensais (SGS/BCB)" in corpo
+    _sem_valores_financeiros(corpo)
+    assert not contem_emoji(corpo)
+
+
+def test_memoria_ist_apresenta_numeros_indice_sem_meses_ficticios():
+    _, corpo = gerar_rascunho_email_contratada(
+        [{"ciclo": "C2", "situacao_aplicada": "Tempestivo",
+          "variacao_formatada": "4,16%", "financeiro_inicio": "01/03/2026",
+          "memoria_calculo": MEMORIA_IST_C2}],
+        numero_contrato="CT-99/2026", indice="IST (Anatel)",
+    )
+    assert "MEMÓRIA DE CÁLCULO" in corpo
+    assert "Número-índice inicial (02/2025): 104,5600" in corpo
+    assert "Número-índice final (01/2026): 108,9100" in corpo
+    assert "Fator apurado: 1,041600" in corpo
+    assert "Variação apurada: 4,16%" in corpo
+    assert "Método/Fonte: Divisao de Numero-Indice (IST/Anatel)" in corpo
+    # IST nao vira memoria mensal ficticia: nenhuma linha "mm/aaaa: x%".
+    assert not re.search(r"^\d{2}/\d{4}: ", corpo, flags=re.MULTILINE)
+    _sem_valores_financeiros(corpo)
+
+
+def test_multiciclo_uma_secao_por_ciclo_com_memoria():
+    _, corpo = gerar_rascunho_email_contratada(
+        [
+            {"ciclo": "C1", "situacao_aplicada": "Tempestivo",
+             "variacao_formatada": "1,99%", "financeiro_inicio": "01/01/2025",
+             "memoria_calculo": [
+                 {"tipo": "MES", "ordem": 1, "competencia": "2024-01-01",
+                  "valor_indice": 0.0199},
+                 {"tipo": "RESULTADO", "ordem": 2, "fator_acumulado": 1.0199,
+                  "variacao_final": 0.0199, "metodo_fonte": "SGS/BCB"},
+             ]},
+            {"ciclo": "C2", "situacao_aplicada": "Precluso",
+             "variacao_formatada": "0,00%", "financeiro_inicio": ""},
+            {"ciclo": "C3", "situacao_aplicada": "Tempestivo",
+             "variacao_formatada": "4,30%", "financeiro_inicio": "01/02/2026",
+             "memoria_calculo": MEMORIA_MENSAL_C3},
+        ],
+        numero_contrato="CT-10/2026", indice="INPC",
+    )
+    assert corpo.count("MEMÓRIA DE CÁLCULO") == 1
+    assert "\nCiclo 1\n" in corpo
+    assert "\nCiclo 3\n" in corpo
+    # C2 nao tem memoria: nenhum bloco proprio (o marcador "• Ciclo 2" da
+    # lista de percentuais permanece, mas sem secao de memoria).
+    assert "\nCiclo 2\n" not in corpo
+    assert "Fator apurado: 1,019900" in corpo
+    assert "Fator apurado: 1,043031" in corpo
+    _sem_valores_financeiros(corpo)
+
+
+def test_ciclo_sem_memoria_nao_gera_secao():
+    _, corpo = gerar_rascunho_email_contratada(
+        [{"ciclo": "C1", "situacao_aplicada": "Tempestivo",
+          "variacao_formatada": "3,27%", "financeiro_inicio": "13/02/2026"}],
+        numero_contrato="CT-1/2026", indice="IPCA",
+    )
+    assert "MEMÓRIA DE CÁLCULO" not in corpo
+    assert corpo.rstrip().endswith("informações acima.")
+    _sem_valores_financeiros(corpo)
 
 
 def test_integrado_nas_duas_calculadoras():

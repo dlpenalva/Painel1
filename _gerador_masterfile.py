@@ -167,11 +167,7 @@ def _escrever_entrada(ws, coordenada: str, valor: Any) -> None:
 # ausencia e mais informativo para o fiscal do que a celula em branco.
 AVISO_HISTORICO_CICLO_UNICO = "Histórico anterior não incluído nesta análise."
 
-
-def _nota_variacao_ciclo_unico(ciclo: str, percentual: float) -> str:
-    """Nota da variacao apurada, no mesmo padrao percentual de parametros!E."""
-    formatado = f"{percentual * 100:.2f}".replace(".", ",")
-    return f"Variação apurada do ciclo único ({ciclo}): {formatado}%"
+ROTULO_VARIACAO_CICLO_UNICO = "Variação apurada do ciclo analisado"
 
 
 def _aplicar_resumo_ciclo_unico(controle, computados) -> set[str]:
@@ -182,30 +178,44 @@ def _aplicar_resumo_ciclo_unico(controle, computados) -> set[str]:
     acontece apenas quando B9 = 1, mantendo o quadro internamente coerente. No
     multiciclo nada muda: as formulas do template permanecem.
 
-    B10 (variacao historica integral) declara a ausencia de historico: nenhuma
-    formula do arquivo a consome.
+    Apresentacao do ciclo unico:
+      * A10 rotula a variacao apurada do proprio ciclo analisado;
+      * B10 recebe a variacao canonica ja apurada pela Calculadora como VALOR
+        percentual numerico — nada e recalculado: e o mesmo percentual gravado
+        em parametros!F;
+      * C10 declara a ausencia de historico anterior nesta analise;
+      * C11 fica vazia (a nota textual anterior foi absorvida por A10/B10).
 
     B11 (fator historico integral) NAO e tocada — ela alimenta
     comparativo_VTA!B208 e RESULTADOS!H5/D6/H8, e substitui-la deslocaria o
-    motor. A variacao ja apurada do ciclo e apenas REAPRESENTADA em C11, a
-    coluna de notas da propria aba (ver C3), que nenhuma formula consome: nao ha
-    recalculo do indice nem nova fonte de verdade.
+    motor; ela pode inclusive resultar vazia quando o historico necessario nao
+    esta disponivel, e esse comportamento permanece.
+
+    Sem percentual numerico canonico nao ha valor a apresentar em B10:
+    mantem-se a declaracao textual de ausencia de historico (comportamento
+    anterior), sem inventar numero.
 
     Retorna as coordenadas cujas formulas foram legitimamente substituidas.
     """
     if len(computados) != 1:
         return set()
-    ciclo, percentual = computados[0]
+    _ciclo, percentual = computados[0]
+    if isinstance(percentual, (int, float)) and not isinstance(percentual, bool):
+        _escrever_entrada(controle, "A10", ROTULO_VARIACAO_CICLO_UNICO)
+        controle["B10"].value = float(percentual)
+        controle["B10"].number_format = "0.00%"
+        _escrever_entrada(controle, "C10", AVISO_HISTORICO_CICLO_UNICO)
+        controle["C10"].number_format = "@"
+        # O aviso transborda para D10 (vazia); alinhado a esquerda para nao
+        # sobrepor B10 (ocupada) quando centralizado.
+        controle["C10"].alignment = Alignment(horizontal="left", vertical="center")
+        return {"CONTROLE!B10"}
     controle["B10"].value = AVISO_HISTORICO_CICLO_UNICO
     controle["B10"].number_format = "@"
     # A celula e centralizada para numeros; com texto longo, o transbordo
     # centralizado invade A10 (ocupada) e corta o inicio da frase. Alinhada a
     # esquerda, ela transborda so para C10:D10, que estao vazias.
     controle["B10"].alignment = Alignment(horizontal="left", vertical="center")
-    if isinstance(percentual, (int, float)) and not isinstance(percentual, bool):
-        _escrever_entrada(
-            controle, "C11", _nota_variacao_ciclo_unico(ciclo, float(percentual))
-        )
     return {"CONTROLE!B10"}
 
 

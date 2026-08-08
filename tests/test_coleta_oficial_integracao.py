@@ -94,7 +94,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # H8 legivel + A8 horizontal + bordas da tabela 5 (A54:C66). Somente
 # apresentacao e um rotulo: a fotografia de formulas do arquivo e identica
 # (tools/aplicar_acabamento_visual_coleta.py trava isso). — reancorado.
-SHA256_TEMPLATE_ESPERADO = "3dc5676c79282aa56a86ad000402342842c53aa59b108bed1695a03cdb311696"
+# Linha dinamica TOTAL de itens_Remanesc (correcao definitiva): F/H/J/L/N/P/R/AC
+# deixaram de ter a totalizacao desativada por IF(FALSE,...) e passaram a usar a
+# MESMA deteccao dinamica da coluna D (com guarda COUNT: coluna vazia permanece
+# vazia); T (VALOR_EXECUTADO_C4) ganhou a formula que faltava em 2:200 e todos os
+# fallbacks de lotacao maxima (linha 201) foram normalizados
+# (owner: tools/aplicar_total_dinamico_itens_remanesc.py) — pin reancorado.
+SHA256_TEMPLATE_ESPERADO = "1bd8aec9d9990c45fa8b4754e8cd36355d3a32cb94781504e4fd2a24d599240e"
 
 
 def _dados_calculadora() -> dict:

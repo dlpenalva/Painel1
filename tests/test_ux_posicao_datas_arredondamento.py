@@ -246,6 +246,7 @@ def _sem_fator_bruto(formula: str) -> bool:
         ("N", "M2", "historico_VU!D2"),
         ("P", "O2", "historico_VU!E2"),
         ("R", "Q2", "historico_VU!F2"),
+        ("T", "S2", "historico_VU!G2"),
         ("AC", "AB2", "historico_VU!C2"),
     ],
 )
