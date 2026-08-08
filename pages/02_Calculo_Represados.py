@@ -2298,8 +2298,8 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
 
         st.markdown(f"""
         **Dados do Ciclo {i}:**
-        - Intervalo do C{i}: {janela_ciclo}
-        - Janela de Admissibilidade: {janela_adm}
+        - Período de apuração do índice: {janela_ciclo}
+        - Janela de Admissibilidade (90 dias): {janela_adm}
         - Situação: {sit_emoji}
         """)
 
@@ -2497,27 +2497,52 @@ if historico:
     st.metric("Variação Acumulada Final", res_final)
 
     st.subheader("Relatório de Apuração")
+    # Redacao padronizada com a calculadora de ciclo unico (apresentacao
+    # apenas — nenhuma data calculada nem regra matematica muda aqui).
     corpo_relatorio = ""
     for h in historico:
+        eh_precluso = (
+            "PRECLUSO" in str(h.get('Situação', '')).upper()
+            and not h.get("Acordo negocial")
+        )
         if h.get("Acordo negocial"):
             corpo_relatorio += f"""
-            **C{h['Ciclo']}:** Pedido em {h['Pedido']}. Intervalo do C{h['Ciclo']}: {h['Janela']}.  
-            Janela de Admissibilidade: {h['JanelaAdm']}.  
+            **C{h['Ciclo']}:** Pedido realizado em {h['Pedido']}.  
+            Período de apuração do índice: {h['Janela']}.  
+            Janela de Admissibilidade (90 dias): {h['JanelaAdm']}.  
             **Resultado automático:** {h.get('Situação automática', h.get('Situação', ''))}.  
             **Tratamento aplicado:** (*) ciclo admitido por negociação entre as partes.  
-            Variação apurada pelo índice: {h['Variação']}.  
+            Variação apurada: {h['Variação']}.  
             Percentual aplicado por acordo: {h.get('Percentual aplicado', h['Variação'])}.  
-            Índice {idx_sel}.  
-            Data de início dos efeitos financeiros por acordo: {h.get('Início financeiro', '')}.
+            Índice: {idx_sel}.  
+            Início dos efeitos financeiros por acordo: {h.get('Início financeiro', '')}.
 
             (*) O diagnóstico automático de preclusão foi preservado. O ciclo foi considerado aplicável por decisão negocial registrada pelo usuário.
             \n\n"""
         else:
+            # Percentual aplicado SOMENTE quando diverge da variacao apurada
+            # (ex.: ciclo negativo aplicado a 0,00%).
+            linha_aplicado = (
+                f"Percentual aplicado: {h.get('Percentual aplicado', '')}.  \n            "
+                if h.get('Percentual aplicado')
+                and h.get('Percentual aplicado') != h['Variação']
+                and not eh_precluso
+                else ""
+            )
+            if eh_precluso or not h.get('Início financeiro'):
+                linha_efeitos = "Efeitos financeiros: não aplicáveis."
+            else:
+                linha_efeitos = (
+                    f"Início dos efeitos financeiros: {h['Início financeiro']}."
+                )
             corpo_relatorio += f"""
-            **C{h['Ciclo']}:** Pedido em {h['Pedido']}. Intervalo do C{h['Ciclo']}: {h['Janela']}.  
-            Janela de Admissibilidade: {h['JanelaAdm']}.  
-            Resultado: {h['Situação']}. Variação: {h['Variação']}.  
-            Índice {idx_sel}.
+            **C{h['Ciclo']}:** Pedido realizado em {h['Pedido']}.  
+            Período de apuração do índice: {h['Janela']}.  
+            Janela de Admissibilidade (90 dias): {h['JanelaAdm']}.  
+            Resultado: {h['Situação']}.  
+            Variação apurada: {h['Variação']}.  
+            {linha_aplicado}Índice: {idx_sel}.  
+            {linha_efeitos}
             \n\n"""
     st.info(corpo_relatorio)
 
