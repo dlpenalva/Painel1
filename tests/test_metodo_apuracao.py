@@ -17,9 +17,11 @@ def test_dropdown_labels_para_codigo():
 
 
 def test_opcoes_dropdown_ordem_oficial():
+    # Etapa 30: rotulo user-facing renomeado para "Financeiro (Mensalidade)".
+    # "Principal (Financeiro)" permanece alias legado aceito na leitura.
     assert M.OPCOES_DROPDOWN == [
         "SELECIONE AQUI",
-        "Principal (Financeiro)",
+        "Financeiro (Mensalidade)",
         "PC (Pedidos de Compra)",
         "Itens Consumidos",
     ]

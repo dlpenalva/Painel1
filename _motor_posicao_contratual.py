@@ -377,13 +377,16 @@ def calendario_ciclos_contratuais(
     ancora: Any,
     ciclo_ancora: str = "C1",
 ) -> dict[str, dict[str, date]]:
-    """Materializa C0-C4 a partir de UMA unica ancora contratual.
+    """Materializa o calendario TEORICO C0-C4 a partir de uma ancora.
 
     ``ancora`` e a DATA_INICIO do ciclo ``ciclo_ancora`` (por padrao o primeiro
-    aniversario contratual, inicio de C1). Todos os demais ciclos decorrem dela
-    em blocos exatos de 12 meses, para tras e para a frente. E a fonte unica do
-    calendario: nenhuma outra data (janela do indice, data do pedido, inicio do
-    efeito financeiro) participa desta materializacao.
+    aniversario contratual, inicio de C1). Os demais ciclos decorrem dela em
+    blocos exatos de 12 meses, para tras e para a frente — e o calendario SEM
+    retardo de efeitos. A janela do indice e a data do pedido nunca participam.
+    Quando o inicio dos efeitos financeiros de um ciclo e retardado, a fonte
+    canonica de geracao (normalizar_dados_calculadora) posterga o ciclo
+    seguinte em conformidade com a regra petrea do interregno; este helper
+    permanece como referencia do caso sem retardo.
     """
     inicio_ancora = _data_real(ancora)
     if inicio_ancora is None:
@@ -418,11 +421,16 @@ def calendario_ciclos_contratuais(
 
 
 def divergencias_calendario_canonico(ciclos: Any) -> list[str]:
-    """Divergencias do calendario informado ante a regra dos 12 meses.
+    """Divergencias do calendario informado ante a regra canonica dos ciclos.
 
-    Devolve lista vazia quando cada ciclo tem exatamente 12 competencias
-    consecutivas e os ciclos sao contiguos (sem lacuna e sem sobreposicao).
-    Nao levanta excecao: e um diagnostico consumido por CHECK/STATUS.
+    REGRA PETREA — INTERREGNO E EFEITOS: cada ciclo tem NO MINIMO 12
+    competencias mensais consecutivas, inicia no primeiro dia do mes e fecha
+    na vespera de uma competencia; ciclos consecutivos sao contiguos (sem
+    lacuna e sem sobreposicao). Um ciclo pode ter MAIS de 12 competencias
+    quando o reajuste seguinte teve o inicio dos efeitos financeiros
+    retardado — o proximo ciclo nasce 12 meses apos o inicio dos efeitos do
+    anterior, e as competencias intermediarias permanecem enquadradas no
+    ciclo anterior. Nao levanta excecao: e um diagnostico de CHECK/STATUS.
     """
     registros = _normalizar_ciclos(ciclos)
     por_ciclo: dict[str, tuple[date | None, date | None]] = {}
@@ -439,16 +447,21 @@ def divergencias_calendario_canonico(ciclos: Any) -> list[str]:
         inicio, fim = por_ciclo.get(ciclo, (None, None))
         if inicio is None or fim is None:
             continue
-        esperado = somar_meses(inicio.replace(day=1), MESES_POR_CICLO) - timedelta(days=1)
+        minimo = somar_meses(inicio.replace(day=1), MESES_POR_CICLO) - timedelta(days=1)
         if inicio.day != 1:
             problemas.append(
                 f"{ciclo}: DATA_INICIO {inicio.isoformat()} nao e o primeiro dia do mes."
             )
-        if fim != esperado:
+        if fim < minimo:
             problemas.append(
                 f"{ciclo}: periodo {inicio.isoformat()}..{fim.isoformat()} nao "
                 f"corresponde a 12 competencias consecutivas (fim esperado "
-                f"{esperado.isoformat()})."
+                f"{minimo.isoformat()})."
+            )
+        elif (fim + timedelta(days=1)).day != 1:
+            problemas.append(
+                f"{ciclo}: DATA_FIM {fim.isoformat()} nao fecha uma competencia "
+                f"mensal completa (vespera do primeiro dia do mes seguinte)."
             )
     for anterior, seguinte in zip(CICLOS, CICLOS[1:]):
         _, fim_ant = por_ciclo.get(anterior, (None, None))

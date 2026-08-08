@@ -296,9 +296,11 @@ def test_gerador_persiste_mesma_data_em_parametros_e_metadado():
         }],
     }
     wb = load_workbook(BytesIO(gerar_coleta_oficial_preenchida(dados)), data_only=False)
-    assert wb["parametros"]["H3"].value.date() == date(2024, 4, 18)
+    # Regra petrea (etapa 30): H persiste a COMPETENCIA do inicio dos efeitos
+    # (primeiro dia do mes); o dia exato do pedido fica na admissibilidade.
+    assert wb["parametros"]["H3"].value.date() == date(2024, 4, 1)
     assert wb["parametros"]["H3"].number_format == "dd/mm/yyyy"
-    assert "CL8US_INICIO_EFEITO:C1=2024-04-18" in wb.properties.keywords
+    assert "CL8US_INICIO_EFEITO:C1=2024-04-01" in wb.properties.keywords
 
 
 def test_leitor_recompoe_xls_sem_cache_e_coincide_com_regra_python():
@@ -318,9 +320,11 @@ def test_leitor_recompoe_xls_sem_cache_e_coincide_com_regra_python():
     })
     wb = load_workbook(BytesIO(payload), data_only=False)
     ws = wb["itens_PC"]
+    # Regra petrea (etapa 30): a fronteira do efeito e a COMPETENCIA mensal
+    # (31/03 antes do efeito de 04/2024; 01/04 ja com efeito).
     for linha, numero, data_pc in (
-        (2, "PC-ANTES", date(2024, 4, 10)),
-        (3, "PC-DEPOIS", date(2024, 4, 18)),
+        (2, "PC-ANTES", date(2024, 3, 31)),
+        (3, "PC-DEPOIS", date(2024, 4, 1)),
     ):
         ws[f"A{linha}"] = numero
         ws[f"B{linha}"] = data_pc
@@ -363,10 +367,14 @@ def test_regressao_50_pcs_preserva_identidade_ciclo_e_efeito():
     })
     wb = load_workbook(BytesIO(payload), data_only=False)
     ws = wb["itens_PC"]
+    # Regra petrea (etapa 30): fronteira do efeito por COMPETENCIA — metade
+    # dos PCs em 03/2024 (antes do efeito 04/2024) e metade em 04/2024.
     for indice in range(50):
         linha = indice + 2
         ws[f"A{linha}"] = f"PC-{indice + 1:03d}"
-        ws[f"B{linha}"] = date(2024, 4, 10 if indice % 2 == 0 else 18)
+        ws[f"B{linha}"] = (
+            date(2024, 3, 10) if indice % 2 == 0 else date(2024, 4, 18)
+        )
         ws[f"D{linha}"] = 100.0
         ws[f"G{linha}"] = "Nao"
     saida = BytesIO()

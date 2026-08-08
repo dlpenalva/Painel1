@@ -169,6 +169,15 @@ AVISO_HISTORICO_CICLO_UNICO = "Histórico anterior não incluído nesta análise
 
 ROTULO_VARIACAO_CICLO_UNICO = "Variação apurada do ciclo analisado"
 
+# Legenda discreta do TEMPESTIVO* (parametros!A7, linha vazia entre a tabela
+# de ciclos e o quadro MEMORIA DO FATOR). Escrita somente quando algum ciclo
+# teve o inicio dos efeitos financeiros retardado para a competencia do
+# pedido. O asterisco e APRESENTACAO: nenhuma formula ou motor depende dele.
+LEGENDA_TEMPESTIVO_RETARDADO = (
+    "* Pedido tempestivo realizado em competência posterior à data-base, "
+    "com efeitos financeiros a partir da competência do pedido."
+)
+
 
 def _aplicar_resumo_ciclo_unico(controle, computados) -> set[str]:
     """Completa o quadro RESUMO quando a apuracao abrange um unico ciclo.
@@ -791,6 +800,15 @@ def gerar_masterfile_preenchido(
             _escrever_entrada(parametros, f"I{linha}", ciclo.get("situacao"))
 
     if _vnova:
+        # Legenda do TEMPESTIVO* (apresentacao): parametros!A7 e uma linha
+        # vazia do template; nada e escrito quando nao houve retardo.
+        if any(
+            bool((ciclo or {}).get("efeito_financeiro_retardado"))
+            for ciclo in ciclos.values()
+        ):
+            _escrever_entrada(parametros, "A7", LEGENDA_TEMPESTIVO_RETARDADO)
+            parametros["A7"].font = Font(name="Calibri", size=8, italic=True,
+                                         color="FF595959")
         # Novo modelo: quadro MEMORIA DO FATOR (linhas 9-16) e 100% formula
         # no template — nada a preencher via Python.
         # Etapa 4: bloco MEMORIA DE CALCULO (parametros!J2:R80) — valores da

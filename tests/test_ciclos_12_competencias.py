@@ -1,12 +1,23 @@
 # -*- coding: utf-8 -*-
-"""Regressao permanente da REGRA DOS 12 MESES e do enquadramento temporal.
+"""Regressao permanente do calendario de ciclos e do enquadramento temporal.
 
-Cada ciclo possui EXATAMENTE 12 competencias mensais consecutivas. As datas de
-inicio e fim decorrem da data-base/aniversario contratual. O
-INICIO_EFEITO_FINANCEIRO decide somente a partir de qual competencia DAQUELE
-ciclo o reajuste produz efeitos: nao altera DATA_INICIO, nao altera DATA_FIM,
-nao desloca o ciclo seguinte, nao amplia o ciclo e nao cria meses fora dos
-ciclos.
+REGRA PETREA — INTERREGNO E EFEITOS (atualizada na etapa 30):
+  * pagamento nunca e marco temporal;
+  * admissibilidade usa a data exata do pedido;
+  * efeito financeiro usa a COMPETENCIA mensal;
+  * tempestivo no mesmo mes da data-base = efeito desde aquela competencia;
+  * tempestivo em mes posterior dentro da janela = TEMPESTIVO* (apresentacao)
+    e efeito desde a competencia do pedido;
+  * o proximo reajuste nasce 12 meses apos o INICIO DOS EFEITOS FINANCEIROS
+    do reajuste anterior — quando ha retardo, o ciclo anterior se ESTENDE ate
+    a vespera do novo marco (mais de 12 competencias), sem lacuna e sem
+    sobreposicao;
+  * cada ciclo tem NO MINIMO 12 competencias mensais consecutivas;
+  * todos os consumidores temporais usam a mesma linha temporal canonica.
+
+Dentro de um ciclo, o INICIO_EFEITO_FINANCEIRO decide somente a partir de
+qual competencia DAQUELE ciclo o reajuste produz efeitos (gate G/H da aba
+financeiro); competencias anteriores pertencem ao ciclo sem efeito.
 
 Cobertura (itens 1 a 38 do enunciado da correcao):
 
@@ -52,7 +63,7 @@ Cobertura (itens 1 a 38 do enunciado da correcao):
 from __future__ import annotations
 
 import sys
-from datetime import date
+from datetime import date, timedelta
 from pathlib import Path
 
 import openpyxl
@@ -674,17 +685,46 @@ def test_lacuna_nunca_vira_intervalo_precluso():
     assert enq.tipo != ENQ_INTERVALO_PRECLUSO
 
 
-def test_gerador_da_coleta_ancora_o_calendario_uma_unica_vez():
-    """A janela do indice de cada ciclo nao pode redefinir o proprio ciclo."""
+def test_gerador_da_coleta_encadeia_pelo_inicio_dos_efeitos():
+    """Regra petrea do interregno: C(n+1) nasce 12 meses apos o INICIO DOS
+    EFEITOS FINANCEIROS de C(n); a janela do indice continua sem redefinir
+    ciclo algum, e o ciclo anterior se estende ate a vespera do novo marco."""
+    dados = normalizar_dados_calculadora({
+        "data_base_original": "01/01/2024",
+        "ciclos": [
+            # C1 com efeito retardado para marco/2025 (TEMPESTIVO*):
+            # C2 nasce em marco/2026 e C1 se estende ate 28/02/2026.
+            {"ciclo": "C1", "data_inicio": date(2025, 1, 1),
+             "financeiro_inicio": date(2025, 3, 1), "percentual": 0.0449},
+            # Janela do indice de C2 (data_base) segue sem participar da
+            # materializacao do calendario.
+            {"ciclo": "C2", "data_base": date(2025, 3, 1),
+             "financeiro_inicio": date(2026, 3, 1), "percentual": 0.0316},
+        ],
+    })
+    por_ciclo = {c["ciclo"]: c for c in dados["ciclos"]}
+    assert por_ciclo["C1"]["data_inicio"] == date(2025, 1, 1)
+    assert por_ciclo["C1"]["data_fim"] == date(2026, 2, 28)
+    assert por_ciclo["C2"]["data_inicio"] == date(2026, 3, 1)
+    # C2 com efeito em 03/2026 (mesma competencia do novo inicio do ciclo):
+    # sem novo retardo, C3 nasceria em 03/2027 e C2 fecha em 28/02/2027.
+    assert por_ciclo["C2"]["data_fim"] == date(2027, 2, 28)
+    # O inicio do efeito financeiro segue preservado (competencia, dia 1).
+    assert por_ciclo["C2"]["inicio_efeito_financeiro"] == date(2026, 3, 1)
+    # Sem lacuna e sem sobreposicao entre os ciclos informados.
+    assert por_ciclo["C2"]["data_inicio"] == por_ciclo["C1"]["data_fim"] + timedelta(days=1)
+
+
+def test_gerador_sem_retardo_mantem_blocos_de_12_meses():
+    """Cenario D: quando o efeito comeca na competencia prevista, a linha
+    temporal permanece identica ao baseline (blocos de 12 meses)."""
     dados = normalizar_dados_calculadora({
         "data_base_original": "01/01/2024",
         "ciclos": [
             {"ciclo": "C1", "data_inicio": date(2025, 1, 1),
-             "financeiro_inicio": date(2025, 3, 1), "percentual": 0.0449},
-            # Janela do indice de C2 ancorada no pedido de C1 (01/03/2025):
-            # e exatamente o que deslocava o ciclo para marco.
-            {"ciclo": "C2", "data_base": date(2025, 3, 1),
-             "financeiro_inicio": date(2026, 3, 1), "percentual": 0.0316},
+             "financeiro_inicio": date(2025, 1, 1), "percentual": 0.0449},
+            {"ciclo": "C2", "data_base": date(2024, 1, 1),
+             "financeiro_inicio": date(2026, 1, 1), "percentual": 0.0316},
         ],
     })
     por_ciclo = {c["ciclo"]: c for c in dados["ciclos"]}
@@ -692,8 +732,6 @@ def test_gerador_da_coleta_ancora_o_calendario_uma_unica_vez():
     assert por_ciclo["C1"]["data_fim"] == date(2025, 12, 31)
     assert por_ciclo["C2"]["data_inicio"] == date(2026, 1, 1)
     assert por_ciclo["C2"]["data_fim"] == date(2026, 12, 31)
-    # O inicio do efeito financeiro segue preservado e independente.
-    assert por_ciclo["C2"]["inicio_efeito_financeiro"] == date(2026, 3, 1)
 
 
 def test_completar_periodos_preserva_a_contiguidade():
