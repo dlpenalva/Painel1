@@ -461,11 +461,11 @@ def render_referencia_temporal_anterior(dados_admissibilidade):
         st.markdown("**Referência temporal anterior ao ciclo analisado**")
         st.markdown(f"Ciclo anterior: **{referencia['ciclo_anterior']}**")
         st.markdown(
-            f"Período anual imediatamente anterior ao início dos efeitos do {ciclo}:  \n"
+            f"Período anual imediatamente anterior à Data-Base do {ciclo}:  \n"
             f"**{referencia['periodo_inicio']} a {referencia['periodo_fim']} — 12 meses**"
         )
         st.markdown(
-            f"Último dia anterior ao início dos efeitos do {ciclo}:  \n"
+            f"Último dia anterior à Data-Base do {ciclo}:  \n"
             f"**{referencia['ultimo_dia_anterior']}**"
         )
     return referencia

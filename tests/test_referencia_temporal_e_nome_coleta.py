@@ -2,8 +2,8 @@
 
 Duas melhorias isoladas do fluxo da Calculadora:
 
-1. bloco somente leitura com a janela de 12 meses-calendario anterior ao inicio
-   dos efeitos do PRIMEIRO ciclo abrangido pela analise, exibido apenas para
+1. bloco somente leitura com a janela de 12 meses-calendario anterior a data-base
+   do PRIMEIRO ciclo abrangido pela analise, exibido apenas para
    C2 ou superior. NAO e o periodo de efeitos financeiros do ciclo anterior —
    o ciclo anterior pode ter sido pedido com atraso;
 2. nome do arquivo no download com os ciclos apurados, inclusive preclusos.
@@ -50,7 +50,9 @@ def _partes_xlsx(conteudo):
         }
 
 
-def _ciclo(rotulo, financeiro_inicio, situacao="Tempestivo", data_base=None):
+def _ciclo(
+    rotulo, financeiro_inicio, situacao="Tempestivo", data_base=None, data_pedido=None
+):
     """Entrada de ciclo no formato que a analise ja produz (dados_admissibilidade)."""
     ciclo = {
         "ciclo": rotulo,
@@ -58,9 +60,9 @@ def _ciclo(rotulo, financeiro_inicio, situacao="Tempestivo", data_base=None):
         "situacao": situacao,
         "percentual_aplicado": 0.04,
     }
-    if data_base is not None:
-        # Ancora do calendario contratual, exigida so pela geracao do XLSX.
-        ciclo["data_base"] = data_base
+    ciclo["data_base"] = data_base if data_base is not None else financeiro_inicio
+    if data_pedido is not None:
+        ciclo["data_pedido"] = data_pedido
     return ciclo
 
 
@@ -82,6 +84,20 @@ COM_PRECLUSO = _dados(
 XLSX_C2_C3 = _dados(
     _ciclo("C2", "01/02/2025", data_base="01/02/2025"),
     _ciclo("C3", "01/02/2026", data_base="01/02/2026"),
+)
+C2_DATA_BASE_DIFERENTE_DO_EFEITO = _dados(
+    _ciclo(
+        "C2",
+        "01/05/2024",
+        data_base="01/03/2023",
+        data_pedido="01/05/2024",
+    ),
+    _ciclo(
+        "C3",
+        "01/05/2025",
+        data_base="01/03/2024",
+        data_pedido="01/05/2025",
+    ),
 )
 
 
@@ -199,11 +215,30 @@ class TestReferenciaTemporalAnterior(unittest.TestCase):
         self.assertEqual(ref["ultimo_dia_anterior"], "31/01/2026")
         self.assertEqual(ref["meses"], 12)
 
-    def test_c2_usa_o_proprio_inicio_dos_efeitos(self):
+    def test_c2_usa_a_propria_data_base(self):
         ref = referencia_temporal_anterior(SO_C2)
         self.assertEqual(ref["ciclo_anterior"], "C1")
         self.assertEqual(ref["periodo_inicio"], "01/02/2024")
         self.assertEqual(ref["periodo_fim"], "31/01/2025")
+
+    def test_exemplo_real_data_base_nao_e_deslocada_pelo_efeito(self):
+        antes = repr(C2_DATA_BASE_DIFERENTE_DO_EFEITO)
+        ref = referencia_temporal_anterior(C2_DATA_BASE_DIFERENTE_DO_EFEITO)
+        ciclo, ciclo_posterior = C2_DATA_BASE_DIFERENTE_DO_EFEITO["ciclos"]
+
+        self.assertEqual(ref["ciclo_analisado"], "C2")
+        self.assertEqual(ref["ciclo_anterior"], "C1")
+        self.assertEqual(ref["data_base"], "01/03/2023")
+        self.assertEqual(ref["periodo_inicio"], "01/03/2022")
+        self.assertEqual(ref["periodo_fim"], "28/02/2023")
+        self.assertEqual(ref["ultimo_dia_anterior"], "28/02/2023")
+        self.assertEqual(ciclo["data_base"], "01/03/2023")
+        self.assertEqual(ciclo["data_pedido"], "01/05/2024")
+        self.assertEqual(ciclo["financeiro_inicio"], "01/05/2024")
+        self.assertEqual(ciclo_posterior["data_base"], "01/03/2024")
+        self.assertEqual(ciclo_posterior["data_pedido"], "01/05/2025")
+        self.assertEqual(ciclo_posterior["financeiro_inicio"], "01/05/2025")
+        self.assertEqual(repr(C2_DATA_BASE_DIFERENTE_DO_EFEITO), antes)
 
     def test_referencia_e_do_primeiro_ciclo_abrangido(self):
         # C2+C3 e ciclo precluso: a ancora e sempre o primeiro ciclo.
@@ -236,6 +271,11 @@ class TestReferenciaTemporalAnterior(unittest.TestCase):
             dados = _dados(_ciclo("C3", valor))
             self.assertIsNone(referencia_temporal_anterior(dados), valor)
 
+    def test_sem_data_base_nao_usa_efeito_financeiro_como_fallback(self):
+        dados = _dados(_ciclo("C2", "01/05/2024"))
+        dados["ciclos"][0].pop("data_base")
+        self.assertIsNone(referencia_temporal_anterior(dados))
+
     def test_entrada_insegura_nao_exibe_bloco(self):
         for entrada in (None, {}, {"ciclos": []}, "lixo"):
             self.assertIsNone(referencia_temporal_anterior(entrada), entrada)
@@ -255,11 +295,12 @@ class TestRenderizacaoDoBloco(unittest.TestCase):
         self.assertIn("Referência temporal anterior ao ciclo analisado", texto)
         self.assertIn("Ciclo anterior: **C2**", texto)
         self.assertIn(
-            "Período anual imediatamente anterior ao início dos efeitos do C3:", texto
+            "Período anual imediatamente anterior à Data-Base do C3:", texto
         )
         self.assertIn("01/02/2025 a 31/01/2026 — 12 meses", texto)
-        self.assertIn("Último dia anterior ao início dos efeitos do C3:", texto)
+        self.assertIn("Último dia anterior à Data-Base do C3:", texto)
         self.assertIn("31/01/2026", texto)
+        self.assertNotIn("início dos efeitos", texto)
 
     def test_bloco_e_somente_leitura(self):
         _, st_falso = _renderizar(SO_C3)

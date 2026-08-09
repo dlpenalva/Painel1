@@ -1,6 +1,6 @@
 """Marcadores decorativos dos dois titulos laterais padronizados com 🔹.
 
-- "Data-base / âncora inicial da análise atual 🔹"
+- "Data-base do ciclo em que **esta análise começa** 🔹"
 - "Índice do contrato 🔹"
 
 O antigo circulo CSS (.cl8us-index-title::after) foi removido. Controles nativos
@@ -17,7 +17,7 @@ MARCADOR = "\U0001F539"  # 🔹 small blue diamond
 
 
 def test_data_base_tem_marcador_no_final():
-    assert f"Data-base / âncora inicial da análise atual {MARCADOR}" in MULTI
+    assert f"Data-base do ciclo em que **esta análise começa** {MARCADOR}" in MULTI
 
 
 def test_indice_do_contrato_tem_marcador_no_final():
@@ -56,7 +56,7 @@ def test_nao_usa_outros_simbolos_proibidos():
     for simbolo in ("●", "•", "\U0001F4CC", "\U0001F4CD", "\U0001F538",
                     "▫️", "▪️"):
         assert f"Índice do contrato {simbolo}" not in UI
-        assert f"análise atual {simbolo}" not in MULTI
+        assert f"esta análise começa** {simbolo}" not in MULTI
 
 
 def test_controles_nativos_nao_alterados():
@@ -70,7 +70,7 @@ def test_controles_nativos_nao_alterados():
 def _bloco_date_input_data_base():
     # Extrai o corpo da chamada st.date_input do campo Data-base, do rotulo ate
     # o primeiro parentese de fechamento.
-    rotulo = f"Data-base / âncora inicial da análise atual {MARCADOR}"
+    rotulo = f"Data-base do ciclo em que **esta análise começa** {MARCADOR}"
     ini = MULTI.index(rotulo)
     fim = MULTI.index(")", ini)
     return MULTI[ini:fim]

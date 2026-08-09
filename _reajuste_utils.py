@@ -257,9 +257,9 @@ def referencia_temporal_anterior(dados_admissibilidade):
     ciclo anterior": o ciclo anterior pode ter sido solicitado com atraso e
     nao ter produzido efeitos em todos os 12 meses apresentados.
 
-    Deriva exclusivamente do inicio dos efeitos financeiros ja apurado pelo
-    fluxo ('financeiro_inicio'); nao cria admissibilidade, nao altera datas,
-    indices, percentuais, fatores nem resultados.
+    Deriva exclusivamente da data-base ja apurada para o primeiro ciclo da
+    analise ('data_base'); nao cria admissibilidade, nao altera datas, indices,
+    percentuais, fatores nem resultados.
 
     Retorna None para C1 (nao ha ciclo anterior) e sempre que os dados nao
     permitirem identificar o ciclo ou a data com seguranca.
@@ -273,16 +273,16 @@ def referencia_temporal_anterior(dados_admissibilidade):
     if numero < 2:
         return None
 
-    inicio_efeitos = _data_para_datetime(ciclo.get("financeiro_inicio"))
-    if inicio_efeitos is None:
+    data_base = _data_para_datetime(ciclo.get("data_base"))
+    if data_base is None:
         return None
 
-    periodo_inicio = inicio_efeitos - relativedelta(months=12)
-    periodo_fim = inicio_efeitos - relativedelta(days=1)
+    periodo_inicio = data_base - relativedelta(months=12)
+    periodo_fim = data_base - relativedelta(days=1)
     return {
         "ciclo_analisado": f"C{numero}",
         "ciclo_anterior": f"C{numero - 1}",
-        "inicio_efeitos": inicio_efeitos.strftime("%d/%m/%Y"),
+        "data_base": data_base.strftime("%d/%m/%Y"),
         "periodo_inicio": periodo_inicio.strftime("%d/%m/%Y"),
         "periodo_fim": periodo_fim.strftime("%d/%m/%Y"),
         "ultimo_dia_anterior": periodo_fim.strftime("%d/%m/%Y"),
