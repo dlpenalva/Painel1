@@ -341,6 +341,42 @@ def _capacidade_financeiro(ws) -> int:
     return (ultima - 1) if ultima > 1 else 72
 
 
+def _data_financeira(valor):
+    """Converte as datas já calculadas pela WEB sem recriar regra temporal."""
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    texto = str(valor or "").strip()
+    for formato in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y", "%m/%Y"):
+        try:
+            return datetime.strptime(texto, formato).date()
+        except ValueError:
+            continue
+    return None
+
+
+def _defasagem_financeira_competencias(ciclo: dict[str, Any]) -> int | None:
+    """Quantidade real de competências sem efeito dentro do ciclo.
+
+    A habilitação é a competência de ``data_base + 12 meses`` e o início do
+    efeito já vem decidido pela WEB. A diferença mensal entre esses dois
+    marcos é aplicada somente ao próprio bloco cronológico de 12 competências.
+    ``None`` preserva o fallback legado quando a data-base não está disponível.
+    """
+    data_base = _data_financeira(ciclo.get("data_base"))
+    inicio_efeito = _data_financeira(ciclo.get("inicio_efeito_financeiro"))
+    if data_base is None or inicio_efeito is None:
+        return None
+    habilitacao = (data_base + relativedelta(months=12)).replace(day=1)
+    inicio_efeito = inicio_efeito.replace(day=1)
+    meses = (
+        (inicio_efeito.year - habilitacao.year) * 12
+        + inicio_efeito.month - habilitacao.month
+    )
+    return min(max(meses, 0), 12)
+
+
 def _preencher_financeiro(ws, ciclos: dict[str, Any], data_corte_fallback=None, v102: bool = False, novo: bool = False, marco_inicial=None) -> None:
     """Preenche a aba FINANCEIRO com ciclos e competências.
 
@@ -348,9 +384,10 @@ def _preencher_financeiro(ws, ciclos: dict[str, Any], data_corte_fallback=None, 
     automaticamente. Coluna C (Valor liquidado/pago) fica vazia para o usuário.
     Colunas D, E, F são preenchidas pelo usuário no Excel.
 
-    Gap financeiro (v10.3.3): competências anteriores ao mês do pedido efetivo
-    recebem G="Não" e destaque visual, mesmo que o ciclo seja computável.
-    Isso impede que essas competências somem delta retroativo.
+    Gap financeiro: em cada bloco fixo de 12 competências, somente as primeiras
+    N recebem G="Não", onde N é a defasagem real daquele ciclo entre a primeira
+    competência habilitada e o início dos efeitos já decidido pela WEB.
+    Isso impede que essas competências somem delta retroativo sem deslocar ciclo.
 
     data_corte_fallback: usada como data_fim quando o ciclo não informa data_fim.
     v102: se True, preserva linhas 2-6 (agregados + separador); competências
@@ -416,12 +453,18 @@ def _preencher_financeiro(ws, ciclos: dict[str, Any], data_corte_fallback=None, 
                 if isinstance(inicio_efeito, datetime):
                     inicio_efeito = inicio_efeito.date()
                 if computavel and isinstance(inicio_efeito, date):
-                    efeito = (
-                        "Sim"
-                        if (competencia.year, competencia.month)
-                        >= (inicio_efeito.year, inicio_efeito.month)
-                        else "Nao"
-                    )
+                    defasagem = _defasagem_financeira_competencias(ciclo_competencia)
+                    if defasagem is not None:
+                        posicao_no_ciclo = meses_do_marco % 12
+                        efeito = "Nao" if posicao_no_ciclo < defasagem else "Sim"
+                    else:
+                        # Compatibilidade com payloads antigos sem data_base.
+                        efeito = (
+                            "Sim"
+                            if (competencia.year, competencia.month)
+                            >= (inicio_efeito.year, inicio_efeito.month)
+                            else "Nao"
+                        )
             _escrever_entrada(ws, f"G{linha}", efeito)
             competencia = competencia + relativedelta(months=1)
             linha += 1

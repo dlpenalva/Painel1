@@ -406,13 +406,8 @@ def _primeiro_ciclo_analise(contexto):
 
 
 def _calcular_data_inicial_ciclo(dt_base, primeiro_ciclo_num, contexto):
-    """Calcula a âncora do primeiro ciclo atual pela mesma regra da v3.0."""
-    ultimo_num = _ciclo_para_numero((contexto or {}).get('ultimo_ciclo_concedido', ''))
-    numero_inicial = int(primeiro_ciclo_num)
-    if ultimo_num > 0:
-        salto = numero_inicial - ultimo_num - 1
-        return dt_base if salto < 0 else dt_base + relativedelta(years=salto)
-    return dt_base + relativedelta(years=numero_inicial - 1)
+    """Usa a data informada como âncora do primeiro ciclo da análise atual."""
+    return dt_base
 
 
 def _data_contexto_para_datetime(valor):
@@ -1910,6 +1905,80 @@ if not st.session_state.get("_calculadora_reajustes_embedded", False):
         "Ferramenta para análise contratual com mais de um ciclo de reajuste.",
     )
 
+
+# >>> REGUA_TEMPORAL_MARCOS_V1 (Etapa 32 — componente exclusivamente visual)
+_REGUA_TEMPORAL_CSS = """
+<style>
+.cl8us-regua { border: 1px solid #D8E3EE; border-radius: 10px; padding: 12px 14px 8px 14px; margin: 4px 0 14px 0; background: #FFFFFF; overflow-x: auto; }
+.cl8us-regua-titulo { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748B; margin: 0 0 4px 0; }
+.cl8us-regua-titulo.efeitos { margin-top: 10px; border-top: 1px dashed #D8E3EE; padding-top: 10px; }
+.cl8us-regua-grid { display: grid; }
+.cl8us-regua-col { text-align: center; min-width: 104px; }
+.cl8us-regua-rotulo { font-size: 0.82rem; font-weight: 700; color: #123B63; }
+.cl8us-regua-linha { position: relative; height: 18px; background: linear-gradient(#9CBBD4, #9CBBD4) 0 50% / 100% 2px no-repeat; }
+.cl8us-regua-grid .cl8us-regua-col:last-child .cl8us-regua-linha::after { content: "\\2192"; position: absolute; right: -4px; top: 50%; transform: translateY(-55%); color: #9CBBD4; font-size: 0.8rem; line-height: 1; }
+.cl8us-regua-dot { display: block; width: 10px; height: 10px; border-radius: 50%; background: #FFFFFF; border: 2px solid #123B63; margin: 4px auto 0 auto; }
+.cl8us-regua-dot.analise { background: #123B63; }
+.cl8us-regua-data { font-size: 0.76rem; color: #334155; margin-top: 2px; }
+.cl8us-regua-tag { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; color: #123B63; margin-top: 2px; min-height: 1em; }
+.cl8us-regua-efeito-seta { color: #123B63; font-size: 0.72rem; letter-spacing: -1px; }
+</style>
+"""
+
+
+def _render_regua_temporal_marcos(destino, marcos):
+    """Régua temporal horizontal dos marcos já calculados pela própria página.
+
+    Componente EXCLUSIVAMENTE visual (Etapa 32): apenas representa os dados que
+    esta página já produziu para renderização (contexto lateral e input_ciclos).
+    Nada é recalculado, nenhuma data é inferida — marco sem informação
+    simplesmente não aparece.
+    """
+    if not marcos:
+        return
+    celulas_marcos = []
+    celulas_efeitos = []
+    for marco in marcos:
+        data_txt = marco["data"].strftime("%d/%m/%Y") if hasattr(marco["data"], "strftime") else ""
+        classe_dot = "cl8us-regua-dot analise" if marco["em_analise"] else "cl8us-regua-dot"
+        tag = (
+            '<div class="cl8us-regua-tag">&#9650; EM ANÁLISE</div>'
+            if marco["primeiro_da_analise"]
+            else '<div class="cl8us-regua-tag"></div>'
+        )
+        celulas_marcos.append(
+            '<div class="cl8us-regua-col">'
+            f'<div class="cl8us-regua-rotulo">{marco["rotulo"]}</div>'
+            f'<div class="cl8us-regua-linha"><span class="{classe_dot}"></span></div>'
+            f'<div class="cl8us-regua-data">{data_txt}</div>'
+            f'{tag}'
+            '</div>'
+        )
+        inicio_efeito = marco.get("inicio_efeito")
+        if inicio_efeito is not None and hasattr(inicio_efeito, "strftime"):
+            celulas_efeitos.append(
+                '<div class="cl8us-regua-col">'
+                '<div class="cl8us-regua-efeito-seta">&#9679;&#8212;&#8594;</div>'
+                f'<div class="cl8us-regua-data">{inicio_efeito.strftime("%d/%m/%Y")}</div>'
+                '</div>'
+            )
+        else:
+            celulas_efeitos.append('<div class="cl8us-regua-col"></div>')
+    estilo_grid = f'style="grid-template-columns: repeat({len(marcos)}, minmax(104px, 1fr));"'
+    blocos = [
+        _REGUA_TEMPORAL_CSS,
+        '<div class="cl8us-regua">',
+        '<div class="cl8us-regua-titulo">Marcos dos ciclos</div>',
+        f'<div class="cl8us-regua-grid" {estilo_grid}>{"".join(celulas_marcos)}</div>',
+    ]
+    if any(m.get("inicio_efeito") is not None for m in marcos):
+        blocos.append('<div class="cl8us-regua-titulo efeitos">Efeitos financeiros</div>')
+        blocos.append(f'<div class="cl8us-regua-grid" {estilo_grid}>{"".join(celulas_efeitos)}</div>')
+    blocos.append('</div>')
+    with destino:
+        st.markdown("".join(blocos), unsafe_allow_html=True)
+# <<< REGUA_TEMPORAL_MARCOS_V1
+
 # O histórico permanece enxuto: a web coleta somente o marco necessário para
 # calcular corretamente o primeiro ciclo atual; os demais fatos ficam no XLS.
 contexto_contratual = {}
@@ -1918,7 +1987,7 @@ default_dt_base_original = datetime(2022, 10, 10)
 
 with st.sidebar:
     dt_base_original = st.date_input(
-        "Data-base / âncora inicial da análise atual 🔹",
+        "Data-base do ciclo em que **esta análise começa** 🔹",
         value=default_dt_base_original,
         format="DD/MM/YYYY",
     )
@@ -1992,17 +2061,10 @@ with st.sidebar:
                 "data_base_ultimo_ciclo": _marco_temporal_anterior,
             }
             _contexto_calculo = contexto_contratual
-            _dt_base_calculo = _marco_temporal_anterior
         elif _sit_anterior == "Situação desconhecida":
-            st.warning(
-                f"Situação anterior não confirmada. A data-base de C{primeiro_ciclo_num} "
-                "será calculada pela linha anual da data-base original."
-            )
+            st.warning("Situação anterior não confirmada.")
         else:
-            st.info(
-                f"Sem ciclo anterior concedido. A data-base de C{primeiro_ciclo_num} "
-                "será calculada pela linha anual da data-base original."
-            )
+            st.info("Sem ciclo anterior concedido.")
 
     opcoes_ciclo_final = [f"C{numero}" for numero in range(primeiro_ciclo_num, 5)]
     chave_ciclo_final = "rep_ciclo_final_analise"
@@ -2037,9 +2099,15 @@ with st.sidebar:
 # Isso evita que a página abra com um cenário fictício já calculado.
 input_ciclos = []
 containers_ciclos = []
-# Regra idêntica à v3.0: sem histórico concedido, segue a linha anual; com
-# ciclo formalizado, usa o marco informado e avança apenas os ciclos pulados.
+# A data lateral é a semente exata do primeiro ciclo escolhido. O histórico
+# anterior permanece apenas como contexto; as regras dos ciclos seguintes não mudam.
 data_atual = _calcular_data_inicial_ciclo(_dt_base_calculo, primeiro_ciclo_num, _contexto_calculo)
+
+# >>> REGUA_TEMPORAL_MARCOS_V1: reserva o espaço da régua ANTES dos blocos que
+# detalham individualmente os ciclos; o preenchimento acontece logo após o
+# loop, quando input_ciclos está completo (mesmos dados, nenhuma lógica nova).
+slot_regua_temporal = st.container()
+# <<< REGUA_TEMPORAL_MARCOS_V1
 
 for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
     i = primeiro_ciclo_num + posicao_ciclo - 1
@@ -2065,7 +2133,7 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         )
 
     # Todo ciclo selecionado nesta tela integra a análise atual. O ciclo
-    # histórico informado na lateral serve apenas como âncora e contexto do XLS.
+    # histórico informado na lateral serve apenas como contexto do XLS.
     ciclo_ja_concedido = False
 
     # Lógica de Admissibilidade preservada (DATA EXATA do pedido x janela).
@@ -2197,6 +2265,32 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
 
     containers_ciclos.append(st.container())
     data_atual = data_base_proximo_ciclo
+
+# >>> REGUA_TEMPORAL_MARCOS_V1: montagem exclusivamente visual (Etapa 32).
+# Reutiliza apenas dados já produzidos acima (contexto do ciclo formalizado na
+# lateral e input_ciclos); nenhum marco é inferido — ciclo sem informação
+# disponível simplesmente não aparece na régua.
+marcos_regua = []
+_ciclo_formalizado_regua = str(contexto_contratual.get("ultimo_ciclo_concedido") or "").strip()
+_marco_formalizado_regua = contexto_contratual.get("data_base_ultimo_ciclo")
+if _ciclo_formalizado_regua and hasattr(_marco_formalizado_regua, "strftime"):
+    marcos_regua.append({
+        "rotulo": _ciclo_formalizado_regua,
+        "data": _marco_formalizado_regua,
+        "em_analise": False,
+        "primeiro_da_analise": False,
+        "inicio_efeito": None,
+    })
+for _posicao_regua, _dados_regua in enumerate(input_ciclos):
+    marcos_regua.append({
+        "rotulo": f"C{_dados_regua['numero']}",
+        "data": _dados_regua["data_atual"],
+        "em_analise": True,
+        "primeiro_da_analise": _posicao_regua == 0,
+        "inicio_efeito": _dados_regua.get("inicio_efeito_financeiro"),
+    })
+_render_regua_temporal_marcos(slot_regua_temporal, marcos_regua)
+# <<< REGUA_TEMPORAL_MARCOS_V1
 
 chave_analise_multiplos = (
     primeiro_ciclo_num,
