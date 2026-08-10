@@ -43,6 +43,21 @@ def _serie_com_jun26():
     return _df(pares)
 
 
+# Competencia que a serie online possui e a fixture local deliberadamente nao:
+# e a ultima de _serie_com_jun26(). Nao aponta para o ist.csv versionado, entao
+# atualizacoes normais da serie oficial nao tornam o teste obsoleto.
+COMPETENCIA_SO_ONLINE = datetime.date(2026, 6, 1)
+
+# CSV local sintetico no layout MES_ANO;INDICE_NIVEL, truncado na competencia
+# anterior a COMPETENCIA_SO_ONLINE. Valores ficticios e monotonos, espelhando
+# _serie_com_jun26() para que a unica diferenca seja a competencia final.
+_CSV_LOCAL_TRUNCADO = "\n".join(
+    ["MES_ANO;INDICE_NIVEL"]
+    + [f"{m}/25;{350 + i},0" for i, m in enumerate(["jun", "jul", "ago", "set", "out", "nov", "dez"])]
+    + [f"{m}/26;{358 + i},0" for i, m in enumerate(["jan", "fev", "mar", "abr", "mai"])]
+) + "\n"
+
+
 def _patch_anatel(monkeypatch, retorno=None, erro=None):
     def fake(*a, **k):
         if erro is not None:
@@ -77,12 +92,33 @@ def test_bc_calculo_usa_serie_online_com_jun26(monkeypatch):
     assert "Anatel" in res["metodo"]
 
 
-def test_c_competencia_apenas_na_anatel_nao_existe_no_csv(monkeypatch):
-    base_local = _indice_utils.carregar_ist_local("ist.csv")
-    tem_jun26_local = ((base_local["data"].dt.year == 2026) & (base_local["data"].dt.month == 6)).any()
-    assert not tem_jun26_local
+def test_c_competencia_apenas_na_anatel_nao_existe_no_csv(monkeypatch, tmp_path):
+    """Competencia so na Anatel alimenta o calculo mesmo ausente do CSV local.
+
+    O CSV local e uma fixture controlada, truncada de proposito em mai/26.
+    Antes o teste lia o ist.csv do repositorio e exigia que jun/26 estivesse
+    ausente dele — premissa que a atualizacao normal da serie derruba. Com a
+    fixture, a ausencia passa a ser garantida por construcao e o teste deixa
+    de depender da evolucao do arquivo versionado.
+    """
+    csv_local = tmp_path / "ist_local.csv"
+    csv_local.write_text(_CSV_LOCAL_TRUNCADO, encoding="utf-8")
+    caminho = str(csv_local)
+
+    base_local = _indice_utils.carregar_ist_local(caminho)
+    tem_so_online_no_local = (
+        (base_local["data"].dt.year == COMPETENCIA_SO_ONLINE.year)
+        & (base_local["data"].dt.month == COMPETENCIA_SO_ONLINE.month)
+    ).any()
+    assert not tem_so_online_no_local
+
+    # Sem a Anatel o calculo nao se completa: prova, por comportamento, que a
+    # competencia final vem da fonte online e nao do CSV local.
+    _patch_anatel(monkeypatch, erro=requests.Timeout("timeout"))
+    assert _indice_utils.calcular_ist_numero_indice(datetime.date(2025, 6, 1), caminho) is None
+
     _patch_anatel(monkeypatch, retorno=_serie_com_jun26())
-    res = _indice_utils.calcular_ist_numero_indice(datetime.date(2025, 6, 1))
+    res = _indice_utils.calcular_ist_numero_indice(datetime.date(2025, 6, 1), caminho)
     assert res is not None and res["i_fim"] == pytest.approx(361.891)
 
 
