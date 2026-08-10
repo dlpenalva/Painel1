@@ -1,4 +1,3 @@
-import hashlib
 import re
 import html
 import unicodedata
@@ -18,7 +17,11 @@ from _coleta_oficial import (
     nome_download_coleta,
 )
 from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
-from _estado_apuracao_upload import apuracao_persistida_valida
+from _estado_apuracao_upload import (
+    apuracao_persistida_valida,
+    assinatura_conteudo_upload,
+    invalidar_estado_caso,
+)
 from _capacidades_apuracao import SEIS_DOCUMENTOS_CANONICOS
 from _sumario_executivo import gerar_sumario_executivo
 from _templates_documentos import gerar_despacho_saneador, gerar_termo_apostila
@@ -4881,6 +4884,15 @@ def render_documentos_funcionais_upload(resultado):
                     st.error(f"Não foi possível preparar {titulo}: {exc}")
 
 
+def _invalidar_caso_antes_do_rerun_upload() -> None:
+    """Invalida o caso anterior no callback que antecede o rerun do Streamlit."""
+    novo_arquivo = st.session_state.get("upload_coleta_documentos")
+    if novo_arquivo is None:
+        return
+    nova_assinatura = assinatura_conteudo_upload(novo_arquivo.getvalue())
+    invalidar_estado_caso(st.session_state, nova_assinatura)
+
+
 # ============================================================
 # Interface
 # ============================================================
@@ -4949,6 +4961,7 @@ with st.container(border=True):
         "Selecione o arquivo .xlsx preenchido",
         type=["xlsx"],
         key="upload_coleta_documentos",
+        on_change=_invalidar_caso_antes_do_rerun_upload,
     )
 
 if arquivo is None:
@@ -4962,12 +4975,10 @@ if arquivo is None:
         st.stop()
 else:
     conteudo_upload = arquivo.getvalue()
-    assinatura_upload = hashlib.sha256(conteudo_upload).hexdigest()
-    if st.session_state.get("assinatura_upload_docs") != assinatura_upload:
-        st.session_state["assinatura_upload_docs"] = assinatura_upload
-        st.session_state.pop("assinatura_processada_upload_docs", None)
-        st.session_state.pop("resultado_valor_global", None)
-        st.session_state.pop("diagnostico_coleta_v2", None)
+    assinatura_upload = assinatura_conteudo_upload(conteudo_upload)
+    # A identidade e verificada antes do botao e antes de qualquer resultado:
+    # nunca existe uma tela intermediaria com o arquivo B e derivados do caso A.
+    invalidar_estado_caso(st.session_state, assinatura_upload)
 
     st.caption(f"Arquivo enviado: {arquivo.name}")
 

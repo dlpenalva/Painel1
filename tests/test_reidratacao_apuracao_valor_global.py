@@ -100,14 +100,19 @@ class TestFluxoReidratacaoNaPagina(unittest.TestCase):
         self.assertLess(resultado_lido, render)
 
     def test_f_invalidacao_por_arquivo_diferente_preservada(self):
-        # O ramo com arquivo mantém a limpeza dos estados derivados quando a
-        # assinatura do novo arquivo difere da última vista pelo uploader.
+        # O ramo com arquivo delega a limpeza escopada ao helper central antes
+        # de oferecer o processamento do novo caso.
         else_idx = PAGINA.index("else:", PAGINA.index("if arquivo is None:"))
         bloco_com_arquivo = PAGINA[else_idx:PAGINA.index('if st.button("Processar"', else_idx)]
-        self.assertIn('if st.session_state.get("assinatura_upload_docs") != assinatura_upload:', bloco_com_arquivo)
-        self.assertIn('st.session_state.pop("resultado_valor_global", None)', bloco_com_arquivo)
-        self.assertIn('st.session_state.pop("diagnostico_coleta_v2", None)', bloco_com_arquivo)
-        self.assertIn('st.session_state.pop("assinatura_processada_upload_docs", None)', bloco_com_arquivo)
+        self.assertIn("assinatura_conteudo_upload(conteudo_upload)", bloco_com_arquivo)
+        self.assertIn(
+            "invalidar_estado_caso(st.session_state, assinatura_upload)",
+            bloco_com_arquivo,
+        )
+        self.assertLess(
+            bloco_com_arquivo.index("invalidar_estado_caso"),
+            bloco_com_arquivo.index('st.caption(f"Arquivo enviado:'),
+        )
 
     def test_adequacao_nao_limpa_apuracao(self):
         # A página de Adequação apenas lê o resultado e navega de volta; jamais

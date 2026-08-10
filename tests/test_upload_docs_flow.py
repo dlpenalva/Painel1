@@ -24,13 +24,27 @@ class TestFluxoUploadDocs(unittest.TestCase):
         botao = PAGINA.index('if st.button("Processar"', inicio)
         trecho = PAGINA[inicio:botao]
         self.assertIn('st.caption(f"Arquivo enviado: {arquivo.name}")', trecho)
-        self.assertIn('"assinatura_upload_docs"', trecho)
+        self.assertIn("assinatura_conteudo_upload(conteudo_upload)", trecho)
+        self.assertIn(
+            "invalidar_estado_caso(st.session_state, assinatura_upload)", trecho
+        )
         self.assertNotIn("processar_coleta_oficial_runtime", trecho)
         self.assertNotIn("render_documentos_funcionais_upload", trecho)
 
         bloco_processar = PAGINA[botao:PAGINA.index('if st.session_state.get("assinatura_processada_upload_docs")', botao)]
         self.assertIn("processar_coleta_oficial_runtime(conteudo_upload)", bloco_processar)
         self.assertIn('st.session_state["assinatura_processada_upload_docs"] = assinatura_upload', bloco_processar)
+
+    def test_troca_invalida_no_callback_antes_do_rerun(self):
+        callback = PAGINA[PAGINA.index("def _invalidar_caso_antes_do_rerun_upload"):]
+        uploader = callback[:callback.index("if arquivo is None:")]
+        self.assertIn("assinatura_conteudo_upload(novo_arquivo.getvalue())", callback)
+        self.assertIn(
+            "invalidar_estado_caso(st.session_state, nova_assinatura)", callback
+        )
+        self.assertIn(
+            "on_change=_invalidar_caso_antes_do_rerun_upload", uploader
+        )
 
     def test_paineis_redundantes_nao_podem_ser_reintroduzidos(self):
         self.assertNotIn("render_status_apuracao", PAGINA)
