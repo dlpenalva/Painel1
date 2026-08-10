@@ -1921,17 +1921,31 @@ _REGUA_TEMPORAL_CSS = """
 <style>
 .cl8us-regua { border: 1px solid #D8E3EE; border-radius: 10px; padding: 12px 14px 8px 14px; margin: 4px 0 14px 0; background: #FFFFFF; overflow-x: auto; }
 .cl8us-regua-titulo { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748B; margin: 0 0 4px 0; }
-.cl8us-regua-titulo.efeitos { margin-top: 10px; border-top: 1px dashed #D8E3EE; padding-top: 10px; }
-.cl8us-regua-grid { display: grid; }
+.cl8us-regua-titulo.efeitos { margin-top: 8px; border-top: 1px dashed #D8E3EE; padding-top: 8px; }
+.cl8us-regua-grid { display: grid; column-gap: 4px; }
 .cl8us-regua-col { text-align: center; min-width: 104px; }
-.cl8us-regua-rotulo { font-size: 0.82rem; font-weight: 700; color: #123B63; }
-.cl8us-regua-linha { position: relative; height: 18px; background: linear-gradient(#9CBBD4, #9CBBD4) 0 50% / 100% 2px no-repeat; }
+.cl8us-regua-rotulo { font-size: 0.82rem; font-weight: 700; color: #94A3B8; line-height: 1.2; }
+.cl8us-regua-col.analise .cl8us-regua-rotulo { color: #123B63; }
+.cl8us-regua-ordem { font-size: 0.64rem; color: #94A3B8; line-height: 1.15; min-height: 0.95rem; }
+.cl8us-regua-col.analise .cl8us-regua-ordem { color: #5B7C9D; }
+.cl8us-regua-linha { position: relative; height: 16px; background: linear-gradient(#E2E8F0, #E2E8F0) 0 50% / 100% 2px no-repeat; }
+.cl8us-regua-col.analise .cl8us-regua-linha { background: linear-gradient(#9CBBD4, #9CBBD4) 0 50% / 100% 2px no-repeat; }
 .cl8us-regua-grid .cl8us-regua-col:last-child .cl8us-regua-linha::after { content: "\\2192"; position: absolute; right: -4px; top: 50%; transform: translateY(-55%); color: #9CBBD4; font-size: 0.8rem; line-height: 1; }
-.cl8us-regua-dot { display: block; width: 10px; height: 10px; border-radius: 50%; background: #FFFFFF; border: 2px solid #123B63; margin: 4px auto 0 auto; }
-.cl8us-regua-dot.analise { background: #123B63; }
+.cl8us-regua-dot { display: block; width: 10px; height: 10px; border-radius: 50%; background: #FFFFFF; border: 2px solid #CBD5E1; margin: 3px auto 0 auto; }
+.cl8us-regua-dot.analise { background: #123B63; border-color: #123B63; }
 .cl8us-regua-data { font-size: 0.76rem; color: #334155; margin-top: 2px; }
-.cl8us-regua-tag { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; color: #123B63; margin-top: 2px; min-height: 1em; }
-.cl8us-regua-efeito-seta { color: #123B63; font-size: 0.72rem; letter-spacing: -1px; }
+.cl8us-regua-tag-slot { display: flex; align-items: center; justify-content: center; height: 1.6rem; margin-top: 2px; }
+.cl8us-regua-tag { display: inline-block; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em; color: #B45309; background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 999px; padding: 0 7px; line-height: 1.45; }
+.cl8us-regua-status { font-size: 0.68rem; color: #475569; line-height: 1.2; min-height: 1rem; }
+.cl8us-regua-efeito-seta { color: #CBD5E1; font-size: 0.72rem; letter-spacing: -1px; }
+.cl8us-regua-col.analise .cl8us-regua-efeito-seta { color: #9CBBD4; }
+.cl8us-regua-efeito-data { font-size: 0.72rem; color: #64748B; }
+@media (max-width: 640px) {
+  .cl8us-regua { padding: 10px 10px 6px 10px; }
+  .cl8us-regua-rotulo { font-size: 0.78rem; }
+  .cl8us-regua-data { font-size: 0.7rem; }
+  .cl8us-regua-ordem, .cl8us-regua-status { font-size: 0.6rem; }
+}
 </style>
 """
 
@@ -1950,30 +1964,33 @@ def _render_regua_temporal_marcos(destino, marcos):
     celulas_efeitos = []
     for marco in marcos:
         data_txt = marco["data"].strftime("%d/%m/%Y") if hasattr(marco["data"], "strftime") else ""
+        classe_col = "cl8us-regua-col analise" if marco["em_analise"] else "cl8us-regua-col"
         classe_dot = "cl8us-regua-dot analise" if marco["em_analise"] else "cl8us-regua-dot"
         tag = (
-            '<div class="cl8us-regua-tag">&#9650; EM ANÁLISE</div>'
+            '<span class="cl8us-regua-tag">EM ANÁLISE</span>'
             if marco["primeiro_da_analise"]
-            else '<div class="cl8us-regua-tag"></div>'
+            else ""
         )
         celulas_marcos.append(
-            '<div class="cl8us-regua-col">'
+            f'<div class="{classe_col}">'
             f'<div class="cl8us-regua-rotulo">{marco["rotulo"]}</div>'
+            f'<div class="cl8us-regua-ordem">{marco.get("ordem", "")}</div>'
             f'<div class="cl8us-regua-linha"><span class="{classe_dot}"></span></div>'
             f'<div class="cl8us-regua-data">{data_txt}</div>'
-            f'{tag}'
+            f'<div class="cl8us-regua-tag-slot">{tag}</div>'
+            f'<div class="cl8us-regua-status">{marco.get("status", "")}</div>'
             '</div>'
         )
         inicio_efeito = marco.get("inicio_efeito")
         if inicio_efeito is not None and hasattr(inicio_efeito, "strftime"):
             celulas_efeitos.append(
-                '<div class="cl8us-regua-col">'
+                f'<div class="{classe_col}">'
                 '<div class="cl8us-regua-efeito-seta">&#9679;&#8212;&#8594;</div>'
-                f'<div class="cl8us-regua-data">{inicio_efeito.strftime("%d/%m/%Y")}</div>'
+                f'<div class="cl8us-regua-efeito-data">{inicio_efeito.strftime("%d/%m/%Y")}</div>'
                 '</div>'
             )
         else:
-            celulas_efeitos.append('<div class="cl8us-regua-col"></div>')
+            celulas_efeitos.append(f'<div class="{classe_col}"></div>')
     estilo_grid = f'style="grid-template-columns: repeat({len(marcos)}, minmax(104px, 1fr));"'
     blocos = [
         _REGUA_TEMPORAL_CSS,
@@ -1987,6 +2004,19 @@ def _render_regua_temporal_marcos(destino, marcos):
     blocos.append('</div>')
     with destino:
         st.markdown("".join(blocos), unsafe_allow_html=True)
+
+
+# Acabamento dos blocos de preenchimento: destaque azul discreto no ciclo que
+# abre a análise e tratamento neutro nos demais. Classes exclusivas desta
+# seção, para não alcançar outros componentes/páginas.
+_TIMELINE_CICLOS_CSS = """
+<style>
+.cl8us-ciclo-nota { border-left: 3px solid #CBD5E1; background: #F8FAFC; border-radius: 0 8px 8px 0; padding: 6px 10px; margin: 2px 0 10px 0; font-size: 0.82rem; line-height: 1.35; color: #475569; }
+.cl8us-ciclo-nota.ativo { border-left-color: #123B63; background: #F1F6FB; color: #1F3A56; }
+.cl8us-ciclo-ordem { display: block; font-size: 0.64rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748B; }
+.cl8us-ciclo-nota.ativo .cl8us-ciclo-ordem { color: #123B63; }
+</style>
+"""
 # <<< REGUA_TEMPORAL_MARCOS_V1
 
 # O histórico permanece enxuto: a web coleta somente o marco necessário para
@@ -2149,6 +2179,11 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
             key=chave_pedido,
             format="DD/MM/YYYY",
         )
+        # Ajuda visual: explicita a data-base que este pedido utiliza (mesma
+        # data já exibida ao lado). Não altera valor, validação ou chave.
+        st.caption(
+            f"Este pedido utiliza a data-base de {data_semente_exata.strftime('%d/%m/%Y')}."
+        )
 
     # Todo ciclo selecionado nesta tela integra a análise atual. O ciclo
     # histórico informado na lateral serve apenas como contexto do XLS.
@@ -2183,6 +2218,24 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         )
     if efeito_financeiro_retardado:
         sit_emoji = "✅ TEMPESTIVO*"
+
+    # Nota exclusivamente visual: torna inequívoca a relação entre a data do
+    # pedido informada e a data-base do ciclo, com as datas que a própria
+    # página já calculou (nada é inferido nem fixado em código).
+    st.markdown(
+        (_TIMELINE_CICLOS_CSS if posicao_ciclo == 1 else "")
+        + '<div class="cl8us-ciclo-nota{classe}">'
+        '<span class="cl8us-ciclo-ordem">{ordem}º ciclo da análise</span>'
+        'Pedido de {pedido} refere-se ao ciclo C{numero}, iniciado em {base}.'
+        '</div>'.format(
+            classe=" ativo" if posicao_ciclo == 1 else "",
+            ordem=posicao_ciclo,
+            pedido=dt_ped.strftime('%d/%m/%Y'),
+            numero=i,
+            base=data_semente_exata.strftime('%d/%m/%Y'),
+        ),
+        unsafe_allow_html=True,
+    )
 
     # Próximo interregno: competência do início dos efeitos + 12 meses (a
     # âncora do ciclo seguinte É o início dos efeitos do anterior). Preclusão
@@ -2312,6 +2365,8 @@ if _ciclo_formalizado_regua and hasattr(_marco_formalizado_regua, "strftime"):
     marcos_regua.append({
         "rotulo": _ciclo_formalizado_regua,
         "data": _marco_formalizado_regua,
+        "ordem": "Ciclo formalizado",
+        "status": "",
         "em_analise": False,
         "primeiro_da_analise": False,
         "inicio_efeito": None,
@@ -2320,6 +2375,11 @@ for _posicao_regua, _dados_regua in enumerate(input_ciclos):
     marcos_regua.append({
         "rotulo": f"C{_dados_regua['numero']}",
         "data": _dados_regua["data_semente_exata"],
+        # A ordem acompanha a posição real do ciclo dentro da apuração; todo
+        # ciclo listado aqui compõe a análise, por isso nenhum deles é rotulado
+        # como "próximo ciclo".
+        "ordem": f"{_posicao_regua + 1}º ciclo da análise",
+        "status": _dados_regua.get("sit_emoji", ""),
         "em_analise": True,
         "primeiro_da_analise": _posicao_regua == 0,
         "inicio_efeito": _dados_regua.get("inicio_efeito_financeiro"),
