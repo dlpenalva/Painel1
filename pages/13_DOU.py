@@ -2,7 +2,9 @@ from io import BytesIO
 from decimal import Decimal, ROUND_HALF_UP
 from datetime import datetime
 from zoneinfo import ZoneInfo
+import math
 import re
+import unicodedata
 
 import pandas as pd
 import streamlit as st
@@ -61,10 +63,21 @@ def moeda(valor):
 
 
 def percentual(valor, casas=2):
+    if valor is None:
+        return "[preencher campo]"
     try:
-        v = float(valor or 0)
+        if pd.isna(valor):
+            return "[preencher campo]"
     except Exception:
-        v = 0.0
+        pass
+    if isinstance(valor, str) and not valor.strip():
+        return "[preencher campo]"
+    try:
+        v = float(valor)
+    except Exception:
+        return "[preencher campo]"
+    if not math.isfinite(v):
+        return "[preencher campo]"
     if abs(v) <= 1:
         v *= 100
     return f"{v:.{casas}f}%".replace(".", ",")
@@ -183,6 +196,13 @@ def obter_df_ciclos(res, adm):
     return pd.DataFrame()
 
 
+def _tratamento_e_apurar(valor):
+    texto = texto_seguro(valor, "")
+    texto = unicodedata.normalize("NFKD", texto)
+    texto = "".join(c for c in texto if not unicodedata.combining(c))
+    return " ".join(texto.lower().split()) == "apurar"
+
+
 def ciclos_reajuste_texto(res, adm):
     df = obter_df_ciclos(res, adm)
     if not isinstance(df, pd.DataFrame) or df.empty:
@@ -191,6 +211,7 @@ def ciclos_reajuste_texto(res, adm):
     col_ciclo = _coluna(df, ["Ciclo"])
     col_pct = _coluna(df, ["Percentual aplicado", "Variação", "Variacao", "percentual_aplicado", "variacao"])
     col_fator_acum = _coluna(df, ["Fator acumulado", "fator_acumulado"])
+    col_tratamento = _coluna(df, ["Tratamento financeiro do ciclo"])
 
     linhas = []
     fator_acum_final = None
@@ -198,7 +219,9 @@ def ciclos_reajuste_texto(res, adm):
         ciclo = texto_seguro(row.get(col_ciclo, "") if col_ciclo else "", "")
         if not ciclo or str(ciclo).upper() == "C0":
             continue
-        pct_val = row.get(col_pct, 0) if col_pct else 0
+        if col_tratamento is not None and not _tratamento_e_apurar(row.get(col_tratamento)):
+            continue
+        pct_val = row.get(col_pct) if col_pct else None
         linhas.append(f"{ciclo}: {percentual(pct_val)}")
         if col_fator_acum:
             try:
