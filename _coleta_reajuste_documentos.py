@@ -122,7 +122,7 @@ def adaptar_coleta_reajuste_para_documentos(
     origem_label = _rotulo_origem_coleta(conteudo)
 
     ciclos_rows = []
-    fatores: dict[str, float] = {}
+    fatores: dict[str, float | None] = {}
     # Fallback acionado apenas quando a formula nao tem valor calculado: o
     # valor gravado no arquivo continua tendo precedencia absoluta.
     cadeia_fator = _cadeia_fator_acumulado(parametros)
@@ -130,11 +130,17 @@ def adaptar_coleta_reajuste_para_documentos(
         ciclo = str(parametros[f"B{row}"].value or "").upper()
         if not ciclo:
             continue
+        computar = str(parametros[f"A{row}"].value or "").strip().lower() == "sim"
         fator_gravado = parametros[f"F{row}"].value
         if fator_gravado in (None, ""):
-            fator = cadeia_fator.get(row, 1.0)
+            fator = cadeia_fator.get(row)
+            # C0 e ciclos fora da apuracao preservam o fallback historico de
+            # apresentacao. Em ciclo efetivamente computado, ausencia da cadeia
+            # significa fator nao calculavel, nunca reajuste neutro de 1,0.
+            if fator is None and not computar:
+                fator = 1.0
         else:
-            fator = _numero(fator_gravado, 1.0)
+            fator = _numero(fator_gravado, None if computar else 1.0)
         fatores[ciclo] = fator
         ciclos_rows.append(
             {
@@ -220,7 +226,16 @@ def adaptar_coleta_reajuste_para_documentos(
                 {
                     "Item": item,
                     "Ciclo": ciclo,
-                    "Valor unitário": total / qtd if qtd else _numero(remanescentes[f"C{row}"].value) * fatores.get(ciclo, 1.0),
+                    "Valor unitário": (
+                        total / qtd
+                        if qtd
+                        else (
+                            _numero(remanescentes[f"C{row}"].value)
+                            * fatores.get(ciclo, 1.0)
+                            if fatores.get(ciclo, 1.0) is not None
+                            else None
+                        )
+                    ),
                     "Quantidade": qtd,
                     "Total R$": total,
                     "Ciclo precluso": False,
@@ -298,7 +313,10 @@ def adaptar_coleta_reajuste_para_documentos(
     pago_total = float(df_financeiro["Valor pago/faturado"].sum()) if not df_financeiro.empty else 0.0
     devido_total = float(df_financeiro["Valor atualizado"].sum()) if not df_financeiro.empty else 0.0
     total_aditivos = float(df_aditivos["Valor do aditivo reajustado"].sum()) if not df_aditivos.empty else 0.0
-    fator_final = max(fatores.values(), default=1.0)
+    # A fonte canonica da vigencia ja e CONTROLE!B2/leitura.controle.
+    # Fatores historicos permanecem no detalhamento, mas nao escolhem o valor
+    # documental pelo maior numero.
+    fator_final = fatores.get(ciclo_vigente)
     execucao_atualizada = valor_total - rem_atualizado
 
     df_rem = pd.DataFrame(
@@ -351,7 +369,7 @@ def adaptar_coleta_reajuste_para_documentos(
         "origem_ciclos": origem_label,
         "indice": controle["B7"].value or "Não informado",
         "fator_acumulado": fator_final,
-        "variacao_acumulada": fator_final - 1.0,
+        "variacao_acumulada": fator_final - 1.0 if fator_final is not None else None,
         "quantidade_ciclos": len(ciclos_rows),
         "valor_original_contrato": valor_original,
         "contexto_contratual_anterior": {},

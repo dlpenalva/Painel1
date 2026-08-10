@@ -192,14 +192,10 @@ def test_novo_hash_invalida_somente_estado_derivado_do_caso() -> None:
 
 
 # ---------------------------------------------------------------------------
-# TESTES 2 e 3 - fator acumulado (XFAIL STRICT ate a 35B)
+# TESTES 2 e 3 - fator acumulado (GREEN desde a 35B)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="Etapa 35B - fator ausente em ciclo computado deve ser nao calculavel",
-    strict=True,
-)
 def test_ciclo_computado_sem_percentual_nao_recebe_fator_um(
     coleta_base_multiciclo: bytes,
 ) -> None:
@@ -221,10 +217,6 @@ def test_ciclo_computado_sem_percentual_nao_recebe_fator_um(
     )
 
 
-@pytest.mark.xfail(
-    reason="Etapa 35B - fator deve seguir o ciclo vigente, nao max(fatores)",
-    strict=True,
-)
 def test_fator_apresentado_e_do_ciclo_vigente_e_nao_o_maximo_historico(
     coleta_base_multiciclo: bytes,
 ) -> None:
@@ -243,6 +235,89 @@ def test_fator_apresentado_e_do_ciclo_vigente_e_nao_o_maximo_historico(
     # Cadeia canonica: C1=1,10; C2 vigente=1,10*0,95=1,045.
     assert resultado["fator_acumulado"] == pytest.approx(1.045)
     assert resultado["variacao_acumulada"] == pytest.approx(0.045)
+
+
+def test_inicio_em_c2_preserva_c1_fora_e_falha_fechada_sem_cadeia(
+    coleta_base_multiciclo: bytes,
+) -> None:
+    """C1 vazio e fora da apuracao nao e inventado para fechar a cadeia de C2."""
+
+    def mutacao(wb) -> None:
+        wb["CONTROLE"]["B2"] = "C2"
+        parametros = wb["parametros"]
+        parametros["A3"] = "Nao"
+        parametros["E3"] = None
+        parametros["F3"] = None
+        parametros["A4"] = "Sim"
+        parametros["E4"] = 0.05
+        parametros["F4"] = None
+
+    conteudo = _mutar_coleta(coleta_base_multiciclo, mutacao)
+    wb = load_workbook(io.BytesIO(conteudo), data_only=False)
+    try:
+        assert wb["parametros"]["A3"].value == "Nao"
+        assert wb["parametros"]["E3"].value is None
+        assert wb["parametros"]["F3"].value is None
+    finally:
+        wb.close()
+
+    resultado = _adaptar(conteudo, "C2")
+    ciclos = resultado["df_ciclos"].set_index("Ciclo")
+
+    assert ciclos.loc["C1", "Tratamento financeiro do ciclo"] == "Fora da apuração"
+    assert ciclos.loc["C2", "Tratamento financeiro do ciclo"] == "Apurar"
+    assert pd.isna(ciclos.loc["C2", "Fator acumulado"])
+    assert resultado["fator_acumulado"] is None
+    assert resultado["variacao_acumulada"] is None
+
+    # A insuficiencia permanece revisavel; nao impede gerar os documentos.
+    assert gerar_despacho_saneador(resultado)[:2] == b"PK"
+    assert gerar_termo_apostila(resultado)[:2] == b"PK"
+
+
+def test_inicio_em_c2_ate_c4_consolida_fator_do_c4_sem_influencia_do_c1(
+    coleta_base_multiciclo: bytes,
+) -> None:
+    """O maior fator historico e o fallback de C1 nao substituem o C4 vigente."""
+
+    def mutacao(wb) -> None:
+        wb["CONTROLE"]["B2"] = "C4"
+        parametros = wb["parametros"]
+        parametros["A3"] = "Nao"
+        parametros["E3"] = None
+        parametros["F3"] = None
+        parametros["A4"] = "Sim"
+        parametros["E4"] = 0.08
+        parametros["F4"] = 1.08
+        parametros["A5"] = "Sim"
+        parametros["E5"] = 0.04
+        parametros["F5"] = 1.1232
+        parametros["A6"] = "Sim"
+        parametros["E6"] = -0.03
+        parametros["F6"] = 1.089504
+
+    resultado = _adaptar(_mutar_coleta(coleta_base_multiciclo, mutacao), "C4")
+    ciclos = resultado["df_ciclos"].set_index("Ciclo")
+
+    assert ciclos.loc["C1", "Tratamento financeiro do ciclo"] == "Fora da apuração"
+    for ciclo in ("C2", "C3", "C4"):
+        assert ciclos.loc[ciclo, "Tratamento financeiro do ciclo"] == "Apurar"
+    assert ciclos.loc["C1", "Fator acumulado"] == pytest.approx(1.0)
+    assert ciclos.loc["C3", "Fator acumulado"] == pytest.approx(1.1232)
+    assert ciclos.loc["C4", "Fator acumulado"] == pytest.approx(1.089504)
+    assert resultado["fator_acumulado"] == pytest.approx(1.089504)
+    assert resultado["variacao_acumulada"] == pytest.approx(0.089504)
+
+    # Os documentos continuam geraveis e nao adotam o fallback de C1 nem o
+    # maximo de C3 como percentual acumulado. Quando a camada documental nao
+    # possui evidencia suficiente para imprimir o acumulado, ela segue com o
+    # placeholder fail-closed ja homologado.
+    for gerar in (gerar_despacho_saneador, gerar_termo_apostila):
+        conteudo = gerar(resultado)
+        xml = _xml_docx(conteudo)
+        assert conteudo[:2] == b"PK"
+        assert "12,32%" not in xml
+        assert "0,00%" not in xml
 
 
 # ---------------------------------------------------------------------------
