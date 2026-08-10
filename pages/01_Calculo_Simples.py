@@ -46,14 +46,7 @@ def aplicar_css_aditivos25_compacto():
 from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox, render_referencia_temporal_anterior
 from _indice_utils import (calcular_ist_numero_indice, coletar_sgs_produtorio,
                            serie_sgs_do_indice)
-from _reajuste_utils import (
-    _competencias_mensais,
-    _formatar_data,
-    _formatar_moeda_br,
-    _formatar_moeda_br_md,
-    _parse_moeda_br,
-    classificar_pedido_por_data_exata,
-)
+from _reajuste_utils import _competencias_mensais, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br
 from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, gerar_coleta_oficial_preenchida, nome_download_coleta
 from _memoria_calculo import normalizar_memoria_calculo
 from _email_contratada import gerar_rascunho_email_contratada, render_email_contratada
@@ -1972,12 +1965,13 @@ dt_fim_ap = dt_base + relativedelta(months=11)
 dt_aniv = dt_base + relativedelta(years=1)
 dt_limite = dt_aniv + relativedelta(days=90)
 
-# Regra de Admissibilidade (DATA EXATA do pedido x janela de 90 dias).
-# Antecipacao tem uma unica classificacao, inclusive dentro do mesmo mes.
-situacao_pedido = classificar_pedido_por_data_exata(dt_solic, dt_aniv, dt_limite)
-if situacao_pedido == "ADIANTADO":
-    status_ped = "⚠️ ADIANTADO"
-elif situacao_pedido == "TEMPESTIVO":
+# Regra de Admissibilidade (DATA EXATA do pedido x janela de 90 dias)
+if dt_solic < dt_aniv:
+    if dt_solic.year == dt_aniv.year and dt_solic.month == dt_aniv.month:
+        status_ped = "🟡 ADMISSÍVEL - RESSALVA"
+    else:
+        status_ped = "⚠️ ADIANTADO (ANTES DOS 12 MESES)"
+elif dt_solic <= dt_limite:
     status_ped = "✅ TEMPESTIVO"
 else:
     status_ped = "❌ PRECLUSO"
