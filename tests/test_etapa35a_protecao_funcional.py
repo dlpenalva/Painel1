@@ -317,14 +317,10 @@ def test_inicio_em_c2_ate_c4_consolida_fator_do_c4_sem_influencia_do_c1(
 
 
 # ---------------------------------------------------------------------------
-# TESTES 4 e 5 - minuta DOU (XFAIL STRICT ate a 35D)
+# TESTES 4 e 5 - minuta DOU (GREEN desde a 35D)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="Etapa 35D - minuta DOU deve usar somente ciclos computados",
-    strict=True,
-)
 def test_dou_exibe_somente_ciclos_computados_na_apuracao_corrente() -> None:
     resultado = {
         "df_ciclos": pd.DataFrame(
@@ -350,19 +346,93 @@ def test_dou_exibe_somente_ciclos_computados_na_apuracao_corrente() -> None:
     assert "C1: 5,00%" in texto
     assert "C2:" not in texto
 
+    inicio_em_c2 = {
+        "df_ciclos": pd.DataFrame(
+            [
+                {
+                    "Ciclo": "C0",
+                    "Percentual aplicado": 0.99,
+                    "Fator acumulado": 1.0,
+                    "Tratamento financeiro do ciclo": "Apurar",
+                },
+                {
+                    "Ciclo": "C1",
+                    "Percentual aplicado": 0.07,
+                    "Fator acumulado": 1.0,
+                    "Tratamento financeiro do ciclo": "Fora da apuração",
+                },
+                {
+                    "Ciclo": "C2",
+                    "Percentual aplicado": 0.05,
+                    "Fator acumulado": 1.05,
+                    "Tratamento financeiro do ciclo": "APURAR",
+                },
+                {
+                    "Ciclo": "C3",
+                    "Percentual aplicado": 0.02,
+                    "Fator acumulado": 1.071,
+                    "Tratamento financeiro do ciclo": " Apurar ",
+                },
+                {
+                    "Ciclo": "C4",
+                    "Percentual aplicado": 0.08,
+                    "Fator acumulado": 1.15668,
+                    "Tratamento financeiro do ciclo": "Não apurar",
+                },
+            ]
+        ),
+        "valor_atualizado_contrato": 1000.0,
+    }
 
-@pytest.mark.xfail(
-    reason="Etapa 35D - percentual ausente no DOU nao pode virar 0,00%",
-    strict=True,
-)
+    texto_inicio_em_c2 = _texto_dou(inicio_em_c2)
+    assert "C0:" not in texto_inicio_em_c2
+    assert "C1:" not in texto_inicio_em_c2
+    assert "C2: 5,00%" in texto_inicio_em_c2
+    assert "C3: 2,00%" in texto_inicio_em_c2
+    assert "C4:" not in texto_inicio_em_c2
+
+    payload_legado = {
+        "df_ciclos": pd.DataFrame(
+            [
+                {"Ciclo": "C1", "Percentual aplicado": 0.03},
+                {"Ciclo": "C2", "Percentual aplicado": 0.04},
+            ]
+        ),
+        "valor_atualizado_contrato": 1000.0,
+    }
+
+    texto_legado = _texto_dou(payload_legado)
+    assert "C1: 3,00%" in texto_legado
+    assert "C2: 4,00%" in texto_legado
+
+
 def test_dou_percentual_ausente_permanece_placeholder() -> None:
-    resultado = {
+    for valor in (None, float("nan"), "", "valor inválido"):
+        resultado = {
+            "df_ciclos": pd.DataFrame(
+                [
+                    {
+                        "Ciclo": "C1",
+                        "Percentual aplicado": valor,
+                        "Fator acumulado": None,
+                        "Tratamento financeiro do ciclo": "Apurar",
+                    }
+                ]
+            ),
+            "valor_atualizado_contrato": 1000.0,
+        }
+
+        texto = _texto_dou(resultado)
+        assert "C1: 0,00%" not in texto
+        assert "C1: [preencher campo]" in texto
+
+    zero_real = {
         "df_ciclos": pd.DataFrame(
             [
                 {
                     "Ciclo": "C1",
-                    "Percentual aplicado": None,
-                    "Fator acumulado": None,
+                    "Percentual aplicado": 0.0,
+                    "Fator acumulado": 1.0,
                     "Tratamento financeiro do ciclo": "Apurar",
                 }
             ]
@@ -370,9 +440,7 @@ def test_dou_percentual_ausente_permanece_placeholder() -> None:
         "valor_atualizado_contrato": 1000.0,
     }
 
-    texto = _texto_dou(resultado)
-    assert "C1: 0,00%" not in texto
-    assert "C1: [preencher campo]" in texto
+    assert "C1: 0,00%" in _texto_dou(zero_real)
 
 
 # ---------------------------------------------------------------------------
