@@ -132,14 +132,10 @@ def _acionar_troca_de_caso(estado: dict, nova_assinatura: str) -> None:
 
 
 # ---------------------------------------------------------------------------
-# TESTE 1 - troca de upload / novo caso (XFAIL STRICT ate a 35C)
+# TESTE 1 - troca de upload / novo caso (GREEN desde a 35C)
 # ---------------------------------------------------------------------------
 
 
-@pytest.mark.xfail(
-    reason="Etapa 35C - invalidacao por escopo ao trocar o caso",
-    strict=True,
-)
 def test_novo_hash_invalida_somente_estado_derivado_do_caso() -> None:
     """Contrato funcional; nao fixa nome, modulo ou assinatura da solucao."""
     estado = {
