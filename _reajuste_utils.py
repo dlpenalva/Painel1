@@ -179,22 +179,6 @@ def _formatar_data(valor):
         return str(valor)
 
 
-def classificar_pedido_por_data_exata(data_pedido, data_referencia_exata, data_limite):
-    """Classifica o pedido pela referencia juridica exata, sem regra mensal."""
-    if data_pedido < data_referencia_exata:
-        return "ADIANTADO"
-    if data_pedido <= data_limite:
-        return "TEMPESTIVO"
-    return "PRECLUSO"
-
-
-def referencia_exata_pedido_subsequente(data_pedido):
-    """Preserva o dia do pedido computavel ao avancar 12 meses-calendario."""
-    from dateutil.relativedelta import relativedelta
-
-    return data_pedido + relativedelta(months=12)
-
-
 def _competencias_mensais(data_inicio, data_fim):
     """Gera competências mensais inclusivas no formato MM/AAAA."""
     from dateutil.relativedelta import relativedelta

@@ -49,17 +49,7 @@ def aplicar_css_aditivos25_compacto():
 from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox, render_referencia_temporal_anterior
 from _indice_utils import (calcular_ist_numero_indice, coletar_sgs_produtorio,
                            serie_sgs_do_indice)
-from _reajuste_utils import (
-    _competencias_mensais,
-    _data_para_datetime,
-    _formatar_data,
-    _formatar_moeda_br,
-    _formatar_moeda_br_md,
-    _parse_moeda_br,
-    _percentual_formatado,
-    classificar_pedido_por_data_exata,
-    referencia_exata_pedido_subsequente,
-)
+from _reajuste_utils import _competencias_mensais, _data_para_datetime, _formatar_data, _formatar_moeda_br, _formatar_moeda_br_md, _parse_moeda_br, _percentual_formatado
 from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, gerar_coleta_oficial_preenchida, nome_download_coleta
 from _memoria_calculo import normalizar_memoria_calculo
 from _email_contratada import render_email_contratada
@@ -2109,11 +2099,9 @@ with st.sidebar:
 # Isso evita que a página abra com um cenário fictício já calculado.
 input_ciclos = []
 containers_ciclos = []
-# A data lateral e a semente do primeiro ciclo escolhido. A referencia juridica
-# exata e mantida separada da ancora mensal usada por indice e financeiro.
+# A data lateral é a semente exata do primeiro ciclo escolhido. O histórico
+# anterior permanece apenas como contexto; as regras dos ciclos seguintes não mudam.
 data_atual = _calcular_data_inicial_ciclo(_dt_base_calculo, primeiro_ciclo_num, _contexto_calculo)
-data_semente_exata = data_atual
-data_referencia_exata = data_atual + relativedelta(months=12)
 
 # >>> REGUA_TEMPORAL_MARCOS_V1: reserva o espaço da régua ANTES dos blocos que
 # detalham individualmente os ciclos; o preenchimento acontece logo após o
@@ -2126,17 +2114,17 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
     st.markdown(f"### Ciclo {i}")
 
     d_fim = data_atual + relativedelta(months=11)
-    d_aniv = data_referencia_exata
+    d_aniv = data_atual + relativedelta(years=1)
     d_lim = d_aniv + relativedelta(days=90)
 
     col_a, col_b = st.columns(2)
     with col_a:
-        st.write(f"**Referência exata para o pedido:** {d_aniv.strftime('%d/%m/%Y')}")
+        st.write(f"**Data-Base do Ciclo:** {data_atual.strftime('%d/%m/%Y')}")
     with col_b:
         # A chave considera a âncora do ciclo. Assim, se um ciclo anterior for admitido
         # por negociação entre as partes e arrastar a data-base para frente, o campo do
         # pedido do ciclo seguinte também é recalculado a partir da nova âncora.
-        chave_pedido = f"p{i}_{d_aniv.strftime('%Y%m%d')}"
+        chave_pedido = f"p{i}_{data_atual.strftime('%Y%m%d')}"
         dt_ped = st.date_input(
             f"Data do Pedido C{i}:",
             value=d_aniv,
@@ -2148,15 +2136,20 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
     # histórico informado na lateral serve apenas como contexto do XLS.
     ciclo_ja_concedido = False
 
-    # Admissibilidade pela DATA EXATA. Antecipacao tem uma unica classificacao,
-    # inclusive quando o pedido ocorre no mesmo mes antes do dia de referencia.
-    situacao_limpa = classificar_pedido_por_data_exata(dt_ped, d_aniv, d_lim)
-    if situacao_limpa == "ADIANTADO":
-        sit_emoji = "⚠️ ADIANTADO"
-    elif situacao_limpa == "TEMPESTIVO":
+    # Lógica de Admissibilidade preservada (DATA EXATA do pedido x janela).
+    if dt_ped < d_aniv:
+        if dt_ped.year == d_aniv.year and dt_ped.month == d_aniv.month:
+            sit_emoji = "🟡 ADMISSÍVEL - RESSALVA"
+            situacao_limpa = "ADMISSÍVEL - RESSALVA"
+        else:
+            sit_emoji = "⚠️ ADIANTADO"
+            situacao_limpa = "ADIANTADO"
+    elif dt_ped <= d_lim:
         sit_emoji = "✅ TEMPESTIVO"
+        situacao_limpa = "TEMPESTIVO"
     else:
         sit_emoji = "❌ PRECLUSO"
+        situacao_limpa = "PRECLUSO"
 
     # REGRA PÉTREA — EFEITOS FINANCEIROS E INTERREGNO:
     # a admissibilidade usa a data exata; o EFEITO FINANCEIRO usa a
@@ -2186,18 +2179,6 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         data_base_proximo_ciclo = inicio_efeito_financeiro
     else:
         data_base_proximo_ciclo = d_aniv
-
-    # Regua juridica independente: so o pedido apresentado a partir da data apta
-    # (TEMPESTIVO, inclusive o TEMPESTIVO* com efeito retardado) alimenta a
-    # referencia exata subsequente. ADIANTADO e recebido e computado, mas a
-    # antecipacao nao antecipa o nascimento da anualidade seguinte: como no
-    # PRECLUSO, a proxima referencia nasce da referencia exata atual.
-    if situacao_limpa == "TEMPESTIVO":
-        data_semente_exata_proximo_ciclo = dt_ped
-        data_referencia_exata_proximo_ciclo = referencia_exata_pedido_subsequente(dt_ped)
-    else:
-        data_semente_exata_proximo_ciclo = d_aniv
-        data_referencia_exata_proximo_ciclo = d_aniv + relativedelta(months=12)
 
     superacao_negocial = False
     percentual_negocial = 0.0
@@ -2257,10 +2238,6 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
                 # financeiros pactuada para o ciclo admitido. Consequentemente, o próximo
                 # ciclo somente estará apto após 12 meses desse novo marco.
                 data_base_proximo_ciclo = inicio_efeito_financeiro
-                data_semente_exata_proximo_ciclo = inicio_efeito_financeiro
-                data_referencia_exata_proximo_ciclo = (
-                    inicio_efeito_financeiro + relativedelta(months=12)
-                )
                 st.info(
                     f"Com a admissão negocial do C{i}, o próximo ciclo será ancorado em "
                     f"{data_base_proximo_ciclo.strftime('%d/%m/%Y')} e somente estará apto "
@@ -2273,8 +2250,6 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         'd_fim': d_fim,
         'd_aniv': d_aniv,
         'd_lim': d_lim,
-        'data_semente_exata': data_semente_exata,
-        'data_referencia_exata': d_aniv,
         'dt_ped': dt_ped,
         'sit_emoji': sit_emoji,
         'situacao_limpa': situacao_limpa,
@@ -2286,14 +2261,10 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         'justificativa_negocial': justificativa_negocial.strip(),
         'referencia_documental': referencia_documental.strip(),
         'data_base_proximo_ciclo': data_base_proximo_ciclo,
-        'data_semente_exata_proximo_ciclo': data_semente_exata_proximo_ciclo,
-        'data_referencia_exata_proximo_ciclo': data_referencia_exata_proximo_ciclo,
     })
 
     containers_ciclos.append(st.container())
     data_atual = data_base_proximo_ciclo
-    data_semente_exata = data_semente_exata_proximo_ciclo
-    data_referencia_exata = data_referencia_exata_proximo_ciclo
 
 # >>> REGUA_TEMPORAL_MARCOS_V1: montagem exclusivamente visual (Etapa 32).
 # Reutiliza apenas dados já produzidos acima (contexto do ciclo formalizado na
@@ -2313,7 +2284,7 @@ if _ciclo_formalizado_regua and hasattr(_marco_formalizado_regua, "strftime"):
 for _posicao_regua, _dados_regua in enumerate(input_ciclos):
     marcos_regua.append({
         "rotulo": f"C{_dados_regua['numero']}",
-        "data": _dados_regua["data_semente_exata"],
+        "data": _dados_regua["data_atual"],
         "em_analise": True,
         "primeiro_da_analise": _posicao_regua == 0,
         "inicio_efeito": _dados_regua.get("inicio_efeito_financeiro"),
@@ -2343,13 +2314,13 @@ for dados_ciclo in input_ciclos:
     except Exception:
         numero_ciclo = dados_ciclo.get('numero', '')
 
-    data_base_ciclo = dados_ciclo.get('data_referencia_exata')
+    data_base_ciclo = dados_ciclo.get('data_atual')
     data_pedido_ciclo = dados_ciclo.get('dt_ped')
     inicio_financeiro_ciclo = dados_ciclo.get('inicio_efeito_financeiro')
 
     resumo_pre_processamento.append({
         'Ciclo': f"C{numero_ciclo}",
-        'Referência exata': data_base_ciclo.strftime('%d/%m/%Y') if hasattr(data_base_ciclo, 'strftime') else '',
+        'Data-base': data_base_ciclo.strftime('%d/%m/%Y') if hasattr(data_base_ciclo, 'strftime') else '',
         'Data do pedido': data_pedido_ciclo.strftime('%d/%m/%Y') if hasattr(data_pedido_ciclo, 'strftime') else '',
         'Início financeiro': inicio_financeiro_ciclo.strftime('%d/%m/%Y') if hasattr(inicio_financeiro_ciclo, 'strftime') else 'Sem efeitos financeiros automáticos',
         'Situação preliminar': dados_ciclo.get('sit_emoji', ''),
