@@ -1922,6 +1922,9 @@ _REGUA_TEMPORAL_CSS = """
 .cl8us-regua { border: 1px solid #D8E3EE; border-radius: 10px; padding: 12px 14px 8px 14px; margin: 4px 0 14px 0; background: #FFFFFF; overflow-x: auto; }
 .cl8us-regua-titulo { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #64748B; margin: 0 0 4px 0; }
 .cl8us-regua-titulo.efeitos { margin-top: 8px; border-top: 1px dashed #D8E3EE; padding-top: 8px; }
+.cl8us-regua-cabecalho { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 1px 10px; margin: 0 0 4px 0; }
+.cl8us-regua-cabecalho .cl8us-regua-titulo { margin: 0; }
+.cl8us-regua-analise-global { display: inline-block; font-size: 0.64rem; font-weight: 700; color: #B45309; background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 999px; padding: 0 8px; line-height: 1.5; }
 .cl8us-regua-grid { display: grid; column-gap: 4px; }
 .cl8us-regua-col { text-align: center; min-width: 104px; }
 .cl8us-regua-rotulo { font-size: 0.82rem; font-weight: 700; color: #94A3B8; line-height: 1.2; }
@@ -1934,9 +1937,7 @@ _REGUA_TEMPORAL_CSS = """
 .cl8us-regua-dot { display: block; width: 10px; height: 10px; border-radius: 50%; background: #FFFFFF; border: 2px solid #CBD5E1; margin: 3px auto 0 auto; }
 .cl8us-regua-dot.analise { background: #123B63; border-color: #123B63; }
 .cl8us-regua-data { font-size: 0.76rem; color: #334155; margin-top: 2px; }
-.cl8us-regua-tag-slot { display: flex; align-items: center; justify-content: center; height: 1.6rem; margin-top: 2px; }
-.cl8us-regua-tag { display: inline-block; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.04em; color: #B45309; background: #FEF3C7; border: 1px solid #FCD34D; border-radius: 999px; padding: 0 7px; line-height: 1.45; }
-.cl8us-regua-status { font-size: 0.68rem; color: #475569; line-height: 1.2; min-height: 1rem; }
+.cl8us-regua-status { font-size: 0.68rem; color: #475569; line-height: 1.2; min-height: 1rem; margin-top: 4px; }
 .cl8us-regua-efeito-seta { color: #CBD5E1; font-size: 0.72rem; letter-spacing: -1px; }
 .cl8us-regua-col.analise .cl8us-regua-efeito-seta { color: #9CBBD4; }
 .cl8us-regua-efeito-data { font-size: 0.72rem; color: #64748B; }
@@ -1945,9 +1946,27 @@ _REGUA_TEMPORAL_CSS = """
   .cl8us-regua-rotulo { font-size: 0.78rem; }
   .cl8us-regua-data { font-size: 0.7rem; }
   .cl8us-regua-ordem, .cl8us-regua-status { font-size: 0.6rem; }
+  .cl8us-regua-cabecalho { gap: 2px 8px; }
+  .cl8us-regua-analise-global { font-size: 0.6rem; }
 }
 </style>
 """
+
+
+def _frase_ciclos_em_analise(marcos):
+    """Frase única que identifica os ciclos pertencentes à apuração corrente.
+
+    Lista exclusivamente os marcos com ``em_analise`` verdadeiro — um marco
+    apenas histórico, exibido na régua para dar contexto, nunca entra aqui.
+    Retorna string vazia quando não há ciclo em análise a anunciar.
+    """
+    rotulos = [str(m["rotulo"]) for m in marcos if m.get("em_analise")]
+    if not rotulos:
+        return ""
+    if len(rotulos) == 1:
+        return f"Ciclo em análise: {rotulos[0]}"
+    lista = f"{', '.join(rotulos[:-1])} e {rotulos[-1]}"
+    return f"Ciclos em análise: {lista}"
 
 
 def _render_regua_temporal_marcos(destino, marcos):
@@ -1966,18 +1985,12 @@ def _render_regua_temporal_marcos(destino, marcos):
         data_txt = marco["data"].strftime("%d/%m/%Y") if hasattr(marco["data"], "strftime") else ""
         classe_col = "cl8us-regua-col analise" if marco["em_analise"] else "cl8us-regua-col"
         classe_dot = "cl8us-regua-dot analise" if marco["em_analise"] else "cl8us-regua-dot"
-        tag = (
-            '<span class="cl8us-regua-tag">EM ANÁLISE</span>'
-            if marco["primeiro_da_analise"]
-            else ""
-        )
         celulas_marcos.append(
             f'<div class="{classe_col}">'
             f'<div class="cl8us-regua-rotulo">{marco["rotulo"]}</div>'
             f'<div class="cl8us-regua-ordem">{marco.get("ordem", "")}</div>'
             f'<div class="cl8us-regua-linha"><span class="{classe_dot}"></span></div>'
             f'<div class="cl8us-regua-data">{data_txt}</div>'
-            f'<div class="cl8us-regua-tag-slot">{tag}</div>'
             f'<div class="cl8us-regua-status">{marco.get("status", "")}</div>'
             '</div>'
         )
@@ -1992,10 +2005,21 @@ def _render_regua_temporal_marcos(destino, marcos):
         else:
             celulas_efeitos.append(f'<div class="{classe_col}"></div>')
     estilo_grid = f'style="grid-template-columns: repeat({len(marcos)}, minmax(104px, 1fr));"'
+    # O pertencimento à apuração é informação do conjunto, não de um marco
+    # isolado: fica anunciado uma única vez no cabeçalho do card.
+    frase_analise = _frase_ciclos_em_analise(marcos)
+    selo_global = (
+        f'<span class="cl8us-regua-analise-global">{frase_analise}</span>'
+        if frase_analise
+        else ""
+    )
     blocos = [
         _REGUA_TEMPORAL_CSS,
         '<div class="cl8us-regua">',
-        '<div class="cl8us-regua-titulo">Marcos dos ciclos</div>',
+        '<div class="cl8us-regua-cabecalho">'
+        '<div class="cl8us-regua-titulo">Marcos dos ciclos</div>'
+        f'{selo_global}'
+        '</div>',
         f'<div class="cl8us-regua-grid" {estilo_grid}>{"".join(celulas_marcos)}</div>',
     ]
     if any(m.get("inicio_efeito") is not None for m in marcos):
@@ -2368,7 +2392,6 @@ if _ciclo_formalizado_regua and hasattr(_marco_formalizado_regua, "strftime"):
         "ordem": "Ciclo formalizado",
         "status": "",
         "em_analise": False,
-        "primeiro_da_analise": False,
         "inicio_efeito": None,
     })
 for _posicao_regua, _dados_regua in enumerate(input_ciclos):
@@ -2381,7 +2404,6 @@ for _posicao_regua, _dados_regua in enumerate(input_ciclos):
         "ordem": f"{_posicao_regua + 1}º ciclo da análise",
         "status": _dados_regua.get("sit_emoji", ""),
         "em_analise": True,
-        "primeiro_da_analise": _posicao_regua == 0,
         "inicio_efeito": _dados_regua.get("inicio_efeito_financeiro"),
     })
 _render_regua_temporal_marcos(slot_regua_temporal, marcos_regua)

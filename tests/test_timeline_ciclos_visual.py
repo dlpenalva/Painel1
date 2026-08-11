@@ -29,6 +29,11 @@ def _html_regua(at):
     return blocos[-1]
 
 
+def _marcacao_regua(at):
+    """Somente a marcacao renderizada, sem o bloco <style> do componente."""
+    return _html_regua(at).split("</style>", 1)[-1]
+
+
 def _notas_ciclos(at):
     return [str(md.value) for md in at.markdown if "cl8us-ciclo-nota" in str(md.value)]
 
@@ -74,6 +79,90 @@ def test_ciclos_da_analise_nao_sao_rotulados_como_proximo_ciclo():
         assert "Próximo ciclo" not in nota
 
 
+# --------------------------------------- status global "ciclos em analise"
+@pytest.mark.parametrize(
+    ("inicial", "final", "frase"),
+    (
+        ("C2", "C2", "Ciclo em análise: C2"),
+        ("C1", "C2", "Ciclos em análise: C1 e C2"),
+        ("C1", "C3", "Ciclos em análise: C1, C2 e C3"),
+        ("C1", "C4", "Ciclos em análise: C1, C2, C3 e C4"),
+    ),
+)
+def test_status_global_lista_todos_os_ciclos_da_apuracao(inicial, final, frase):
+    at = _selecionar_intervalo(_app(), inicial, final)
+    html = _html_regua(at)
+    marcacao = _marcacao_regua(at)
+    # a frase e unica, dinamica e concorda em numero com a quantidade de ciclos
+    assert marcacao.count(frase) == 1
+    # o selo local desapareceu: nenhum ciclo carrega o status individualmente
+    assert "EM ANÁLISE" not in html
+    assert "cl8us-regua-tag" not in html
+    # e o indicador pertence ao cabecalho, antes da linha temporal
+    assert marcacao.index(frase) < marcacao.index("cl8us-regua-grid")
+    assert marcacao.index("cl8us-regua-cabecalho") < marcacao.index(frase)
+
+
+def test_status_global_nao_e_repetido_por_ciclo():
+    at = _selecionar_intervalo(_app(), "C1", "C3")
+    marcacao = _marcacao_regua(at)
+    assert marcacao.count("cl8us-regua-analise-global") == 1
+    assert marcacao.count("em análise") == 1
+    # a ordem individual de cada ciclo permanece intacta
+    for posicao in (1, 2, 3):
+        assert f"{posicao}º ciclo da análise" in marcacao
+    assert "Próximo ciclo" not in marcacao
+
+
+def test_status_global_ignora_marco_historico_fora_da_apuracao():
+    """Ciclo formalizado aparece na regua, mas nunca na frase da apuracao."""
+    at = _app()
+    campo_base = next(
+        d for d in at.date_input
+        if d.label == "Data-base do ciclo em que **esta análise começa** 🔹"
+    )
+    campo_base.set_value(date(2023, 2, 1))
+    at.selectbox(key="rep_ciclo_inicial_analise").select("C2")
+    at.run()
+    at.radio(key="rep_situacao_anterior_ciclo").set_value(
+        "Houve ciclo anterior concedido/formalizado"
+    )
+    at.run()
+    at.date_input(key="rep_marco_temporal_anterior").set_value(date(2022, 2, 1))
+    at.run()
+    html = _html_regua(at)
+    # o historico esta desenhado na regua (com sua propria data)...
+    assert ">C1<" in html and "01/02/2022" in html
+    assert "Ciclo formalizado" in html
+    # ...mas a apuracao corrente e apenas C2.
+    assert html.count("Ciclo em análise: C2") == 1
+    assert "Ciclos em análise: C1" not in html
+    assert "EM ANÁLISE" not in html
+
+
+def test_frase_do_status_global_e_montada_a_partir_de_em_analise():
+    """Guarda de unidade: a lista sai de em_analise, nao da posicao na regua."""
+    # a pagina e um script Streamlit; interessa apenas o helper puro de texto.
+    fonte_helper = FONTE[
+        FONTE.index("def _frase_ciclos_em_analise") : FONTE.index(
+            "def _render_regua_temporal_marcos"
+        )
+    ]
+    espaco = {}
+    exec(compile(fonte_helper, str(PAGINA), "exec"), espaco)
+    frase = espaco["_frase_ciclos_em_analise"]
+    historico = {"rotulo": "C1", "em_analise": False}
+    assert frase([]) == ""
+    assert frase([historico]) == ""
+    assert frase([{"rotulo": "C2", "em_analise": True}]) == "Ciclo em análise: C2"
+    assert frase(
+        [historico, {"rotulo": "C2", "em_analise": True}, {"rotulo": "C3", "em_analise": True}]
+    ) == "Ciclos em análise: C2 e C3"
+    assert frase(
+        [{"rotulo": f"C{n}", "em_analise": True} for n in range(1, 5)]
+    ) == "Ciclos em análise: C1, C2, C3 e C4"
+
+
 # ------------------------------------------------------------- marcos por ciclo
 def test_cada_marco_traz_identificacao_data_base_e_status():
     at = _app()
@@ -82,9 +171,9 @@ def test_cada_marco_traz_identificacao_data_base_e_status():
     # C1 semeado pela data lateral (10/10/2022) e C2 pela cadeia ja calculada.
     assert "10/10/2022" in html and "10/10/2023" in html
     assert html.count("TEMPESTIVO") == 2
-    # o destaque ambar de status fica restrito ao ciclo que abre a analise
-    assert html.count("EM ANÁLISE") == 1
-    assert html.index(">C1<") < html.index("EM ANÁLISE") < html.index(">C2<")
+    # o pertencimento a apuracao e global (cabecalho), nunca um selo por ciclo
+    assert html.count("Ciclos em análise: C1 e C2") == 1
+    assert "EM ANÁLISE" not in html
 
 
 def test_status_adiantado_aparece_na_timeline():
@@ -94,7 +183,10 @@ def test_status_adiantado_aparece_na_timeline():
     at.run()
     html = _html_regua(at)
     assert "ADIANTADO" in html
-    assert html.count("EM ANÁLISE") == 1
+    # status individual e pertencimento a analise sao conceitos distintos:
+    # o ciclo segue anunciado no cabecalho mesmo classificado como ADIANTADO.
+    assert html.count("Ciclos em análise: C1 e C2") == 1
+    assert "EM ANÁLISE" not in html
 
 
 def test_efeitos_financeiros_em_linha_propria_quando_pedido_difere_do_inicio():
