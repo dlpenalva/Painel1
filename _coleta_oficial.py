@@ -332,6 +332,223 @@ def _garantir_fator_historico_desacoplado(wb) -> None:
             )
 
 
+def _garantir_completude_abertura_temporal(wb) -> None:
+    """Completude da abertura pela DATA de nascimento do item — ETAPA 44.
+
+    `MEMORIA_RESULTADOS!W41:W45` responde "a abertura de Cn esta completa?" e
+    so pode exigir remanescente dos itens que JA INTEGRAVAM o contrato naquela
+    data. O criterio de aplicabilidade era `posicao_contratual!Y`
+    (CICLO_NASCIMENTO), derivado da QUANTIDADE: um item incluido no MEIO de Cn
+    recebe Y=n e passa a ser exigido na abertura de Cn — fotografia em que ele
+    ainda nao existia. O vazio de um item inexistente virava "abertura
+    incompleta" e podia empurrar o VTA para um ciclo anterior.
+
+    A troca e apenas do criterio de APLICABILIDADE, para a coluna canonica
+    temporal `posicao_contratual!AL` (CICLO_NASCIMENTO_DATA, derivada da DATA
+    DE EFEITO do aditivo) — a mesma ja usada por `W57`, por `itens_RC!AB`
+    ("NAO APLICAVEL") e pela formatacao condicional de itens_Remanesc. Item
+    comprovadamente criado depois da abertura deixa de ser exigido nela: o
+    motor o trata como zero estrutural, sem escrever 0,00 em celula alguma.
+
+    Nenhuma QUANTIDADE muda: `G/K/O/S/W`, `T21/T22/T23/T25` e `B26` (VTA_FINAL)
+    permanecem com a formula e o valor originais. O template binario
+    homologado permanece intacto (mesma estrategia do dropdown do metodo, da
+    cronologia da execucao e do fator historico).
+    """
+    if "MEMORIA_RESULTADOS" not in wb.sheetnames:
+        return
+    if ABA_POSICAO_CONTRATUAL not in wb.sheetnames:
+        return
+    pc = wb[ABA_POSICAO_CONTRATUAL]
+    # Fail-closed: linhagem sem a coluna temporal permanece exatamente como
+    # esta (trocar Y por uma coluna inexistente zeraria a exigencia).
+    if str(pc["AL1"].value or "").strip() != "CICLO_NASCIMENTO_DATA":
+        return
+
+    mem = wb["MEMORIA_RESULTADOS"]
+    criterio_antigo = "posicao_contratual!$Y$2:$Y$201"
+    criterio_novo = "posicao_contratual!$AL$2:$AL$201"
+    for celula in ("W41", "W42", "W43", "W44", "W45"):
+        atual = mem[celula].value
+        if isinstance(atual, str) and criterio_antigo in atual:
+            mem[celula].value = atual.replace(criterio_antigo, criterio_novo)
+
+
+# Orientacao de novo item por aditivo — ETAPA 44. Reaproveita os DOIS espacos
+# de orientacao que ja tratam de novo item na aba aditivos (cabecalho A1 e
+# mensagem de validacao da coluna M): nenhuma secao, linha, caixa ou aba nova.
+_ORIENTACAO_ADITIVOS_A1_ANTIGA = (
+    "ITEM\n(NOVO ITEM: cadastrar em itens_Remanesc como N001, N002...; "
+    "QTD_BASE_ORIGINAL fica 0 automaticamente; informar o VU_ORIGINAL)"
+)
+_ORIENTACAO_ADITIVOS_A1_NOVA = (
+    "ITEM\n(NOVO ITEM: cadastrar em itens_Remanesc PRIMEIRO - N001, N002...; "
+    "QTD_BASE_ORIGINAL fica 0 automaticamente; informar o VU_ORIGINAL. "
+    "Depois, a data e a quantidade aqui.)"
+)
+_MSG_NOVO_ITEM_ANTIGA = (
+    "NOVO ITEM NAO CADASTRADO - CADASTRAR EM itens_Remanesc; "
+    "QTD_BASE_ORIGINAL sera 0 automaticamente; informar VU_ORIGINAL."
+)
+_MSG_NOVO_ITEM_NOVA = (
+    "NOVO ITEM NAO CADASTRADO - CADASTRAR EM itens_Remanesc: ITEM + "
+    "VU_ORIGINAL (QTD_BASE_ORIGINAL sera 0 automaticamente); "
+    "depois a data e a quantidade aqui."
+)
+
+
+# T27 conta os itens que DEVERIAM ter base fisica de C0 e nao a tem. A forma
+# abaixo e a homologada ate a Etapa 44 e serve de guarda: so ela e reescrita.
+_T27_ANTIGA = (
+    '=SUMPRODUCT((posicao_contratual!$A$2:$A$201<>"")'
+    "*(1-ISNUMBER(posicao_contratual!$G$2:$G$201)"
+    "*ISNUMBER(posicao_contratual!$K$2:$K$201)"
+    "*(ISNUMBER(historico_VU!$C$2:$C$201)"
+    '+(posicao_contratual!$Y$2:$Y$201<>"")'
+    "*(posicao_contratual!$Y$2:$Y$201>0))))"
+)
+# Aplicabilidade temporal como FATOR (nunca como parcela somada): cada fator
+# vale 0 ou 1, de modo que nenhuma linha pode contribuir com valor negativo.
+_T27_NOVA = (
+    '=SUMPRODUCT((posicao_contratual!$A$2:$A$201<>"")'
+    "*(1-ISNUMBER(posicao_contratual!$AL$2:$AL$201)"
+    "*(posicao_contratual!$AL$2:$AL$201>0))"
+    "*(1-ISNUMBER(posicao_contratual!$G$2:$G$201)"
+    "*ISNUMBER(posicao_contratual!$K$2:$K$201)"
+    "*ISNUMBER(historico_VU!$C$2:$C$201)))"
+)
+
+
+def _garantir_base_fisica_c0_temporal(wb) -> None:
+    """T27 so cobra base fisica de C0 de quem existia em C0 — ETAPA 44.1.
+
+    `MEMORIA_RESULTADOS!T27` conta os itens que DEVERIAM ter base fisica de C0
+    (G, K e VU_C0) e nao a tem; `T25` vira "CALCULO MANUAL REQUERIDO" quando
+    `T27>0` sem PC de C0. A forma anterior trazia uma dispensa para novo item
+    SOMADA dentro do produto:
+
+        1 - ISNUMBER(G)*ISNUMBER(K)*(ISNUMBER(VU_C0) + (Y<>"")*(Y>0))
+
+    Essa dispensa era inalcancavel: `G` e `IF($Y2>0,"",ROUND(E2,2))`, ou seja,
+    fica vazia exatamente quando `Y>0`. O item nascido depois de C0 era
+    reprovado por `ISNUMBER(G)=FALSO` antes de a dispensa ser avaliada e
+    acusava falta de base fisica de uma fotografia em que nem existia.
+
+    Trocar apenas `Y` por `AL` nao resolveria e ainda corromperia a contagem:
+    com `AL>0` podendo coexistir com `ISNUMBER(G)` verdadeiro (item nascido no
+    MEIO de C0), a soma `(ISNUMBER(VU_C0) + dispensa)` chega a 2 dentro do
+    produto e a linha contribui com -1, mascarando pendencia legitima de outro
+    item.
+
+    A aplicabilidade temporal passa a ser um FATOR proprio, derivado da data
+    real de inclusao (`posicao_contratual!AL`, CICLO_NASCIMENTO_DATA):
+
+        (A<>"")
+        * (1 - ISNUMBER(AL)*(AL>0))
+        * (1 - ISNUMBER(G)*ISNUMBER(K)*ISNUMBER(VU_C0))
+
+    Cada fator vale 0 ou 1 — nenhuma linha pode contribuir com valor negativo.
+    `ISNUMBER(AL)` (e nao `AL<>""`) porque `"">0` e VERDADEIRO no Excel: o teste
+    de tipo e a forma segura, e ja e a usada por `W57` e pela formatacao
+    condicional de itens_Remanesc. Item sem nascimento derivavel (`AL` vazio)
+    continua integralmente validado — fail-closed preservado.
+
+    Nada mais muda: `X2`, `G/K/O/S/W`, `W41:W45`, `T21/T22/T23` e a formula de
+    `B26` permanecem intactos; `T25` e `B26` mudam apenas pelo efeito natural
+    de `T27`. O template binario homologado permanece intacto.
+    """
+    if "MEMORIA_RESULTADOS" not in wb.sheetnames:
+        return
+    if ABA_POSICAO_CONTRATUAL not in wb.sheetnames:
+        return
+    if "historico_VU" not in wb.sheetnames:
+        return
+    pc = wb[ABA_POSICAO_CONTRATUAL]
+    if str(pc["AL1"].value or "").strip() != "CICLO_NASCIMENTO_DATA":
+        return
+    mem = wb["MEMORIA_RESULTADOS"]
+    # Estrutura nao reconhecida (outra linhagem de template, ou ja reescrita):
+    # nao inventar formula.
+    if str(mem["T27"].value or "") != _T27_ANTIGA:
+        return
+    mem["T27"].value = _T27_NOVA
+
+
+_CINZA_NAO_APLICAVEL = "FFD9D9D9"
+# QTD_REM_BASE_Cn (entrada manual) -> indice do ciclo cuja abertura ela retrata.
+_COLS_QTD_ABERTURA_MANUAL = (("E", 1), ("G", 2), ("I", 3), ("K", 4))
+
+
+def _garantir_cinza_nao_aplicavel_visivel(wb) -> None:
+    """Faz o cinza "NAO APLICAVEL" realmente pintar no Excel — ETAPA 44.
+
+    A regra ja existia e ja era a primeira (com stopIfTrue) de cada coluna
+    QTD_REM_BASE_Cn, comparando o espelho local `BI` (CICLO_NASCIMENTO_DATA)
+    com o indice do ciclo. O que faltava era a RENDERIZACAO: o preenchimento
+    do formato diferencial (dxf) fora gravado como
+    `<patternFill patternType="solid"><fgColor rgb="FFD9D9D9"/></patternFill>`.
+
+    Num dxf o Excel le a cor de fundo em `bgColor` — `fgColor` sozinho, com
+    patternType solid, resolve para "sem preenchimento". Por isso a celula de
+    um item ainda inexistente continuava com o fundo comum de entrada, sem
+    nenhum sinal de NAO APLICAVEL. Os dxf que o proprio Excel escreveu neste
+    mesmo arquivo usam a forma canonica `<patternFill><bgColor .../>`.
+
+    A correcao acrescenta `bgColor` ao dxf da regra de NAO APLICAVEL,
+    preservando `fgColor` (a leitura por openpyxl continua identica). Nada
+    mais muda: formula, ordem, prioridade e stopIfTrue das quatro regras
+    permanecem, e as outras tres regras nao sao tocadas. Nenhum texto entra na
+    celula numerica e nenhum 0,00 e escrito — a celula segue VAZIA, so
+    visualmente marcada como nao aplicavel.
+    """
+    from openpyxl.styles import PatternFill
+
+    if "itens_Remanesc" not in wb.sheetnames:
+        return
+    ws = wb["itens_Remanesc"]
+    for coluna, idx in _COLS_QTD_ABERTURA_MANUAL:
+        faixa = f"{coluna}2:{coluna}201"
+        marca = f"$BI2>{idx}"
+        for formatacao in ws.conditional_formatting:
+            if str(formatacao.sqref) != faixa:
+                continue
+            for regra in formatacao.rules:
+                formula = str(regra.formula[0]) if regra.formula else ""
+                if marca not in formula or "ISNUMBER($BI2)" not in formula:
+                    continue  # so a regra de NAO APLICAVEL e reescrita
+                if regra.dxf is None or regra.dxf.fill is None:
+                    continue
+                regra.dxf.fill = PatternFill(
+                    patternType="solid",
+                    fgColor=_CINZA_NAO_APLICAVEL,
+                    bgColor=_CINZA_NAO_APLICAVEL,
+                )
+
+
+def _garantir_orientacao_novo_item_por_aditivo(wb) -> None:
+    """Diz ao fiscal ONDE COMECAR o cadastro de item novo — ETAPA 44.
+
+    O aditivo e o gatilho: quem inclui um item novo abre a aba `aditivos`. A
+    orientacao passa a explicitar a ORDEM (itens_Remanesc primeiro: ITEM +
+    VU_ORIGINAL; aditivos depois: data e quantidade), reescrevendo em runtime
+    os textos que JA EXISTEM — o cabecalho `A1` e a mensagem de validacao da
+    coluna `M`. Sem nova secao, sem linha nova, sem caixa e sem aba nova; o
+    template binario homologado permanece intacto.
+    """
+    if "aditivos" not in wb.sheetnames:
+        return
+    ws = wb["aditivos"]
+    if str(ws["A1"].value or "") == _ORIENTACAO_ADITIVOS_A1_ANTIGA:
+        ws["A1"].value = _ORIENTACAO_ADITIVOS_A1_NOVA
+    for row in range(2, ULTIMA_LINHA_ORIENTACAO_ADITIVOS + 1):
+        celula = ws.cell(row=row, column=13)  # coluna M
+        atual = celula.value
+        if isinstance(atual, str) and _MSG_NOVO_ITEM_ANTIGA in atual:
+            celula.value = atual.replace(
+                _MSG_NOVO_ITEM_ANTIGA, _MSG_NOVO_ITEM_NOVA
+            )
+
+
 def _validar_estrutura_itens_pc(wb) -> None:
     """Barreira contra regressao critica: itens_PC jamais pode sair esvaziada.
 
@@ -398,6 +615,10 @@ def obter_coleta_oficial_bytes() -> bytes:
     _garantir_dropdown_metodo(wb)
     _garantir_formulas_cronologia_execucao(wb)
     _garantir_fator_historico_desacoplado(wb)
+    _garantir_completude_abertura_temporal(wb)
+    _garantir_base_fisica_c0_temporal(wb)
+    _garantir_cinza_nao_aplicavel_visivel(wb)
+    _garantir_orientacao_novo_item_por_aditivo(wb)
     _validar_estrutura_itens_pc(wb)
 
     wb.calculation.calcMode = "auto"
