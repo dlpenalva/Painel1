@@ -57,9 +57,9 @@ def test_cenario_a_analise_iniciando_em_c1():
     html = _html_regua(at)
     assert "Marcos dos ciclos" in html
     assert ">C1<" in html and ">C2<" in html
-    assert html.count("EM ANÁLISE") == 1
-    # destaque no primeiro ciclo da analise: tag vem logo apos a coluna do C1
-    assert html.index(">C1<") < html.index("EM ANÁLISE") < html.index(">C2<")
+    # Etapa 43: o pertencimento a apuracao virou indicador global do cabecalho.
+    assert html.count("Ciclos em análise: C1 e C2") == 1
+    assert html.index("Ciclos em análise: C1 e C2") < html.index(">C1<")
     # data-base exibida = mesma data-base ja apresentada pela pagina (10/10/2022)
     assert "10/10/2022" in html
 
@@ -71,8 +71,8 @@ def test_cenario_b_analise_iniciando_em_c2():
     html = _html_regua(at)
     # A data lateral e a propria base de C2, sem avancar 12 meses.
     assert ">C2<" in html and "10/10/2022" in html
-    assert html.count("EM ANÁLISE") == 1
-    assert html.index(">C2<") < html.index("EM ANÁLISE")
+    assert html.count("Ciclo em análise: C2") == 1
+    assert html.index("Ciclo em análise: C2") < html.index(">C2<")
 
 
 def test_cenario_c_analise_iniciando_em_c4():
@@ -81,7 +81,7 @@ def test_cenario_c_analise_iniciando_em_c4():
     at.run()
     html = _html_regua(at)
     assert ">C4<" in html
-    assert html.count("EM ANÁLISE") == 1
+    assert html.count("Ciclo em análise: C4") == 1
 
 
 @pytest.mark.parametrize(
@@ -158,9 +158,9 @@ def test_cenario_e2_ciclo_formalizado_aparece_sem_inferencia():
     assert ">C1<" in html
     assert ">C0<" not in html
     assert "01/02/2022" in html
-    assert html.count("EM ANÁLISE") == 1
-    # o destaque permanece no primeiro ciclo DA ANALISE (C2), nao no historico
-    assert html.index(">C2<") < html.index("EM ANÁLISE")
+    assert html.count("Ciclo em análise: C2") == 1
+    # o indicador global cobre apenas a ANALISE (C2), nunca o marco historico
+    assert "Ciclos em análise: C1" not in html
     # o marco historico nao substitui a data lateral que semeia C2.
     assert html.index(">C1<") < html.index("01/02/2022") < html.index(">C2<")
     assert html.index(">C2<") < html.index("01/02/2023")
