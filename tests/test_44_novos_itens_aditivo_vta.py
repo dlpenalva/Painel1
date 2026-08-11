@@ -231,7 +231,9 @@ def test_caso_e_vta_oficial_intacto(wb_runtime, wb_template):
     """B26/T25 e a FORMA 2 permanecem exatamente como no template homologado."""
     runtime = wb_runtime["MEMORIA_RESULTADOS"]
     template = wb_template["MEMORIA_RESULTADOS"]
-    for celula in ("B26", "T21", "T22", "T23", "T24", "T25", "T26", "T27",
+    # T27 saiu desta lista na Etapa 44.1 (validacao temporal da base fisica de
+    # C0); ver tests/test_441_base_fisica_c0_temporal.py.
+    for celula in ("B26", "T21", "T22", "T23", "T24", "T25", "T26",
                    "W46", "W47", "W48", "W53", "W54", "W55", "W56", "W57"):
         assert runtime[celula].value == template[celula].value, (
             f"{celula} foi alterada — fora do escopo da Etapa 44"

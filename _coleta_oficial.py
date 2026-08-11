@@ -397,6 +397,83 @@ _MSG_NOVO_ITEM_NOVA = (
 )
 
 
+# T27 conta os itens que DEVERIAM ter base fisica de C0 e nao a tem. A forma
+# abaixo e a homologada ate a Etapa 44 e serve de guarda: so ela e reescrita.
+_T27_ANTIGA = (
+    '=SUMPRODUCT((posicao_contratual!$A$2:$A$201<>"")'
+    "*(1-ISNUMBER(posicao_contratual!$G$2:$G$201)"
+    "*ISNUMBER(posicao_contratual!$K$2:$K$201)"
+    "*(ISNUMBER(historico_VU!$C$2:$C$201)"
+    '+(posicao_contratual!$Y$2:$Y$201<>"")'
+    "*(posicao_contratual!$Y$2:$Y$201>0))))"
+)
+# Aplicabilidade temporal como FATOR (nunca como parcela somada): cada fator
+# vale 0 ou 1, de modo que nenhuma linha pode contribuir com valor negativo.
+_T27_NOVA = (
+    '=SUMPRODUCT((posicao_contratual!$A$2:$A$201<>"")'
+    "*(1-ISNUMBER(posicao_contratual!$AL$2:$AL$201)"
+    "*(posicao_contratual!$AL$2:$AL$201>0))"
+    "*(1-ISNUMBER(posicao_contratual!$G$2:$G$201)"
+    "*ISNUMBER(posicao_contratual!$K$2:$K$201)"
+    "*ISNUMBER(historico_VU!$C$2:$C$201)))"
+)
+
+
+def _garantir_base_fisica_c0_temporal(wb) -> None:
+    """T27 so cobra base fisica de C0 de quem existia em C0 — ETAPA 44.1.
+
+    `MEMORIA_RESULTADOS!T27` conta os itens que DEVERIAM ter base fisica de C0
+    (G, K e VU_C0) e nao a tem; `T25` vira "CALCULO MANUAL REQUERIDO" quando
+    `T27>0` sem PC de C0. A forma anterior trazia uma dispensa para novo item
+    SOMADA dentro do produto:
+
+        1 - ISNUMBER(G)*ISNUMBER(K)*(ISNUMBER(VU_C0) + (Y<>"")*(Y>0))
+
+    Essa dispensa era inalcancavel: `G` e `IF($Y2>0,"",ROUND(E2,2))`, ou seja,
+    fica vazia exatamente quando `Y>0`. O item nascido depois de C0 era
+    reprovado por `ISNUMBER(G)=FALSO` antes de a dispensa ser avaliada e
+    acusava falta de base fisica de uma fotografia em que nem existia.
+
+    Trocar apenas `Y` por `AL` nao resolveria e ainda corromperia a contagem:
+    com `AL>0` podendo coexistir com `ISNUMBER(G)` verdadeiro (item nascido no
+    MEIO de C0), a soma `(ISNUMBER(VU_C0) + dispensa)` chega a 2 dentro do
+    produto e a linha contribui com -1, mascarando pendencia legitima de outro
+    item.
+
+    A aplicabilidade temporal passa a ser um FATOR proprio, derivado da data
+    real de inclusao (`posicao_contratual!AL`, CICLO_NASCIMENTO_DATA):
+
+        (A<>"")
+        * (1 - ISNUMBER(AL)*(AL>0))
+        * (1 - ISNUMBER(G)*ISNUMBER(K)*ISNUMBER(VU_C0))
+
+    Cada fator vale 0 ou 1 — nenhuma linha pode contribuir com valor negativo.
+    `ISNUMBER(AL)` (e nao `AL<>""`) porque `"">0` e VERDADEIRO no Excel: o teste
+    de tipo e a forma segura, e ja e a usada por `W57` e pela formatacao
+    condicional de itens_Remanesc. Item sem nascimento derivavel (`AL` vazio)
+    continua integralmente validado — fail-closed preservado.
+
+    Nada mais muda: `X2`, `G/K/O/S/W`, `W41:W45`, `T21/T22/T23` e a formula de
+    `B26` permanecem intactos; `T25` e `B26` mudam apenas pelo efeito natural
+    de `T27`. O template binario homologado permanece intacto.
+    """
+    if "MEMORIA_RESULTADOS" not in wb.sheetnames:
+        return
+    if ABA_POSICAO_CONTRATUAL not in wb.sheetnames:
+        return
+    if "historico_VU" not in wb.sheetnames:
+        return
+    pc = wb[ABA_POSICAO_CONTRATUAL]
+    if str(pc["AL1"].value or "").strip() != "CICLO_NASCIMENTO_DATA":
+        return
+    mem = wb["MEMORIA_RESULTADOS"]
+    # Estrutura nao reconhecida (outra linhagem de template, ou ja reescrita):
+    # nao inventar formula.
+    if str(mem["T27"].value or "") != _T27_ANTIGA:
+        return
+    mem["T27"].value = _T27_NOVA
+
+
 _CINZA_NAO_APLICAVEL = "FFD9D9D9"
 # QTD_REM_BASE_Cn (entrada manual) -> indice do ciclo cuja abertura ela retrata.
 _COLS_QTD_ABERTURA_MANUAL = (("E", 1), ("G", 2), ("I", 3), ("K", 4))
@@ -539,6 +616,7 @@ def obter_coleta_oficial_bytes() -> bytes:
     _garantir_formulas_cronologia_execucao(wb)
     _garantir_fator_historico_desacoplado(wb)
     _garantir_completude_abertura_temporal(wb)
+    _garantir_base_fisica_c0_temporal(wb)
     _garantir_cinza_nao_aplicavel_visivel(wb)
     _garantir_orientacao_novo_item_por_aditivo(wb)
     _validar_estrutura_itens_pc(wb)
