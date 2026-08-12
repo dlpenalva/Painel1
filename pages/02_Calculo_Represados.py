@@ -2391,18 +2391,30 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
                 referencia_exata_efeito = data_inicio_efeito_negocial
                 # Regra de ancoragem negocial:
                 # se um ciclo precluso for admitido por negociação entre as partes, a âncora
-                # do ciclo seguinte é arrastada para a competência de início dos efeitos
-                # financeiros pactuada para o ciclo admitido. Consequentemente, o próximo
-                # ciclo somente estará apto após 12 meses desse novo marco.
+                # do ciclo seguinte é arrastada para o início dos efeitos pactuado para o
+                # ciclo admitido. Consequentemente, o próximo ciclo somente estará apto
+                # após 12 meses desse novo marco.
+                # ETAPA 46 — as DUAS cadeias do modelo temporal são preservadas, tal como
+                # já ocorre no efeito ordinário: a âncora MENSAL (data_base_proximo_ciclo)
+                # nasce da COMPETÊNCIA e continua alimentando índice, financeiro e XLS; a
+                # cadeia EXATA nasce da DATA PACTUADA e alimenta a admissibilidade do
+                # ciclo seguinte. Antes a cadeia exata era alimentada pela competência
+                # mensalizada, o que apagava o dia pactuado (18/08/2023 produzia
+                # elegibilidade em 01/08/2024, e não em 18/08/2024).
                 data_base_proximo_ciclo = inicio_efeito_financeiro
-                data_semente_exata_proximo_ciclo = inicio_efeito_financeiro
+                data_semente_exata_proximo_ciclo = data_inicio_efeito_negocial
                 data_referencia_exata_proximo_ciclo = (
-                    inicio_efeito_financeiro + relativedelta(months=12)
+                    data_inicio_efeito_negocial + relativedelta(months=12)
                 )
                 st.info(
-                    f"Com a admissão negocial do C{i}, o próximo ciclo será ancorado em "
-                    f"{data_base_proximo_ciclo.strftime('%d/%m/%Y')} e somente estará apto "
-                    f"a partir de {(data_base_proximo_ciclo + relativedelta(years=1)).strftime('%d/%m/%Y')}."
+                    f"Com a admissão negocial do C{i}, a data pactuada é "
+                    f"{data_inicio_efeito_negocial.strftime('%d/%m/%Y')}: o próximo ciclo "
+                    f"será ancorado em "
+                    f"{data_semente_exata_proximo_ciclo.strftime('%d/%m/%Y')} e somente "
+                    f"estará apto a partir de "
+                    f"{data_referencia_exata_proximo_ciclo.strftime('%d/%m/%Y')}. "
+                    f"A competência dos efeitos financeiros permanece "
+                    f"{inicio_efeito_financeiro.strftime('%m/%Y')}."
                 )
 
     input_ciclos.append({
