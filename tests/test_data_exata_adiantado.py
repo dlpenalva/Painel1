@@ -129,12 +129,17 @@ def test_fluxo_real_multiciclo_exibe_e_propaga_as_referencias_exatas():
         (date(2023, 6, 1), "C3"),
     ],
 )
-def test_bloco_do_primeiro_ciclo_repete_a_data_base_da_lateral(data_lateral, primeiro_ciclo):
-    """A lateral e o primeiro bloco exibem a MESMA data-base.
+def test_bloco_do_primeiro_ciclo_exibe_a_elegibilidade_e_a_data_base(
+    data_lateral, primeiro_ciclo
+):
+    """ETAPA 45 — o destaque do bloco e a ELEGIBILIDADE (lateral + 12 meses).
 
-    O bloco mostra a ancora do ciclo, nunca a referencia do pedido
-    (ancora + 12 meses), que continua visivel na janela de admissibilidade.
+    A data-base informada na lateral continua visivel no bloco, uma unica vez,
+    sob o mesmo nome usado na lateral. Antes da etapa 45 o bloco destacava a
+    data-base, o que fazia a tela parecer atrasada um ano em relacao a regra
+    que o classificador ja aplicava.
     """
+    from dateutil.relativedelta import relativedelta
     from streamlit.testing.v1 import AppTest
 
     pagina = RAIZ / "pages" / "02_Calculo_Represados.py"
@@ -143,7 +148,7 @@ def test_bloco_do_primeiro_ciclo_repete_a_data_base_da_lateral(data_lateral, pri
     assert not at.exception
 
     for campo in at.date_input:
-        if "Data-base do ciclo" in str(campo.label):
+        if "Data-base de referência" in str(campo.label):
             campo.set_value(data_lateral)
             break
     at.run()
@@ -154,26 +159,46 @@ def test_bloco_do_primeiro_ciclo_repete_a_data_base_da_lateral(data_lateral, pri
     blocos = [
         str(elemento.value)
         for elemento in at.markdown
-        if "Data-base do Ciclo:" in str(elemento.value)
+        if "Data em que o reajuste fica apto" in str(elemento.value)
     ]
-    assert blocos, "o bloco do ciclo nao exibiu a data-base"
-    esperado = data_lateral.strftime("%d/%m/%Y")
-    assert esperado in blocos[0]
+    assert blocos, "o bloco do ciclo nao exibiu a elegibilidade"
+    apto = (data_lateral + relativedelta(months=12)).strftime("%d/%m/%Y")
+    assert apto in blocos[0]
+    assert data_lateral.strftime("%d/%m/%Y") not in blocos[0]
+
+    captions = [str(c.value) for c in at.caption]
+    assert (
+        "Data-base de referência (início do interregno anual): "
+        f"{data_lateral.strftime('%d/%m/%Y')}" in captions
+    )
     assert "Referência exata para o pedido" not in "".join(
         str(elemento.value) for elemento in at.markdown
     )
 
 
-def _datas_base_exibidas(at):
+def _datas_aptas_exibidas(at):
+    marca = "**Data em que o reajuste fica apto (elegibilidade):**"
     return [
-        str(elemento.value).split("**Data-base do Ciclo:**")[1].strip()
+        str(elemento.value).split(marca)[1].strip()
         for elemento in at.markdown
-        if "Data-base do Ciclo:" in str(elemento.value)
+        if marca in str(elemento.value)
     ]
 
 
-def _rodar_dois_ciclos(data_lateral, pedido, chave_pedido):
-    """Roda a pagina com dois ciclos e devolve (datas-base exibidas, resumo)."""
+def _datas_base_exibidas(at):
+    marca = "Data-base de referência (início do interregno anual): "
+    return [
+        str(c.value).split(marca)[1].strip()
+        for c in at.caption
+        if marca in str(c.value)
+    ]
+
+
+def _rodar_dois_ciclos(data_lateral, pedido, chave_pedido, com_aptas=False):
+    """Roda a pagina com dois ciclos e devolve (datas-base exibidas, resumo).
+
+    Com ``com_aptas``, devolve tambem as elegibilidades exibidas nos blocos.
+    """
     from streamlit.testing.v1 import AppTest
 
     pagina = RAIZ / "pages" / "02_Calculo_Represados.py"
@@ -182,7 +207,7 @@ def _rodar_dois_ciclos(data_lateral, pedido, chave_pedido):
     assert not at.exception
 
     for campo in at.date_input:
-        if "Data-base do ciclo" in str(campo.label):
+        if "Data-base de referência" in str(campo.label):
             campo.set_value(data_lateral)
             break
     at.run()
@@ -192,7 +217,10 @@ def _rodar_dois_ciclos(data_lateral, pedido, chave_pedido):
     at.date_input(key=chave_pedido).set_value(pedido)
     at.run()
     assert not at.exception
-    return _datas_base_exibidas(at), at.dataframe[0].value.to_dict("records")
+    resumo = at.dataframe[0].value.to_dict("records")
+    if com_aptas:
+        return _datas_base_exibidas(at), resumo, _datas_aptas_exibidas(at)
+    return _datas_base_exibidas(at), resumo
 
 
 @pytest.mark.parametrize(
@@ -243,7 +271,7 @@ def _resumo_referencia_23_08_2025(pedido):
     assert not at.exception
 
     for campo in at.date_input:
-        if "Data-base do ciclo" in str(campo.label):
+        if "Data-base de referência" in str(campo.label):
             campo.set_value(date(2024, 8, 23))
             break
     at.run()
@@ -287,6 +315,68 @@ def test_pedido_adiantado_nao_faz_o_ciclo_seguinte_nascer_no_mes_antecipado():
     resumo = _resumo_referencia_23_08_2025(date(2025, 7, 15))
     assert resumo[0]["Situação preliminar"] == "⚠️ ADIANTADO"
     assert resumo[1]["Referência exata"] == "23/08/2026"
+
+
+# --------------------------------------------------- etapa 45: cenarios A a D
+def test_etapa45_a_lateral_05_05_2025_exibe_elegibilidade_05_05_2026():
+    """A — a data digitada na lateral produz a elegibilidade 12 meses adiante."""
+    bases, _, aptas = _rodar_dois_ciclos(
+        date(2025, 5, 5), date(2026, 5, 5), "p1_20260505", com_aptas=True
+    )
+    assert aptas[0] == "05/05/2026"
+    assert bases[0] == "05/05/2025"
+
+
+def test_etapa45_b_adiantado_nao_antecipa_a_elegibilidade_do_c2():
+    """B — pedido em 20/04/2026 e ADIANTADO; C2 segue apto em 05/05/2027."""
+    bases, resumo, aptas = _rodar_dois_ciclos(
+        date(2025, 5, 5), date(2026, 4, 20), "p1_20260505", com_aptas=True
+    )
+    assert resumo[0]["Situação preliminar"] == "⚠️ ADIANTADO"
+    assert aptas[0] == "05/05/2026"
+    # a antecipacao nao move a data-base nem a elegibilidade do ciclo seguinte
+    assert bases[1] == "05/05/2026"
+    assert aptas[1] == "05/05/2027"
+    assert resumo[1]["Referência exata"] == "05/05/2027"
+    # o efeito financeiro permanece na competencia da elegibilidade
+    assert resumo[0]["Início financeiro"] == "01/05/2026"
+
+
+def test_etapa45_b2_adiantado_no_mesmo_mes_continua_adiantado():
+    """B (variante) — 01/05/2026 antecede 05/05/2026: comparacao por data exata."""
+    _, resumo, aptas = _rodar_dois_ciclos(
+        date(2025, 5, 5), date(2026, 5, 1), "p1_20260505", com_aptas=True
+    )
+    assert resumo[0]["Situação preliminar"] == "⚠️ ADIANTADO"
+    assert aptas[1] == "05/05/2027"
+
+
+def test_etapa45_c_tempestivo_asterisco_separa_data_exata_e_competencia():
+    """C — pedido 15/06/2026: data exata, competencia 06/2026 e proxima 15/06/2027."""
+    bases, resumo, aptas = _rodar_dois_ciclos(
+        date(2025, 5, 5), date(2026, 6, 15), "p1_20260505", com_aptas=True
+    )
+    assert resumo[0]["Situação preliminar"] == "✅ TEMPESTIVO*"
+    # data juridica exata preservada como data-base do ciclo seguinte...
+    assert bases[1] == "15/06/2026"
+    # ...competencia financeira mensalizada em 06/2026...
+    assert resumo[0]["Início financeiro"] == "01/06/2026"
+    # ...e a proxima elegibilidade nasce 12 meses apos a data exata.
+    assert aptas[1] == "15/06/2027"
+    assert resumo[1]["Referência exata"] == "15/06/2027"
+
+
+def test_etapa45_d_precluso_nao_redefine_sozinho_a_proxima_referencia():
+    """D — precluso sem acordo preserva a referencia teorica: 05/05/2027."""
+    bases, resumo, aptas = _rodar_dois_ciclos(
+        date(2025, 5, 5), date(2026, 9, 30), "p1_20260505", com_aptas=True
+    )
+    assert resumo[0]["Situação preliminar"] == "❌ PRECLUSO"
+    assert resumo[0]["Início financeiro"] == "Sem efeitos financeiros automáticos"
+    # a data do pedido precluso nao entra na cadeia exata
+    assert bases[1] == "05/05/2026"
+    assert aptas[1] == "05/05/2027"
+    assert resumo[1]["Referência exata"] == "05/05/2027"
     assert not resumo[1]["Referência exata"].startswith("15/07")
 
 
