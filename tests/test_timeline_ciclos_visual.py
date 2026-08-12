@@ -203,10 +203,20 @@ def test_efeitos_financeiros_em_linha_propria_quando_pedido_difere_do_inicio():
     at.run()
     html = _html_regua(at)
     assert "Efeitos financeiros" in html
-    # o marco apto de C1 permanece 10/10/2023; o efeito nasce em 01/12/2023
+    # o marco apto de C1 permanece 10/10/2023; a regua exibe a REFERENCIA
+    # EXATA que originou o efeito (10/12/2023), nao a competencia mensalizada.
     assert "Apto em 10/10/2023" in html
-    assert "01/12/2023" in html
+    assert "10/12/2023" in html
+    assert "01/12/2023" not in html
     assert "TEMPESTIVO*" in html
+    # a competencia mensal segue intacta no resultado do motor
+    resumo = {
+        linha["Ciclo"]: linha
+        for df in at.dataframe
+        for linha in df.value.to_dict("records")
+        if "Ciclo" in linha and "Data do pedido" in linha
+    }
+    assert resumo["C1"]["Início financeiro"] == "01/12/2023"
 
 
 # ------------------------------------------------------ relacao pedido x ciclo
@@ -253,6 +263,75 @@ def test_data_base_de_referencia_aparece_uma_unica_vez_por_ciclo():
         "Data-base de referência (início do interregno anual): 10/10/2023" in captions
     )
     assert not any("Este pedido utiliza a data-base" in c for c in captions)
+
+
+# ------------- etapa 45.1: referencia exata do efeito financeiro na regua
+@pytest.mark.parametrize(
+    ("pedido", "referencia_exata", "competencia", "situacao", "proxima"),
+    (
+        # A — pedido na elegibilidade: a regua mostra 05/05/2026, nao 01/05/2026
+        (date(2026, 5, 5),  "05/05/2026", "01/05/2026", "✅ TEMPESTIVO",  "05/05/2027"),
+        # B — tempestivo posterior no mesmo mes: data exata do pedido
+        (date(2026, 5, 25), "25/05/2026", "01/05/2026", "✅ TEMPESTIVO",  "25/05/2027"),
+        # C — ADIANTADO: o efeito so nasce da elegibilidade, nao do pedido
+        (date(2026, 4, 20), "05/05/2026", "01/05/2026", "⚠️ ADIANTADO",  "05/05/2027"),
+        # D — TEMPESTIVO*: data exata 15/06/2026 com competencia 06/2026
+        (date(2026, 6, 15), "15/06/2026", "01/06/2026", "✅ TEMPESTIVO*", "15/06/2027"),
+    ),
+)
+def test_regua_mostra_referencia_exata_do_efeito_e_preserva_a_competencia(
+    pedido, referencia_exata, competencia, situacao, proxima
+):
+    at = _app()
+    campo_base = next(
+        d for d in at.date_input if d.label == "Data-base de referência 🔹"
+    )
+    campo_base.set_value(date(2025, 5, 5))
+    at.run()
+    at.date_input(key="p1_20260505").set_value(pedido)
+    at.run()
+
+    html = _html_regua(at)
+    assert "Efeitos financeiros" in html
+    # (1)(2)(3) a regua exibe a referencia EXATA que originou o efeito
+    assert f'<div class="cl8us-regua-efeito-data">{referencia_exata}</div>' in html
+
+    resumo = {
+        linha["Ciclo"]: linha
+        for df in at.dataframe
+        for linha in df.value.to_dict("records")
+        if "Ciclo" in linha and "Data do pedido" in linha
+    }
+    # (4) a competencia mensal do motor/XLS continua exatamente como antes
+    assert resumo["C1"]["Início financeiro"] == competencia
+    # (5) classificacao e proxima elegibilidade inalteradas
+    assert resumo["C1"]["Situação preliminar"] == situacao
+    assert resumo["C1"]["Referência exata"] == "05/05/2026"
+    assert resumo["C2"]["Referência exata"] == proxima
+
+
+def test_precluso_continua_sem_efeito_financeiro_na_regua():
+    """E — preclusao sem acordo nao inventa referencia exata de efeito."""
+    at = _app()
+    campo_base = next(
+        d for d in at.date_input if d.label == "Data-base de referência 🔹"
+    )
+    campo_base.set_value(date(2025, 5, 5))
+    at.run()
+    at.date_input(key="p1_20260505").set_value(date(2026, 9, 30))
+    at.run()
+    html = _html_regua(at)
+    inicio_c1 = html.index(">C1<")
+    inicio_c2 = html.index(">C2<")
+    assert "PRECLUSO" in html[inicio_c1:inicio_c2]
+    resumo = {
+        linha["Ciclo"]: linha
+        for df in at.dataframe
+        for linha in df.value.to_dict("records")
+        if "Ciclo" in linha and "Data do pedido" in linha
+    }
+    assert resumo["C1"]["Início financeiro"] == "Sem efeitos financeiros automáticos"
+    assert resumo["C2"]["Referência exata"] == "05/05/2027"
 
 
 # ------------------------------------------- etapa 45: marcador do pedido (E)
@@ -368,7 +447,7 @@ def test_timeline_nao_recalcula_nada():
     # status e datas vem de estruturas ja produzidas pela pagina
     assert "sit_emoji" in bloco
     assert "d_aniv" in bloco
-    assert "inicio_efeito_financeiro" in bloco
+    assert "referencia_exata_efeito" in bloco
     # Etapa 45: pedido e posicao relativa tambem chegam prontos do motor —
     # a montagem nao compara datas nem decide situacao.
     assert "dt_ped" in bloco

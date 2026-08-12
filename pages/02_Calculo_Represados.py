@@ -2017,12 +2017,14 @@ def _render_regua_temporal_marcos(destino, marcos):
             f'<div class="cl8us-regua-status">{marco.get("status", "")}</div>'
             '</div>'
         )
-        inicio_efeito = marco.get("inicio_efeito")
-        if inicio_efeito is not None and hasattr(inicio_efeito, "strftime"):
+        # Referência EXATA do efeito financeiro (Etapa 45.1): a data que o
+        # motor apurou antes de mensalizar. A régua apenas a desenha.
+        referencia_efeito = marco.get("referencia_efeito")
+        if referencia_efeito is not None and hasattr(referencia_efeito, "strftime"):
             celulas_efeitos.append(
                 f'<div class="{classe_col}">'
                 '<div class="cl8us-regua-efeito-seta">&#9679;&#8212;&#8594;</div>'
-                f'<div class="cl8us-regua-efeito-data">{inicio_efeito.strftime("%d/%m/%Y")}</div>'
+                f'<div class="cl8us-regua-efeito-data">{referencia_efeito.strftime("%d/%m/%Y")}</div>'
                 '</div>'
             )
         else:
@@ -2045,7 +2047,7 @@ def _render_regua_temporal_marcos(destino, marcos):
         '</div>',
         f'<div class="cl8us-regua-grid" {estilo_grid}>{"".join(celulas_marcos)}</div>',
     ]
-    if any(m.get("inicio_efeito") is not None for m in marcos):
+    if any(m.get("referencia_efeito") is not None for m in marcos):
         blocos.append('<div class="cl8us-regua-titulo efeitos">Efeitos financeiros</div>')
         blocos.append(f'<div class="cl8us-regua-grid" {estilo_grid}>{"".join(celulas_efeitos)}</div>')
     blocos.append('</div>')
@@ -2273,12 +2275,17 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
     # competência do pedido (exibição TEMPESTIVO*, sem criar estado jurídico
     # novo) e o próximo reajuste nasce 12 meses após o início dos efeitos
     # financeiros do ciclo anterior. A data de pagamento nunca participa.
+    # ETAPA 45.1 — referencia_exata_efeito e a data EXATA que originou o
+    # efeito; inicio_efeito_financeiro continua sendo a COMPETENCIA mensal
+    # derivada dela. As duas convivem: a primeira so alimenta apresentacao,
+    # a segunda segue alimentando calculo, propagacao e XLS, sem mudanca.
     if situacao_limpa == "PRECLUSO":
+        referencia_exata_efeito = None
         inicio_efeito_financeiro = None
         efeito_financeiro_retardado = False
     else:
-        _ref_efeito = dt_ped if dt_ped >= d_aniv else d_aniv
-        inicio_efeito_financeiro = _ref_efeito.replace(day=1)
+        referencia_exata_efeito = dt_ped if dt_ped >= d_aniv else d_aniv
+        inicio_efeito_financeiro = referencia_exata_efeito.replace(day=1)
         efeito_financeiro_retardado = bool(
             situacao_limpa == "TEMPESTIVO"
             and (dt_ped.year, dt_ped.month) > (d_aniv.year, d_aniv.month)
@@ -2379,6 +2386,9 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
                 # (regra pétrea: efeito financeiro é mensal; o dia exato
                 # pertence à admissibilidade/documentação do acordo).
                 inicio_efeito_financeiro = data_inicio_efeito_negocial.replace(day=1)
+                # ETAPA 45.1 — mesma separação do efeito ordinário: a régua
+                # exibe a data exata pactuada, a competência segue mensal.
+                referencia_exata_efeito = data_inicio_efeito_negocial
                 # Regra de ancoragem negocial:
                 # se um ciclo precluso for admitido por negociação entre as partes, a âncora
                 # do ciclo seguinte é arrastada para a competência de início dos efeitos
@@ -2408,6 +2418,7 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         'sit_emoji': sit_emoji,
         'situacao_limpa': situacao_limpa,
         'inicio_efeito_financeiro': inicio_efeito_financeiro,
+        'referencia_exata_efeito': referencia_exata_efeito,
         'efeito_financeiro_retardado': bool(efeito_financeiro_retardado),
         'ciclo_ja_concedido': bool(ciclo_ja_concedido),
         'superacao_negocial': bool(superacao_negocial),
@@ -2441,7 +2452,7 @@ if _ciclo_formalizado_regua and hasattr(_marco_formalizado_regua, "strftime"):
         "ordem": "Ciclo formalizado",
         "status": "",
         "em_analise": False,
-        "inicio_efeito": None,
+        "referencia_efeito": None,
         "data_pedido": None,
         "posicao_pedido": "",
     })
@@ -2458,7 +2469,10 @@ for _posicao_regua, _dados_regua in enumerate(input_ciclos):
         "ordem": f"{_posicao_regua + 1}º ciclo da análise",
         "status": _dados_regua.get("sit_emoji", ""),
         "em_analise": True,
-        "inicio_efeito": _dados_regua.get("inicio_efeito_financeiro"),
+        # ETAPA 45.1 — a régua exibe a REFERÊNCIA EXATA que originou o efeito
+        # (já calculada pelo motor antes da mensalização). A competência
+        # mensal (inicio_efeito_financeiro) segue intacta no cálculo e no XLS.
+        "referencia_efeito": _dados_regua.get("referencia_exata_efeito"),
         # Marcador secundário do pedido: data e posição relativa vêm prontas do
         # motor (input_ciclos); a régua apenas as desenha.
         "data_pedido": _dados_regua.get("dt_ped"),

@@ -130,9 +130,11 @@ def test_cenario_d_efeito_financeiro_posterior_a_data_base():
     at.run()
     html = _html_regua(at)
     assert "Efeitos financeiros" in html
-    # camada separada mostra a COMPETENCIA do efeito (01/12/2023), distinta do
-    # marco apto do ciclo (10/10/2023), sem alterar o marco exibido.
-    assert "01/12/2023" in html
+    # camada separada mostra a REFERENCIA EXATA do efeito (10/12/2023, etapa
+    # 45.1), distinta do marco apto do ciclo (10/10/2023) e da competencia
+    # mensal (01/12/2023), que permanece apenas na camada de calculo.
+    assert "10/12/2023" in html
+    assert "01/12/2023" not in html
     assert "Apto em 10/10/2023" in html
     # o pedido tardio aparece como marcador secundario, posterior ao marco
     assert "Pedido 10/12/2023" in html
