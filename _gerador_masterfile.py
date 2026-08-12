@@ -571,6 +571,28 @@ def _registrar_inicio_efeitos_financeiros(wb, ciclos: dict[str, Any]) -> None:
     wb.properties.keywords = ";".join(parte for parte in (anterior, novo) if parte)
 
 
+def _registrar_datas_abertura_fisica(wb, ciclos: dict[str, Any]) -> None:
+    """parametros!I: DATA_ABERTURA_FISICA_EXATA por ciclo — ETAPA 48.
+
+    Superficie exclusiva da fotografia fisica (itens_Remanesc!E1:T1,
+    posicao_contratual!AB:AF, posicao_referencia!I6, cobertura_temporal!B6).
+    parametros!C segue sendo a cadeia mensal e nao e tocada aqui. Ciclo sem
+    data exata transportada (payload legado ou ciclo derivado/precluso) usa
+    data_inicio como fallback — comportamento identico ao anterior.
+    """
+    ws = wb["parametros"] if "parametros" in wb.sheetnames else None
+    if ws is None or str(ws["B1"].value or "").strip().upper() != "CICLO":
+        return
+    ws["I1"] = "DATA_ABERTURA_FISICA_EXATA"
+    for linha, nome in enumerate(("C0", "C1", "C2", "C3", "C4"), start=2):
+        ciclo = ciclos.get(nome) or {}
+        valor = ciclo.get("data_abertura_fisica_exata") or ciclo.get("data_inicio")
+        if isinstance(valor, datetime):
+            valor = valor.date()
+        _escrever_entrada(ws, f"I{linha}", valor if isinstance(valor, date) else None)
+        ws[f"I{linha}"].number_format = "dd/mm/yyyy"
+
+
 def _preencher_datas_fotografias_remanescentes(
     ws, ciclos: dict[str, Any], data_corte: Any, ciclo_vigente: str,
 ) -> None:
@@ -773,6 +795,7 @@ def gerar_masterfile_preenchido(
     # some da linha do tempo nem tem seu periodo herdado pelo ciclo seguinte.
     ciclos_completos = _completar_periodos_ciclos(ciclos, dados_calculadora.get("data_corte"))
     _registrar_inicio_efeitos_financeiros(wb, ciclos_completos)
+    _registrar_datas_abertura_fisica(wb, ciclos_completos)
 
     ciclos_computados: list[tuple[str, Any]] = []
     for linha, nome in enumerate(("C0", "C1", "C2", "C3", "C4"), start=2):
