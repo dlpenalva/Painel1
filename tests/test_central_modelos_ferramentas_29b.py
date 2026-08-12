@@ -319,13 +319,19 @@ def test_pagina14_downloads_modelos():
 
 
 def test_pagina14_ferramentas_presentes():
-    for alvo in [
-        "pages/05_Garantia.py", "pages/08_Avaliacao_Aditivos.py",
-        "pages/07_Checklist_Processual.py", "pages/09_Infos_Previas.py",
-        "pages/11_Cl8us_Orienta.py",
-    ]:
+    for alvo in ["pages/05_Garantia.py", "pages/08_Avaliacao_Aditivos.py"]:
         assert alvo in PAGE14
-    assert "pages/03_Valor_Global.py" in PAGE14
+
+
+def test_pagina14_itens_retirados_etapa47():
+    # Etapa 47: os quatro itens deixaram de ser apresentados nesta seção.
+    # As páginas continuam existindo no repositório e registradas no app.
+    for removido in [
+        "pages/07_Checklist_Processual.py", "pages/09_Infos_Previas.py",
+        "pages/11_Cl8us_Orienta.py", "pages/03_Valor_Global.py",
+    ]:
+        assert removido not in PAGE14
+        assert (ROOT / removido).exists()
 
 
 def test_pagina14_nao_expoe_dou_adequacao_saneador():
@@ -544,9 +550,10 @@ def test_upload_docs_clique_apenas_navega():
 
 
 def test_navegacao_bidirecional_upload_modelos():
-    # Upload e docs -> Modelos (novo bloco) e Modelos -> Upload e docs (card).
+    # Upload e docs -> Modelos (novo bloco). Etapa 47: o card de retorno
+    # "Gerar documentos com dados da apuração" saiu da Central; o caminho de
+    # volta permanece pelo menu lateral, verificado abaixo.
     assert "pages/14_Central_Modelos_Ferramentas.py" in PAGE03
-    assert "pages/03_Valor_Global.py" in PAGE14
     # menu lateral: ambos os links registrados no app
     assert 'label="Upload e docs"' in APP
     assert 'label="Modelos e ferramentas"' in APP

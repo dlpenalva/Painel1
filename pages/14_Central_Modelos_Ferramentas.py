@@ -4,10 +4,12 @@
   - modelos EM BRANCO do Despacho Saneador e do Termo de Apostila
     (gerados pelos wrappers canônicos ``gerar_modelo_branco_*``, sem qualquer
     dado de session_state, Coleta ou apuração anterior);
-  - ferramentas independentes comprovadas (Garantia, Aditivos 25%, Checklist,
-    Informações Prévias, Cl8us Orienta);
-  - direcionamento para "Upload e docs" quando o usuário quiser documentos
-    preenchidos automaticamente com os dados da apuração.
+  - ferramentas independentes comprovadas (Garantia, Aditivos 25%).
+
+Etapa 47: Checklist Processual, Informações Prévias, Cl8us Orienta e o
+direcionamento "Gerar documentos com dados da apuração" deixaram de ser
+apresentados nesta seção. As páginas e os módulos correspondentes permanecem
+íntegros e continuam registrados na navegação do app.
 
 Nenhum modelo em branco usa as chaves dos documentos automáticos
 (``arquivo_despacho_saneador_docx`` / ``arquivo_termo_apostila_docx``): os
@@ -121,39 +123,3 @@ with linha1[1]:
         if st.button("Abrir Aditivos: 25%", use_container_width=True,
                      key="abrir_aditivos_modelos"):
             _abrir("pages/08_Avaliacao_Aditivos.py")
-
-linha2 = st.columns(2, gap="large")
-with linha2[0]:
-    with st.container(border=True):
-        _card("Checklist Processual",
-              "Checklist manual de conferência do processo, sem dependência de "
-              "apuração.")
-        if st.button("Abrir Checklist Processual", use_container_width=True,
-                     key="abrir_checklist_modelos"):
-            _abrir("pages/07_Checklist_Processual.py")
-with linha2[1]:
-    with st.container(border=True):
-        _card("Informações Prévias",
-              "Registro manual das informações prévias do contrato.")
-        if st.button("Abrir Informações Prévias", use_container_width=True,
-                     key="abrir_infos_modelos"):
-            _abrir("pages/09_Infos_Previas.py")
-
-linha3 = st.columns(2, gap="large")
-with linha3[0]:
-    with st.container(border=True):
-        _card("Cl8us Orienta",
-              "Orientações sobre os modos de análise, validações e índices.")
-        if st.button("Abrir Cl8us Orienta", use_container_width=True,
-                     key="abrir_orienta_modelos"):
-            _abrir("pages/11_Cl8us_Orienta.py")
-
-# ---------------------------------------------------------------- Seção 3
-st.subheader("Documentos com dados da apuração")
-with st.container(border=True):
-    _card("Gerar documentos com dados da apuração",
-          "Use a Planilha de Coleta para gerar documentos preenchidos "
-          "automaticamente com os resultados da análise.")
-    if st.button("Ir para Upload e docs", use_container_width=True,
-                 key="ir_upload_modelos"):
-        _abrir("pages/03_Valor_Global.py")
