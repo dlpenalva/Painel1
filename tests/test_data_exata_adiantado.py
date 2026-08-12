@@ -380,6 +380,158 @@ def test_etapa45_d_precluso_nao_redefine_sozinho_a_proxima_referencia():
     assert not resumo[1]["Referência exata"].startswith("15/07")
 
 
+# ------------------------------------------- etapa 46: acordo negocial (A a C)
+def _rodar_precluso_com_acordo(data_lateral, pedido, chave_pedido, data_pactuada=None):
+    """Roda a pagina com C1 PRECLUSO admitido por acordo negocial.
+
+    Quando ``data_pactuada`` e None, o campo "Inicio dos efeitos financeiros por
+    acordo" e deixado com o valor que ja vem preenchido (a data do pedido) — o
+    caso B do enunciado, em que o usuario nao toca no campo.
+    Devolve (datas-base exibidas, resumo, elegibilidades exibidas).
+    """
+    from streamlit.testing.v1 import AppTest
+
+    pagina = RAIZ / "pages" / "02_Calculo_Represados.py"
+    at = AppTest.from_file(str(pagina), default_timeout=300)
+    at.run()
+    assert not at.exception
+
+    for campo in at.date_input:
+        if "Data-base de referência" in str(campo.label):
+            campo.set_value(data_lateral)
+            break
+    at.run()
+    at.selectbox(key="rep_ciclo_final_analise").select("C2")
+    at.run()
+
+    at.date_input(key=chave_pedido).set_value(pedido)
+    at.run()
+    at.checkbox(key="superacao_negocial_c1").check()
+    at.run()
+    if data_pactuada is not None:
+        at.date_input(key="inicio_negocial_c1").set_value(data_pactuada)
+        at.run()
+    assert not at.exception
+    resumo = at.dataframe[0].value.to_dict("records")
+    return _datas_base_exibidas(at), resumo, _datas_aptas_exibidas(at)
+
+
+def test_etapa46_a_acordo_preserva_o_dia_pactuado_na_elegibilidade_seguinte():
+    """A — pactuado 18/08/2023: C2 apto em 18/08/2024, financeiro em 01/08/2023.
+
+    A mensalizacao pertence exclusivamente a cadeia FINANCEIRA. A cadeia EXATA
+    conserva o dia pactuado, de modo que a elegibilidade do ciclo seguinte nao
+    retrocede para o primeiro dia da competencia.
+    """
+    bases, resumo, aptas = _rodar_precluso_com_acordo(
+        date(2022, 5, 5), date(2023, 8, 10), "p1_20230505", date(2023, 8, 18)
+    )
+    assert resumo[0]["Situação preliminar"] == "❌ PRECLUSO"
+    # cadeia financeira: mensalizada, exatamente como antes
+    assert resumo[0]["Início financeiro"] == "01/08/2023"
+    # cadeia exata: dia pactuado preservado no ciclo seguinte
+    assert bases[1] == "18/08/2023"
+    assert aptas[1] == "18/08/2024"
+    assert resumo[1]["Referência exata"] == "18/08/2024"
+    # jamais o primeiro dia da competencia financeira
+    assert aptas[1] != "01/08/2024"
+
+
+def test_etapa46_b_campo_nao_alterado_tambem_preserva_o_dia_exato():
+    """B — o valor ja preenchido (12/04/2023) vale como data pactuada.
+
+    Nao ter editado o campo manualmente nao elimina o dia exato: o C2 fica apto
+    em 12/04/2024, e nao em 01/04/2024.
+    """
+    bases, resumo, aptas = _rodar_precluso_com_acordo(
+        date(2022, 1, 1), date(2023, 4, 12), "p1_20230101"
+    )
+    assert resumo[0]["Situação preliminar"] == "❌ PRECLUSO"
+    assert resumo[0]["Início financeiro"] == "01/04/2023"
+    assert bases[1] == "12/04/2023"
+    assert aptas[1] == "12/04/2024"
+    assert resumo[1]["Referência exata"] == "12/04/2024"
+    assert aptas[1] != "01/04/2024"
+
+
+def test_etapa46_c_precluso_sem_acordo_permanece_identico():
+    """C — sem acordo nada muda: cadeia exata preservada e sem efeito financeiro."""
+    bases, resumo, aptas = _rodar_dois_ciclos(
+        date(2022, 5, 5), date(2023, 8, 10), "p1_20230505", com_aptas=True
+    )
+    assert resumo[0]["Situação preliminar"] == "❌ PRECLUSO"
+    assert resumo[0]["Início financeiro"] == "Sem efeitos financeiros automáticos"
+    assert bases[1] == "05/05/2023"
+    assert aptas[1] == "05/05/2024"
+    assert resumo[1]["Referência exata"] == "05/05/2024"
+
+
+def test_etapa46_acordo_nao_altera_classificacao_nem_competencia():
+    """O acordo move apenas a cadeia exata do ciclo seguinte.
+
+    A classificacao do proprio C1 e todos os demais campos do resumo continuam
+    identicos; o unico campo que muda e o inicio financeiro, que passa a existir
+    pela admissao — e o faz na COMPETENCIA (dia 1), como antes da etapa 46.
+    """
+    _, sem_acordo, _ = _rodar_dois_ciclos(
+        date(2022, 5, 5), date(2023, 8, 10), "p1_20230505", com_aptas=True
+    )
+    _, com_acordo, _ = _rodar_precluso_com_acordo(
+        date(2022, 5, 5), date(2023, 8, 10), "p1_20230505", date(2023, 8, 18)
+    )
+    campos_do_c1 = set(sem_acordo[0]) - {"Início financeiro"}
+    assert campos_do_c1
+    for campo in campos_do_c1:
+        assert com_acordo[0][campo] == sem_acordo[0][campo], campo
+    # a competencia do C1 nasce da data pactuada e permanece mensalizada
+    assert com_acordo[0]["Início financeiro"] == "01/08/2023"
+
+
+def test_etapa46_percentual_do_acordo_continua_vindo_do_campo_negocial():
+    """O percentual aplicado ao ciclo admitido nao foi tocado pela etapa 46.
+
+    A correcao alcanca apenas a cadeia exata; a origem do percentual (o campo
+    "Percentual aplicado por acordo") permanece a mesma linha de sempre.
+    """
+    fonte = (RAIZ / "pages" / "02_Calculo_Represados.py").read_text(encoding="utf-8")
+    assert "percentual_aplicado = percentual_negocial" in fonte
+    # a mensalizacao financeira do acordo tambem segue intacta
+    assert (
+        "inicio_efeito_financeiro = data_inicio_efeito_negocial.replace(day=1)" in fonte
+    )
+    # e a ancora MENSAL do ciclo seguinte continua nascendo da competencia
+    assert "data_base_proximo_ciclo = inicio_efeito_financeiro" in fonte
+
+
+def test_etapa46_mensagem_do_acordo_exibe_a_data_exata():
+    """A mensagem visual cita a data pactuada e a elegibilidade exata."""
+    from streamlit.testing.v1 import AppTest
+
+    pagina = RAIZ / "pages" / "02_Calculo_Represados.py"
+    at = AppTest.from_file(str(pagina), default_timeout=300)
+    at.run()
+    for campo in at.date_input:
+        if "Data-base de referência" in str(campo.label):
+            campo.set_value(date(2022, 5, 5))
+            break
+    at.run()
+    at.date_input(key="p1_20230505").set_value(date(2023, 8, 10))
+    at.run()
+    at.checkbox(key="superacao_negocial_c1").check()
+    at.run()
+    at.date_input(key="inicio_negocial_c1").set_value(date(2023, 8, 18))
+    at.run()
+    assert not at.exception
+
+    avisos = [str(e.value) for e in at.info if "admissão negocial" in str(e.value)]
+    assert avisos, "a mensagem do acordo nao foi exibida"
+    assert "18/08/2023" in avisos[0]
+    assert "18/08/2024" in avisos[0]
+    assert "01/08/2024" not in avisos[0]
+    # a competencia financeira continua informada, sem virar elegibilidade
+    assert "08/2023" in avisos[0]
+
+
 def test_tempestivo_asterisco_preserva_competencias_sem_efeito_no_xls():
     """Pedido 15/10/2025 sobre referencia 23/08/2025: 08 e 09/2025 sem efeito."""
     payload = _payload_xls("✅ TEMPESTIVO*")
