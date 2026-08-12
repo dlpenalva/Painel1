@@ -118,8 +118,7 @@ def test_status_global_ignora_marco_historico_fora_da_apuracao():
     """Ciclo formalizado aparece na regua, mas nunca na frase da apuracao."""
     at = _app()
     campo_base = next(
-        d for d in at.date_input
-        if d.label == "Data-base do ciclo em que **esta análise começa** 🔹"
+        d for d in at.date_input if d.label == "Data-base de referência 🔹"
     )
     campo_base.set_value(date(2023, 2, 1))
     at.selectbox(key="rep_ciclo_inicial_analise").select("C2")
@@ -164,12 +163,13 @@ def test_frase_do_status_global_e_montada_a_partir_de_em_analise():
 
 
 # ------------------------------------------------------------- marcos por ciclo
-def test_cada_marco_traz_identificacao_data_base_e_status():
+def test_cada_marco_traz_identificacao_data_apta_e_status():
     at = _app()
     html = _html_regua(at)
     assert "Marcos dos ciclos" in html
-    # C1 semeado pela data lateral (10/10/2022) e C2 pela cadeia ja calculada.
-    assert "10/10/2022" in html and "10/10/2023" in html
+    # Etapa 45: o marco desenhado e a data apta de cada ciclo — C1 semeado pela
+    # data lateral (10/10/2022) fica apto em 10/10/2023, e C2 em 10/10/2024.
+    assert "Apto em 10/10/2023" in html and "Apto em 10/10/2024" in html
     assert html.count("TEMPESTIVO") == 2
     # o pertencimento a apuracao e global (cabecalho), nunca um selo por ciclo
     assert html.count("Ciclos em análise: C1 e C2") == 1
@@ -178,7 +178,10 @@ def test_cada_marco_traz_identificacao_data_base_e_status():
 
 def test_status_adiantado_aparece_na_timeline():
     at = _app()
-    pedido = next(d for d in at.date_input if d.label.startswith("Data do Pedido C1"))
+    pedido = next(
+        d for d in at.date_input
+        if d.label.startswith("Data do pedido da Contratada — C1")
+    )
     pedido.set_value(date(2023, 5, 10))
     at.run()
     html = _html_regua(at)
@@ -191,25 +194,38 @@ def test_status_adiantado_aparece_na_timeline():
 
 def test_efeitos_financeiros_em_linha_propria_quando_pedido_difere_do_inicio():
     at = _app()
-    pedido = next(d for d in at.date_input if d.label.startswith("Data do Pedido C1"))
+    pedido = next(
+        d for d in at.date_input
+        if d.label.startswith("Data do pedido da Contratada — C1")
+    )
     # tempestivo em competencia posterior a data-base: efeito retardado
     pedido.set_value(date(2023, 12, 10))
     at.run()
     html = _html_regua(at)
     assert "Efeitos financeiros" in html
-    # a data-base do ciclo permanece 10/10/2022; o efeito nasce em 01/12/2023
-    assert "10/10/2022" in html
-    assert "01/12/2023" in html
+    # o marco apto de C1 permanece 10/10/2023; a regua exibe a REFERENCIA
+    # EXATA que originou o efeito (10/12/2023), nao a competencia mensalizada.
+    assert "Apto em 10/10/2023" in html
+    assert "10/12/2023" in html
+    assert "01/12/2023" not in html
     assert "TEMPESTIVO*" in html
+    # a competencia mensal segue intacta no resultado do motor
+    resumo = {
+        linha["Ciclo"]: linha
+        for df in at.dataframe
+        for linha in df.value.to_dict("records")
+        if "Ciclo" in linha and "Data do pedido" in linha
+    }
+    assert resumo["C1"]["Início financeiro"] == "01/12/2023"
 
 
 # ------------------------------------------------------ relacao pedido x ciclo
-def test_frase_relaciona_pedido_e_data_base_do_ciclo():
+def test_frase_relaciona_pedido_e_data_apta_do_ciclo():
     at = _app()
     notas = _notas_ciclos(at)
     assert len(notas) == 2
-    assert "Pedido de 10/10/2023 refere-se ao ciclo C1, iniciado em 10/10/2022." in notas[0]
-    assert "Pedido de 10/10/2024 refere-se ao ciclo C2, iniciado em 10/10/2023." in notas[1]
+    assert "Pedido de 10/10/2023 refere-se ao ciclo C1, apto em 10/10/2023." in notas[0]
+    assert "Pedido de 10/10/2024 refere-se ao ciclo C2, apto em 10/10/2024." in notas[1]
     # destaque azul discreto apenas no ciclo que abre a analise
     assert "cl8us-ciclo-nota ativo" in notas[0]
     assert "cl8us-ciclo-nota ativo" not in notas[1]
@@ -218,23 +234,181 @@ def test_frase_relaciona_pedido_e_data_base_do_ciclo():
 def test_frase_acompanha_a_data_informada_pelo_usuario():
     at = _app()
     campo_base = next(
-        d for d in at.date_input
-        if d.label == "Data-base do ciclo em que **esta análise começa** 🔹"
+        d for d in at.date_input if d.label == "Data-base de referência 🔹"
     )
     campo_base.set_value(date(2023, 9, 7))
     at.run()
-    pedido = next(d for d in at.date_input if d.label.startswith("Data do Pedido C1"))
+    pedido = next(
+        d for d in at.date_input
+        if d.label.startswith("Data do pedido da Contratada — C1")
+    )
     pedido.set_value(date(2024, 9, 7))
     at.run()
     notas = _notas_ciclos(at)
-    assert "Pedido de 07/09/2024 refere-se ao ciclo C1, iniciado em 07/09/2023." in notas[0]
+    assert "Pedido de 07/09/2024 refere-se ao ciclo C1, apto em 07/09/2024." in notas[0]
 
 
-def test_ajuda_sob_o_campo_de_pedido_mostra_a_data_base_de_cada_ciclo():
+def test_data_base_de_referencia_aparece_uma_unica_vez_por_ciclo():
+    """Etapa 45: a data-base fica no caption proprio, sob o nome unico.
+
+    O caption anterior ("Este pedido utiliza a data-base de ...") era uma
+    terceira mencao da mesma data e foi removido.
+    """
     at = _app()
     captions = _captions(at)
-    assert "Este pedido utiliza a data-base de 10/10/2022." in captions
-    assert "Este pedido utiliza a data-base de 10/10/2023." in captions
+    assert (
+        "Data-base de referência (início do interregno anual): 10/10/2022" in captions
+    )
+    assert (
+        "Data-base de referência (início do interregno anual): 10/10/2023" in captions
+    )
+    assert not any("Este pedido utiliza a data-base" in c for c in captions)
+
+
+# ------------- etapa 45.1: referencia exata do efeito financeiro na regua
+@pytest.mark.parametrize(
+    ("pedido", "referencia_exata", "competencia", "situacao", "proxima"),
+    (
+        # A — pedido na elegibilidade: a regua mostra 05/05/2026, nao 01/05/2026
+        (date(2026, 5, 5),  "05/05/2026", "01/05/2026", "✅ TEMPESTIVO",  "05/05/2027"),
+        # B — tempestivo posterior no mesmo mes: data exata do pedido
+        (date(2026, 5, 25), "25/05/2026", "01/05/2026", "✅ TEMPESTIVO",  "25/05/2027"),
+        # C — ADIANTADO: o efeito so nasce da elegibilidade, nao do pedido
+        (date(2026, 4, 20), "05/05/2026", "01/05/2026", "⚠️ ADIANTADO",  "05/05/2027"),
+        # D — TEMPESTIVO*: data exata 15/06/2026 com competencia 06/2026
+        (date(2026, 6, 15), "15/06/2026", "01/06/2026", "✅ TEMPESTIVO*", "15/06/2027"),
+    ),
+)
+def test_regua_mostra_referencia_exata_do_efeito_e_preserva_a_competencia(
+    pedido, referencia_exata, competencia, situacao, proxima
+):
+    at = _app()
+    campo_base = next(
+        d for d in at.date_input if d.label == "Data-base de referência 🔹"
+    )
+    campo_base.set_value(date(2025, 5, 5))
+    at.run()
+    at.date_input(key="p1_20260505").set_value(pedido)
+    at.run()
+
+    html = _html_regua(at)
+    assert "Efeitos financeiros" in html
+    # (1)(2)(3) a regua exibe a referencia EXATA que originou o efeito
+    assert f'<div class="cl8us-regua-efeito-data">{referencia_exata}</div>' in html
+
+    resumo = {
+        linha["Ciclo"]: linha
+        for df in at.dataframe
+        for linha in df.value.to_dict("records")
+        if "Ciclo" in linha and "Data do pedido" in linha
+    }
+    # (4) a competencia mensal do motor/XLS continua exatamente como antes
+    assert resumo["C1"]["Início financeiro"] == competencia
+    # (5) classificacao e proxima elegibilidade inalteradas
+    assert resumo["C1"]["Situação preliminar"] == situacao
+    assert resumo["C1"]["Referência exata"] == "05/05/2026"
+    assert resumo["C2"]["Referência exata"] == proxima
+
+
+def test_precluso_continua_sem_efeito_financeiro_na_regua():
+    """E — preclusao sem acordo nao inventa referencia exata de efeito."""
+    at = _app()
+    campo_base = next(
+        d for d in at.date_input if d.label == "Data-base de referência 🔹"
+    )
+    campo_base.set_value(date(2025, 5, 5))
+    at.run()
+    at.date_input(key="p1_20260505").set_value(date(2026, 9, 30))
+    at.run()
+    html = _html_regua(at)
+    inicio_c1 = html.index(">C1<")
+    inicio_c2 = html.index(">C2<")
+    assert "PRECLUSO" in html[inicio_c1:inicio_c2]
+    resumo = {
+        linha["Ciclo"]: linha
+        for df in at.dataframe
+        for linha in df.value.to_dict("records")
+        if "Ciclo" in linha and "Data do pedido" in linha
+    }
+    assert resumo["C1"]["Início financeiro"] == "Sem efeitos financeiros automáticos"
+    assert resumo["C2"]["Referência exata"] == "05/05/2027"
+
+
+# ------------------------------------------- etapa 45: marcador do pedido (E)
+@pytest.mark.parametrize(
+    ("pedido", "posicao", "situacao"),
+    (
+        # ADIANTADO -> pedido antes do marco apto (10/10/2023)
+        (date(2023, 5, 10), "antes", "ADIANTADO"),
+        # pedido exatamente na elegibilidade -> junto ao marco
+        (date(2023, 10, 10), "junto", "TEMPESTIVO"),
+        # tempestivo tardio -> depois do marco
+        (date(2023, 12, 10), "depois", "TEMPESTIVO*"),
+        # precluso -> depois do marco
+        (date(2024, 6, 10), "depois", "PRECLUSO"),
+    ),
+)
+def test_marcador_do_pedido_acompanha_a_relacao_temporal(pedido, posicao, situacao):
+    at = _app()
+    campo = next(
+        d for d in at.date_input
+        if d.label.startswith("Data do pedido da Contratada — C1")
+    )
+    campo.set_value(pedido)
+    at.run()
+    html = _html_regua(at)
+    assert f'cl8us-regua-pedido {posicao}' in html
+    assert f'Pedido {pedido.strftime("%d/%m/%Y")}' in html
+    # o marco principal continua sendo a elegibilidade, nao o pedido
+    assert "Apto em 10/10/2023" in html
+    assert situacao in html
+
+
+def test_marcador_do_pedido_nao_altera_o_que_o_motor_produziu():
+    """O marcador e adorno: classificacao, datas e percentual seguem iguais."""
+    at = _app()
+    campo = next(
+        d for d in at.date_input
+        if d.label.startswith("Data do pedido da Contratada — C1")
+    )
+    campo.set_value(date(2023, 5, 10))   # ADIANTADO
+    at.run()
+    resumo = {
+        linha["Ciclo"]: linha
+        for df in at.dataframe
+        for linha in df.value.to_dict("records")
+        if "Ciclo" in linha and "Data do pedido" in linha
+    }
+    assert resumo["C1"]["Situação preliminar"] == "⚠️ ADIANTADO"
+    assert resumo["C1"]["Data do pedido"] == "10/05/2023"
+    assert resumo["C1"]["Início financeiro"] == "01/10/2023"
+    # a antecipacao nao antecipa a anualidade seguinte
+    assert resumo["C1"]["Referência exata"] == "10/10/2023"
+    assert resumo["C2"]["Referência exata"] == "10/10/2024"
+
+
+def test_marco_historico_nao_recebe_marcador_de_pedido():
+    """Ciclo formalizado e uma data-base informada: sem pedido e sem "Apto em"."""
+    at = _app()
+    campo_base = next(
+        d for d in at.date_input if d.label == "Data-base de referência 🔹"
+    )
+    campo_base.set_value(date(2023, 2, 1))
+    at.selectbox(key="rep_ciclo_inicial_analise").select("C2")
+    at.run()
+    at.radio(key="rep_situacao_anterior_ciclo").set_value(
+        "Houve ciclo anterior concedido/formalizado"
+    )
+    at.run()
+    at.date_input(key="rep_marco_temporal_anterior").set_value(date(2022, 2, 1))
+    at.run()
+    html = _html_regua(at)
+    inicio_c1 = html.index(">C1<")
+    inicio_c2 = html.index(">C2<")
+    coluna_historica = html[inicio_c1:inicio_c2]
+    assert "01/02/2022" in coluna_historica
+    assert "Pedido " not in coluna_historica
+    assert "Apto em" not in coluna_historica
 
 
 # --------------------------------------------------------------- responsividade
@@ -272,8 +446,14 @@ def test_timeline_nao_recalcula_nada():
     assert "timedelta" not in bloco
     # status e datas vem de estruturas ja produzidas pela pagina
     assert "sit_emoji" in bloco
-    assert "data_semente_exata" in bloco
-    assert "inicio_efeito_financeiro" in bloco
+    assert "d_aniv" in bloco
+    assert "referencia_exata_efeito" in bloco
+    # Etapa 45: pedido e posicao relativa tambem chegam prontos do motor —
+    # a montagem nao compara datas nem decide situacao.
+    assert "dt_ped" in bloco
+    assert "posicao_pedido" in bloco
+    for proibido in ("classificar_pedido", "ADIANTADO", "PRECLUSO", "TEMPESTIVO"):
+        assert proibido not in bloco
 
 
 def test_resultados_calculados_permanecem_intactos():

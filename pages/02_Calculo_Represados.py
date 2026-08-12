@@ -1931,6 +1931,11 @@ _REGUA_TEMPORAL_CSS = """
 .cl8us-regua-col.analise .cl8us-regua-rotulo { color: #123B63; }
 .cl8us-regua-ordem { font-size: 0.64rem; color: #94A3B8; line-height: 1.15; min-height: 0.95rem; }
 .cl8us-regua-col.analise .cl8us-regua-ordem { color: #5B7C9D; }
+.cl8us-regua-pedido { font-size: 0.64rem; color: #94A3B8; line-height: 1.15; min-height: 0.95rem; white-space: nowrap; }
+.cl8us-regua-col.analise .cl8us-regua-pedido { color: #5B7C9D; }
+.cl8us-regua-pedido.antes { text-align: left; }
+.cl8us-regua-pedido.junto { text-align: center; }
+.cl8us-regua-pedido.depois { text-align: right; }
 .cl8us-regua-linha { position: relative; height: 16px; background: linear-gradient(#E2E8F0, #E2E8F0) 0 50% / 100% 2px no-repeat; }
 .cl8us-regua-col.analise .cl8us-regua-linha { background: linear-gradient(#9CBBD4, #9CBBD4) 0 50% / 100% 2px no-repeat; }
 .cl8us-regua-grid .cl8us-regua-col:last-child .cl8us-regua-linha::after { content: "\\2192"; position: absolute; right: -4px; top: 50%; transform: translateY(-55%); color: #9CBBD4; font-size: 0.8rem; line-height: 1; }
@@ -1945,7 +1950,7 @@ _REGUA_TEMPORAL_CSS = """
   .cl8us-regua { padding: 10px 10px 6px 10px; }
   .cl8us-regua-rotulo { font-size: 0.78rem; }
   .cl8us-regua-data { font-size: 0.7rem; }
-  .cl8us-regua-ordem, .cl8us-regua-status { font-size: 0.6rem; }
+  .cl8us-regua-ordem, .cl8us-regua-status, .cl8us-regua-pedido { font-size: 0.6rem; }
   .cl8us-regua-cabecalho { gap: 2px 8px; }
   .cl8us-regua-analise-global { font-size: 0.6rem; }
 }
@@ -1983,23 +1988,43 @@ def _render_regua_temporal_marcos(destino, marcos):
     celulas_efeitos = []
     for marco in marcos:
         data_txt = marco["data"].strftime("%d/%m/%Y") if hasattr(marco["data"], "strftime") else ""
+        rotulo_data = str(marco.get("rotulo_data", "") or "")
+        if rotulo_data and data_txt:
+            data_txt = f"{rotulo_data} {data_txt}"
         classe_col = "cl8us-regua-col analise" if marco["em_analise"] else "cl8us-regua-col"
         classe_dot = "cl8us-regua-dot analise" if marco["em_analise"] else "cl8us-regua-dot"
+        # Marcador secundário do pedido (Etapa 45): fica acima da linha, com o
+        # alinhamento indicando a relação temporal com o marco apto — à
+        # esquerda quando antecipado, ao centro quando coincide, à direita
+        # quando posterior. Nenhuma data é recalculada aqui.
+        pedido = marco.get("data_pedido")
+        posicao_pedido = str(marco.get("posicao_pedido", "") or "")
+        if pedido is not None and hasattr(pedido, "strftime") and posicao_pedido:
+            marca_pedido = (
+                f'<div class="cl8us-regua-pedido {posicao_pedido}">'
+                f'&#9670; Pedido {pedido.strftime("%d/%m/%Y")}'
+                '</div>'
+            )
+        else:
+            marca_pedido = '<div class="cl8us-regua-pedido"></div>'
         celulas_marcos.append(
             f'<div class="{classe_col}">'
             f'<div class="cl8us-regua-rotulo">{marco["rotulo"]}</div>'
             f'<div class="cl8us-regua-ordem">{marco.get("ordem", "")}</div>'
+            f'{marca_pedido}'
             f'<div class="cl8us-regua-linha"><span class="{classe_dot}"></span></div>'
             f'<div class="cl8us-regua-data">{data_txt}</div>'
             f'<div class="cl8us-regua-status">{marco.get("status", "")}</div>'
             '</div>'
         )
-        inicio_efeito = marco.get("inicio_efeito")
-        if inicio_efeito is not None and hasattr(inicio_efeito, "strftime"):
+        # Referência EXATA do efeito financeiro (Etapa 45.1): a data que o
+        # motor apurou antes de mensalizar. A régua apenas a desenha.
+        referencia_efeito = marco.get("referencia_efeito")
+        if referencia_efeito is not None and hasattr(referencia_efeito, "strftime"):
             celulas_efeitos.append(
                 f'<div class="{classe_col}">'
                 '<div class="cl8us-regua-efeito-seta">&#9679;&#8212;&#8594;</div>'
-                f'<div class="cl8us-regua-efeito-data">{inicio_efeito.strftime("%d/%m/%Y")}</div>'
+                f'<div class="cl8us-regua-efeito-data">{referencia_efeito.strftime("%d/%m/%Y")}</div>'
                 '</div>'
             )
         else:
@@ -2022,7 +2047,7 @@ def _render_regua_temporal_marcos(destino, marcos):
         '</div>',
         f'<div class="cl8us-regua-grid" {estilo_grid}>{"".join(celulas_marcos)}</div>',
     ]
-    if any(m.get("inicio_efeito") is not None for m in marcos):
+    if any(m.get("referencia_efeito") is not None for m in marcos):
         blocos.append('<div class="cl8us-regua-titulo efeitos">Efeitos financeiros</div>')
         blocos.append(f'<div class="cl8us-regua-grid" {estilo_grid}>{"".join(celulas_efeitos)}</div>')
     blocos.append('</div>')
@@ -2051,10 +2076,13 @@ default_dt_base_original = datetime(2022, 10, 10)
 
 with st.sidebar:
     dt_base_original = st.date_input(
-        "Data-base do ciclo em que **esta análise começa** 🔹",
+        "Data-base de referência 🔹",
         value=default_dt_base_original,
         format="DD/MM/YYYY",
     )
+    # Etapa 45: o subtitulo esclarece o conceito sem reintroduzir o parametro
+    # help= (removido na etapa 26B por causar o icone nativo de ajuda).
+    st.caption("(início do interregno anual)")
 
     st.markdown(
         """
@@ -2185,28 +2213,33 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
 
     col_a, col_b = st.columns(2)
     with col_a:
-        # A data-base do ciclo pertence a CADEIA EXATA, nao a ancora mensal:
-        # no primeiro ciclo e a data informada na lateral; nos seguintes e a
-        # data exata do pedido anterior (TEMPESTIVO/TEMPESTIVO*) ou a
-        # referencia preservada (ADIANTADO/PRECLUSO). O inicio dos efeitos
-        # financeiros continua mensal e independente, e a referencia exata do
-        # pedido segue visivel na janela de admissibilidade logo abaixo.
-        st.write(f"**Data-base do Ciclo:** {data_semente_exata.strftime('%d/%m/%Y')}")
+        # ETAPA 45 — o destaque do bloco e a ELEGIBILIDADE (d_aniv), isto e, a
+        # data-base de referencia + 12 meses. E exatamente a data que o
+        # classificador ja consome; antes o bloco exibia a data-base, o que
+        # fazia a tela parecer atrasada de um ano em relacao a regra aplicada.
+        st.write(
+            f"**Data em que o reajuste fica apto (elegibilidade):** "
+            f"{d_aniv.strftime('%d/%m/%Y')}"
+        )
+        # A data-base de referencia deste ciclo pertence a CADEIA EXATA, nao a
+        # ancora mensal: no primeiro ciclo e a data informada na lateral; nos
+        # seguintes e a data exata do pedido anterior (TEMPESTIVO/TEMPESTIVO*)
+        # ou a referencia preservada (ADIANTADO/PRECLUSO). Fica visivel aqui
+        # uma unica vez, com o mesmo nome usado na lateral.
+        st.caption(
+            "Data-base de referência (início do interregno anual): "
+            f"{data_semente_exata.strftime('%d/%m/%Y')}"
+        )
     with col_b:
         # A chave considera a âncora do ciclo. Assim, se um ciclo anterior for admitido
         # por negociação entre as partes e arrastar a data-base para frente, o campo do
         # pedido do ciclo seguinte também é recalculado a partir da nova âncora.
         chave_pedido = f"p{i}_{d_aniv.strftime('%Y%m%d')}"
         dt_ped = st.date_input(
-            f"Data do Pedido C{i}:",
+            f"Data do pedido da Contratada — C{i}",
             value=d_aniv,
             key=chave_pedido,
             format="DD/MM/YYYY",
-        )
-        # Ajuda visual: explicita a data-base que este pedido utiliza (mesma
-        # data já exibida ao lado). Não altera valor, validação ou chave.
-        st.caption(
-            f"Este pedido utiliza a data-base de {data_semente_exata.strftime('%d/%m/%Y')}."
         )
 
     # Todo ciclo selecionado nesta tela integra a análise atual. O ciclo
@@ -2223,6 +2256,18 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
     else:
         sit_emoji = "❌ PRECLUSO"
 
+    # ETAPA 45 — posicao relativa do pedido em face do marco apto, para uso
+    # EXCLUSIVAMENTE visual na regua temporal. Nao ha regra nova: apenas se
+    # traduz em palavra a comparacao que o classificador ja fez (ADIANTADO e
+    # anterior; coincidencia com a elegibilidade e "junto"; o restante, que
+    # abrange TEMPESTIVO tardio e PRECLUSO, e posterior).
+    if situacao_limpa == "ADIANTADO":
+        posicao_pedido = "antes"
+    elif dt_ped == d_aniv:
+        posicao_pedido = "junto"
+    else:
+        posicao_pedido = "depois"
+
     # REGRA PÉTREA — EFEITOS FINANCEIROS E INTERREGNO:
     # a admissibilidade usa a data exata; o EFEITO FINANCEIRO usa a
     # COMPETÊNCIA mensal (primeiro dia do mês). Pedido tempestivo em
@@ -2230,12 +2275,17 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
     # competência do pedido (exibição TEMPESTIVO*, sem criar estado jurídico
     # novo) e o próximo reajuste nasce 12 meses após o início dos efeitos
     # financeiros do ciclo anterior. A data de pagamento nunca participa.
+    # ETAPA 45.1 — referencia_exata_efeito e a data EXATA que originou o
+    # efeito; inicio_efeito_financeiro continua sendo a COMPETENCIA mensal
+    # derivada dela. As duas convivem: a primeira so alimenta apresentacao,
+    # a segunda segue alimentando calculo, propagacao e XLS, sem mudanca.
     if situacao_limpa == "PRECLUSO":
+        referencia_exata_efeito = None
         inicio_efeito_financeiro = None
         efeito_financeiro_retardado = False
     else:
-        _ref_efeito = dt_ped if dt_ped >= d_aniv else d_aniv
-        inicio_efeito_financeiro = _ref_efeito.replace(day=1)
+        referencia_exata_efeito = dt_ped if dt_ped >= d_aniv else d_aniv
+        inicio_efeito_financeiro = referencia_exata_efeito.replace(day=1)
         efeito_financeiro_retardado = bool(
             situacao_limpa == "TEMPESTIVO"
             and (dt_ped.year, dt_ped.month) > (d_aniv.year, d_aniv.month)
@@ -2244,19 +2294,21 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         sit_emoji = "✅ TEMPESTIVO*"
 
     # Nota exclusivamente visual: torna inequívoca a relação entre a data do
-    # pedido informada e a data-base do ciclo, com as datas que a própria
-    # página já calculou (nada é inferido nem fixado em código).
+    # pedido informada e o marco apto do ciclo, com as datas que a própria
+    # página já calculou (nada é inferido nem fixado em código). Etapa 45: a
+    # nota passa a citar a elegibilidade, e não mais a data-base — que já
+    # aparece uma única vez, sob o rótulo próprio, no bloco do ciclo.
     st.markdown(
         (_TIMELINE_CICLOS_CSS if posicao_ciclo == 1 else "")
         + '<div class="cl8us-ciclo-nota{classe}">'
         '<span class="cl8us-ciclo-ordem">{ordem}º ciclo da análise</span>'
-        'Pedido de {pedido} refere-se ao ciclo C{numero}, iniciado em {base}.'
+        'Pedido de {pedido} refere-se ao ciclo C{numero}, apto em {apto}.'
         '</div>'.format(
             classe=" ativo" if posicao_ciclo == 1 else "",
             ordem=posicao_ciclo,
             pedido=dt_ped.strftime('%d/%m/%Y'),
             numero=i,
-            base=data_semente_exata.strftime('%d/%m/%Y'),
+            apto=d_aniv.strftime('%d/%m/%Y'),
         ),
         unsafe_allow_html=True,
     )
@@ -2334,6 +2386,9 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
                 # (regra pétrea: efeito financeiro é mensal; o dia exato
                 # pertence à admissibilidade/documentação do acordo).
                 inicio_efeito_financeiro = data_inicio_efeito_negocial.replace(day=1)
+                # ETAPA 45.1 — mesma separação do efeito ordinário: a régua
+                # exibe a data exata pactuada, a competência segue mensal.
+                referencia_exata_efeito = data_inicio_efeito_negocial
                 # Regra de ancoragem negocial:
                 # se um ciclo precluso for admitido por negociação entre as partes, a âncora
                 # do ciclo seguinte é arrastada para a competência de início dos efeitos
@@ -2359,9 +2414,11 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         'data_semente_exata': data_semente_exata,
         'data_referencia_exata': d_aniv,
         'dt_ped': dt_ped,
+        'posicao_pedido': posicao_pedido,
         'sit_emoji': sit_emoji,
         'situacao_limpa': situacao_limpa,
         'inicio_efeito_financeiro': inicio_efeito_financeiro,
+        'referencia_exata_efeito': referencia_exata_efeito,
         'efeito_financeiro_retardado': bool(efeito_financeiro_retardado),
         'ciclo_ja_concedido': bool(ciclo_ja_concedido),
         'superacao_negocial': bool(superacao_negocial),
@@ -2389,22 +2446,37 @@ if _ciclo_formalizado_regua and hasattr(_marco_formalizado_regua, "strftime"):
     marcos_regua.append({
         "rotulo": _ciclo_formalizado_regua,
         "data": _marco_formalizado_regua,
+        # O marco historico e uma data-base informada na lateral, não uma
+        # elegibilidade calculada: por isso não recebe o rótulo "Apto em".
+        "rotulo_data": "",
         "ordem": "Ciclo formalizado",
         "status": "",
         "em_analise": False,
-        "inicio_efeito": None,
+        "referencia_efeito": None,
+        "data_pedido": None,
+        "posicao_pedido": "",
     })
 for _posicao_regua, _dados_regua in enumerate(input_ciclos):
     marcos_regua.append({
         "rotulo": f"C{_dados_regua['numero']}",
-        "data": _dados_regua["data_semente_exata"],
+        # ETAPA 45 — o marco do ciclo é a data em que o reajuste fica apto
+        # (d_aniv), a mesma já exibida no bloco e usada pelo classificador.
+        "data": _dados_regua["d_aniv"],
+        "rotulo_data": "Apto em",
         # A ordem acompanha a posição real do ciclo dentro da apuração; todo
         # ciclo listado aqui compõe a análise, por isso nenhum deles é rotulado
         # como "próximo ciclo".
         "ordem": f"{_posicao_regua + 1}º ciclo da análise",
         "status": _dados_regua.get("sit_emoji", ""),
         "em_analise": True,
-        "inicio_efeito": _dados_regua.get("inicio_efeito_financeiro"),
+        # ETAPA 45.1 — a régua exibe a REFERÊNCIA EXATA que originou o efeito
+        # (já calculada pelo motor antes da mensalização). A competência
+        # mensal (inicio_efeito_financeiro) segue intacta no cálculo e no XLS.
+        "referencia_efeito": _dados_regua.get("referencia_exata_efeito"),
+        # Marcador secundário do pedido: data e posição relativa vêm prontas do
+        # motor (input_ciclos); a régua apenas as desenha.
+        "data_pedido": _dados_regua.get("dt_ped"),
+        "posicao_pedido": _dados_regua.get("posicao_pedido", ""),
     })
 _render_regua_temporal_marcos(slot_regua_temporal, marcos_regua)
 # <<< REGUA_TEMPORAL_MARCOS_V1
@@ -2469,7 +2541,7 @@ if st.session_state.get("processar_reajustes_multiplos_key") != chave_analise_mu
     ancora_ciclo_inicial = input_ciclos[0]['data_atual'] if input_ciclos else dt_base_original
     st.info(
         f"Foram configurados os ciclos **C{primeiro_ciclo_num} a C{int(ultimo_ciclo_contratual)}** para análise, "
-        f"a partir da âncora do C{primeiro_ciclo_num}, em **{ancora_ciclo_inicial.strftime('%d/%m/%Y')}**. "
+        f"a partir da data-base de referência do C{primeiro_ciclo_num}, em **{ancora_ciclo_inicial.strftime('%d/%m/%Y')}**. "
         "C0 é apenas o ciclo-base inicial e não recebe reajuste. "
         "Confira as datas dos pedidos antes de clicar em **Processar Análise**."
     )
