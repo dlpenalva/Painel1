@@ -2765,6 +2765,12 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             'intervalo_indice': janela_ciclo,
             'janela_admissibilidade': janela_adm,
             'data_pedido': dt_ped.strftime('%d/%m/%Y'),
+            # ETAPA 48 — transporte puro da fotografia fisica exata do ciclo:
+            # referencia_exata_efeito ja foi decidida acima (pedido apto no
+            # TEMPESTIVO/TEMPESTIVO*, d_aniv no ADIANTADO, data pactuada no
+            # acordo negocial; None no PRECLUSO sem acordo). Nada e
+            # recalculado nem mensalizado aqui.
+            'data_abertura_fisica_exata': _formatar_data(dados_ciclo.get('referencia_exata_efeito')),
             'situacao': situacao_aplicada,
             'ciclo_ja_concedido': bool(ciclo_ja_concedido),
             'objeto_analise_atual': not bool(ciclo_ja_concedido),

@@ -100,7 +100,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # vazia); T (VALOR_EXECUTADO_C4) ganhou a formula que faltava em 2:200 e todos os
 # fallbacks de lotacao maxima (linha 201) foram normalizados
 # (owner: tools/aplicar_total_dinamico_itens_remanesc.py) — pin reancorado.
-SHA256_TEMPLATE_ESPERADO = "1bd8aec9d9990c45fa8b4754e8cd36355d3a32cb94781504e4fd2a24d599240e"
+# ETAPA 48 — pin reancorado: 1.013 formulas fisicas migradas de parametros!C
+# para parametros!I (itens_Remanesc!E1:T1, posicao_contratual!AB:AF,
+# posicao_referencia!I6, cobertura_temporal!B6).
+SHA256_TEMPLATE_ESPERADO = "6265049d20722ca18b5408dd645da356d09efff9d0f1ed91c002a55cba540d05"
 
 
 def _dados_calculadora() -> dict:

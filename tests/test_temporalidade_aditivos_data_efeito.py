@@ -286,8 +286,11 @@ def test_coluna_nascimento_por_data_existe_e_usa_abertura():
     ac2 = str(pc["AC2"].value)
     assert 'aditivos!$C$2:$C$200,"C1"' in ac2
     # Fronteira por DIA: aditivo datado NO dia da abertura fica do lado da
-    # abertura mesmo que a celula carregue componente de hora.
-    assert 'aditivos!$B$2:$B$200,">="&(INT(parametros!$C$3)+1)' in ac2
+    # abertura mesmo que a celula carregue componente de hora. ETAPA 48: a
+    # fronteira fisica passou a ler parametros!I (data exata); a guarda e a
+    # condicao de janela permanecem na cadeia mensal (parametros!C).
+    assert 'aditivos!$B$2:$B$200,">="&(INT(parametros!$I$3)+1)' in ac2
+    assert 'IF(parametros!$C$3="",0,' in ac2
     # A qtd na abertura e a contratada MENOS o que so passou a valer depois.
     assert str(pc["AH2"].value).endswith("ROUND($I2-$AC2,2)))")
     assert str(pc["AL2"].value).count("N($A") == 5
