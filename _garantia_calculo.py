@@ -1,49 +1,62 @@
-"""Motor de cálculo da Garantia Contratual (método único).
+"""Motor da Calculadora de Garantia Contratual — fluxo único, 100% manual.
 
-Regra pétrea (Cláusula Décima): a garantia corresponde a 5% do VALOR TOTAL DO
-CONTRATO após cada instrumento. O endosso/adequação de cada instrumento é a
-diferença entre a garantia daquele instrumento e a garantia do instrumento
-imediatamente anterior.
+Etapa 49. A ferramenta compara duas fotografias informadas manualmente pelo
+usuário:
 
-    GARANTIA DO INSTRUMENTO = ARREDONDAR(VALOR TOTAL DO CONTRATO x 5%; 2)
-    ENDOSSO/ADEQUAÇÃO       = GARANTIA ATUAL - GARANTIA ANTERIOR
+    SITUAÇÃO ATUAL DO CONTRATO   x   GARANTIA ATUALMENTE CONSTITUÍDA
 
-Nunca se usa como base: saldo remanescente, valor executado, valor pago, valor
-retroativo isolado, valor apenas do acréscimo, garantia informada manualmente,
-apólice/endosso anteriormente apresentado. A base é sempre o valor total
-consolidado do contrato após o instrumento.
+e responde objetivamente se falta dinheiro, se falta prazo, se faltam os dois ou
+se não há nada a regularizar.
 
-Arredondamento financeiro: Decimal + ROUND_HALF_UP, duas casas decimais. O float
-nunca é a base do cálculo monetário — apenas a formatação/serialização final.
+    GARANTIA NECESSÁRIA = ARREDONDAR(VALOR TOTAL ATUAL DO CONTRATO x PERCENTUAL; 2)
+    COBERTURA ATUAL     = soma do valor total vigente das garantias INDEPENDENTES
+    COMPLEMENTO         = max(GARANTIA NECESSÁRIA - COBERTURA ATUAL; 0)
+    VALIDADE MÍNIMA     = TÉRMINO DA VIGÊNCIA CONTRATUAL + 90 DIAS CORRIDOS
 
-Este módulo é puro (sem Streamlit) para permitir testes focais das funções de
-conversão, cálculo, diferença, arredondamento, normalização do histórico, linha
-do tempo e geração dos textos de comunicação.
+Endossos sucessivos da MESMA garantia nunca se somam: o que compõe a cobertura é
+o valor total vigente da garantia após o último endosso. Duas linhas com a mesma
+identificação descrevem a mesma cadeia de garantia e são consolidadas na última
+informada (ver ``consolidar_garantias``). Garantias independentes — identificações
+distintas, ou linhas sem identificação — somam-se normalmente.
+
+A suficiência financeira e a suficiência temporal são verificações INDEPENDENTES:
+uma garantia pode ter valor bastante e prazo curto, e vice-versa.
+
+Nenhuma função deste módulo lê o VTA, a Coleta, os RESULTADOS ou qualquer outra
+fonte do sistema: todos os dados chegam por parâmetro, informados à mão.
+
+Arredondamento financeiro: Decimal + ROUND_HALF_UP, duas casas. O float nunca é a
+base do cálculo monetário — apenas a entrada digitada e a formatação final.
+
+Módulo puro (sem Streamlit) para permitir testes focais.
 """
 from __future__ import annotations
 
-from datetime import datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal, ROUND_HALF_UP, InvalidOperation
-from zoneinfo import ZoneInfo
-
-try:  # ReportLab é opcional; a página avisa quando ausente.
-    from reportlab.lib import colors
-    from reportlab.lib.enums import TA_CENTER, TA_JUSTIFY
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
-    from reportlab.lib.units import cm
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
-    from io import BytesIO
-    from html import escape as _escape
-    REPORTLAB_OK = True
-except Exception:  # pragma: no cover - depende do ambiente
-    REPORTLAB_OK = False
 
 
-PERCENTUAL_GARANTIA = Decimal("0.05")   # 5% — regra contratual absoluta
-PERCENTUAL_GARANTIA_PCT = 5.0
+PERCENTUAL_GARANTIA_PADRAO = Decimal("5.00")   # padrão editável pelo usuário
+DIAS_VALIDADE_MINIMA = 90                      # dias corridos após o término da vigência
 CENTAVO = Decimal("0.01")
-TRACO = "—"  # em dash usado para "sem endosso anterior"
+CEM = Decimal("100")
+TRACO = "—"
+
+CLAUSULA_GARANTIA = "Cláusula 10 – Garantia Contratual"
+
+# Nomes das colunas da grade de garantias vigentes (a página e o motor
+# compartilham estas constantes para não divergirem).
+COLUNA_IDENTIFICACAO = "Identificação da garantia"
+COLUNA_VALOR = "Valor total atualmente garantido"
+COLUNA_VALIDADE = "Validade"
+
+# Diagnóstico: exatamente quatro resultados possíveis.
+DIAGNOSTICO_REGULAR = "GARANTIA REGULAR"
+DIAGNOSTICO_VALOR = "ATUALIZAR VALOR"
+DIAGNOSTICO_VALIDADE = "ATUALIZAR VALIDADE"
+DIAGNOSTICO_VALOR_E_VALIDADE = "ATUALIZAR VALOR E VALIDADE"
+
+SEM_NECESSIDADE_DE_ATUALIZACAO = "Não foi identificada necessidade de atualização da garantia."
 
 
 # ============================================================
@@ -77,7 +90,7 @@ def parse_moeda_br(valor):
         texto.replace("R$", "")
         .replace("r$", "")
         .replace(" ", "")
-        .replace(" ", "")
+        .replace("\u00a0", "")   # espaço não separável (copiar/colar de Excel e web)
     )
     if not texto:
         return None
@@ -105,16 +118,6 @@ def arredondar_financeiro(valor):
     return valor.quantize(CENTAVO, rounding=ROUND_HALF_UP)
 
 
-def calcular_garantia(valor_total_contrato):
-    """Garantia = ARREDONDAR(valor total do contrato x 5%; 2)."""
-    base = valor_total_contrato
-    if not isinstance(base, Decimal):
-        base = parse_moeda_br(base)
-        if base is None:
-            base = Decimal("0")
-    return arredondar_financeiro(base * PERCENTUAL_GARANTIA)
-
-
 def moeda(valor, com_prefixo=True):
     """Formata como moeda brasileira: R$ 2.968.866,00."""
     dec = parse_moeda_br(valor)
@@ -126,499 +129,358 @@ def moeda(valor, com_prefixo=True):
 
 
 def formatar_brl(valor):
-    """Função única de formatação monetária brasileira: R$ 2.968.866,00.
-
-    Toda exibição de valor na página, no TXT e no PDF passa por aqui (ou por
-    ``moeda``, que é a mesma implementação). Ex.: Decimal("3117252.48") ->
-    "R$ 3.117.252,48".
-    """
+    """Função única de formatação monetária brasileira: R$ 2.968.866,00."""
     return moeda(valor, com_prefixo=True)
 
 
-# ============================================================
-# VTA (Valor Total Atualizado) fornecido pelo módulo Valor Global
-# ============================================================
+def parse_percentual(valor):
+    """Converte o percentual informado em ``Decimal`` de pontos percentuais.
 
-def extrair_vta(resultado_valor_global):
-    """Recupera o VTA da análise atual do resultado do módulo Valor Global.
-
-    Chave canônica: ``valor_atualizado_contrato`` (o módulo Valor Global grava o
-    mesmo número também em ``valor_global_financeiro``). Retorna ``Decimal`` > 0
-    ou ``None`` quando o VTA não estiver disponível/for inválido — nunca zero
-    silencioso.
+    5 / "5" / "5,00" / "5%" -> Decimal("5"). Retorna ``None`` quando inválido ou
+    fora do intervalo (0, 100].
     """
-    if not isinstance(resultado_valor_global, dict) or not resultado_valor_global:
+    if isinstance(valor, str):
+        valor = valor.replace("%", "")
+    pct = parse_moeda_br(valor)
+    if pct is None or pct <= 0 or pct > CEM:
         return None
-    bruto = resultado_valor_global.get("valor_atualizado_contrato")
-    if bruto is None:
-        bruto = resultado_valor_global.get("valor_global_financeiro")
-    valor = parse_moeda_br(bruto)
-    if valor is None or valor <= 0:
-        return None
-    return arredondar_financeiro(valor)
+    return pct
+
+
+def formatar_percentual(percentual):
+    """Formata o percentual sem zeros decimais inúteis: 5 -> "5"; 4,75 -> "4,75"."""
+    pct = parse_percentual(percentual)
+    if pct is None:
+        return TRACO
+    normalizado = pct.normalize()
+    if normalizado == normalizado.to_integral_value():
+        normalizado = normalizado.to_integral_value()
+    return format(normalizado, "f").replace(".", ",")
 
 
 # ============================================================
-# Normalização do histórico e linha do tempo
+# Datas
 # ============================================================
 
-def normalizar_linhas_historico(registros):
-    """Normaliza as linhas do histórico informado manualmente.
+def parse_data_br(valor):
+    """Converte a data informada em ``date``; ``None`` quando ausente/inválida.
 
-    ``registros``: iterável de dicts com "Instrumento" e "Valor total do
-    contrato". Retorna ``(linhas_validas, avisos)`` onde cada linha válida é
-    ``{"instrumento": str, "valor_total": Decimal}`` e ``avisos`` é a lista de
-    mensagens de validação. Linhas totalmente vazias são ignoradas em silêncio.
+    Aceita ``date``/``datetime`` (inclusive ``pandas.Timestamp``, que herda de
+    ``datetime``), "31/12/2026" e "2026-12-31". ``NaT`` e vazio viram ``None``.
+    """
+    if valor is None:
+        return None
+    if isinstance(valor, datetime):
+        return valor.date()
+    if isinstance(valor, date):
+        return valor
+    if valor != valor:  # NaT/NaN
+        return None
+
+    texto = str(valor).strip()
+    if not texto or texto.lower() in {"nat", "nan", "none"}:
+        return None
+    for formato in ("%d/%m/%Y", "%Y-%m-%d", "%d-%m-%Y"):
+        try:
+            return datetime.strptime(texto[:10], formato).date()
+        except ValueError:
+            continue
+    return None
+
+
+def formatar_data_br(valor):
+    """Formata a data como 31/12/2026; ``None`` vira travessão."""
+    data = parse_data_br(valor)
+    return data.strftime("%d/%m/%Y") if data else TRACO
+
+
+def calcular_validade_minima(data_fim_vigencia):
+    """Validade mínima exigida = término da vigência + 90 dias corridos."""
+    data = parse_data_br(data_fim_vigencia)
+    if data is None:
+        return None
+    return data + timedelta(days=DIAS_VALIDADE_MINIMA)
+
+
+# ============================================================
+# Garantias vigentes (entrada manual)
+# ============================================================
+
+def normalizar_garantias(registros):
+    """Normaliza as linhas da grade de garantias vigentes.
+
+    ``registros``: iterável de dicts com ``COLUNA_IDENTIFICACAO`` (opcional),
+    ``COLUNA_VALOR`` e ``COLUNA_VALIDADE``. Retorna ``(linhas, avisos)``, onde
+    cada linha é ``{"identificacao": str, "valor": Decimal, "validade": date|None}``.
+
+    Linhas totalmente vazias são ignoradas em silêncio. A validade ausente não
+    descarta a linha (o valor continua compondo a cobertura), mas é tratada como
+    prazo NÃO comprovado na avaliação temporal — fail-closed.
     """
     linhas = []
     avisos = []
+    vazios = {"", "nan", "none", "<na>", "nat"}
     for idx, reg in enumerate(registros, start=1):
-        instrumento_bruto = reg.get("Instrumento")
-        instrumento = "" if instrumento_bruto is None else str(instrumento_bruto).strip()
-        valor_bruto = reg.get("Valor total do contrato")
-        tem_texto_valor = valor_bruto is not None and str(valor_bruto).strip() != ""
+        identificacao_bruta = reg.get(COLUNA_IDENTIFICACAO)
+        identificacao = "" if identificacao_bruta is None else str(identificacao_bruta).strip()
+        if identificacao.lower() in vazios:
+            identificacao = ""
 
-        if not instrumento and not tem_texto_valor:
+        valor_bruto = reg.get(COLUNA_VALOR)
+        texto_valor = "" if valor_bruto is None else str(valor_bruto).strip()
+        tem_texto_valor = texto_valor.lower() not in vazios
+        validade = parse_data_br(reg.get(COLUNA_VALIDADE))
+
+        if not identificacao and not tem_texto_valor and validade is None:
             continue  # linha vazia
 
-        if instrumento and not tem_texto_valor:
-            avisos.append(f"Linha {idx} ({instrumento}): instrumento sem valor total informado.")
-            continue
-        if tem_texto_valor and not instrumento:
-            avisos.append(f"Linha {idx}: valor informado sem o nome do instrumento.")
+        rotulo = identificacao or f"Garantia da linha {idx}"
+
+        if not tem_texto_valor:
+            avisos.append(f"{rotulo}: informe o valor total atualmente garantido.")
             continue
 
         valor = parse_moeda_br(valor_bruto)
         if valor is None:
-            avisos.append(f"Linha {idx} ({instrumento}): valor \"{str(valor_bruto).strip()}\" não pôde ser interpretado.")
+            avisos.append(
+                f'{rotulo}: o valor "{texto_valor}" não pôde ser interpretado. '
+                "Use o formato R$ 50.000,00."
+            )
             continue
-        if valor <= 0:
-            avisos.append(f"Linha {idx} ({instrumento}): o valor total do contrato deve ser maior que zero.")
+        if valor < 0:
+            avisos.append(f"{rotulo}: o valor total garantido não pode ser negativo.")
             continue
 
-        valor_norm = arredondar_financeiro(valor)
-        # "valor_informado" é a chave canônica dos calculadores consolidados;
-        # "valor_total" é mantida por compatibilidade (na forma de valores
-        # totais as duas coincidem).
-        linhas.append({"instrumento": instrumento, "valor_total": valor_norm, "valor_informado": valor_norm})
+        if validade is None:
+            avisos.append(f"{rotulo}: informe a data de validade da garantia.")
 
-    return linhas, avisos
-
-
-def classificar_endosso(endosso):
-    """Classifica a diferença de garantia entre instrumentos consecutivos."""
-    if endosso is None:
-        return "inicial"
-    if endosso > 0:
-        return "aumento"
-    if endosso < 0:
-        return "reducao"
-    return "sem_alteracao"
-
-
-def construir_linha_do_tempo(itens):
-    """Constrói a linha do tempo da garantia.
-
-    ``itens``: lista ordenada de ``{"instrumento": str, "valor_total": Decimal}``
-    (histórico manual + instrumento da análise atual). A ordem informada é a
-    ordem cronológica — nunca é reordenada por nome.
-
-    Cada linha recebe:
-        garantia      = 5% do valor total daquela linha
-        endosso       = garantia - garantia_da_linha_anterior (None na 1ª linha)
-        tipo_endosso  = inicial | aumento | reducao | sem_alteracao
-    """
-    linha_do_tempo = []
-    garantia_anterior = None
-    for item in itens:
-        valor_total = item["valor_total"]
-        if not isinstance(valor_total, Decimal):
-            valor_total = arredondar_financeiro(parse_moeda_br(valor_total) or Decimal("0"))
-        garantia = calcular_garantia(valor_total)
-        if garantia_anterior is None:
-            endosso = None
-        else:
-            endosso = arredondar_financeiro(garantia - garantia_anterior)
-        linha_do_tempo.append(
+        linhas.append(
             {
-                "instrumento": item["instrumento"],
-                "valor_total": valor_total,
-                "garantia": garantia,
-                "endosso": endosso,
-                "tipo_endosso": classificar_endosso(endosso),
+                "identificacao": identificacao,
+                "valor": arredondar_financeiro(valor),
+                "validade": validade,
             }
         )
-        garantia_anterior = garantia
-    return linha_do_tempo
-
-
-def formatar_endosso(endosso, tipo_endosso):
-    """Texto da coluna Endosso/Adequação conforme o sinal da diferença."""
-    if tipo_endosso == "inicial" or endosso is None:
-        return TRACO
-    if tipo_endosso == "reducao":
-        return f"Redução de {moeda(abs(endosso))}"
-    # aumento e sem_alteracao (R$ 0,00)
-    return moeda(endosso)
-
-
-def formatar_alteracao(alteracao):
-    """Texto da coluna Alteração da memória consolidada."""
-    if alteracao is None:
-        return TRACO
-    if alteracao < 0:
-        return f"Redução de {moeda(abs(alteracao))}"
-    return moeda(alteracao)
-
-
-def normalizar_linhas_alteracoes(registros):
-    """Normaliza o histórico na forma "acréscimos ou reduções".
-
-    A primeira linha válida é o contrato original (valor > 0 obrigatório); as
-    demais são alterações e aceitam valores negativos (reduções) e zero.
-    Retorna ``(linhas_validas, avisos)`` com linhas
-    ``{"instrumento": str, "valor_informado": Decimal}``.
-    """
-    linhas = []
-    avisos = []
-    for idx, reg in enumerate(registros, start=1):
-        instrumento_bruto = reg.get("Instrumento")
-        instrumento = "" if instrumento_bruto is None else str(instrumento_bruto).strip()
-        valor_bruto = reg.get("Valor informado", reg.get("Valor total do contrato"))
-        tem_texto_valor = valor_bruto is not None and str(valor_bruto).strip() != ""
-
-        if not instrumento and not tem_texto_valor:
-            continue  # linha vazia
-
-        if instrumento and not tem_texto_valor:
-            avisos.append(f"Linha {idx} ({instrumento}): instrumento sem valor informado.")
-            continue
-        if tem_texto_valor and not instrumento:
-            avisos.append(f"Linha {idx}: valor informado sem o nome do instrumento.")
-            continue
-
-        valor = parse_moeda_br(valor_bruto)
-        if valor is None:
-            avisos.append(f"Linha {idx} ({instrumento}): valor \"{str(valor_bruto).strip()}\" não pôde ser interpretado.")
-            continue
-
-        primeira = not linhas
-        if primeira and valor <= 0:
-            avisos.append(f"Linha {idx} ({instrumento}): o valor original do contrato (primeira linha) deve ser maior que zero.")
-            continue
-
-        linhas.append({"instrumento": instrumento, "valor_informado": arredondar_financeiro(valor)})
 
     return linhas, avisos
 
 
-def _linha_consolidada(instrumento, valor_informado, alteracao, valor_total, garantia_anterior):
-    garantia = calcular_garantia(valor_total)
-    endosso = None if garantia_anterior is None else arredondar_financeiro(garantia - garantia_anterior)
-    return {
-        "instrumento": instrumento,
-        "valor_informado": valor_informado,
-        "alteracao": alteracao,
-        "valor_total": valor_total,
-        "garantia": garantia,
-        "endosso": endosso,
-        "tipo_endosso": classificar_endosso(endosso),
-    }, garantia
+def consolidar_garantias(linhas):
+    """Aplica a regra do endosso: cada cadeia de garantia entra uma única vez.
 
+    Linhas que compartilham a MESMA identificação (comparação sem diferenciar
+    maiúsculas/minúsculas nem espaços nas pontas) descrevem a mesma garantia em
+    momentos diferentes — original e endossos sucessivos. Prevalece a ÚLTIMA
+    linha informada, que traz o valor total vigente após o último endosso; as
+    anteriores são descartadas para não duplicar a cobertura.
 
-def calcular_historico_por_totais(itens):
-    """Memória consolidada na forma "valores totais".
-
-    ``itens``: lista ordenada de ``{"instrumento", "valor_informado"}`` onde o
-    valor informado É o valor total consolidado do contrato após o instrumento.
-    A alteração de cada linha é calculada como TOTAL_ATUAL − TOTAL_ANTERIOR.
-    Retorna ``(memoria, erros)``; nesta forma ``erros`` é sempre vazia (valores
-    <= 0 já são barrados na normalização).
+    Linhas sem identificação são sempre tratadas como garantias independentes.
+    Retorna ``(consolidadas, avisos)`` preservando a ordem de entrada.
     """
-    memoria = []
-    total_anterior = None
-    garantia_anterior = None
-    for item in itens:
-        total = arredondar_financeiro(item["valor_informado"])
-        alteracao = None if total_anterior is None else arredondar_financeiro(total - total_anterior)
-        linha, garantia_anterior = _linha_consolidada(
-            item["instrumento"], total, alteracao, total, garantia_anterior
-        )
-        memoria.append(linha)
-        total_anterior = total
-    return memoria, []
-
-
-def calcular_historico_por_alteracoes(itens):
-    """Memória consolidada na forma "acréscimos ou reduções".
-
-    ``itens``: lista ordenada de ``{"instrumento", "valor_informado"}`` onde a
-    primeira linha traz o valor original do contrato e as demais trazem a
-    alteração (positiva, negativa ou zero). O valor total é reconstruído:
-    TOTAL_ATUAL = TOTAL_ANTERIOR + ALTERAÇÃO. Se algum total reconstruído ficar
-    igual ou inferior a zero, o cálculo é bloqueado e ``erros`` descreve a linha.
-    """
-    memoria = []
-    erros = []
-    total_anterior = None
-    garantia_anterior = None
-    for item in itens:
-        valor_informado = arredondar_financeiro(item["valor_informado"])
-        if total_anterior is None:
-            alteracao = None
-            total = valor_informado
-        else:
-            alteracao = valor_informado
-            total = arredondar_financeiro(total_anterior + valor_informado)
-        if total <= 0:
-            erros.append(
-                f"O valor total reconstruído após \"{item['instrumento']}\" é {moeda(total)} "
-                "(igual ou inferior a zero). Revise o valor original e as alterações informadas."
+    consolidadas = []
+    avisos = []
+    posicao_por_chave = {}
+    for linha in linhas:
+        chave = linha["identificacao"].strip().casefold()
+        if chave and chave in posicao_por_chave:
+            posicao = posicao_por_chave[chave]
+            anterior = consolidadas[posicao]
+            avisos.append(
+                f"{linha['identificacao']}: informada mais de uma vez. Considerado apenas o valor "
+                f"total vigente mais recente ({formatar_brl(linha['valor'])}); "
+                f"{formatar_brl(anterior['valor'])} foi desconsiderado para não duplicar a cobertura."
             )
-            return memoria, erros
-        linha, garantia_anterior = _linha_consolidada(
-            item["instrumento"], valor_informado, alteracao, total, garantia_anterior
-        )
-        memoria.append(linha)
-        total_anterior = total
-    return memoria, []
+            consolidadas[posicao] = linha
+            continue
+        if chave:
+            posicao_por_chave[chave] = len(consolidadas)
+        consolidadas.append(linha)
+    return consolidadas, avisos
+
+
+def calcular_cobertura_atual(garantias):
+    """Soma o valor total vigente das garantias independentes."""
+    total = Decimal("0")
+    for garantia in garantias:
+        total += garantia["valor"]
+    return arredondar_financeiro(total)
 
 
 # ============================================================
-# Comunicação à contratada
+# Cálculo financeiro e temporal
 # ============================================================
 
-def gerar_texto_comunicacao(numero_contrato, vta_atual, garantia_total, endosso, tipo_endosso, contratada=""):
-    """Gera o texto da comunicação à contratada conforme o tipo de resultado.
+def calcular_garantia_necessaria(valor_total_contrato, percentual=PERCENTUAL_GARANTIA_PADRAO):
+    """Garantia necessária = ARREDONDAR(valor total atual x percentual; 2)."""
+    base = parse_moeda_br(valor_total_contrato)
+    if base is None:
+        base = Decimal("0")
+    pct = parse_percentual(percentual)
+    if pct is None:
+        pct = PERCENTUAL_GARANTIA_PADRAO
+    return arredondar_financeiro(base * pct / CEM)
 
-    Um único parágrafo (o "parágrafo do endosso") varia conforme o resultado:
-    garantia inicial, endosso positivo, ausência de alteração ou redução. O
-    parágrafo de prazo só aparece quando há efetivamente algo a apresentar
-    (garantia inicial ou endosso complementar).
+
+def calcular_complemento(garantia_necessaria, cobertura_atual):
+    """Complemento = max(garantia necessária - cobertura atual; 0). Nunca negativo."""
+    diferenca = arredondar_financeiro(garantia_necessaria) - arredondar_financeiro(cobertura_atual)
+    if diferenca <= 0:
+        return Decimal("0.00")
+    return arredondar_financeiro(diferenca)
+
+
+def diagnosticar(valor_suficiente, validade_suficiente):
+    """Combina as duas verificações independentes nos quatro resultados possíveis."""
+    if valor_suficiente and validade_suficiente:
+        return DIAGNOSTICO_REGULAR
+    if valor_suficiente:
+        return DIAGNOSTICO_VALIDADE
+    if validade_suficiente:
+        return DIAGNOSTICO_VALOR
+    return DIAGNOSTICO_VALOR_E_VALIDADE
+
+
+def analisar_garantia(valor_total_contrato, percentual, data_fim_vigencia, garantias):
+    """Análise completa da garantia a partir dos dados manuais.
+
+    ``garantias`` são as linhas já normalizadas por ``normalizar_garantias``; a
+    consolidação dos endossos é aplicada aqui. Exige valor total do contrato
+    maior que zero e término da vigência informado — a página valida antes.
+
+    A avaliação temporal considera insuficiente qualquer garantia que componha a
+    cobertura e vença antes da validade mínima (ou cuja validade não tenha sido
+    informada). Sem nenhuma garantia cadastrada não há prazo a regularizar: a
+    pendência é apenas de valor.
     """
-    contrato = (str(numero_contrato).strip() if numero_contrato else "") or "[número do contrato]"
-    nome_contratada = str(contratada).strip() if contratada else ""
-    vta_txt = moeda(vta_atual)
-    garantia_txt = moeda(garantia_total)
+    valor_total = parse_moeda_br(valor_total_contrato)
+    if valor_total is None or valor_total <= 0:
+        raise ValueError("O valor total atual do contrato deve ser maior que zero.")
+    pct = parse_percentual(percentual)
+    if pct is None:
+        raise ValueError("O percentual da garantia deve estar entre 0 e 100.")
+    validade_minima = calcular_validade_minima(data_fim_vigencia)
+    if validade_minima is None:
+        raise ValueError("Informe o término da vigência contratual.")
 
-    p_intro = f"Em razão da alteração do valor do Contrato nº {contrato}"
-    if nome_contratada:
-        p_intro += f", celebrado com {nome_contratada},"
-    p_intro += f" o valor total contratual passa a corresponder a {vta_txt}."
+    valor_total = arredondar_financeiro(valor_total)
+    consolidadas, avisos = consolidar_garantias(list(garantias))
 
-    p_regra = (
-        "Nos termos da Cláusula Décima, a garantia contratual deve corresponder a 5% do valor "
-        f"total do contrato, totalizando {garantia_txt}."
+    garantia_necessaria = calcular_garantia_necessaria(valor_total, pct)
+    cobertura_atual = calcular_cobertura_atual(consolidadas)
+    complemento = calcular_complemento(garantia_necessaria, cobertura_atual)
+    valor_suficiente = cobertura_atual >= garantia_necessaria
+
+    detalhadas = []
+    for garantia in consolidadas:
+        validade = garantia["validade"]
+        suficiente = validade is not None and validade >= validade_minima
+        detalhadas.append({**garantia, "validade_suficiente": suficiente})
+    validade_suficiente = all(item["validade_suficiente"] for item in detalhadas)
+
+    return {
+        "valor_total_contrato": valor_total,
+        "percentual": pct,
+        "garantia_necessaria": garantia_necessaria,
+        "cobertura_atual": cobertura_atual,
+        "complemento": complemento,
+        "valor_suficiente": valor_suficiente,
+        "data_fim_vigencia": parse_data_br(data_fim_vigencia),
+        "validade_minima": validade_minima,
+        "validade_suficiente": validade_suficiente,
+        "garantias": detalhadas,
+        "quantidade_garantias": len(detalhadas),
+        "avisos_consolidacao": avisos,
+        "diagnostico": diagnosticar(valor_suficiente, validade_suficiente),
+    }
+
+
+# ============================================================
+# Texto para comunicação à contratada
+# ============================================================
+
+def _paragrafo_cobertura(analise):
+    """Parágrafo da cobertura atual, com a concordância adequada."""
+    quantidade = analise["quantidade_garantias"]
+    complemento = moeda(analise["complemento"])
+    if quantidade == 0:
+        return (
+            "Não há garantia contratual atualmente apresentada, sendo necessária, portanto, a "
+            f"apresentação de garantia no valor de {complemento}."
+        )
+    cobertura = moeda(analise["cobertura_atual"])
+    if quantidade > 1:
+        return (
+            f"As garantias atualmente apresentadas totalizam {cobertura}, sendo necessária, "
+            f"portanto, a complementação no valor de {complemento}."
+        )
+    return (
+        f"A garantia atualmente apresentada é de {cobertura}, sendo necessária, portanto, a "
+        f"complementação no valor de {complemento}."
     )
 
-    pede_prazo = False
-    if tipo_endosso == "inicial":
-        p_variavel = f"Deverá ser apresentada garantia contratual no valor total de {garantia_txt}."
-        pede_prazo = True
-    elif tipo_endosso == "reducao":
-        reducao_txt = moeda(abs(endosso)) if endosso is not None else moeda(0)
-        p_variavel = (
-            f"O novo valor de referência da garantia corresponde a {garantia_txt}, representando "
-            f"redução de {reducao_txt} em relação ao valor anterior. Eventual adequação do instrumento "
-            "deverá ser submetida à análise e à aceitação da Telebras."
-        )
-    elif tipo_endosso == "sem_alteracao":
-        p_variavel = (
-            f"A cobertura total exigida permanece em {garantia_txt}, não havendo complementação "
-            "financeira decorrente desta alteração. Deverá ser verificada, contudo, a necessidade de "
-            "adequação do prazo de validade da garantia."
-        )
-    else:  # aumento
-        endosso_txt = moeda(endosso) if endosso is not None else moeda(0)
-        p_variavel = (
-            f"Dessa forma, deverá ser apresentado endosso complementar no valor de {endosso_txt}, de "
-            f"modo que a cobertura total da garantia passe a corresponder a {garantia_txt}."
-        )
-        pede_prazo = True
 
-    p_prazo = (
-        "Solicitamos o envio do endosso no prazo de até 5 dias úteis, contado do recebimento desta "
-        "comunicação. Eventual prorrogação deverá ser previamente solicitada, mediante justificativa, e "
-        "dependerá de aceitação da Telebras."
-    )
-    p_validade = (
-        "A garantia deverá permanecer válida durante todo o período de vigência contratual e por mais 3 "
-        "meses após o seu término, com possibilidade de prorrogação em caso de ocorrência de sinistro."
-    )
-    p_clausula = "O documento deverá observar as demais condições estabelecidas na Cláusula Décima do contrato."
+def gerar_texto_comunicacao(analise):
+    """Texto pronto para copiar e colar em e-mail, conforme o diagnóstico.
 
-    paragrafos = [
-        f"Assunto: Garantia contratual – Contrato nº {contrato}",
+    Sem pendência, a comunicação apenas reflete a conclusão. Havendo apenas
+    prazo a regularizar, nenhuma complementação financeira é mencionada.
+    """
+    diagnostico = analise["diagnostico"]
+    if diagnostico == DIAGNOSTICO_REGULAR:
+        return SEM_NECESSIDADE_DE_ATUALIZACAO
+
+    data_minima = formatar_data_br(analise["validade_minima"])
+    fecho = [
+        "Gentileza encaminhar o respectivo endosso/comprovante após a regularização.",
         "",
-        "Prezados,",
-        "",
-        p_intro,
-        "",
-        p_regra,
-        "",
-        p_variavel,
-        "",
+        "Atenciosamente,",
     ]
-    if pede_prazo:
-        paragrafos.extend([p_prazo, ""])
-    paragrafos.extend(
+
+    if diagnostico == DIAGNOSTICO_VALIDADE:
+        return "\n".join(
+            [
+                "Prezados,",
+                "",
+                "Considerando a vigência atual do contrato, verificamos a necessidade de atualização "
+                "da validade da garantia contratual.",
+                "",
+                f"Nos termos da {CLAUSULA_GARANTIA}, a garantia deverá possuir validade mínima até "
+                f"{data_minima}, correspondente a {DIAS_VALIDADE_MINIMA} dias após o término da "
+                "vigência contratual.",
+                "",
+                *fecho,
+            ]
+        )
+
+    abertura = (
+        "Considerando a atualização do valor total do contrato para "
+        f"{moeda(analise['valor_total_contrato'])}, a garantia contratual correspondente a "
+        f"{formatar_percentual(analise['percentual'])}% passa a ser de "
+        f"{moeda(analise['garantia_necessaria'])}."
+    )
+    if diagnostico == DIAGNOSTICO_VALOR_E_VALIDADE:
+        solicitacao = (
+            f"Solicitamos a atualização da garantia, nos termos da {CLAUSULA_GARANTIA}, bem como a "
+            f"atualização da sua validade, que deverá alcançar, no mínimo, {data_minima}, "
+            f"correspondente a {DIAS_VALIDADE_MINIMA} dias após o término da vigência contratual."
+        )
+    else:
+        solicitacao = (
+            f"Solicitamos a atualização da garantia, nos termos da {CLAUSULA_GARANTIA}, observando "
+            f"também a validade mínima necessária de {DIAS_VALIDADE_MINIMA} dias após o término da "
+            "vigência contratual."
+        )
+
+    return "\n".join(
         [
-            p_validade,
+            "Prezados,",
             "",
-            p_clausula,
+            abertura,
             "",
-            "Atenciosamente,",
+            _paragrafo_cobertura(analise),
             "",
-            "Gerência de Compras e Contratos",
-            "TELEBRAS",
+            solicitacao,
+            "",
+            *fecho,
         ]
     )
-    return "\n".join(paragrafos)
-
-
-def montar_txt_bytes(texto):
-    """TXT em UTF-8 com BOM (abre corretamente no Windows/Bloco de Notas)."""
-    return texto.encode("utf-8-sig")
-
-
-# ============================================================
-# Utilitários de apoio
-# ============================================================
-
-def data_hora_brasilia():
-    return datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
-
-
-def resumo_resultado(linha_do_tempo):
-    """Extrai (vta_atual, garantia_total, endosso, tipo) da última linha."""
-    if not linha_do_tempo:
-        return None, None, None, "inicial"
-    ultima = linha_do_tempo[-1]
-    return (
-        ultima["valor_total"],
-        ultima["garantia"],
-        ultima["endosso"],
-        ultima["tipo_endosso"],
-    )
-
-
-# ============================================================
-# Relatório PDF (memória de cálculo completa)
-# ============================================================
-
-def gerar_pdf_garantia(dados):
-    """Gera o PDF "Memória de Cálculo da Garantia Contratual".
-
-    ``dados`` deve conter: numero_contrato, contratada, vta_atual, garantia_total,
-    endosso, tipo_endosso, linha_do_tempo (lista de dicts) e texto_comunicacao.
-    Retorna ``bytes`` ou ``None`` se o ReportLab não estiver disponível.
-    """
-    if not REPORTLAB_OK:
-        return None
-
-    numero_contrato = str(dados.get("numero_contrato") or "").strip() or "[número do contrato]"
-    contratada = str(dados.get("contratada") or "").strip()
-    forma_preenchimento = str(dados.get("forma_preenchimento") or "")
-    vta_atual = dados.get("vta_atual")
-    garantia_total = dados.get("garantia_total")
-    endosso = dados.get("endosso")
-    tipo_endosso = dados.get("tipo_endosso", "inicial")
-    linha_do_tempo = dados.get("linha_do_tempo") or []
-    texto_comunicacao = dados.get("texto_comunicacao") or ""
-
-    buffer = BytesIO()
-    doc = SimpleDocTemplate(
-        buffer, pagesize=A4,
-        rightMargin=1.6 * cm, leftMargin=1.6 * cm, topMargin=1.5 * cm, bottomMargin=1.5 * cm,
-    )
-    styles = getSampleStyleSheet()
-    titulo = ParagraphStyle("TituloGarantia", parent=styles["Title"], alignment=TA_CENTER, fontSize=13, leading=16, spaceAfter=6)
-    subtitulo = ParagraphStyle("SubtituloGarantia", parent=styles["Normal"], alignment=TA_CENTER, fontSize=9, leading=12, textColor=colors.HexColor("#334155"), spaceAfter=10)
-    h2 = ParagraphStyle("H2Garantia", parent=styles["Heading2"], fontSize=10.5, leading=13, spaceBefore=9, spaceAfter=6, textColor=colors.HexColor("#123B63"))
-    normal = ParagraphStyle("NormalGarantia", parent=styles["Normal"], fontSize=9, leading=12.5, alignment=TA_JUSTIFY)
-    corpo_comunicacao = ParagraphStyle("ComunicacaoGarantia", parent=styles["Normal"], fontSize=9, leading=13, alignment=TA_JUSTIFY, spaceAfter=6)
-
-    def _p(txt):
-        return _escape(str(txt))
-
-    elementos = []
-    elementos.append(Paragraph("Memória de Cálculo da Garantia Contratual", titulo))
-    elementos.append(Paragraph(f"Contrato nº {_p(numero_contrato)}", subtitulo))
-    if contratada:
-        elementos.append(Paragraph(f"Contratada: {_p(contratada)}", subtitulo))
-    elementos.append(Paragraph(f"Gerado em: {data_hora_brasilia()}", subtitulo))
-
-    elementos.append(Paragraph("1. Regra e fórmula aplicada", h2))
-    elementos.append(Paragraph("Percentual aplicado: 5% sobre o valor total do contrato após cada instrumento.", normal))
-    elementos.append(Paragraph("Garantia do instrumento = ARREDONDAR(valor total do contrato x 5%; 2).", normal))
-    elementos.append(Paragraph("Endosso/adequação = garantia do instrumento atual menos a garantia do instrumento anterior.", normal))
-    if forma_preenchimento == "alteracoes":
-        elementos.append(Paragraph("Forma de preenchimento utilizada: acréscimos e reduções dos instrumentos (valores totais reconstruídos pelo sistema).", normal))
-    elif forma_preenchimento == "valores_totais":
-        elementos.append(Paragraph("Forma de preenchimento utilizada: valores totais do contrato após cada instrumento.", normal))
-    elementos.append(Spacer(1, 6))
-
-    elementos.append(Paragraph("2. Memória de cálculo (todos os instrumentos)", h2))
-    linhas_tabela = [["Instrumento", "Alteração", "Valor total do contrato", "Garantia (5%)", "Endosso / Adequação"]]
-    for linha in linha_do_tempo:
-        linhas_tabela.append([
-            _p(linha.get("instrumento", "")),
-            formatar_alteracao(linha.get("alteracao")),
-            moeda(linha.get("valor_total", 0)),
-            moeda(linha.get("garantia", 0)),
-            formatar_endosso(linha.get("endosso"), linha.get("tipo_endosso", "inicial")),
-        ])
-    tabela = Table(linhas_tabela, colWidths=[4.0 * cm, 3.4 * cm, 3.4 * cm, 2.9 * cm, 3.1 * cm], repeatRows=1, hAlign="CENTER")
-    tabela.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2F3")),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
-        ("BACKGROUND", (0, 1), (-1, -1), colors.HexColor("#F8FAFC")),
-    ]))
-    elementos.append(tabela)
-    elementos.append(Spacer(1, 8))
-
-    elementos.append(Paragraph("3. Resultado da análise atual", h2))
-    if tipo_endosso == "reducao":
-        rotulo_endosso = "Adequação apurada"
-        valor_endosso = f"Redução de {moeda(abs(endosso))}" if endosso is not None else "Redução de " + moeda(0)
-    elif tipo_endosso == "inicial":
-        rotulo_endosso = "Garantia inicial"
-        valor_endosso = moeda(garantia_total)
-    else:
-        rotulo_endosso = "Endosso necessário"
-        valor_endosso = moeda(endosso if endosso is not None else 0)
-    resultado_tabela = [
-        ["Indicador", "Valor"],
-        ["VTA atual (Valor Total Atualizado do Contrato)", moeda(vta_atual)],
-        ["Garantia total exigida (5%)", moeda(garantia_total)],
-        [rotulo_endosso, valor_endosso],
-    ]
-    tab_res = Table(resultado_tabela, colWidths=[9.5 * cm, 6.5 * cm], repeatRows=1, hAlign="CENTER")
-    tab_res.setStyle(TableStyle([
-        ("BACKGROUND", (0, 0), (-1, 0), colors.HexColor("#1F4E78")),
-        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
-        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
-        ("FONTSIZE", (0, 0), (-1, -1), 8.5),
-        ("GRID", (0, 0), (-1, -1), 0.25, colors.HexColor("#D9E2F3")),
-        ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
-        ("ALIGN", (1, 1), (-1, -1), "RIGHT"),
-        ("BACKGROUND", (0, 3), (-1, 3), colors.HexColor("#EAF2F8")),
-    ]))
-    elementos.append(tab_res)
-    elementos.append(Spacer(1, 10))
-
-    elementos.append(Paragraph("4. Comunicação à contratada", h2))
-    for bloco in texto_comunicacao.split("\n"):
-        if bloco.strip() == "":
-            elementos.append(Spacer(1, 4))
-        else:
-            elementos.append(Paragraph(_p(bloco), corpo_comunicacao))
-
-    doc.build(elementos)
-    buffer.seek(0)
-    return buffer.getvalue()

@@ -140,15 +140,17 @@ class TestCentralConvergente(unittest.TestCase):
         self.assertIn("seis documentos oficiais", CENTRAL)
 
     def test_session_keys_canonicos(self):
+        # Etapa 49: a Garantia virou calculadora e nao entrega arquivo, logo nao
+        # tem session_key no catalogo. Os demais cinco documentos seguem iguais.
         for key in (
             "arquivo_sumario_executivo_pdf",
             "arquivo_adequacao_orcamentaria_xlsx",
             "arquivo_despacho_saneador_docx",
             "arquivo_termo_apostila_docx",
-            "arquivo_garantia_pdf",
             "arquivo_dou_docx",
         ):
             self.assertIn(key, CENTRAL)
+        self.assertNotIn("arquivo_garantia_pdf", CENTRAL)
 
     def test_mime_pdf_e_docx_presentes(self):
         self.assertIn('"application/pdf"', CENTRAL)

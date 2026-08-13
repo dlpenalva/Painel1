@@ -429,8 +429,9 @@ def test_origem_cenario_b_central_rerun_voltar():
     # ponte consumida no primeiro render e convertida em query param da visita
     assert not _ponte_presente(at)
     assert _param_visita(at) == "modelos_ferramentas"
-    # rerun por widget (radio) preserva o param -> destino segue a Central
-    at.radio[0].set_value(at.radio[0].options[1]).run()
+    # rerun por widget preserva o param -> destino segue a Central. Etapa 49: a
+    # Garantia nao tem mais radio (modo unico); usa-se o percentual da garantia.
+    at.number_input(key="garantia_percentual").set_value(4.0).run()
     assert _param_visita(at) == "modelos_ferramentas"
     # clique no Voltar: param removido antes do switch; ponte segue ausente
     _clicar_voltar(at)
@@ -573,9 +574,11 @@ def test_upload_docs_apptest_sessao_limpa():
 
 # ------------------------------------------------------------- Garantia calc
 def test_garantia_calculo_5_6_1_mil():
-    from _garantia_calculo import calcular_garantia, moeda
-    ga = calcular_garantia(100000)
-    gb = calcular_garantia(120000)
+    # Etapa 49: a garantia passou a ser calculada sobre o percentual informado
+    # (padrao 5%), no lugar da antiga funcao de 5% fixo.
+    from _garantia_calculo import calcular_garantia_necessaria, moeda
+    ga = calcular_garantia_necessaria(100000)
+    gb = calcular_garantia_necessaria(120000)
     assert moeda(ga) == "R$ 5.000,00"
     assert moeda(gb) == "R$ 6.000,00"
     assert moeda(gb - ga) == "R$ 1.000,00"
