@@ -107,7 +107,18 @@ ROOT = Path(__file__).resolve().parents[1]
 # para reconhecer parametros!I vazio (ciclo futuro sem fotografia fisica nao
 # gera fronteira ficticia via INT de celula vazia) e aba parametros com a guia
 # laranja oficial (tabColor FFFFC000, identico as demais abas laranjas).
-SHA256_TEMPLATE_ESPERADO = "0d909c7e36c62b62a0fe1f657af351e2112bb7977675bb0f879ee1a09d314013"
+# ETAPA 50 — pin reancorado: leiaute executivo FINAL da aba RESULTADOS,
+# homologado visualmente nas rodadas 50.1-50.3 e promovido pela 50.4
+# (owner: tools/aplicar_resultados_dashboard_50.py). Mudanca de APRESENTACAO:
+# cabecalho institucional com selo de status (espelho de B3), faixa de
+# contexto (linha 3), tres cards executivos com chips (linhas 4-6, espelhos de
+# B10/D22/B38 e H8/H14/H33), faixa de pendencias (linha 7), linhas separadoras
+# visualmente brancas (8/14/23/32/39/52; 31/40/51 ocultas), titulos combinados
+# com o cabecalho das tabelas nas secoes 1 (linha 9) e 2 (linha 15) e espelhos
+# das notas condicionais (E16:H21 e E35:H38). Nenhuma formula de negocio,
+# nome definido ou celula consumida externamente foi alterada;
+# MEMORIA_RESULTADOS ficou integralmente identica.
+SHA256_TEMPLATE_ESPERADO = "e42b07ac3f02695cda167a669bd3e3a7bf69765c18feb31c4be7d3054ec30c2c"
 
 
 def _dados_calculadora() -> dict:
@@ -162,7 +173,7 @@ def test_geracao_pos_calculadora_preserva_e_preenche_modelo_oficial() -> None:
     assert wb["itens_PC"]["B1"].value == "DATA_PC"
     assert wb["itens_PC"]["C1"].value == "CICLO_PC"
     assert "ITEM" not in [wb["itens_PC"].cell(1, c).value for c in range(1, 12)]
-    assert wb["RESULTADOS"]["A41"].value.startswith("AJUSTES MANUAIS")
+    assert wb["RESULTADOS"]["A41"].value.startswith("5. AJUSTES MANUAIS")
     assert wb["MEMORIA_RESULTADOS"]["A52"].value is not None
 
 

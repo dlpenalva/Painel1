@@ -37,7 +37,9 @@ def test_tabela1_wrap_e_alturas(wb):
     for r in (10, 11, 12, 13):
         h = ws.row_dimensions[r].height
         assert h is not None and h >= 45.0, f"linha {r} altura {h}"
-    assert (ws.row_dimensions[9].height or 0) >= 28.0
+    # Leiaute final (50.2): a linha 9 virou a banda combinada titulo+cabecalho
+    # da secao 1, homologada com 26pt.
+    assert (ws.row_dimensions[9].height or 0) >= 26.0
 
 
 def test_tabela1_coluna_situacao_alargada(wb):

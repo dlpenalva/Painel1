@@ -30,15 +30,68 @@ def test_resultados_executiva_e_memoria_separadas(wb):
 
 def test_quatro_tabelas_e_um_status_global(wb):
     ws = wb["RESULTADOS"]
-    assert ws["A3"].value == "STATUS GLOBAL"
+    # Leiaute final homologado (Etapas 50.1-50.3): a linha 3 e a faixa de
+    # contexto (A3 = metodo humano); as pendencias consolidadas vivem na
+    # linha 7 (A7 titulo dinamico + B7 mensagem), derivadas do contador
+    # oculto J5 — que le apenas os selos que ja existiam.
+    assert str(ws["A3"].value).startswith('=IF($J$6=1,$B$5,')
+    titulo_pendencias = str(ws["A7"].value)
+    assert titulo_pendencias.startswith("=IF($J$5=0,")
+    assert "APURAÇÃO CONCLUÍDA" in titulo_pendencias
+    assert "PENDÊNCIAS PARA CONCLUSÃO" in titulo_pendencias
+    assert str(ws["B7"].value).startswith("=IF($J$5=0,")
+    # B3 CONTINUA SENDO A CELULA CANONICA DO STATUS: mesma formula, mesma
+    # coordenada e mesmo nome definido. O redesign nao a moveu nem a redefiniu —
+    # apenas parou de repetir seu texto na tela (o selo G1 a espelha).
     formula_status = str(ws["B3"].value)
+    assert formula_status.startswith("=IF(OR($H$8=")
     for estado in ("VALIDADO", "ESTIMADO", "REVISE"):
         assert estado in formula_status
     assert "COUNTIF($H$43:$H$50" in formula_status
-    assert ws["A8"].value.startswith("1. VALOR TOTAL")
-    assert ws["A14"].value.startswith("2. VALOR RETROATIVO")
-    assert ws["A24"].value.startswith("3. VALOR REMANESCENTE")
-    assert ws["A33"].value.startswith("4. CICLO ATUAL")
+    assert wb.defined_names["STATUS_RESULTADOS"].value == "RESULTADOS!$B$3"
+    assert ws["G1"].value == "=$B$3"
+    # Titulos das secoes no leiaute final: 1 e 2 coabitam a linha de cabecalho
+    # das proprias tabelas (linhas 9 e 15); a secao 4 e formula para exibir o
+    # ciclo real em execucao.
+    assert ws["A9"].value == "1. COMPOSIÇÃO DO VTA"
+    assert ws["A15"].value == "2. RETROATIVO POR CICLO"
+    assert ws["A24"].value == "3. REMANESCENTE TOTAL POR CICLO"
+    assert str(ws["A33"].value).startswith("=IF(UPPER(CONTROLE!$B$2)=")
+    assert "4. CICLO ATUAL EM EXECUÇÃO" in str(ws["A33"].value)
+    assert ws["A41"].value == "5. AJUSTES MANUAIS"
+    assert str(ws["A53"].value).startswith("6. TOTAIS CANONICOS DE PCs")
+
+
+def test_linhas_separadoras_permanecem_visualmente_brancas(wb):
+    """Etapa 50.3: separadores brancos em TODOS os cenarios.
+
+    As linhas 8/14/23/32/39/52 nao podem ter preenchimento, borda nem texto
+    renderizavel: celulas canonicas que vivem nelas (H8, H14, A23:E23, A39)
+    mantem a formula mas usam o formato ";;;". As linhas excedentes 31/40/51
+    ficam ocultas para nao sobrar espaco duplo.
+    """
+    ws = wb["RESULTADOS"]
+    for linha in (8, 14, 23, 32, 39, 52):
+        for coluna in "ABCDEFGH":
+            cel = ws[f"{coluna}{linha}"]
+            assert cel.fill.patternType is None, f"{coluna}{linha} tem fill"
+            for lado in ("left", "right", "top", "bottom"):
+                assert getattr(cel.border, lado).style is None, (
+                    f"{coluna}{linha} tem borda {lado}"
+                )
+            if cel.value not in (None, ""):
+                assert cel.number_format == ";;;", (
+                    f"{coluna}{linha} tem conteudo renderizavel: {cel.value!r}"
+                )
+    for linha in (31, 40, 51):
+        assert ws.row_dimensions[linha].hidden is True, f"linha {linha} visivel"
+    # As formulas canonicas das linhas separadoras continuam existindo.
+    assert str(ws["H8"].value).startswith("=IF(OR(VTA_FINAL")
+    assert str(ws["A23"].value).startswith("=IF(OR(MEMORIA_RESULTADOS!$B$4")
+    assert str(ws["A39"].value).startswith("=IF(MEMORIA_RESULTADOS!$W$49")
+    # E os espelhos de apresentacao vivem DENTRO dos blocos.
+    assert str(ws["E16"].value).startswith('=IF($A$23="","",')
+    assert ws["E35"].value == '=IF($A$39="","",$A$39)'
 
 
 def test_tabelas_usam_fontes_homologadas_sem_ref_quebrada(wb):

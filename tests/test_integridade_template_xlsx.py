@@ -96,7 +96,15 @@ FORMULAS_POR_ABA = {
     # Correcao dos ciclos: +12 da secao 5 (as doze medidas canonicas com nomes
     # claros, B55:B66). B16:B20 e B36 sao reescritas — passam a respeitar a
     # data de corte e a posicao fisica —, nao acrescentadas.
-    "RESULTADOS": 85,
+    # Etapa 50 (leiaute final homologado 50.1-50.3): +23 formulas
+    # EXCLUSIVAMENTE de apresentacao (85 -> 108): contexto A3/C3/E3/G3
+    # (metodo humano, ciclo, corte, variacao), selo e contagem G1/G2,
+    # pendencias A7/B7, auxiliares ocultos J5/J6, titulo dinamico do ciclo
+    # A33, chips dos cards C4/E4/H4 (espelhos de H8/H14/H33), valores dos
+    # cards C5/E5/G5 (espelhos de B10/D22/B38), avisos "Aguardando dado"
+    # C35:C38 e espelhos das notas condicionais E16/E35 (linhas separadoras
+    # 23 e 39 ficam visualmente brancas). Nenhuma delas calcula negocio.
+    "RESULTADOS": 108,
 }
 
 
