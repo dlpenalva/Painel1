@@ -90,7 +90,7 @@ def parse_moeda_br(valor):
         texto.replace("R$", "")
         .replace("r$", "")
         .replace(" ", "")
-        .replace(" ", "")
+        .replace("\u00a0", "")   # espaço não separável (copiar/colar de Excel e web)
     )
     if not texto:
         return None

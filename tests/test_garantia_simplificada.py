@@ -78,6 +78,11 @@ class ConversaoTests(unittest.TestCase):
         for entrada in ("1000000", "1000000,00", "1.000.000,00", "R$ 1.000.000,00", 1000000):
             self.assertEqual(parse_moeda_br(entrada), Decimal("1000000"), entrada)
 
+    def test_espaco_nao_separavel_e_aceito(self):
+        # Valores copiados de Excel ou de páginas web trazem NBSP depois do R$.
+        self.assertEqual(parse_moeda_br("R$\u00a01.000,00"), Decimal("1000.00"))
+        self.assertEqual(parse_moeda_br("1.000,00\u00a0"), Decimal("1000.00"))
+
     def test_valores_nao_interpretaveis(self):
         for entrada in ("", "abc", None, "R$"):
             self.assertIsNone(parse_moeda_br(entrada))
