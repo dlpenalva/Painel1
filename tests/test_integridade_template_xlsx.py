@@ -104,7 +104,10 @@ FORMULAS_POR_ABA = {
     # cards C5/E5/G5 (espelhos de B10/D22/B38), avisos "Aguardando dado"
     # C35:C38 e espelhos das notas condicionais E16/E35 (linhas separadoras
     # 23 e 39 ficam visualmente brancas). Nenhuma delas calcula negocio.
-    "RESULTADOS": 108,
+    # Etapa 51A: +1 formula de apresentacao (108 -> 109): E6 (rodape do card
+    # do retroativo) vira o estado vazio que orienta selecionar o metodo /
+    # informar a base, lendo apenas $D$22 e $J$6 ja existentes.
+    "RESULTADOS": 109,
 }
 
 
