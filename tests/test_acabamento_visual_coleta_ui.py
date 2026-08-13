@@ -321,14 +321,18 @@ def test_notas_da_coluna_c_cabem_na_propria_celula(em_branco):
 # ---------------------------------------------------------------------------
 
 def test_status_da_tabela1_fica_legivel(em_branco):
+    """Leiaute final (50.2/50.3): H8 e H14 vivem nas linhas separadoras
+    brancas — a formula do selo permanece integra e calculando (alimenta B3,
+    J5 e os chips dos cards), mas nada e renderizado (";;;")."""
     res = em_branco["RESULTADOS"]
     modelo = res["H14"].font
-    assert res["H8"].font.color.rgb == modelo.color.rgb == "FF595959"
+    assert res["H8"].font.color.rgb == modelo.color.rgb == "FFFFFFFF"
     assert (res["H8"].font.name, res["H8"].font.sz, res["H8"].font.b) == (
         modelo.name,
         modelo.sz,
         modelo.b,
     )
+    assert res["H8"].number_format == res["H14"].number_format == ";;;"
     assert str(res["H8"].value).startswith("=IF(OR(VTA_FINAL")
 
 
@@ -337,12 +341,17 @@ def test_titulo_da_tabela1_ocupa_a8_d8_sem_mesclagem(em_branco):
     assert res["A8"].alignment.wrap_text in (False, None)
     assert [res[c].value for c in ("B8", "C8", "D8")] == [None, None, None]
     assert not [m for m in res.merged_cells.ranges if m.min_row <= 8 <= m.max_row]
-    assert res["A8"].value == "1. VALOR TOTAL DO CONTRATO — TRES REFERENCIAS DO VTA"
+    # Leiaute final (50.2): a linha 8 e o separador branco entre o topo e o
+    # bloco 1; o titulo coabita a linha de cabecalho da tabela (A9).
+    assert res["A8"].value is None
+    assert res["A9"].value == "1. COMPOSIÇÃO DO VTA"
 
 
 def test_tabela_da_linha_53_tem_bordas(em_branco):
     res = em_branco["RESULTADOS"]
-    assert str(res["A53"].value).startswith("5. TOTAIS CANONICOS DE PCs")
+    # Etapa 50: a numeracao 5 passou a ser a dos AJUSTES MANUAIS e o anexo
+    # tecnico das medidas de PCs virou a secao 6.
+    assert str(res["A53"].value).startswith("6. TOTAIS CANONICOS DE PCs")
     for linha in range(54, 67):
         for coluna in range(1, 4):
             celula = res.cell(linha, coluna)
