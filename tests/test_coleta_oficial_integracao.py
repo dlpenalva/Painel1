@@ -103,7 +103,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # ETAPA 48 — pin reancorado: 1.013 formulas fisicas migradas de parametros!C
 # para parametros!I (itens_Remanesc!E1:T1, posicao_contratual!AB:AF,
 # posicao_referencia!I6, cobertura_temporal!B6).
-SHA256_TEMPLATE_ESPERADO = "6265049d20722ca18b5408dd645da356d09efff9d0f1ed91c002a55cba540d05"
+# ETAPA 48.3 — pin reancorado: guarda de posicao_contratual!AB2:AF200 estendida
+# para reconhecer parametros!I vazio (ciclo futuro sem fotografia fisica nao
+# gera fronteira ficticia via INT de celula vazia) e aba parametros com a guia
+# laranja oficial (tabColor FFFFC000, identico as demais abas laranjas).
+SHA256_TEMPLATE_ESPERADO = "0d909c7e36c62b62a0fe1f657af351e2112bb7977675bb0f879ee1a09d314013"
 
 
 def _dados_calculadora() -> dict:

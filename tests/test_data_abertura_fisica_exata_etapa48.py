@@ -215,7 +215,8 @@ def test_template_familias_migradas_e_consumidores_mensais_intactos():
     for col, n in zip(("AB", "AC", "AD", "AE", "AF"), range(2, 7)):
         f = str(pc[f"{col}2"].value)
         assert f"INT(parametros!$I${n})+1" in f, col
-        assert f'IF(parametros!$C${n}="",0,' in f, col          # guarda mensal fica
+        # 48.3: guarda mensal fica e passa a reconhecer tambem I vazio
+        assert f'IF(OR(parametros!$C${n}="",parametros!$I${n}=""),0,' in f, col
         assert "INT(parametros!$C$" not in f, col
     assert "parametros!$I$" in str(wb["posicao_referencia"]["I6"].value)
     assert "parametros!$I$" in str(wb["cobertura_temporal"]["B6"].value)
