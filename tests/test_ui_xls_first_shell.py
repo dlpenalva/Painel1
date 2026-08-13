@@ -168,7 +168,10 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn("render_status_entradas(CAPACIDADES)", CENTRAL)
         self.assertIn('ordem = ("financeiro", "itens", "pcs", "consumidos", "remanescentes")', CENTRAL)
         self.assertIn("st.container(border=True)", CENTRAL)
-        self.assertIn('label="Gerar e baixar"', CENTRAL)
+        # Etapa 49: o rotulo do link virou condicional — documentos continuam
+        # com "Gerar e baixar"; a Garantia, agora calculadora, abre a ferramenta.
+        self.assertIn('"Gerar e baixar"', CENTRAL)
+        self.assertIn('"Abrir calculadora"', CENTRAL)
         self.assertIn('"Baixar documento"', CENTRAL)
         self.assertIn('a[data-testid="stPageLink-NavLink"]', CENTRAL)
         self.assertIn("height:2.48rem", CENTRAL)
@@ -186,7 +189,10 @@ class TestCascaXlsFirst(unittest.TestCase):
     def test_central_bloqueia_somente_estrutura_critica_e_reaproveita_geradores(self):
         self.assertIn('CAPACIDADES.get("estruturalmente_valido", True)', CENTRAL)
         self.assertIn('"Corrigir XLS para continuar"', CENTRAL)
-        self.assertIn('st.session_state["arquivo_garantia_pdf"] = pdf_bytes', GARANTIA)
+        # Etapa 49: a Garantia deixou de produzir PDF e virou calculadora; o
+        # card da Central permanece, agora abrindo a ferramenta.
+        self.assertNotIn("arquivo_garantia_pdf", GARANTIA)
+        self.assertIn('"formato": "Calculadora"', CENTRAL)
         # Etapa 4 alinhou a Adequacao ao metodo normativo: a saida passou a ser
         # somente a planilha de validacao (XLSX), sem o memorando DOCX antigo.
         self.assertIn("gerar_xlsx_projecao(", PREVISAO)

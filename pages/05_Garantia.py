@@ -1,37 +1,41 @@
-"""Garantia Contratual — método único (Histórico dos valores totais do contrato).
+"""Garantia Contratual — calculadora manual de fluxo único (Etapa 49).
 
-Regra contratual absoluta (Cláusula Décima): a garantia corresponde a 5% do
-valor total do contrato após cada instrumento. O endosso/adequação de cada
-instrumento é a diferença entre a sua garantia e a garantia do instrumento
-imediatamente anterior.
+A página compara a SITUAÇÃO ATUAL DO CONTRATO com a GARANTIA ATUALMENTE
+CONSTITUÍDA e responde se falta valor, se falta prazo, se faltam os dois ou se
+não há nada a regularizar.
+
+Ferramenta 100% MANUAL: todos os dados são digitados aqui. A página não lê o
+VTA, o Valor Global, a Coleta, os RESULTADOS, o XLS nem qualquer outra chave de
+sessão de outra página — mesmo que esses dados existam na sessão, são ignorados.
+O único uso de ``st.session_state`` é o estado da própria página: a grade de
+garantias, a navegação de retorno e o resultado próprio publicado ao final.
 
 Toda a matemática vive no motor puro ``_garantia_calculo`` (Decimal +
-ROUND_HALF_UP), permitindo testes focais. Esta página cuida apenas da interface:
-histórico manual dos valores totais, valor atual manual (com o VTA do Claus como
-atalho opcional de preenchimento), memória de cálculo, resultado, comunicação
-(TXT) e relatório (PDF).
+ROUND_HALF_UP), permitindo testes focais.
 """
-from decimal import Decimal
+from html import escape
 
 import pandas as pd
 import streamlit as st
 
 from _ui_utils import render_cabecalho_pagina
 from _garantia_calculo import (
-    REPORTLAB_OK,
+    COLUNA_IDENTIFICACAO,
+    COLUNA_VALIDADE,
+    COLUNA_VALOR,
+    DIAGNOSTICO_REGULAR,
+    DIAGNOSTICO_VALIDADE,
+    DIAGNOSTICO_VALOR,
+    DIAGNOSTICO_VALOR_E_VALIDADE,
+    DIAS_VALIDADE_MINIMA,
+    PERCENTUAL_GARANTIA_PADRAO,
+    analisar_garantia,
     formatar_brl,
-    parse_moeda_br,
-    extrair_vta,
-    normalizar_linhas_historico,
-    normalizar_linhas_alteracoes,
-    calcular_historico_por_totais,
-    calcular_historico_por_alteracoes,
-    formatar_endosso,
-    formatar_alteracao,
-    resumo_resultado,
+    formatar_data_br,
+    formatar_percentual,
     gerar_texto_comunicacao,
-    montar_txt_bytes,
-    gerar_pdf_garantia,
+    normalizar_garantias,
+    parse_moeda_br,
 )
 
 st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="Análises de Reajustes - Garantia", layout="wide")
@@ -64,6 +68,8 @@ def css():
         table.garantia-tabela th { background: #E6F0F7; color: #173B5D; border: 1px solid #C5D6E2; padding: 9px 10px; text-align: left; font-weight: 700; }
         table.garantia-tabela td { border: 1px solid #E5EAF0; padding: 9px 10px; vertical-align: top; white-space: normal; overflow-wrap: anywhere; word-break: normal; line-height: 1.35; }
         table.garantia-tabela td.valor { white-space: nowrap; overflow-wrap: normal; text-align: right; }
+        table.garantia-tabela td.suficiente { color: #1E6B45; font-weight: 700; }
+        table.garantia-tabela td.insuficiente { color: #A2432B; font-weight: 700; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -86,33 +92,34 @@ def card(label, valor, nota=None, destaque=False):
     )
 
 
-def render_memoria_html(linha_do_tempo):
-    """Renderiza a memória de cálculo completa como tabela HTML."""
-    from html import escape
-
+def render_tabela_validades(garantias, validade_minima):
+    """Validade de cada garantia frente à validade mínima exigida."""
     linhas = []
-    for linha in linha_do_tempo:
-        instrumento = escape(str(linha.get("instrumento", "")))
-        alteracao = escape(formatar_alteracao(linha.get("alteracao")))
-        valor_total = escape(formatar_brl(linha.get("valor_total", 0)))
-        garantia = escape(formatar_brl(linha.get("garantia", 0)))
-        endosso = escape(formatar_endosso(linha.get("endosso"), linha.get("tipo_endosso", "inicial")))
+    for indice, garantia in enumerate(garantias, start=1):
+        identificacao = escape(garantia["identificacao"] or f"Garantia {indice}")
+        valor = escape(formatar_brl(garantia["valor"]))
+        validade = escape(formatar_data_br(garantia["validade"]))
+        if garantia["validade_suficiente"]:
+            situacao, classe = "Validade suficiente", "suficiente"
+        elif garantia["validade"] is None:
+            situacao, classe = "Validade não informada", "insuficiente"
+        else:
+            situacao, classe = f"Vence antes de {formatar_data_br(validade_minima)}", "insuficiente"
         linhas.append(
-            f"<tr><td>{instrumento}</td><td class='valor'>{alteracao}</td><td class='valor'>{valor_total}</td>"
-            f"<td class='valor'>{garantia}</td><td class='valor'>{endosso}</td></tr>"
+            f"<tr><td>{identificacao}</td><td class='valor'>{valor}</td>"
+            f"<td class='valor'>{validade}</td><td class='{classe}'>{escape(situacao)}</td></tr>"
         )
     html = """
     <div class="garantia-tabela-wrap">
       <table class="garantia-tabela">
         <colgroup>
-          <col style="width: 24%;">
-          <col style="width: 19%;">
-          <col style="width: 21%;">
-          <col style="width: 17%;">
-          <col style="width: 19%;">
+          <col style="width: 34%;">
+          <col style="width: 22%;">
+          <col style="width: 18%;">
+          <col style="width: 26%;">
         </colgroup>
         <thead>
-          <tr><th>Instrumento</th><th>Alteração</th><th>Total do contrato</th><th>Garantia — 5%</th><th>Endosso / Adequação</th></tr>
+          <tr><th>Garantia</th><th>Valor total garantido</th><th>Validade</th><th>Situação da validade</th></tr>
         </thead>
         <tbody>
           {linhas}
@@ -147,354 +154,216 @@ if st.button("← Voltar para Central", key="voltar_central_garantia"):
     if _PARAM_ORIGEM_GARANTIA in st.query_params:
         del st.query_params[_PARAM_ORIGEM_GARANTIA]
     st.switch_page(_destino_voltar_garantia)
-st.caption("Calcule a garantia de 5% e a adequação decorrente das alterações do valor total do contrato.")
 
 # ------------------------------------------------------------
-# 1) Histórico das alterações contratuais (entrada manual)
+# 1) Garantia vigente (uma linha por garantia independente)
 # ------------------------------------------------------------
-st.subheader("Histórico das alterações contratuais")
-
-FORMA_TOTAIS = "Informar o valor total do contrato após cada instrumento — Recomendado"
-FORMA_ALTERACOES = "Informar somente os acréscimos ou reduções de cada instrumento"
-forma_rotulo = st.radio(
-    "Como você prefere informar as alterações do contrato?",
-    options=[FORMA_TOTAIS, FORMA_ALTERACOES],
-    index=0,
-    help=(
-        "Valores totais: use quando o contrato, a apostila ou o aditivo já apresentar o novo valor "
-        "total consolidado. Acréscimos ou reduções: use quando o instrumento apresentar apenas "
-        "quanto o valor do contrato aumentou ou diminuiu."
-    ),
+st.subheader("Garantia vigente")
+st.caption(
+    "Uma linha por garantia independente. Informe sempre o valor TOTAL atualmente garantido, já "
+    "considerando eventuais endossos: endossos da mesma garantia atualizam a linha, não criam outra. "
+    "Duas linhas com a mesma identificação são tratadas como a mesma garantia e a última prevalece."
 )
-forma_totais = forma_rotulo == FORMA_TOTAIS
-forma_preenchimento = "valores_totais" if forma_totais else "alteracoes"
-
-if forma_totais:
-    st.caption(
-        "Use quando o contrato, a apostila ou o aditivo já apresentar o novo valor total consolidado. "
-        "Informe, na ordem cronológica, cada instrumento e o valor total do contrato após aquele "
-        "instrumento. A primeira linha é normalmente o contrato original."
-    )
-    historico_padrao = pd.DataFrame(
-        [
-            {"Instrumento": "Contrato", "Valor total do contrato": ""},
-            {"Instrumento": "Apostila 1", "Valor total do contrato": ""},
-        ]
-    )
-    historico_editado = st.data_editor(
-        historico_padrao,
-        hide_index=True,
-        use_container_width=True,
-        num_rows="dynamic",
-        key="garantia_historico_valores_totais",
-        column_config={
-            "Instrumento": st.column_config.TextColumn(
-                "Instrumento",
-                help="Texto livre: Contrato, Apostila 1, Apostila 2, Aditivo 1, Termo Aditivo 1...",
-                width="medium",
-            ),
-            "Valor total do contrato": st.column_config.TextColumn(
-                "Valor total do contrato",
-                help="Valor total consolidado do contrato após o instrumento. Ex.: 3.013.124,45 ou R$ 3.013.124,45",
-                width="medium",
-            ),
-        },
-    )
-    registros_historico = historico_editado.to_dict("records") if isinstance(historico_editado, pd.DataFrame) else []
-    linhas_historico, avisos_historico = normalizar_linhas_historico(registros_historico)
-else:
-    st.caption(
-        "Use quando a apostila ou o aditivo apresentar apenas quanto o valor do contrato aumentou ou "
-        "diminuiu. Primeira linha: o contrato original com o seu valor original. Demais linhas: o "
-        "acréscimo (valor positivo) ou a redução (valor negativo, ex.: -50.000,00) de cada instrumento."
-    )
-    historico_padrao = pd.DataFrame(
-        [
-            {"Instrumento": "Contrato", "Valor informado": ""},
-            {"Instrumento": "Apostila 1", "Valor informado": ""},
-        ]
-    )
-    historico_editado = st.data_editor(
-        historico_padrao,
-        hide_index=True,
-        use_container_width=True,
-        num_rows="dynamic",
-        key="garantia_historico_alteracoes",
-        column_config={
-            "Instrumento": st.column_config.TextColumn(
-                "Instrumento",
-                help="Texto livre: Contrato, Apostila 1, Apostila 2, Aditivo 1, Termo Aditivo 1...",
-                width="medium",
-            ),
-            "Valor informado": st.column_config.TextColumn(
-                "Valor informado",
-                help=(
-                    "Primeira linha: valor original do contrato. Demais linhas: acréscimo ou redução "
-                    "do instrumento. Ex.: 44.258,45 ou -50.000,00"
-                ),
-                width="medium",
-            ),
-        },
-    )
-    registros_historico = historico_editado.to_dict("records") if isinstance(historico_editado, pd.DataFrame) else []
-    linhas_historico, avisos_historico = normalizar_linhas_alteracoes(registros_historico)
-
-for aviso in avisos_historico:
+garantias_padrao = pd.DataFrame(
+    {
+        COLUNA_IDENTIFICACAO: pd.Series(["", ""], dtype="object"),
+        COLUNA_VALOR: pd.Series(["", ""], dtype="object"),
+        COLUNA_VALIDADE: pd.Series([pd.NaT, pd.NaT], dtype="datetime64[ns]"),
+    }
+)
+garantias_editadas = st.data_editor(
+    garantias_padrao,
+    hide_index=True,
+    use_container_width=True,
+    num_rows="dynamic",
+    key="garantia_vigente_linhas",
+    column_config={
+        COLUNA_IDENTIFICACAO: st.column_config.TextColumn(
+            COLUNA_IDENTIFICACAO,
+            help="Opcional. Ex.: Apólice 123, Carta de fiança Banco X, Caução.",
+            width="medium",
+        ),
+        COLUNA_VALOR: st.column_config.TextColumn(
+            COLUNA_VALOR,
+            help="Valor total vigente da garantia após o último endosso. Ex.: 40.000,00 ou R$ 40.000,00",
+            width="medium",
+        ),
+        COLUNA_VALIDADE: st.column_config.DateColumn(
+            COLUNA_VALIDADE,
+            help="Data até a qual a garantia é válida.",
+            format="DD/MM/YYYY",
+            width="small",
+        ),
+    },
+)
+registros_garantias = garantias_editadas.to_dict("records") if isinstance(garantias_editadas, pd.DataFrame) else []
+linhas_garantias, avisos_garantias = normalizar_garantias(registros_garantias)
+for aviso in avisos_garantias:
     st.warning(aviso)
 
 # ------------------------------------------------------------
-# 2) Análise atual (instrumento + valor atual manual ou VTA opcional)
+# 2) Situação atual do contrato (campos exclusivamente manuais)
 # ------------------------------------------------------------
-st.subheader("Análise atual")
-resultado_valor_global = st.session_state.get("resultado_valor_global", {}) or {}
-vta_claus = extrair_vta(resultado_valor_global)
-
-col_atual_1, col_atual_2 = st.columns(2)
-with col_atual_1:
-    instrumento_atual = st.text_input(
-        "Instrumento da análise atual",
+st.subheader("Situação atual do contrato")
+col_c1, col_c2, col_c3 = st.columns(3)
+with col_c1:
+    valor_contrato_txt = st.text_input(
+        "Valor total atual do contrato",
         value="",
-        placeholder="Ex.: Apostila 2, Aditivo 2...",
-        help="Identifique o instrumento em análise (texto livre).",
+        placeholder="Ex.: 1.000.000,00",
+        help="Valor total consolidado do contrato hoje. Ex.: 1000000, 1.000.000,00 ou R$ 1.000.000,00",
+        key="garantia_valor_total_contrato",
     ).strip()
-with col_atual_2:
-    if forma_totais:
-        valor_atual_manual_txt = st.text_input(
-            "Valor total atual do contrato",
-            value="",
-            placeholder="Ex.: 3.117.252,48",
-            help="Valor total consolidado do contrato após o instrumento atual. Ex.: 2968866, 2968866,00, 2.968.866,00 ou R$ 2.968.866,00",
-        ).strip()
-    else:
-        valor_atual_manual_txt = st.text_input(
-            "Acréscimo ou redução da análise atual",
-            value="",
-            placeholder="Ex.: 104.128,03 ou -50.000,00",
-            help="Quanto o instrumento atual aumenta (valor positivo) ou reduz (valor negativo) o valor total do contrato.",
-        ).strip()
+with col_c2:
+    percentual_pct = st.number_input(
+        "Percentual da garantia (%)",
+        min_value=0.01,
+        max_value=100.0,
+        value=float(PERCENTUAL_GARANTIA_PADRAO),
+        step=0.25,
+        format="%.2f",
+        help="Percentual previsto no contrato. O padrão é 5,00% e pode ser alterado.",
+        key="garantia_percentual",
+    )
+with col_c3:
+    data_fim_vigencia = st.date_input(
+        "Término da vigência contratual",
+        value=None,
+        format="DD/MM/YYYY",
+        help="Data final da vigência do contrato.",
+        key="garantia_fim_vigencia",
+    )
 
-usar_vta = st.checkbox(
-    "Usar o VTA disponível no Claus",
-    value=False,
-    help=(
-        "Na forma de valores totais, o VTA é usado como valor total do instrumento atual. "
-        "Na forma de acréscimos ou reduções, o VTA serve apenas de conferência do total reconstruído."
-    ),
-)
+valor_contrato = parse_moeda_br(valor_contrato_txt) if valor_contrato_txt else None
 
-valor_atual_manual = parse_moeda_br(valor_atual_manual_txt) if valor_atual_manual_txt else None
-
-if forma_totais:
-    if usar_vta:
-        if vta_claus is not None:
-            valor_atual = vta_claus
-            if valor_atual_manual_txt:
-                st.info(
-                    f"O VTA do Claus ({formatar_brl(vta_claus)}) substituirá o valor informado manualmente "
-                    "na análise atual. Desmarque a opção para voltar ao valor manual."
-                )
-            else:
-                st.caption(f"VTA do Claus aplicado como valor atual: {formatar_brl(vta_claus)}")
-        else:
-            st.warning(
-                "Não há VTA disponível no Claus nesta sessão (conclua ou reabra o módulo Valor Global). "
-                "O valor informado manualmente será utilizado."
-            )
-            valor_atual = valor_atual_manual
-    else:
-        valor_atual = valor_atual_manual
-        if vta_claus is not None:
-            st.caption(f"VTA disponível no Claus: {formatar_brl(vta_claus)} (marque a opção acima para utilizá-lo).")
-else:
-    # Na forma de acréscimos ou reduções o VTA nunca substitui um valor
-    # informado: serve somente de conferência do total reconstruído.
-    valor_atual = valor_atual_manual
-    if usar_vta and vta_claus is None:
-        st.warning(
-            "Não há VTA disponível no Claus nesta sessão para conferência (conclua ou reabra o módulo "
-            "Valor Global). O cálculo segue normalmente com os valores informados."
-        )
-
-# ------------------------------------------------------------
-# Validações (apenas dos dados efetivamente necessários ao cálculo)
-# ------------------------------------------------------------
 pendencias = []
-if not instrumento_atual:
-    pendencias.append("informe o **instrumento da análise atual**")
-if valor_atual is None:
-    if valor_atual_manual_txt and valor_atual_manual is None:
+if valor_contrato is None:
+    if valor_contrato_txt:
         st.warning(
-            f'O valor "{valor_atual_manual_txt}" não pôde ser interpretado. '
-            "Use o formato R$ 2.968.866,00 (ou -R$ 50.000,00 para redução)."
+            f'O valor "{valor_contrato_txt}" não pôde ser interpretado. Use o formato R$ 1.000.000,00.'
         )
-    if forma_totais:
-        pendencias.append("informe o **valor total atual do contrato** (manual ou via VTA do Claus)")
-    else:
-        pendencias.append("informe o **acréscimo ou redução da análise atual**")
-elif forma_totais and valor_atual <= 0:
+    pendencias.append("informe o **valor total atual do contrato**")
+elif valor_contrato <= 0:
     st.warning("O valor total atual do contrato deve ser maior que zero.")
     pendencias.append("corrija o **valor total atual do contrato**")
-    valor_atual = None
+if data_fim_vigencia is None:
+    pendencias.append("informe o **término da vigência contratual**")
 
 if pendencias:
-    st.info("Para gerar a memória de cálculo, o resultado, o TXT e o PDF: " + "; ".join(pendencias) + ".")
+    st.info("Para calcular a garantia: " + "; ".join(pendencias) + ".")
     st.stop()
 
-if not forma_totais and valor_atual == 0:
-    st.info("A alteração informada na análise atual é de R$ 0,00 e não gera mudança na garantia.")
-
-# ------------------------------------------------------------
-# 3) Memória de cálculo consolidada (única, independente da forma)
-# ------------------------------------------------------------
-itens = list(linhas_historico) + [{"instrumento": instrumento_atual, "valor_informado": valor_atual}]
-if forma_totais:
-    linha_do_tempo, erros_memoria = calcular_historico_por_totais(itens)
-else:
-    if not linhas_historico:
-        st.error(
-            "Na forma de acréscimos ou reduções, a primeira linha do histórico deve trazer o contrato "
-            "original com o seu valor original (maior que zero)."
-        )
-        st.stop()
-    linha_do_tempo, erros_memoria = calcular_historico_por_alteracoes(itens)
-
-if erros_memoria:
-    for erro in erros_memoria:
-        st.error(erro)
-    st.stop()
-
-_, garantia_total, endosso_atual, tipo_endosso = resumo_resultado(linha_do_tempo)
-total_atual = linha_do_tempo[-1]["valor_total"]
-
-# Conferência do VTA na forma de acréscimos ou reduções (nunca substitui valores).
-if not forma_totais and usar_vta and vta_claus is not None:
-    if total_atual == vta_claus:
-        st.success(f"O valor total calculado coincide com o VTA disponível no Claus ({formatar_brl(vta_claus)}).")
-    else:
-        st.warning(
-            f"O valor total calculado pelo histórico é {formatar_brl(total_atual)}, enquanto o VTA "
-            f"disponível no Claus é {formatar_brl(vta_claus)}. "
-            f"Diferença: {formatar_brl(abs(total_atual - vta_claus))}. "
-            "Revise o histórico informado; o cálculo utiliza os valores informados."
-        )
-
-st.subheader("Memória de cálculo")
-st.caption(
-    "A garantia de cada linha é 5% do valor total daquela linha. O endosso/adequação de cada linha é a "
-    "diferença entre a sua garantia e a garantia da linha imediatamente anterior."
+analise = analisar_garantia(
+    valor_total_contrato=valor_contrato,
+    percentual=percentual_pct,
+    data_fim_vigencia=data_fim_vigencia,
+    garantias=linhas_garantias,
 )
-render_memoria_html(linha_do_tempo)
+for aviso in analise["avisos_consolidacao"]:
+    st.warning(aviso)
 
 # ------------------------------------------------------------
-# 4) Resultado principal
+# 3) Resultado
 # ------------------------------------------------------------
 st.subheader("Resultado")
 col_r1, col_r2, col_r3 = st.columns(3)
 with col_r1:
-    card("Valor total atual do contrato", formatar_brl(total_atual))
+    card("Valor total atual do contrato", formatar_brl(analise["valor_total_contrato"]))
 with col_r2:
-    card("Garantia total exigida", formatar_brl(garantia_total), "5% do valor total do contrato.")
+    card(
+        "Garantia necessária",
+        formatar_brl(analise["garantia_necessaria"]),
+        f"{formatar_percentual(analise['percentual'])}% do valor total atual do contrato.",
+    )
 with col_r3:
-    if tipo_endosso == "reducao":
-        card("Adequação apurada", f"Redução de {formatar_brl(abs(endosso_atual))}", "Diferença negativa frente à garantia anterior.", destaque=True)
-    elif tipo_endosso == "inicial":
-        card("Garantia inicial", formatar_brl(garantia_total), "Não há instrumento anterior.", destaque=True)
+    if analise["quantidade_garantias"] == 0:
+        nota_cobertura = "Nenhuma garantia vigente informada."
+    elif analise["quantidade_garantias"] == 1:
+        nota_cobertura = "Valor total vigente da garantia informada."
     else:
-        card("Endosso necessário", formatar_brl(endosso_atual), "Diferença frente à garantia anterior.", destaque=True)
+        nota_cobertura = f"Soma de {analise['quantidade_garantias']} garantias independentes."
+    card("Cobertura atualmente apresentada", formatar_brl(analise["cobertura_atual"]), nota_cobertura)
 
-if tipo_endosso == "reducao":
+col_r4, col_r5, col_r6 = st.columns(3)
+with col_r4:
+    card(
+        "Complementação necessária",
+        formatar_brl(analise["complemento"]),
+        "Não há complementação financeira a exigir."
+        if analise["valor_suficiente"]
+        else "Diferença frente à garantia necessária.",
+        destaque=not analise["valor_suficiente"],
+    )
+with col_r5:
+    card("Término da vigência contratual", formatar_data_br(analise["data_fim_vigencia"]))
+with col_r6:
+    card(
+        "Validade mínima exigida",
+        formatar_data_br(analise["validade_minima"]),
+        f"{DIAS_VALIDADE_MINIMA} dias corridos após o término da vigência.",
+        destaque=not analise["validade_suficiente"],
+    )
+
+st.markdown("**Validade de cada garantia**")
+if analise["garantias"]:
+    render_tabela_validades(analise["garantias"], analise["validade_minima"])
+else:
+    st.caption("Nenhuma garantia vigente informada.")
+
+diagnostico = analise["diagnostico"]
+if diagnostico == DIAGNOSTICO_REGULAR:
+    st.success(f"{DIAGNOSTICO_REGULAR} — valor suficiente e validade suficiente.")
+elif diagnostico == DIAGNOSTICO_VALOR:
     st.warning(
-        f"O instrumento atual ({instrumento_atual}) apura redução de {formatar_brl(abs(endosso_atual))} "
-        "em relação à garantia anterior. A adequação não é automática: submeta à análise e à aceitação da Telebras."
+        f"{DIAGNOSTICO_VALOR} — complementação de {formatar_brl(analise['complemento'])}. "
+        "A validade das garantias está adequada."
     )
-elif tipo_endosso == "sem_alteracao":
-    st.info("Não há alteração de garantia decorrente do instrumento atual (endosso de R$ 0,00). Verifique eventual adequação do prazo de validade.")
-elif tipo_endosso == "inicial":
-    st.success(f"Garantia inicial de {formatar_brl(garantia_total)} (5% do valor total atual do contrato).")
+elif diagnostico == DIAGNOSTICO_VALIDADE:
+    st.warning(
+        f"{DIAGNOSTICO_VALIDADE} — o valor garantido é suficiente, mas a validade deve alcançar "
+        f"{formatar_data_br(analise['validade_minima'])}."
+    )
 else:
-    st.success(f"Endosso complementar necessário de {formatar_brl(endosso_atual)} para o instrumento atual ({instrumento_atual}).")
+    st.error(
+        f"{DIAGNOSTICO_VALOR_E_VALIDADE} — complementação de {formatar_brl(analise['complemento'])} "
+        f"e validade mínima até {formatar_data_br(analise['validade_minima'])}."
+    )
 
 # ------------------------------------------------------------
-# 5) Comunicação à contratada
+# 4) Texto para comunicação à contratada
 # ------------------------------------------------------------
-st.subheader("Comunicação à contratada")
-col_c1, col_c2 = st.columns(2)
-with col_c1:
-    numero_contrato = st.text_input("Número do contrato", value="", placeholder="Ex.: 001/2024").strip()
-with col_c2:
-    contratada = st.text_input("Nome da contratada (opcional)", value="").strip()
-
-texto_comunicacao = gerar_texto_comunicacao(
-    numero_contrato=numero_contrato,
-    vta_atual=total_atual,
-    garantia_total=garantia_total,
-    endosso=endosso_atual,
-    tipo_endosso=tipo_endosso,
-    contratada=contratada,
-)
-st.text_area("Texto da comunicação", value=texto_comunicacao, height=340)
-st.download_button(
-    "Baixar comunicação em TXT",
-    data=montar_txt_bytes(texto_comunicacao),
-    file_name="comunicacao_garantia_contratual.txt",
-    mime="text/plain",
-    use_container_width=False,
+st.subheader("Texto para comunicação à contratada")
+texto_comunicacao = gerar_texto_comunicacao(analise)
+st.text_area(
+    "Copie e cole no e-mail à contratada",
+    value=texto_comunicacao,
+    height=340,
+    key="garantia_texto_comunicacao",
 )
 
 # ------------------------------------------------------------
-# 6) Relatório PDF (memória completa)
-# ------------------------------------------------------------
-st.subheader("Relatório")
-dados_pdf = {
-    "numero_contrato": numero_contrato,
-    "contratada": contratada,
-    "forma_preenchimento": forma_preenchimento,
-    "vta_atual": total_atual,
-    "garantia_total": garantia_total,
-    "endosso": endosso_atual,
-    "tipo_endosso": tipo_endosso,
-    "linha_do_tempo": linha_do_tempo,
-    "texto_comunicacao": texto_comunicacao,
-}
-if REPORTLAB_OK:
-    pdf_bytes = gerar_pdf_garantia(dados_pdf)
-    st.session_state["arquivo_garantia_pdf"] = pdf_bytes
-    st.download_button(
-        "Baixar memória de cálculo (PDF)",
-        data=pdf_bytes,
-        file_name="relatorio_garantia_contratual.pdf",
-        mime="application/pdf",
-        type="primary",
-        use_container_width=False,
-    )
-else:
-    st.info("Instale reportlab para gerar o PDF: pip install reportlab")
-
-# ------------------------------------------------------------
-# 7) Resultado consolidado em session_state (integração)
+# Resultado próprio da página (consumido apenas como indicador de
+# disponibilidade pelo Saneador; nunca realimenta os campos acima).
 # ------------------------------------------------------------
 st.session_state["resultado_garantia"] = {
-    "forma_preenchimento": forma_preenchimento,
-    "fonte_valor_atual": "vta_claus" if (forma_totais and usar_vta and vta_claus is not None) else "manual",
-    "valor_total_atual": total_atual,
-    "vta_atual": vta_claus,
-    "percentual_garantia": Decimal("0.05"),
-    "garantia_total_exigida": garantia_total,
-    "endosso_ou_reducao": endosso_atual if endosso_atual is not None else Decimal("0.00"),
-    "instrumento_atual": instrumento_atual,
-    "tipo_endosso": tipo_endosso,
-    "historico": [
+    "valor_total_contrato": analise["valor_total_contrato"],
+    "percentual_garantia": analise["percentual"],
+    "garantia_necessaria": analise["garantia_necessaria"],
+    "cobertura_atual": analise["cobertura_atual"],
+    "complemento": analise["complemento"],
+    "data_fim_vigencia": analise["data_fim_vigencia"],
+    "validade_minima": analise["validade_minima"],
+    "valor_suficiente": analise["valor_suficiente"],
+    "validade_suficiente": analise["validade_suficiente"],
+    "diagnostico": analise["diagnostico"],
+    "garantias": [
         {
-            "instrumento": linha["instrumento"],
-            "valor_informado": linha["valor_informado"],
-            "alteracao": linha["alteracao"],
-            "valor_total_contrato": linha["valor_total"],
-            "garantia": linha["garantia"],
-            "endosso_ou_reducao": linha["endosso"],
+            "identificacao": garantia["identificacao"],
+            "valor": garantia["valor"],
+            "validade": garantia["validade"],
+            "validade_suficiente": garantia["validade_suficiente"],
         }
-        for linha in linha_do_tempo
+        for garantia in analise["garantias"]
     ],
-    # Chaves legadas preservadas por compatibilidade (Saneador só checa dict não vazio).
-    "metodo_garantia": "Histórico dos Valores Totais do Contrato",
-    "endosso_necessario": float(endosso_atual) if (endosso_atual is not None and endosso_atual > 0) else 0.0,
+    "texto_comunicacao": texto_comunicacao,
 }

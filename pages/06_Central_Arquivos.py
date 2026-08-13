@@ -54,14 +54,15 @@ DOCUMENTOS = (
         "sempre_acessivel": False,
     },
     {
+        # Etapa 49: a Garantia deixou de entregar um PDF e passou a ser uma
+        # calculadora manual. O card permanece no catálogo, na mesma posição,
+        # mas nunca consulta a sessão: leva sempre à ferramenta.
         "nome": "Garantia Contratual",
-        "descricao": "Relatório de conferência, endosso e monitoramento da garantia contratual.",
-        "formato": "PDF",
-        "session_key": "arquivo_garantia_pdf",
-        "file_name": "relatorio_garantia_contratual.pdf",
-        "mime": "application/pdf",
+        "descricao": "Calcule e confira o valor e a validade da garantia contratual.",
+        "formato": "Calculadora",
         "pagina": "pages/05_Garantia.py",
         "sempre_acessivel": True,
+        "ferramenta": True,
     },
     {
         "nome": "DOU",
@@ -258,7 +259,10 @@ def render_status_entradas(capacidades: dict[str, Any]) -> None:
 
 
 def render_documento(documento: dict[str, str], estrutura_valida: bool) -> None:
-    arquivo = st.session_state.get(documento["session_key"])
+    # Cards marcados como "ferramenta" (Etapa 49) não têm arquivo a entregar:
+    # a sessão não é consultada e o card leva direto à calculadora.
+    ferramenta = bool(documento.get("ferramenta"))
+    arquivo = None if ferramenta else st.session_state.get(documento["session_key"])
     sempre_acessivel = bool(documento.get("sempre_acessivel"))
     with st.container(border=True):
         st.markdown(f"### {documento['nome']} · {documento['formato']}")
@@ -285,7 +289,7 @@ def render_documento(documento: dict[str, str], estrutura_valida: bool) -> None:
         else:
             st.page_link(
                 documento["pagina"],
-                label="Gerar e baixar",
+                label="Abrir calculadora" if ferramenta else "Gerar e baixar",
                 use_container_width=True,
             )
 
