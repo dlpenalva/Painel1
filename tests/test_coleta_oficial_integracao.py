@@ -118,7 +118,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # das notas condicionais (E16:H21 e E35:H38). Nenhuma formula de negocio,
 # nome definido ou celula consumida externamente foi alterada;
 # MEMORIA_RESULTADOS ficou integralmente identica.
-SHA256_TEMPLATE_ESPERADO = "e42b07ac3f02695cda167a669bd3e3a7bf69765c18feb31c4be7d3054ec30c2c"
+# ETAPA 51A — pin reancorado: acabamento da RESULTADOS (owner:
+# tools/aplicar_resultados_51a.py, aplicado SOBRE o leiaute da Etapa 50).
+# O diagnostico provou que NAO havia bug no calculo do retroativo (o card E5
+# ja espelhava RETRO_OFICIAL via D22); mudancas exclusivamente de
+# apresentacao: E6 vira formula de estado vazio do card (le $D$22/$J$6),
+# G3:H3 mesclada (fim do ##### na VARIACAO ACUMULADA), larguras A:H com
+# piso/teto + ShrinkToFit nos valores dos cards (C5/E5/G5), contraste do
+# Quadro 1 e correcao das 26 celulas com o formato-lixo '\Pyyd\ryy\o'
+# (regressao da Etapa 50: NumberFormatLocal "Padrão" nao e o token de Geral).
+# Nenhuma regra de negocio alterada; MEMORIA_RESULTADOS e W48 identicas.
+SHA256_TEMPLATE_ESPERADO = "9d9d3525a0df488b97d28cad40cd34eb0b3f202a472de69b4aa46f676a160eae"
 
 
 def _dados_calculadora() -> dict:
