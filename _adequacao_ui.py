@@ -26,6 +26,7 @@ from _adequacao_orcamentaria import (
     media_financeiro,
     valor_original_foi_informado,
     janela_financeira_competencias,
+    CicloCadencia,
 )
 
 
@@ -348,6 +349,86 @@ def atualizar_exclusoes_manuais_pc(linhas, exclusoes_anteriores):
     return manual
 
 
+# ------------------------------------------------- cadencia (Etapa 51B)
+
+def ciclos_para_cadencia(df_ciclos):
+    """Converte resultado["df_ciclos"] no calendario de ciclos do motor.
+
+    Usa a "Data-base" de cada ciclo como inicio; o fim e o mes anterior ao
+    inicio do ciclo seguinte (ultimo ciclo: inicio + 11 meses). Ciclos
+    preclusos ENTRAM (evidencia historica de execucao); a flag e apenas
+    informativa. Linhas sem data aproveitam o ciclo anterior + 12 meses.
+    """
+    if not isinstance(df_ciclos, pd.DataFrame) or df_ciclos.empty:
+        return []
+    col_ciclo = localizar_coluna(df_ciclos, ["Ciclo"])
+    col_base = localizar_coluna(df_ciclos, ["Data-base", "Data base"])
+    col_sit = localizar_coluna(df_ciclos, ["Situação automática", "Situação"])
+    if col_ciclo is None or col_base is None:
+        return []
+    inicios = []
+    for _, row in df_ciclos.iterrows():
+        nome = texto_seguro(row.get(col_ciclo), "")
+        if not nome:
+            continue
+        data = pd.to_datetime(row.get(col_base), dayfirst=True, errors="coerce")
+        situacao = normalizar_texto(row.get(col_sit)) if col_sit else ""
+        inicios.append({
+            "nome": nome,
+            "inicio": (None if pd.isna(data) else data.to_period("M")),
+            "precluso": "preclus" in situacao,
+        })
+    for i, item in enumerate(inicios):
+        if item["inicio"] is None and i > 0 and inicios[i - 1]["inicio"] is not None:
+            item["inicio"] = inicios[i - 1]["inicio"] + 12
+    inicios = [i for i in inicios if i["inicio"] is not None]
+    ciclos = []
+    for i, item in enumerate(inicios):
+        if i + 1 < len(inicios):
+            fim = inicios[i + 1]["inicio"] - 1
+        else:
+            fim = item["inicio"] + 11
+        ciclos.append(CicloCadencia(
+            nome=item["nome"],
+            inicio=item["inicio"].to_timestamp().date(),
+            fim=fim.to_timestamp().date(),
+            precluso=item["precluso"],
+        ))
+    return ciclos
+
+
+def pares_de_financeiro(fin_por_comp):
+    """Historico financeiro consolidado -> pares (ano, mes, valor) do motor."""
+    if not isinstance(fin_por_comp, pd.DataFrame) or fin_por_comp.empty:
+        return []
+    pares = []
+    for periodo, valor in zip(fin_por_comp["_periodo"], fin_por_comp["valor"]):
+        if periodo is None or pd.isna(valor) or valor is None:
+            continue
+        pares.append((int(periodo.year), int(periodo.month), float(valor)))
+    return pares
+
+
+def pares_de_pedidos(pedidos):
+    """Pedidos considerados -> pares (ano, mes, valor) do motor."""
+    pares = []
+    for p in (pedidos or []):
+        if not getattr(p, "considerar", True) or getattr(p, "data", None) is None:
+            continue
+        pares.append((p.data.year, p.data.month, float(p.valor or 0.0)))
+    return pares
+
+
+def _mapa_base_por_periodo(base_por_competencia):
+    """Normaliza {date/Period -> valor} em {(ano, mes) -> valor}."""
+    mapa = {}
+    for chave, valor in (base_por_competencia or {}).items():
+        periodo = normalizar_competencia(chave)
+        if periodo is not None:
+            mapa[(int(periodo.year), int(periodo.month))] = float(valor or 0.0)
+    return mapa
+
+
 # ---------------------------------------------------------------- projecao
 
 def gerar_periodos_projecao(ultima_competencia, data_final_vigencia):
@@ -362,20 +443,44 @@ def gerar_periodos_projecao(ultima_competencia, data_final_vigencia):
     return list(pd.period_range(inicio, fim, freq="M"))
 
 
-def montar_base_editor(periodos, media_mensal):
+def montar_base_editor(periodos, media_mensal, base_por_competencia=None, rotulo_base=None):
+    """Editor da projecao. Sem `base_por_competencia` (legado): a media e a
+    base sugerida de todos os meses. Com o mapa (cadencia/manual): cada mes
+    exibe a SUA base (0 = sem ocorrencia prevista)."""
+    if base_por_competencia is None:
+        return pd.DataFrame([{
+            "Competência": periodo_para_label(p),
+            "Base automática pela média": moeda(media_mensal, com_prefixo=False),
+            "Valor informado pelo fiscal": "",
+            "Premissa do valor informado": "Valor sem reajuste",
+            "Observação": "",
+        } for p in periodos])
+    mapa = _mapa_base_por_periodo(base_por_competencia)
     return pd.DataFrame([{
         "Competência": periodo_para_label(p),
-        "Base automática pela média": moeda(media_mensal, com_prefixo=False),
+        "Base automática pela média": moeda(
+            mapa.get((int(p.year), int(p.month)), 0.0), com_prefixo=False),
         "Valor informado pelo fiscal": "",
         "Premissa do valor informado": "Valor sem reajuste",
         "Observação": "",
     } for p in periodos])
 
 
-def calcular_projecao(df_editor, media_mensal, fator_reajuste):
+def calcular_projecao(df_editor, media_mensal, fator_reajuste,
+                      base_por_competencia=None, origem_automatica=None):
+    """Projecao mes a mes.
+
+    Caminho legado (sem `base_por_competencia`): base automatica = media em
+    todos os meses (comportamento historico, usado quando a premissa e
+    MENSAL). Caminho por cadencia/manual: a base automatica de cada mes vem
+    do mapa {competencia -> valor}; meses sem ocorrencia prevista tem base 0
+    — a projecao deixa de presumir mensalidade (Etapa 51B). Overrides do
+    fiscal (ZERO != VAZIO) prevalecem em ambos os caminhos.
+    """
     linhas = []
     if not isinstance(df_editor, pd.DataFrame) or df_editor.empty:
         return pd.DataFrame(columns=["Competência", "Origem", "Premissa usada", "Valor base considerado", "Valor reajustado estimado", "Diferença futura a adequar", "Observação"])
+    mapa = None if base_por_competencia is None else _mapa_base_por_periodo(base_por_competencia)
     for _, row in df_editor.iterrows():
         competencia = texto_seguro(row.get("Competência"), "")
         informado_raw = row.get("Valor informado pelo fiscal", "")
@@ -394,10 +499,17 @@ def calcular_projecao(df_editor, media_mensal, fator_reajuste):
             else:
                 base_considerada = informado
                 premissa_usada = "Valor sem reajuste"
-        else:
+        elif mapa is None:
             origem = "Média dos últimos 6 meses"
             base_considerada = media_mensal
             premissa_usada = "Média sem reajuste"
+        else:
+            periodo = normalizar_competencia(competencia)
+            chave = (int(periodo.year), int(periodo.month)) if periodo is not None else None
+            base_considerada = mapa.get(chave, 0.0)
+            origem = origem_automatica or "Projeção pela cadência histórica"
+            premissa_usada = ("Ocorrência prevista pela cadência"
+                             if base_considerada > 0 else "Sem ocorrência prevista")
         valor_reajustado = _round2(base_considerada * fator_reajuste)
         diferenca = _round2(valor_reajustado - base_considerada)
         linhas.append({

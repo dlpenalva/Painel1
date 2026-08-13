@@ -50,6 +50,10 @@ def _run_pagina_pc():
     # aba Base. Os NUMEROS do golden permanecem identicos (motor inalterado).
     at.radio(key="adequacao_v3_origem").set_value("Pedidos de Compra")
     at.text_input(key="adequacao_v3_data_final_vigencia").set_value("05/05/2027")
+    # Etapa 51B: o golden normativo e um caso de MEDIA MENSAL — a premissa
+    # "Mensal (média)" e selecionada explicitamente (o modo Automatico deixou
+    # de presumir mensalidade quando os PCs nao tem densidade mensal).
+    at.radio(key="adequacao_v3_premissa").set_value("Mensal (média)")
     at.run()
     return at
 

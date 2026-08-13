@@ -33,6 +33,11 @@ from _adequacao_orcamentaria import (
     pedidos_de_itens_pc,
     classificar_pedidos,
     media_financeiro,
+    inferir_cadencia,
+    projetar_por_cadencia,
+    cadencia_por_ciclo_forcada,
+    CADENCIA_MENSAL,
+    CADENCIA_IRREGULAR,
 )
 from _adequacao_ui import (
     _round2,
@@ -54,6 +59,9 @@ from _adequacao_ui import (
     gerar_xlsx_projecao,
     situacao_financeira_considerada,
     atualizar_exclusoes_manuais_pc,
+    ciclos_para_cadencia,
+    pares_de_financeiro,
+    pares_de_pedidos,
 )
 
 st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="TLB · cl8us - Adequação Orçamentária", layout="wide")
@@ -253,7 +261,9 @@ with tab_base:
                                  help="Retroativo oficial vem da apuração; ajuste apenas se necessário.")
         percentual_txt = st.text_input("Ajustar percentual de reajuste aplicado",
                                        value=pct(ctx["variacao"]), key="adequacao_v3_percentual")
-        percentual_prev = parse_moeda_br(percentual_txt) / 100
+        percentual_prev = (float(ctx["variacao"])
+                           if (tem_apuracao and percentual_txt == pct(ctx["variacao"]))
+                           else parse_moeda_br(percentual_txt) / 100)
         st.caption(f"Fator usado: {(1 + percentual_prev):.6f}".replace(".", ",")
                    + " · informação técnica (não é necessária no fluxo normal).")
         st.markdown("**Metodologia do Valor Total Atualizado importado**")
@@ -263,7 +273,14 @@ with tab_base:
                 del st.session_state[_k]
             st.rerun()
 
-    percentual_reajuste = parse_moeda_br(percentual_txt) / 100
+    # Fator EXATO (Etapa 51B): o percentual canonico da apuracao (float, ex.:
+    # 0.028899355) so e substituido quando o usuario EDITA o campo. O
+    # round-trip float -> "2,89%" -> float degradava o fator e o valor
+    # reajustado; percentual exibido e apresentacao, nunca fonte matematica.
+    if tem_apuracao and percentual_txt == pct(ctx["variacao"]):
+        percentual_reajuste = float(ctx["variacao"])
+    else:
+        percentual_reajuste = parse_moeda_br(percentual_txt) / 100
     fator_reajuste = 1 + percentual_reajuste
 
 
@@ -468,15 +485,93 @@ with tab_proj:
     elif not periodos:
         st.info("Não há competências futuras a projetar com os dados informados.")
 
-    st.caption("Deixe vazio para usar a média. Digite 0 se não haverá execução. "
-               "Digite outro valor para substituir a média naquele mês.")
+    # ----- Premissa de projecao (Etapa 51B) --------------------------------
+    # A projecao deixa de PRESUMIR mensalidade: a cadencia real observada
+    # (mensal, por ciclo, semestral, trimestral...) decide QUANDO ha gasto;
+    # o valor por ocorrencia decide QUANTO. Ciclos preclusos entram como
+    # evidencia historica de execucao (nao geram retroativo); C0 so como
+    # fallback. Toda a matematica vive no motor (_adequacao_orcamentaria).
+    ciclos_cad = ciclos_para_cadencia(resultado.get("df_ciclos") if isinstance(resultado, dict) else None)
+    if origem_pc:
+        pares_hist = pares_de_pedidos(pedidos_de_itens_pc(
+            registros_pc_ctx,
+            exclusoes=st.session_state.get("adequacao_v3_exclusoes_pc", set())))
+    else:
+        pares_hist = pares_de_financeiro(fin_por_comp)
+    _ultima_comp_data_cad = ultima_comp.to_timestamp().date() if ultima_comp is not None else None
+    cadencia = inferir_cadencia(pares_hist, ciclos_cad, _ultima_comp_data_cad)
+
+    OPCOES_PREMISSA = ["Automática (cadência histórica)", "Mensal (média)", "Por ciclo", "Manual"]
+    premissa_proj = st.radio("Premissa de projeção", OPCOES_PREMISSA, horizontal=True,
+                             key="adequacao_v3_premissa",
+                             help="Automática usa o padrão histórico identificado. Mensal replica a média "
+                                  "somente quando a obrigação for de fato mensal. Por ciclo projeta o perfil "
+                                  "de ocorrências por ciclo. Manual deixa a programação por sua conta.")
+
+    _inicio_proj = periodos[0].to_timestamp().date() if periodos else None
+    _fim_proj = periodos[-1].to_timestamp().date() if periodos else None
+    usar_media = False
+    base_cadencia = None
+    cadencia_aplicada = cadencia
+    if premissa_proj == "Mensal (média)":
+        usar_media = True
+        premissa_rotulo = "Mensal (média histórica) — definida pelo usuário"
+    elif premissa_proj == "Manual":
+        base_cadencia = {}
+        premissa_rotulo = "Manual — programação informada pelo fiscal"
+    elif premissa_proj == "Por ciclo":
+        if cadencia["padrao"] not in (CADENCIA_MENSAL, CADENCIA_IRREGULAR):
+            cadencia_aplicada = cadencia
+        else:
+            cadencia_aplicada = cadencia_por_ciclo_forcada(pares_hist, ciclos_cad)
+        base_cadencia = projetar_por_cadencia(cadencia_aplicada, ciclos_cad, _inicio_proj, _fim_proj)
+        premissa_rotulo = f"Por ciclo — {cadencia_aplicada['rotulo']}"
+    else:  # Automática (cadência histórica)
+        if cadencia["padrao"] == CADENCIA_MENSAL:
+            usar_media = True
+            premissa_rotulo = f"Automática — {cadencia['rotulo']}"
+        elif cadencia["padrao"] == CADENCIA_IRREGULAR:
+            base_cadencia = {}
+            premissa_rotulo = "Automática — histórico sem periodicidade suficiente"
+            st.warning("HISTÓRICO SEM PERIODICIDADE SUFICIENTE PARA PROJEÇÃO AUTOMÁTICA. "
+                       f"{cadencia['explicacao']} Nenhuma mensalidade foi presumida: selecione "
+                       "a premissa Mensal, Por ciclo ou Manual, ou informe os valores na tabela.")
+        else:
+            base_cadencia = projetar_por_cadencia(cadencia, ciclos_cad, _inicio_proj, _fim_proj)
+            premissa_rotulo = f"Automática — {cadencia['rotulo']}"
+
+    render_leitura([
+        ("Padrão histórico identificado", cadencia["rotulo"]),
+        ("Base histórica", ", ".join(cadencia["ciclos_base"]) if cadencia["ciclos_base"] else "—"),
+        ("Premissa de projeção", premissa_rotulo),
+    ])
+    if cadencia.get("explicacao"):
+        st.caption(cadencia["explicacao"])
+    if cadencia.get("usa_c0"):
+        st.caption("Atenção: cadência inferida a partir de C0 (implantação/investimento inicial) "
+                   "por falta de histórico posterior — confiança reduzida.")
+
+    if usar_media:
+        st.caption("Deixe vazio para usar a média. Digite 0 se não haverá execução. "
+                   "Digite outro valor para substituir a média naquele mês.")
+    elif premissa_proj == "Manual":
+        st.caption("Premissa manual: informe os valores projetados por competência. "
+                   "Competências sem valor informado ficam com base 0 (sem execução prevista).")
+    else:
+        st.caption("Deixe vazio para usar a projeção automática pela cadência (meses sem "
+                   "ocorrência prevista ficam com base 0). Digite 0 se não haverá execução. "
+                   "Digite outro valor para substituir a competência.")
 
     proj_avancado = st.toggle("Mostrar opções avançadas da projeção", value=False,
                               key="adequacao_v3_proj_avancado",
                               help="Expõe a premissa do valor informado (sem reajuste / já reajustado) por competência.")
 
-    base_editor = montar_base_editor(periodos, media_ref)
-    editor_key = (f"adequacao_v3_editor_{origem_hist}_{ultima_comp_txt}_"
+    if usar_media:
+        base_editor = montar_base_editor(periodos, media_ref)
+    else:
+        base_editor = montar_base_editor(periodos, media_ref,
+                                         base_por_competencia=base_cadencia)
+    editor_key = (f"adequacao_v3_editor_{origem_hist}_{premissa_proj}_{ultima_comp_txt}_"
                   f"{data_final_vigencia}_{round(media_ref, 2)}_{round(fator_reajuste, 6)}")
 
     col_premissa = (st.column_config.SelectboxColumn(
@@ -493,7 +588,14 @@ with tab_proj:
         },
     )
 
-    df_projecao = calcular_projecao(df_editor, media_ref, fator_reajuste)
+    if usar_media:
+        df_projecao = calcular_projecao(df_editor, media_ref, fator_reajuste)
+    else:
+        df_projecao = calcular_projecao(
+            df_editor, media_ref, fator_reajuste,
+            base_por_competencia=base_cadencia,
+            origem_automatica=("Premissa manual" if premissa_proj == "Manual"
+                               else f"Cadência: {cadencia_aplicada['rotulo']}"))
     if modo_reduzido_estoque and ultimos_6.empty:
         rem_original = parse_moeda_br(resultado.get("remanescente_original", 0)) if isinstance(resultado, dict) else 0.0
         rem_atualizado = parse_moeda_br(resultado.get("remanescente_reajustado", 0)) if isinstance(resultado, dict) else 0.0
@@ -510,11 +612,23 @@ with tab_proj:
     qtd_meses = 0 if modo_reduzido_estoque and ultimos_6.empty else len(df_projecao)
 
     # Feedback dinamico compacto (nao antecipa o Resultado final).
+    ocorrencias_previstas = 0
+    if not df_projecao.empty and "Valor base considerado" in df_projecao.columns:
+        ocorrencias_previstas = int((pd.to_numeric(
+            df_projecao["Valor base considerado"], errors="coerce").fillna(0) > 0).sum())
     fb1, fb2, fb3 = st.columns(3)
     with fb1:
-        render_card_valor("Meses projetados", qtd_meses, formato="inteiro")
+        if usar_media:
+            render_card_valor("Meses projetados", qtd_meses, formato="inteiro")
+        else:
+            render_card_valor("Ocorrências previstas no horizonte", ocorrencias_previstas,
+                              nota=f"{qtd_meses} meses no horizonte", formato="inteiro")
     with fb2:
-        render_card_valor("Base média utilizada", media_ref)
+        if usar_media:
+            render_card_valor("Base média utilizada", media_ref)
+        else:
+            render_card_valor("Valor de referência por ocorrência",
+                              (cadencia_aplicada or {}).get("valor_referencia", 0.0))
     with fb3:
         render_card_valor("Diferença futura projetada", diferenca_futura)
 
@@ -532,6 +646,11 @@ with tab_result:
     st.subheader("4. Resultado")
     complementacao = _round2(float(retroativo or 0) + diferenca_futura)
     referencia_reajustada = _round2(media_ref * fator_reajuste)
+    # Com premissa por cadencia/manual, a referencia apresentada e o valor por
+    # OCORRENCIA (nao uma "media mensal" que o contrato nao tem).
+    valor_ref_hist = media_ref if usar_media else (cadencia_aplicada or {}).get("valor_referencia", 0.0)
+    if not usar_media:
+        referencia_reajustada = _round2(valor_ref_hist * fator_reajuste)
     cronograma = cronograma_por_exercicio(df_projecao, retroativo)
 
     col_a1, col_a2, col_a3 = st.columns(3)
@@ -560,13 +679,21 @@ with tab_result:
         st.info("A programação por exercício depende de projeção futura calculada.")
 
     # Download XLSX (RESUMO / MEDIA / PROJECAO). XLSX-only permanece a regra.
+    # Nomenclatura acompanha a cadencia: "media mensal" so quando a premissa e
+    # de fato mensal; caso contrario, valor de referencia POR OCORRENCIA.
     resumo_xlsx = [
         ("Origem histórica", origem_hist_rotulo),
+        ("Padrão histórico identificado", cadencia["rotulo"]),
+        ("Premissa de projeção", premissa_rotulo),
         ("Retroativo apurado", retroativo),
-        ("Média mensal histórica", media_ref),
+        ("Média mensal histórica" if usar_media else "Valor de referência por ocorrência",
+         media_ref if usar_media else valor_ref_hist),
         ("Percentual de reajuste", pct(percentual_reajuste)),
-        ("Referência mensal reajustada", referencia_reajustada),
+        ("Fator de reajuste (exato)", f"{fator_reajuste:.9f}".replace(".", ",")),
+        ("Referência mensal reajustada" if usar_media else "Referência reajustada por ocorrência",
+         referencia_reajustada),
         ("Quantidade de meses projetados", str(qtd_meses)),
+        ("Ocorrências previstas no horizonte", str(ocorrencias_previstas)),
         ("Diferença futura projetada", diferenca_futura),
         ("Complementação necessária", complementacao),
     ]

@@ -292,6 +292,378 @@ def classificar_pedidos(
     return {"inicio_janela": inicio, "fim_janela": fim, "pedidos": linhas}
 
 
+# ------------------------------------------------------- cadencia (Etapa 51B)
+#
+# Problema corrigido: a projecao presumia MENSALIDADE — qualquer media
+# historica era replicada em todos os meses futuros, transformando um gasto
+# anual/por ciclo em 12+ "mensalidades". A cadencia separa QUANDO o gasto
+# ocorre de QUANTO vale a ocorrencia.
+#
+# Criterio (deterministico e auditavel, sem estatistica opaca):
+#   1. Eventos = meses-calendario com gasto real (> 0) da origem selecionada.
+#   2. MENSAL: densidade de calendario >= MENSAL_DENSIDADE_MINIMA no intervalo
+#      entre o primeiro e o ultimo evento (>= MENSAL_SPAN_MINIMO meses). O
+#      denominador e o CALENDARIO (nao "linhas informadas"): o produtor
+#      descarta competencias zeradas, entao um unico gasto nao pode virar
+#      "100% dos meses informados".
+#   3. Periodico: com o calendario de ciclos, conta-se ocorrencias por ciclo
+#      COMPLETO (k_i). Padrao consistente = amplitude(k_i) <= 1. k = mediana.
+#      k=1 por ciclo/anual, k=2 semestral, k=3 quadrimestral, k=4 trimestral,
+#      k>=5 periodico generico, k>=12 mensal.
+#   4. Posicao no ciclo: para cada slot j, mediana das posicoes relativas
+#      (meses desde o inicio do ciclo) da j-esima ocorrencia de cada ciclo
+#      base. Valor por slot = mediana dos valores da j-esima ocorrencia.
+#      Nada e "hardcodado" em mes especifico.
+#   5. C0 pode conter implantacao/investimento inicial: so entra na base de
+#      inferencia como FALLBACK, quando nenhum ciclo C1+ completo tem evento
+#      (confianca reduzida). Ciclos PRECLUSOS entram normalmente como
+#      evidencia HISTORICA de execucao — preclusao juridica nao apaga o
+#      perfil financeiro (e nada aqui gera retroativo novo).
+#   6. Sem padrao consistente: IRREGULAR — a projecao automatica NAO inventa
+#      mensalidade nem espalha media; exige premissa do usuario.
+
+CADENCIA_MENSAL = "mensal"
+CADENCIA_POR_CICLO = "por_ciclo"
+CADENCIA_SEMESTRAL = "semestral"
+CADENCIA_QUADRIMESTRAL = "quadrimestral"
+CADENCIA_TRIMESTRAL = "trimestral"
+CADENCIA_PERIODICA = "periodica"
+CADENCIA_IRREGULAR = "irregular"
+
+MENSAL_DENSIDADE_MINIMA = 0.7
+MENSAL_SPAN_MINIMO = 4
+
+_ROTULOS_CADENCIA = {
+    CADENCIA_MENSAL: "Mensal (recorrente mês a mês)",
+    CADENCIA_POR_CICLO: "1 ocorrência por ciclo (aprox. anual)",
+    CADENCIA_SEMESTRAL: "2 ocorrências por ciclo (aprox. semestral)",
+    CADENCIA_QUADRIMESTRAL: "3 ocorrências por ciclo (aprox. quadrimestral)",
+    CADENCIA_TRIMESTRAL: "4 ocorrências por ciclo (aprox. trimestral)",
+    CADENCIA_PERIODICA: "{k} ocorrências por ciclo",
+    CADENCIA_IRREGULAR: "Histórico sem periodicidade suficiente",
+}
+
+
+@dataclass
+class CicloCadencia:
+    """Janela de calendario de um ciclo contratual, para fins de cadencia.
+
+    `precluso` e informativo: ciclo precluso CONTINUA evidencia historica de
+    execucao (nao gera retroativo — isso e regra de outra camada).
+    """
+    nome: str
+    inicio: date
+    fim: date
+    precluso: bool = False
+
+
+def _ordinal_mes(d: date) -> int:
+    return d.year * 12 + (d.month - 1)
+
+
+def _mes_de_ordinal(n: int) -> date:
+    ano, mes0 = divmod(int(n), 12)
+    return date(ano, mes0 + 1, 1)
+
+
+def _mediana(valores: list[float]) -> float:
+    ordenados = sorted(valores)
+    n = len(ordenados)
+    if n == 0:
+        return 0.0
+    meio = n // 2
+    if n % 2:
+        return float(ordenados[meio])
+    return (float(ordenados[meio - 1]) + float(ordenados[meio])) / 2.0
+
+
+def eventos_mensais(pares: Iterable[tuple]) -> list[dict]:
+    """Normaliza (ano, mes, valor) em eventos mensais reais (valor > 0).
+
+    Multiplos lancamentos no mesmo mes somam-se em um unico evento. Zeros e
+    vazios nao sao eventos (zero informado = mes observado sem gasto).
+    """
+    por_mes: dict[int, float] = {}
+    for ano, mes, valor in (pares or []):
+        v = _num(valor)
+        if v is None or v <= 0:
+            continue
+        chave = int(ano) * 12 + (int(mes) - 1)
+        por_mes[chave] = por_mes.get(chave, 0.0) + v
+    return [
+        {"mes": _mes_de_ordinal(k), "valor": v}
+        for k, v in sorted(por_mes.items())
+    ]
+
+
+def _ciclo_do_mes(ciclos: list[CicloCadencia], mes: date) -> CicloCadencia | None:
+    for c in ciclos:
+        if _mes1(c.inicio) <= mes <= _mes1(c.fim):
+            return c
+    return None
+
+
+def inferir_cadencia(
+    pares: Iterable[tuple],
+    ciclos: Iterable[CicloCadencia] | None,
+    ultima_competencia: Any,
+) -> dict:
+    """Classifica o padrao historico de execucao (ver criterio no cabecalho).
+
+    pares: (ano, mes, valor) de TODOS os lancamentos historicos da origem.
+    ciclos: calendario dos ciclos contratuais (inclui preclusos e C0).
+    ultima_competencia: fim do periodo observado (define ciclo completo).
+    """
+    eventos = eventos_mensais(pares)
+    ciclos = sorted(list(ciclos or []), key=lambda c: c.inicio)
+    ultima = _as_date(ultima_competencia)
+
+    base = {
+        "padrao": CADENCIA_IRREGULAR,
+        "rotulo": _ROTULOS_CADENCIA[CADENCIA_IRREGULAR],
+        "ocorrencias_por_ciclo": 0,
+        "posicoes": [],
+        "valores_por_slot": [],
+        "valor_referencia": 0.0,
+        "ciclos_base": [],
+        "usa_c0": False,
+        "confianca": "insuficiente",
+        "duracao_ciclo_meses": 12,
+        "eventos": eventos,
+        "explicacao": "",
+    }
+    if not eventos:
+        base["explicacao"] = "Nenhum gasto historico identificado na origem."
+        return base
+
+    # --- 1) MENSAL por densidade de calendario -----------------------------
+    primeiro = _ordinal_mes(eventos[0]["mes"])
+    ultimo = _ordinal_mes(eventos[-1]["mes"])
+    span = ultimo - primeiro + 1
+    densidade = len(eventos) / span if span > 0 else 0.0
+    if span >= MENSAL_SPAN_MINIMO and densidade >= MENSAL_DENSIDADE_MINIMA:
+        base.update({
+            "padrao": CADENCIA_MENSAL,
+            "rotulo": _ROTULOS_CADENCIA[CADENCIA_MENSAL],
+            "ocorrencias_por_ciclo": 12,
+            "valor_referencia": _mediana([e["valor"] for e in eventos]),
+            "confianca": "alta",
+            "explicacao": (
+                f"Gasto presente em {len(eventos)} de {span} meses-calendario "
+                f"({densidade:.0%}): comportamento recorrente mensal."
+            ),
+        })
+        return base
+
+    if not ciclos or ultima is None:
+        base["explicacao"] = (
+            "Sem calendario de ciclos disponivel para inferir periodicidade; "
+            "gastos nao sao mensais. Informe a premissa de projecao."
+        )
+        return base
+
+    # --- 2) ocorrencias por ciclo COMPLETO ---------------------------------
+    duracoes = [
+        (_ordinal_mes(c.fim) - _ordinal_mes(c.inicio) + 1) for c in ciclos
+    ]
+    duracao = int(round(_mediana([float(d) for d in duracoes]))) if duracoes else 12
+    por_ciclo: dict[str, list[dict]] = {c.nome: [] for c in ciclos}
+    for e in eventos:
+        c = _ciclo_do_mes(ciclos, e["mes"])
+        if c is not None:
+            por_ciclo[c.nome].append(e)
+
+    completos = [c for c in ciclos if _mes1(c.fim) <= _mes1(ultima)]
+    base_c1 = [c for c in completos if c.nome.upper() != "C0" and por_ciclo[c.nome]]
+    usa_c0 = False
+    if base_c1:
+        ciclos_base = base_c1
+    else:
+        ciclos_base = [c for c in completos if por_ciclo[c.nome]]
+        usa_c0 = any(c.nome.upper() == "C0" for c in ciclos_base)
+    if not ciclos_base:
+        base["explicacao"] = (
+            "Nenhum ciclo historico completo com gastos: base insuficiente "
+            "para inferir a cadencia."
+        )
+        return base
+
+    ks = [len(por_ciclo[c.nome]) for c in ciclos_base]
+    k = int(round(_mediana([float(x) for x in ks])))
+    if (max(ks) - min(ks)) > 1 or k < 1:
+        base["explicacao"] = (
+            f"Ocorrencias por ciclo inconsistentes ({ks}): sem padrao "
+            "periodico confiavel."
+        )
+        return base
+
+    # --- 3) posicoes e valores por slot ------------------------------------
+    posicoes: list[int] = []
+    valores: list[float] = []
+    for j in range(k):
+        pos_j = []
+        val_j = []
+        for c in ciclos_base:
+            evs = sorted(por_ciclo[c.nome], key=lambda e: e["mes"])
+            if j < len(evs):
+                pos_j.append(float(_ordinal_mes(evs[j]["mes"]) - _ordinal_mes(_mes1(c.inicio))))
+                val_j.append(evs[j]["valor"])
+        posicoes.append(int(round(_mediana(pos_j))) if pos_j else 0)
+        valores.append(_mediana(val_j) if val_j else 0.0)
+
+    if k >= 12:
+        padrao = CADENCIA_MENSAL
+    else:
+        padrao = {
+            1: CADENCIA_POR_CICLO,
+            2: CADENCIA_SEMESTRAL,
+            3: CADENCIA_QUADRIMESTRAL,
+            4: CADENCIA_TRIMESTRAL,
+        }.get(k, CADENCIA_PERIODICA)
+    rotulo = _ROTULOS_CADENCIA[padrao]
+    if padrao == CADENCIA_PERIODICA:
+        rotulo = rotulo.format(k=k)
+
+    confianca = "alta" if len(ciclos_base) >= 2 else "media"
+    if usa_c0:
+        confianca = "baixa"
+    base.update({
+        "padrao": padrao,
+        "rotulo": rotulo,
+        "ocorrencias_por_ciclo": k,
+        "posicoes": posicoes,
+        "valores_por_slot": valores,
+        "valor_referencia": _mediana(valores),
+        "ciclos_base": [c.nome for c in ciclos_base],
+        "usa_c0": usa_c0,
+        "confianca": confianca,
+        "duracao_ciclo_meses": duracao,
+        "explicacao": (
+            f"{k} ocorrencia(s) por ciclo em {', '.join(c.nome for c in ciclos_base)}"
+            + (" (fallback C0: sem historico posterior suficiente)" if usa_c0 else "")
+            + f"; posicoes relativas medianas {posicoes} (meses do ciclo)."
+        ),
+    })
+    return base
+
+
+def cadencia_por_ciclo_forcada(pares: Iterable[tuple],
+                               ciclos: Iterable[CicloCadencia] | None) -> dict:
+    """Premissa POR CICLO imposta pelo usuario quando a inferencia automatica
+    nao encontra padrao: 1 ocorrencia por ciclo, na posicao relativa mediana
+    dos eventos observados, com o valor mediano por ocorrencia. Continua
+    deterministica e baseada apenas em eventos reais."""
+    eventos = eventos_mensais(pares)
+    ciclos = sorted(list(ciclos or []), key=lambda c: c.inicio)
+    duracoes = [
+        (_ordinal_mes(c.fim) - _ordinal_mes(c.inicio) + 1) for c in ciclos
+    ]
+    duracao = int(round(_mediana([float(d) for d in duracoes]))) if duracoes else 12
+    posicoes_rel = []
+    for e in eventos:
+        c = _ciclo_do_mes(ciclos, e["mes"])
+        if c is not None:
+            posicoes_rel.append(float(_ordinal_mes(e["mes"]) - _ordinal_mes(_mes1(c.inicio))))
+    if not eventos or not ciclos:
+        return {
+            "padrao": CADENCIA_IRREGULAR,
+            "rotulo": _ROTULOS_CADENCIA[CADENCIA_IRREGULAR],
+            "ocorrencias_por_ciclo": 0, "posicoes": [], "valores_por_slot": [],
+            "valor_referencia": 0.0, "ciclos_base": [], "usa_c0": False,
+            "confianca": "insuficiente", "duracao_ciclo_meses": duracao,
+            "eventos": eventos,
+            "explicacao": "Sem eventos ou sem calendario de ciclos para a premissa por ciclo.",
+        }
+    posicao = int(round(_mediana(posicoes_rel))) if posicoes_rel else 0
+    valor = _mediana([e["valor"] for e in eventos])
+    return {
+        "padrao": CADENCIA_POR_CICLO,
+        "rotulo": _ROTULOS_CADENCIA[CADENCIA_POR_CICLO],
+        "ocorrencias_por_ciclo": 1,
+        "posicoes": [posicao],
+        "valores_por_slot": [valor],
+        "valor_referencia": valor,
+        "ciclos_base": [c.nome for c in ciclos if any(
+            _mes1(c.inicio) <= e["mes"] <= _mes1(c.fim) for e in eventos)],
+        "usa_c0": False,
+        "confianca": "premissa do usuario",
+        "duracao_ciclo_meses": duracao,
+        "eventos": eventos,
+        "explicacao": (
+            "Premissa POR CICLO definida pelo usuario: 1 ocorrencia por ciclo "
+            f"na posicao mediana {posicao} com valor mediano por ocorrencia."
+        ),
+    }
+
+
+def projetar_por_cadencia(
+    cadencia: dict,
+    ciclos: Iterable[CicloCadencia] | None,
+    inicio_projecao: Any,
+    fim_projecao: Any,
+) -> dict:
+    """Projeta as ocorrencias futuras conforme a cadencia inferida.
+
+    Devolve {date(ano, mes, 1) -> valor base}. Somente ocorrencias que caem
+    dentro de [inicio_projecao, fim_projecao] entram — nada e multiplicado
+    por "todos os meses restantes". Ciclos futuros sao extrapolados a partir
+    do ultimo ciclo conhecido, mantendo a duracao mediana observada. Se o
+    ciclo corrente ja teve as k ocorrencias esperadas, nada mais e projetado
+    nele (o perfil segue no ciclo seguinte).
+    """
+    inicio = _as_date(inicio_projecao)
+    fim = _as_date(fim_projecao)
+    if inicio is None or fim is None:
+        return {}
+    if cadencia.get("padrao") in (CADENCIA_IRREGULAR, CADENCIA_MENSAL):
+        return {}
+    k = int(cadencia.get("ocorrencias_por_ciclo") or 0)
+    posicoes = list(cadencia.get("posicoes") or [])
+    valores = list(cadencia.get("valores_por_slot") or [])
+    if k < 1 or not posicoes:
+        return {}
+    duracao = int(cadencia.get("duracao_ciclo_meses") or 12)
+    eventos = cadencia.get("eventos") or []
+
+    janela: list[CicloCadencia] = sorted(list(ciclos or []), key=lambda c: c.inicio)
+    if not janela:
+        return {}
+    # extrapola ciclos futuros ate cobrir o fim da projecao
+    ultimo = janela[-1]
+    seq = 1
+    while _mes1(ultimo.fim) < _mes1(fim):
+        ini = _add_meses(ultimo.fim, 1)
+        ultimo = CicloCadencia(
+            nome=f"{janela[-1].nome}+{seq}",
+            inicio=ini,
+            fim=_add_meses(ini, duracao - 1),
+        )
+        janela.append(ultimo)
+        seq += 1
+
+    ini_ord = _ordinal_mes(_mes1(inicio))
+    fim_ord = _ordinal_mes(_mes1(fim))
+    base: dict[date, float] = {}
+    for c in janela:
+        observados = sum(
+            1 for e in eventos
+            if _mes1(c.inicio) <= e["mes"] <= _mes1(c.fim)
+            and _ordinal_mes(e["mes"]) < ini_ord
+        )
+        restantes = max(0, k - observados)
+        if restantes <= 0:
+            continue
+        agendados = []
+        for j, pos in enumerate(posicoes):
+            mes_ord = _ordinal_mes(_mes1(c.inicio)) + int(pos)
+            agendados.append((mes_ord, valores[j] if j < len(valores) else 0.0))
+        agendados.sort()
+        futuros = [(m, v) for m, v in agendados if ini_ord <= m <= fim_ord]
+        for m, v in futuros[-restantes:]:
+            base[_mes_de_ordinal(m)] = base.get(_mes_de_ordinal(m), 0.0) + v
+    return base
+
+
 def calcular_adequacao_orcamentaria(
     *,
     origem: str,
