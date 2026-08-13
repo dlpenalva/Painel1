@@ -2770,7 +2770,12 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             # TEMPESTIVO/TEMPESTIVO*, d_aniv no ADIANTADO, data pactuada no
             # acordo negocial; None no PRECLUSO sem acordo). Nada e
             # recalculado nem mensalizado aqui.
-            'data_abertura_fisica_exata': _formatar_data(dados_ciclo.get('referencia_exata_efeito')),
+            # ETAPA 48.4 — o PRECLUSO sem acordo nao tem efeito financeiro
+            # (referencia_exata_efeito = None, e assim permanece), mas EXISTE
+            # fisicamente na analise: sua fotografia e a referencia exata ja
+            # calculada do proprio ciclo (data_referencia_exata = d_aniv),
+            # nunca a data mensal de parametros!C. Nenhuma data e criada.
+            'data_abertura_fisica_exata': _formatar_data(dados_ciclo.get('referencia_exata_efeito') or dados_ciclo.get('data_referencia_exata')),
             'situacao': situacao_aplicada,
             'ciclo_ja_concedido': bool(ciclo_ja_concedido),
             'objeto_analise_atual': not bool(ciclo_ja_concedido),
