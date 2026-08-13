@@ -85,7 +85,8 @@ COL_NASCIMENTO_DATA = "AL"
 
 # Coluna de QTD_CONTRATADA_Cn ja existente (cumulativa) por ciclo.
 COLS_QTD_CONTRATADA = ("E", "I", "M", "Q", "U")
-# parametros!C{linha} = DATA_INICIO (abertura) do ciclo Cn.
+# parametros!C{linha} = janela mensal do ciclo Cn (guarda de existencia);
+# parametros!I{linha} = DATA_ABERTURA_FISICA_EXATA (fronteira fisica).
 LINHAS_PARAM_INICIO = (2, 3, 4, 5, 6)
 
 CABECALHOS_PC = {
@@ -179,15 +180,21 @@ def _formula_delta_posterior(r: int, ciclo: int) -> str:
     A fronteira e por DIA, nao por instante: `>= abertura + 1` mantem no lado da
     abertura qualquer aditivo datado NO dia da abertura, mesmo que a celula
     carregue componente de hora (data digitada com horario, importacao, COM).
+
+    ETAPA 48: a fronteira FISICA le parametros!I (DATA_ABERTURA_FISICA_EXATA);
+    a guarda de existencia do ciclo permanece na janela mensal (parametros!C).
+    ETAPA 48.3: a guarda tambem reconhece I vazio (ciclo futuro sem fotografia
+    fisica) e devolve 0 sem executar INT sobre celula vazia, que viraria a
+    fronteira ficticia 01/01/1900.
     """
     linha_param = LINHAS_PARAM_INICIO[ciclo]
     return (
         f'=IF($A{r}="","",'
-        f'IF(parametros!$C${linha_param}="",0,'
+        f'IF(OR(parametros!$C${linha_param}="",parametros!$I${linha_param}=""),0,'
         f'ROUND(SUMIFS(aditivos!$L$2:$L$200,'
         f'aditivos!$A$2:$A$200,$A{r},'
         f'aditivos!$C$2:$C$200,"C{ciclo}",'
-        f'aditivos!$B$2:$B$200,">="&(INT(parametros!$C${linha_param})+1)),2)))'
+        f'aditivos!$B$2:$B$200,">="&(INT(parametros!$I${linha_param})+1)),2)))'
     )
 
 

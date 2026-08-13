@@ -289,11 +289,47 @@ def test_coluna_nascimento_por_data_existe_e_usa_abertura():
     # abertura mesmo que a celula carregue componente de hora. ETAPA 48: a
     # fronteira fisica passou a ler parametros!I (data exata); a guarda e a
     # condicao de janela permanecem na cadeia mensal (parametros!C).
+    # ETAPA 48.3: a guarda tambem reconhece I vazio — ciclo futuro sem
+    # fotografia fisica nao calcula DELTA_POSTERIOR (INT de celula vazia
+    # viraria fronteira ficticia 01/01/1900).
     assert 'aditivos!$B$2:$B$200,">="&(INT(parametros!$I$3)+1)' in ac2
-    assert 'IF(parametros!$C$3="",0,' in ac2
+    assert 'IF(OR(parametros!$C$3="",parametros!$I$3=""),0,' in ac2
     # A qtd na abertura e a contratada MENOS o que so passou a valer depois.
     assert str(pc["AH2"].value).endswith("ROUND($I2-$AC2,2)))")
     assert str(pc["AL2"].value).count("N($A") == 5
+
+
+def test_aplicador_canonico_sincronizado_com_o_template_homologado():
+    """ETAPA 48.3 — o aplicador nao pode regredir a fronteira fisica.
+
+    `tools/aplicar_temporalidade_aditivos.py` e o dono canonico de
+    posicao_contratual!AB2:AF200. Se ele voltar a gerar a fronteira em
+    parametros!C (pre-Etapa 48) ou perder a guarda de I vazio (Etapa 48.3),
+    uma reexecucao futura destruiria o template homologado.
+    """
+    from tools.aplicar_temporalidade_aditivos import (
+        COLS_DELTA_POSTERIOR, PC_FIM, PC_INI, _formula_delta_posterior,
+    )
+
+    for ciclo in range(5):
+        formula = _formula_delta_posterior(2, ciclo)
+        n = ciclo + 2                                   # parametros!C2..C6 / I2..I6
+        # fronteira FISICA em parametros!I (nunca mais na cadeia mensal)
+        assert f"INT(parametros!$I${n})+1" in formula, ciclo
+        assert "INT(parametros!$C$" not in formula, ciclo
+        # guarda: ciclo inexistente (C vazio) OU sem fotografia fisica (I vazio)
+        assert f'IF(OR(parametros!$C${n}="",parametros!$I${n}=""),0,' in formula, ciclo
+        # classificacao mensal do aditivo intacta
+        assert f'aditivos!$C$2:$C$200,"C{ciclo}"' in formula, ciclo
+        assert "SUMIFS(aditivos!$L$2:$L$200" in formula, ciclo
+
+    # sincronizacao exata: o que o tool gera == o que esta homologado no template
+    wb = load_workbook(TEMPLATE)
+    pc = wb["posicao_contratual"]
+    for r in range(PC_INI, PC_FIM + 1):
+        for ciclo in range(5):
+            coord = f"{COLS_DELTA_POSTERIOR[ciclo]}{r}"
+            assert str(pc[coord].value) == _formula_delta_posterior(r, ciclo), coord
 
 
 def test_formatacao_condicional_usa_nascimento_por_data():

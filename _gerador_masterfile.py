@@ -571,22 +571,41 @@ def _registrar_inicio_efeitos_financeiros(wb, ciclos: dict[str, Any]) -> None:
     wb.properties.keywords = ";".join(parte for parte in (anterior, novo) if parte)
 
 
-def _registrar_datas_abertura_fisica(wb, ciclos: dict[str, Any]) -> None:
+def _registrar_datas_abertura_fisica(
+    wb, ciclos: dict[str, Any], ciclos_analise: dict[str, Any] | None = None,
+) -> None:
     """parametros!I: DATA_ABERTURA_FISICA_EXATA por ciclo — ETAPA 48.
 
     Superficie exclusiva da fotografia fisica (itens_Remanesc!E1:T1,
     posicao_contratual!AB:AF, posicao_referencia!I6, cobertura_temporal!B6).
     parametros!C segue sendo a cadeia mensal e nao e tocada aqui. Ciclo sem
-    data exata transportada (payload legado ou ciclo derivado/precluso) usa
+    data exata transportada (payload legado ou ciclo anterior/precluso) usa
     data_inicio como fallback — comportamento identico ao anterior.
+
+    ETAPA 48.3 — `ciclos_analise` e a estrutura ORIGINAL recebida da
+    Calculadora (antes de _completar_periodos_ciclos). Ciclo FUTURO criado
+    somente pela complementacao estrutural — posterior ao ultimo ciclo
+    efetivamente presente na analise — nao possui fotografia fisica: I fica
+    VAZIO (sem fallback para a data mensal sintetica). Ciclos anteriores ao
+    ultimo ciclo real (ex.: C0 quando a analise comeca em C2) preservam o
+    fallback, como antes.
     """
     ws = wb["parametros"] if "parametros" in wb.sheetnames else None
     if ws is None or str(ws["B1"].value or "").strip().upper() != "CICLO":
         return
+    nomes = ("C0", "C1", "C2", "C3", "C4")
+    ultimo_real = len(nomes) - 1
+    if ciclos_analise is not None:
+        presentes = [i for i, n in enumerate(nomes) if ciclos_analise.get(n)]
+        ultimo_real = max(presentes) if presentes else -1
     ws["I1"] = "DATA_ABERTURA_FISICA_EXATA"
-    for linha, nome in enumerate(("C0", "C1", "C2", "C3", "C4"), start=2):
+    for indice, nome in enumerate(nomes):
+        linha = indice + 2
         ciclo = ciclos.get(nome) or {}
-        valor = ciclo.get("data_abertura_fisica_exata") or ciclo.get("data_inicio")
+        if indice > ultimo_real:
+            valor = None
+        else:
+            valor = ciclo.get("data_abertura_fisica_exata") or ciclo.get("data_inicio")
         if isinstance(valor, datetime):
             valor = valor.date()
         _escrever_entrada(ws, f"I{linha}", valor if isinstance(valor, date) else None)
@@ -795,7 +814,7 @@ def gerar_masterfile_preenchido(
     # some da linha do tempo nem tem seu periodo herdado pelo ciclo seguinte.
     ciclos_completos = _completar_periodos_ciclos(ciclos, dados_calculadora.get("data_corte"))
     _registrar_inicio_efeitos_financeiros(wb, ciclos_completos)
-    _registrar_datas_abertura_fisica(wb, ciclos_completos)
+    _registrar_datas_abertura_fisica(wb, ciclos_completos, ciclos)
 
     ciclos_computados: list[tuple[str, Any]] = []
     for linha, nome in enumerate(("C0", "C1", "C2", "C3", "C4"), start=2):
