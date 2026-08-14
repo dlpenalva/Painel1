@@ -90,9 +90,19 @@ def test_resumo_lateral_cobre_toda_faixa(wb_template):
 
 
 def test_cobertura_b14_cobre_toda_faixa(wb_template):
+    # Etapa "posicao unica, datas e arredondamento" (PR #22, owner:
+    # tools/aplicar_ux_posicao_datas_arredondamento.py): B14 deixou de ser o
+    # MAX cru e virou o ULTIMO PC CONSIDERADO ATE O CORTE (CONTROLE!B3), com
+    # fallback MAX quando nao ha corte e vazio quando nenhum PC e anterior ao
+    # corte. A faixa segue cobrindo a capacidade canonica ($B$2:$B$5001).
     b14 = wb_template["cobertura_temporal"]["B14"].value
     assert b14 == (
-        f'=IF(COUNT(itens_PC!$B$2:$B${CAP})=0,"",MAX(itens_PC!$B$2:$B${CAP}))'
+        f'=IFERROR(IF(COUNT(itens_PC!$B$2:$B${CAP})=0,"",'
+        f'IF(NOT(ISNUMBER(CONTROLE!$B$3)),MAX(itens_PC!$B$2:$B${CAP}),'
+        f'IF(COUNTIFS(itens_PC!$B$2:$B${CAP},"<="&CONTROLE!$B$3,'
+        f'itens_PC!$B$2:$B${CAP},">0")=0,"",'
+        f'SUMPRODUCT(MAX((itens_PC!$B$2:$B${CAP}<=CONTROLE!$B$3)'
+        f'*(itens_PC!$B$2:$B${CAP}>0)*itens_PC!$B$2:$B${CAP}))))),"")'
     )
 
 

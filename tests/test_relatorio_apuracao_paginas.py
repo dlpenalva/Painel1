@@ -33,7 +33,12 @@ def test_regra_de_datas_do_ciclo_unico_intacta():
 
 
 def test_regra_de_datas_do_multiciclo_intacta():
-    assert "d_aniv = data_atual + relativedelta(years=1)" in MULTI
+    # Commit 2928265 (tag HOMOLOGADO_CL8US_MATRIZ_20260810_1728, Etapas 38/45):
+    # a elegibilidade do multiciclo passou a vir da CADEIA EXATA — a ancora
+    # exata avanca 12 meses e d_aniv espelha essa referencia, em vez do salto
+    # mensalizado de 1 ano sobre a data_atual.
+    assert "data_referencia_exata = data_atual + relativedelta(months=12)" in MULTI
+    assert "d_aniv = data_referencia_exata" in MULTI
     assert "d_lim = d_aniv + relativedelta(days=90)" in MULTI
 
 

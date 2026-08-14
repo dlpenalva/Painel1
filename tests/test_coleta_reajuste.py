@@ -353,8 +353,14 @@ class ColetaReajusteTests(unittest.TestCase):
         # valor calculado gravado, a cadeia e recomposta pelo percentual do
         # ciclo (parametros!E), que e entrada literal.
         self.assertIn('fator_gravado = parametros[f"F{row}"].value', adapter)
-        self.assertIn('fator = _numero(fator_gravado, 1.0)', adapter)
-        self.assertIn('fator = cadeia_fator.get(row, 1.0)', adapter)
+        # Etapa 35B (f97380e): fail-closed — o fator gravado tem precedencia;
+        # sem valor gravado, a cadeia recompoe; em ciclo COMPUTADO sem cadeia,
+        # o fator e None (nunca reajuste neutro de 1,0 silencioso).
+        self.assertIn(
+            'fator = _numero(fator_gravado, None if computar else 1.0)', adapter
+        )
+        self.assertIn('fator = cadeia_fator.get(row)', adapter)
+        self.assertIn('if fator is None and not computar:', adapter)
         self.assertIn('"Data-base": _data_br(parametros[f"C{row}"].value)', adapter)
         self.assertIn('"Situação": parametros[f"G{row}"].value or ""', adapter)
         self.assertIn('"Variação": _numero(parametros[f"E{row}"].value)', adapter)
