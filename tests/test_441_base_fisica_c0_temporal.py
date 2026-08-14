@@ -143,6 +143,14 @@ def _montar_cenario(destino: Path, com_item_sem_nascimento: bool) -> Path:
     par["A2"], par["C2"], par["D2"] = "Nao", date(2025, 2, 1), date(2026, 1, 31)
     par["A3"], par["C3"], par["D3"] = "Sim", date(2026, 2, 1), date(2027, 1, 31)
     par["E3"] = 0.05
+    # Etapa 48: a ancora temporal dos deltas migrou de parametros!C para
+    # parametros!I (DATA_ABERTURA_FISICA_EXATA), com guarda fail-closed 48.3
+    # (OR(C="",I="")) que desliga o recorte temporal quando I esta vazia. O
+    # runtime SEMPRE grava I para os ciclos da analise; este cenario precisa
+    # fazer o mesmo, senao AL degrada para o criterio por quantidade e o
+    # aditivo do meio do C0 (N001, 250 x VU 5,00 = 1.250) vira execucao
+    # fisica implicita (+750 em vez de -500), inflando W48 para 22.790.
+    par["I2"], par["I3"] = date(2025, 2, 1), date(2026, 2, 1)
     itens = [
         ("ITEM-01", 1000, 10.0, 800),   # existia em C0 (AL=0)
         ("N001", None, 5.0, 100),       # nasceu no MEIO de C0 (Y=0, AL=1)
