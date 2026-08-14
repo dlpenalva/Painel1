@@ -334,13 +334,88 @@ def test_caso_real_na_web_projeta_por_ciclo_e_usa_fator_exato():
     # fator EXATO: 853.961,00 x 1,028899355 = 878.639,92 (com 2,89% seria 878.640,47)
     assert "878.639,92" in blob
     assert "878.640,47" not in blob
-    # diferenca futura = UMA ocorrencia (24.678,92), jamais 18 mensalidades
-    assert "24.678,92" in blob
-    # programacao por exercicio: retroativo em 2026 + ocorrencia em 2027
+    # PROJECAO ORCAMENTARIA PROPORCIONAL: o valor recorrente do ciclo
+    # (853.961,00 / 12 meses) cobre TODOS os 18 meses restantes (abr/26 a
+    # set/27) — diferenca futura = 18 x 2.056,57 = 37.018,26 — em vez de
+    # projetar apenas a ocorrencia historica (que deixaria meses sem
+    # cobertura orcamentaria). Jamais 18 mensalidades INTEIRAS.
+    assert "37.018,26" in blob
+    # programacao por exercicio: retroativo + 9 meses proporcionais em 2026,
+    # 9 meses proporcionais em 2027
     tabelas = []
     for df_el in at.dataframe:
         df = df_el.value
         if isinstance(df, pd.DataFrame) and "Exercício" in df.columns:
             tabelas.append({str(r["Exercício"]): str(r["Valor"]) for _, r in df.iterrows()})
-    assert any(t.get("2026") == "R$ 25.000,00" and t.get("2027") == "R$ 24.678,92"
-               and t.get("TOTAL") == "R$ 49.678,92" for t in tabelas), tabelas
+    assert any(t.get("2026") == "R$ 43.509,13" and t.get("2027") == "R$ 18.509,13"
+               and t.get("TOTAL") == "R$ 62.018,26" for t in tabelas), tabelas
+
+
+# ------------------------------------------ PROJECAO ORCAMENTARIA PROPORCIONAL
+
+def _cadencia_por_ciclo_homolog():
+    return {"padrao": CADENCIA_POR_CICLO, "valor_referencia": VALOR_OCORRENCIA,
+            "duracao_ciclo_meses": 12}
+
+
+def test_proporcional_caso_homologacao_21_meses():
+    """Base 853.961,00/ciclo de 12 meses, fator exato, 21 meses restantes
+    (2026=4, 2027=12, 2028=5). Valores canonicos do motor (arredondamento
+    mensal ROUND_HALF_UP), proximos dos alvos de homologacao."""
+    from _adequacao_orcamentaria import projetar_por_ciclo_proporcional
+    base = projetar_por_ciclo_proporcional(_cadencia_por_ciclo_homolog(),
+                                           date(2026, 9, 1), date(2028, 5, 1))
+    assert len(base) == 21
+    assert all(abs(v - VALOR_OCORRENCIA / 12) < 1e-9 for v in base.values())
+
+    periodos = list(pd.period_range("2026-09", "2028-05", freq="M"))
+    editor = montar_base_editor(periodos, 0.0, base_por_competencia=base)
+    proj = calcular_projecao(editor, 0.0, FATOR_EXATO, base_por_competencia=base)
+    # todos os 21 meses cobertos (nenhum zerado)
+    assert (proj["Diferença futura a adequar"] > 0).all()
+    por_ano = proj.assign(ano=proj["Competência"].str[-2:]) \
+                  .groupby("ano")["Diferença futura a adequar"].sum().round(2)
+    assert por_ano["26"] == pytest.approx(8226.28)
+    assert por_ano["27"] == pytest.approx(24678.84)
+    assert por_ano["28"] == pytest.approx(10282.85)
+    # alvos de homologacao (aprox.: arredondamento mensal canonico)
+    assert abs(por_ano["26"] - 8226.31) < 0.25
+    assert abs(por_ano["27"] - 24678.92) < 0.25
+    assert abs(por_ano["28"] - 10282.88) < 0.25
+    dif_futura = round(float(proj["Diferença futura a adequar"].sum()), 2)
+    assert dif_futura == pytest.approx(43187.97)
+    assert abs(dif_futura - 43188.11) < 0.25
+    # soma dos exercicios = diferenca futura; + retroativo = complementacao
+    retro = 24678.92
+    cron = cronograma_por_exercicio(proj, retro)
+    soma_exercicios = round(float(cron["Valor"].sum()), 2)
+    assert soma_exercicios == pytest.approx(round(dif_futura + retro, 2))
+    assert abs(soma_exercicios - 67867.03) < 0.25
+
+
+def test_proporcional_contrato_terminando_em_julho_cobre_jan_a_jul():
+    """Ocorrencia historica em ago/set + vigencia ate julho: jan-jul do ultimo
+    exercicio NAO ficam zerados (cobertura proporcional)."""
+    from _adequacao_orcamentaria import projetar_por_ciclo_proporcional
+    base = projetar_por_ciclo_proporcional(_cadencia_por_ciclo_homolog(),
+                                           date(2026, 10, 1), date(2027, 7, 1))
+    meses_2027 = [d for d in base if d.year == 2027]
+    assert sorted(m.month for m in meses_2027) == [1, 2, 3, 4, 5, 6, 7]
+    assert all(base[m] > 0 for m in meses_2027)
+    periodos = list(pd.period_range("2026-10", "2027-07", freq="M"))
+    proj = calcular_projecao(montar_base_editor(periodos, 0.0, base_por_competencia=base),
+                             0.0, FATOR_EXATO, base_por_competencia=base)
+    assert (proj["Diferença futura a adequar"] > 0).all()
+
+
+def test_proporcional_nao_se_aplica_a_mensal_nem_irregular():
+    """Mensal continua mensal (media, sem proporcionalizacao); IRREGULAR
+    continua fail-closed: a proporcionalizacao devolve {} para ambos."""
+    from _adequacao_orcamentaria import projetar_por_ciclo_proporcional
+    for padrao in (CADENCIA_MENSAL, CADENCIA_IRREGULAR):
+        cad = {"padrao": padrao, "valor_referencia": VALOR_OCORRENCIA,
+               "duracao_ciclo_meses": 12}
+        assert projetar_por_ciclo_proporcional(cad, date(2026, 1, 1), date(2026, 12, 1)) == {}
+    # sem valor de referencia positivo tambem nao inventa cobertura
+    cad = {"padrao": CADENCIA_POR_CICLO, "valor_referencia": 0.0, "duracao_ciclo_meses": 12}
+    assert projetar_por_ciclo_proporcional(cad, date(2026, 1, 1), date(2026, 12, 1)) == {}
