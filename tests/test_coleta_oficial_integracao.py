@@ -146,7 +146,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # exibir o valor sob o rotulo (D5='=$D$22' mesclada D5:E5; ancora do ciclo
 # migrada para J8, coluna oculta; C3 repontada); textos auditaveis C10/C11
 # method-aware; contraste 8497B0 -> 1F4E78/FFFFFF/595959.
-SHA256_TEMPLATE_ESPERADO = "b314f4c54fc16098744b005ea8b3eeebfb7ad8217ee8fdf5f679cc807415a40b"
+SHA256_TEMPLATE_ESPERADO = "99db7438f153f73315d40e2b5efcc8cb39739745e712c76573634b3c4f03b011"
 
 
 def _dados_calculadora() -> dict:

@@ -281,6 +281,24 @@ def _conferir_entrega_da_memoria(
         )
 
 
+def _fator_acumulado_final(ciclos: Iterable[Mapping[str, Any]] | None) -> float | None:
+    """Ultimo fator_acumulado NUMERICO do payload dos ciclos.
+
+    E a cadeia CANONICA ja calculada pelo sistema (produto dos fatores, nunca
+    soma de percentuais). Sem fator numerico no payload, devolve None e a
+    linha do acumulado nao e emitida (nada e inventado)."""
+    final = None
+    for ciclo in ciclos or []:
+        if not isinstance(ciclo, Mapping):
+            continue
+        bruto = ciclo.get("fator_acumulado")
+        try:
+            final = float(bruto)
+        except (TypeError, ValueError):
+            continue
+    return final
+
+
 def montar_txt_download(assunto: str, corpo: str) -> bytes:
     """Bytes EXATOS entregues ao botao de download do rascunho (.txt)."""
     return f"ASSUNTO: {assunto}\n\n{corpo}".encode("utf-8-sig")
@@ -297,6 +315,15 @@ def gerar_rascunho_email_contratada(
     linhas = _linhas_ciclos(ciclos)
     if not linhas:
         linhas = ["• Ciclo [N]: [XX,XX%] – [situação/efeito]."]
+    # Variacao acumulada FINAL: reapresenta a cadeia canonica do sistema
+    # (ultimo fator_acumulado do payload). Nunca soma percentuais de ciclos.
+    fator_final = _fator_acumulado_final(ciclos)
+    if fator_final is None:
+        acumulado_txt = ""
+    else:
+        pct_txt = (f"{(fator_final - 1) * 100:,.2f}%"
+                   .replace(",", "X").replace(".", ",").replace("X", "."))
+        acumulado_txt = f"\n\nVariação Acumulada Final: {pct_txt}."
 
     corpo = (
         "Prezados,\n\n"
@@ -305,6 +332,7 @@ def gerar_rascunho_email_contratada(
         "variações aplicáveis a cada ciclo, conforme a metodologia contratual e o "
         f"índice {indice_txt}:\n\n"
         + "\n".join(linhas)
+        + acumulado_txt
         + "\n\n"
         "Eventuais ciclos preclusos permanecem registrados para fins de "
         "histórico e memória contratual, sem geração de efeitos financeiros "
