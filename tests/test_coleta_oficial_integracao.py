@@ -138,7 +138,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # formatos-residuo -> General, legenda emoldurada) preservando os fills
 # funcionais (amarelo GCC B13/B15, laranja projecao B16/B23, swatches).
 # Zero mudanca de formula/valor/nome em qualquer aba; CF x14 preservada.
-SHA256_TEMPLATE_ESPERADO = "d43cfe6d08a63381ee59298b464366e485e7c4ae849f2d0e113f55726632d42d"
+# HOTFIX RETRO/VTA — pin reancorado (owner:
+# tools/aplicar_hotfix_resultados_retro_vta.py, aplicado SOBRE o template
+# pos-51C). Mudancas: MEMORIA_RESULTADOS!W48/W50 method-aware via bloco de
+# apoio V60:W67 (execucao historica Financeiro = SUMIF financeiro!E por
+# ciclo; ramo PC/Itens preservado byte a byte); card do retroativo passa a
+# exibir o valor sob o rotulo (D5='=$D$22' mesclada D5:E5; ancora do ciclo
+# migrada para J8, coluna oculta; C3 repontada); textos auditaveis C10/C11
+# method-aware; contraste 8497B0 -> 1F4E78/FFFFFF/595959.
+SHA256_TEMPLATE_ESPERADO = "1c50a93f0d33c9b4912e044ec649ada9a05053a96c4cc87469e6a7b31521f43f"
 
 
 def _dados_calculadora() -> dict:

@@ -6,9 +6,14 @@ retroativo: RETRO_OFICIAL (MEMORIA_RESULTADOS!B16) -> RESULTADOS!D22 ->
 card E5 funcionava; nos arquivos reais a base do metodo simplesmente nao
 havia sido informada (categoria F — valor oficial ausente a montante).
 
+HOTFIX RETRO/VTA (pos-51): o VALOR do card migrou de E5 para D5 (mesclada
+D5:E5) para ficar exatamente sob o rotulo "RETROATIVO TOTAL A PAGAR"; a
+ancora tecnica do CICLO ATUAL migrou de D5 para J8 (coluna J oculta), com o
+unico consumidor (C3) repontado.
+
 Este modulo protege esse contrato:
-  * cadeia E5 = D22 = RETRO_OFICIAL (formula e VALOR calculado em Excel real);
-  * D5 permanece a ancora do CICLO ATUAL — nunca foi a celula do retroativo;
+  * cadeia D5 = D22 = RETRO_OFICIAL (formula e VALOR calculado em Excel real);
+  * J8 e a ancora do CICLO ATUAL — o retroativo nunca foi ancora;
   * estado vazio do card orienta o usuario sem inventar R$ 0,00;
   * G3:H3 mesclada (fim do ##### na VARIACAO ACUMULADA);
   * formato-lixo '\\Pyyd\\ryy\\o' (Etapa 50, NumberFormatLocal "Padrão")
@@ -44,7 +49,7 @@ LARGURAS_51A = {
 }
 
 ANCORAS_OCULTAS = (
-    "B3", "B5", "D5", "F5", "H5", "B6", "D6", "H8", "H14",
+    "B3", "B5", "J8", "F5", "H5", "B6", "D6", "H8", "H14",
     "A23", "B23", "C23", "D23", "E23", "A39",
 )
 
@@ -56,22 +61,27 @@ def resultados():
 
 
 def test_cadeia_do_retroativo_intacta(resultados):
-    """RETRO_OFICIAL -> D22 -> E5: o card so ESPELHA o valor oficial."""
+    """RETRO_OFICIAL -> D22 -> D5 (mesclada D5:E5): o card ESPELHA o oficial."""
     ws, wb = resultados
-    assert ws["E5"].value == "=$D$22"
+    assert ws["D5"].value == "=$D$22"
+    assert ws["E5"].value is None  # parte da mescla D5:E5
+    assert "D5:E5" in {str(m) for m in ws.merged_cells.ranges}
     assert ws["D22"].value == '=IFERROR(RETRO_OFICIAL,"")'
     assert wb.defined_names["RETRO_OFICIAL"].value == "MEMORIA_RESULTADOS!$B$16"
     memoria = wb["MEMORIA_RESULTADOS"]
     assert memoria["B16"].value == '=IF(ISNUMBER($B$5),$B$5,E15)'
-    # O rotulo do card fica em D4; a celula do VALOR e E5 (coluna E).
+    # O rotulo do card fica em D4; o VALOR ocupa toda a base (D5:E5).
     assert ws["D4"].value == "RETROATIVO TOTAL A PAGAR"
 
 
-def test_d5_permanece_ancora_do_ciclo_atual(resultados):
-    """D5 NAO e o retroativo: e a ancora do CICLO ATUAL consumida por C3/H5."""
+def test_j8_e_a_ancora_do_ciclo_atual(resultados):
+    """A ancora do CICLO ATUAL vive em J8 (oculta); C3 e o unico consumidor."""
     ws, _ = resultados
-    assert ws["D5"].value == "=UPPER(CONTROLE!$B$2)"
-    assert ws["D5"].number_format == ";;;"
+    assert ws["J8"].value == "=UPPER(CONTROLE!$B$2)"
+    assert ws["J8"].number_format == ";;;"
+    assert ws["C3"].value == '=IF($J$8="","—",UPPER($J$8))'
+    # D5 deixou de ser ancora: exibe o retroativo com formato de moeda.
+    assert ws["D5"].number_format != ";;;"
 
 
 def test_estado_vazio_do_card_e6(resultados):
@@ -123,9 +133,9 @@ def test_larguras_controladas(resultados):
 
 
 def test_valores_dos_cards_com_shrink_to_fit(resultados):
-    """C5/E5/G5 exibem moeda de qualquer magnitude sem #####."""
+    """C5/D5/G5 exibem moeda de qualquer magnitude sem #####."""
     ws, _ = resultados
-    for endereco in ("C5", "E5", "G5"):
+    for endereco in ("C5", "D5", "G5"):
         assert ws[endereco].alignment.shrink_to_fit is True, endereco
 
 
@@ -159,7 +169,7 @@ com = pytest.mark.skipif(
 
 @com
 def test_com_51a_retroativo_calculado_igual_ao_card(tmp_path):
-    """Prova de VALOR (nao de formula): RETRO_OFICIAL == D22 == card E5.
+    """Prova de VALOR (nao de formula): RETRO_OFICIAL == D22 == card D5.
 
     Cenarios: base ausente (sem metodo e com metodo), Financeiro com base,
     PCs com base. Em todos, G3 nao pode exibir #####.
@@ -199,7 +209,7 @@ def test_com_51a_retroativo_calculado_igual_ao_card(tmp_path):
         xl.CalculateFull()
 
         # 1) Sem metodo e sem base: card em travessao e rodape orientando.
-        assert res.Range("E5").Text == "—"
+        assert res.Range("D5").Text == "—"
         assert mem.Range("B16").Value in (None, "")
         assert res.Range("E6").Text == "SELECIONE O MÉTODO NA ABA CONTROLE"
         assert "#" not in res.Range("G3").Text
@@ -207,7 +217,7 @@ def test_com_51a_retroativo_calculado_igual_ao_card(tmp_path):
         # 2) Metodo selecionado, base ainda ausente.
         ctrl.Range("B1").Value = "Financeiro (Mensalidade)"
         xl.CalculateFull()
-        assert res.Range("E5").Text == "—"
+        assert res.Range("D5").Text == "—"
         assert res.Range("E6").Text == "INFORME A BASE DO MÉTODO"
 
         # 3) Financeiro com base: valor pago de c2 com efeito financeiro.
@@ -219,8 +229,8 @@ def test_com_51a_retroativo_calculado_igual_ao_card(tmp_path):
         retro = float(mem.Range("B16").Value)
         assert retro == pytest.approx(10.0)
         assert float(res.Range("D22").Value) == retro
-        assert float(res.Range("E5").Value) == retro
-        assert "#" not in res.Range("E5").Text
+        assert float(res.Range("D5").Value) == retro
+        assert "#" not in res.Range("D5").Text
         assert res.Range("E6").Text == "Ciclos apurados"
 
         # 4) PCs com base: retroativo reconhecido por PC pago.
@@ -236,7 +246,7 @@ def test_com_51a_retroativo_calculado_igual_ao_card(tmp_path):
         retro_pc = float(mem.Range("B16").Value)
         assert retro_pc == pytest.approx(123.45)
         assert float(res.Range("D22").Value) == retro_pc
-        assert float(res.Range("E5").Value) == retro_pc
+        assert float(res.Range("D5").Value) == retro_pc
         assert res.Range("E6").Text == "Ciclos apurados"
         assert "#" not in res.Range("G3").Text
 
