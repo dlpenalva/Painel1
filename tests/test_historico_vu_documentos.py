@@ -204,7 +204,11 @@ class TestDocumentoFinalEndToEnd(unittest.TestCase):
     def test_ciclo_historico_computar_nao_aparece_nos_dois_documentos(self):
         # Etapa 26D secao 14: C1 fora da apuracao (COMPUTAR=Nao) CONTINUA no
         # quadro historico; colunas contiguas C0..C4 nos DOIS documentos.
+        # Etapa 51D: o limite do quadro passou a ser o CICLO VIGENTE — o
+        # cenario alinha o vigente (C4) aos ciclos analisados para manter o
+        # proposito original do teste (computar=Nao nao remove coluna).
         leit = self._leitura_c2()
+        leit["controle"]["ciclo_vigente"] = "C4"
         for reg in (leit.get("parametros_v10") or {}).get("ciclos") or []:
             nome = str(reg.get("ciclo") or "").upper()
             if nome == "C1":
