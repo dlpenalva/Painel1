@@ -128,7 +128,17 @@ ROOT = Path(__file__).resolve().parents[1]
 # Quadro 1 e correcao das 26 celulas com o formato-lixo '\Pyyd\ryy\o'
 # (regressao da Etapa 50: NumberFormatLocal "Padrão" nao e o token de Geral).
 # Nenhuma regra de negocio alterada; MEMORIA_RESULTADOS e W48 identicas.
-SHA256_TEMPLATE_ESPERADO = "9d9d3525a0df488b97d28cad40cd34eb0b3f202a472de69b4aa46f676a160eae"
+# ETAPA 51C — pin reancorado: ajustes visuais de abas (owner:
+# tools/aplicar_ajustes_xls_51c.py, aplicado SOBRE o template pos-51A).
+# Mudancas exclusivamente de apresentacao: parametros!I1:I6 recebe o estilo
+# do quadro (copia de formatos de H1:H6); financeiro linha 74 (TOTAL, ancora
+# intacta — linhas 62:73 sao capacidade estrutural) em negrito com fill
+# institucional; aditivos linha 1 com altura 95 (texto de orientacao do
+# runtime tem 173 chars); cobertura_temporal padronizada (fontes 11->10,
+# formatos-residuo -> General, legenda emoldurada) preservando os fills
+# funcionais (amarelo GCC B13/B15, laranja projecao B16/B23, swatches).
+# Zero mudanca de formula/valor/nome em qualquer aba; CF x14 preservada.
+SHA256_TEMPLATE_ESPERADO = "d43cfe6d08a63381ee59298b464366e485e7c4ae849f2d0e113f55726632d42d"
 
 
 def _dados_calculadora() -> dict:

@@ -414,6 +414,9 @@ def _preencher_financeiro(ws, ciclos: dict[str, Any], data_corte_fallback=None, 
             _escrever_entrada(ws, f"A{linha}", None)
             _escrever_entrada(ws, f"C{linha}", None)
             _escrever_entrada(ws, f"G{linha}", None)
+            # Etapa 51C (apresentacao): reexibe toda a capacidade antes de
+            # preencher — a ocultacao ocorre apenas nas linhas nao usadas.
+            ws.row_dimensions[linha].hidden = False
         if not isinstance(marco, date):
             return  # marco vazio ou invalido: nao inventa competencias
         competencia = marco.replace(day=1)
@@ -468,6 +471,13 @@ def _preencher_financeiro(ws, ciclos: dict[str, Any], data_corte_fallback=None, 
             _escrever_entrada(ws, f"G{linha}", efeito)
             competencia = competencia + relativedelta(months=1)
             linha += 1
+        # Etapa 51C (apresentacao pura): oculta as linhas de CAPACIDADE nao
+        # usadas (apos a ultima competencia escrita, ate a 73) para o TOTAL
+        # (linha 74, ancora intacta) aparecer visualmente junto da grade.
+        # Nenhuma formula/endereco muda; as linhas seguem vivas e voltam a
+        # aparecer se um caso usar mais competencias.
+        for linha_oculta in range(linha, 74):
+            ws.row_dimensions[linha_oculta].hidden = True
         return
 
     linha_escrita = 7 if v102 else 2
