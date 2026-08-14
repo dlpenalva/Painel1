@@ -146,7 +146,13 @@ ROOT = Path(__file__).resolve().parents[1]
 # exibir o valor sob o rotulo (D5='=$D$22' mesclada D5:E5; ancora do ciclo
 # migrada para J8, coluna oculta; C3 repontada); textos auditaveis C10/C11
 # method-aware; contraste 8497B0 -> 1F4E78/FFFFFF/595959.
-SHA256_TEMPLATE_ESPERADO = "99db7438f153f73315d40e2b5efcc8cb39739745e712c76573634b3c4f03b011"
+# AJUSTES C5/G2 (2026-08-14) — pin reancorado (aplicador efemero via Excel
+# COM, nao versionado, mesmo padrao do PR #60). Mudancas: RESULTADOS!C5
+# espelho puro de B10 ('=IF($B$10="","",$B$10)', sem fallback B11) com
+# ShrinkToFit=False; coluna C 18,91->20,82 (COM) para caber 15pt negrito com
+# indent; RESULTADOS!G2 lista as pendencias UMA POR LINHA (TEXTJOIN+CHAR(10),
+# WrapText, mesmas 5 flags do J5); linha 2 22->90,5pt (AutoFit do pior caso).
+SHA256_TEMPLATE_ESPERADO = "09fa65b3025daec38f10d2627426ef56a53cc922fa5e5c52c774c6397d55e16e"
 
 
 def _dados_calculadora() -> dict:
@@ -341,7 +347,9 @@ def test_template_preserva_layout_visual_e_sha256() -> None:
     assert wb["RESULTADOS"]["B3"].value.startswith("=IF(")
     assert wb["MEMORIA_RESULTADOS"].sheet_state == "hidden"
     assert wb["RESULTADOS"]["C43"].fill.fgColor.rgb == "FFFFF2CC"
-    assert wb["CONTROLE"]["B1"].fill.fgColor.rgb == "FFF7E7B2"
+    # PR #60: B1 em ambar forte (FFC000) com texto escuro — assert defasado
+    # (esperava o ambar claro antigo F7E7B2) atualizado ao estado homologado.
+    assert wb["CONTROLE"]["B1"].fill.fgColor.rgb == "FFFFC000"
     assert hashlib.sha256(TEMPLATE_COLETA_OFICIAL.read_bytes()).hexdigest() == SHA256_TEMPLATE_ESPERADO
 
 

@@ -40,7 +40,7 @@ FORMULA_ESTADO_VAZIO_E6 = (
 LARGURAS_51A = {
     "A": (32.27, 36.75),
     "B": (23.27, 26.75),
-    "C": (14.0, 16.75),
+    "C": (20.0, 22.75),
     "D": (35.27, 38.75),
     "E": (23.27, 26.75),
     "F": (15.27, 18.75),
@@ -133,10 +133,11 @@ def test_larguras_controladas(resultados):
 
 
 def test_valores_dos_cards_com_shrink_to_fit(resultados):
-    """C5/D5/G5 exibem moeda de qualquer magnitude sem #####."""
+    """D5/G5 encolhem; C5 exibe em 15pt reais (coluna C larga o bastante)."""
     ws, _ = resultados
-    for endereco in ("C5", "D5", "G5"):
+    for endereco in ("D5", "G5"):
         assert ws[endereco].alignment.shrink_to_fit is True, endereco
+    assert not ws["C5"].alignment.shrink_to_fit, "C5 nao deve encolher"
 
 
 def test_contraste_do_quadro_1(resultados):
