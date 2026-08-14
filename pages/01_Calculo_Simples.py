@@ -2295,6 +2295,11 @@ if res:
             [ciclo_unico],
             numero_contrato=_adm_email.get("contrato"),
             indice=_adm_email.get("indice"),
+            # Acumulado CANONICO da analise (dados_admissibilidade
+            # ['fator_acumulado'] = fator_ciclo_efetivo), passado
+            # explicitamente: a linha "Variação Acumulada Final" nunca
+            # depende de o campo chegar dentro do payload do ciclo.
+            fator_acumulado=_adm_email.get("fator_acumulado"),
             key="btn_baixar_email_contratada_simples_v1",
         )
     except Exception as _e_email_contratada:

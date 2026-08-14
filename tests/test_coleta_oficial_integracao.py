@@ -152,7 +152,15 @@ ROOT = Path(__file__).resolve().parents[1]
 # ShrinkToFit=False; coluna C 18,91->20,82 (COM) para caber 15pt negrito com
 # indent; RESULTADOS!G2 lista as pendencias UMA POR LINHA (TEXTJOIN+CHAR(10),
 # WrapText, mesmas 5 flags do J5); linha 2 22->90,5pt (AutoFit do pior caso).
-SHA256_TEMPLATE_ESPERADO = "09fa65b3025daec38f10d2627426ef56a53cc922fa5e5c52c774c6397d55e16e"
+# ESTIMADO SEM PENDENCIA (2026-08-14) — pin reancorado (aplicador efemero via
+# Excel COM, nao versionado). RESULTADOS!J5 conta a posicao fisica como
+# pendencia SOMENTE com H33="REVISE" (ESTIMADO = posicao valida anterior a
+# data de corte, nao e pendencia); RESULTADOS!G2 mostra o motivo da posicao
+# so no REVISE (reutilizando posicao_referencia!I10/I11: motivo temporal de
+# I11 quando I10="REVISE", senao "nao preenchido ou incompleto") e, no
+# ESTIMADO, acrescenta linha INFORMATIVA fora da lista de pendencias com as
+# datas da posicao fisica e da data de corte (DAY/MONTH/YEAR locale-safe).
+SHA256_TEMPLATE_ESPERADO = "30228a0b516963ebb0eb600a959075c98b03066649d0fb4615565f728757238f"
 
 
 def _dados_calculadora() -> dict:
