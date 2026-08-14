@@ -35,9 +35,11 @@ from _adequacao_orcamentaria import (
     media_financeiro,
     inferir_cadencia,
     projetar_por_cadencia,
+    projetar_por_ciclo_proporcional,
     cadencia_por_ciclo_forcada,
     CADENCIA_MENSAL,
     CADENCIA_IRREGULAR,
+    CADENCIA_POR_CICLO,
 )
 from _adequacao_ui import (
     _round2,
@@ -524,7 +526,15 @@ with tab_proj:
             cadencia_aplicada = cadencia
         else:
             cadencia_aplicada = cadencia_por_ciclo_forcada(pares_hist, ciclos_cad)
-        base_cadencia = projetar_por_cadencia(cadencia_aplicada, ciclos_cad, _inicio_proj, _fim_proj)
+        # Padrao POR CICLO: a cadencia segue identificando o padrao historico,
+        # mas a base ORCAMENTARIA e proporcionalizada pelos meses restantes da
+        # vigencia (nenhum exercicio fica sem cobertura so porque a ocorrencia
+        # historica cai em outro mes). Demais padroes seguem o perfil de
+        # ocorrencias.
+        if cadencia_aplicada["padrao"] == CADENCIA_POR_CICLO:
+            base_cadencia = projetar_por_ciclo_proporcional(cadencia_aplicada, _inicio_proj, _fim_proj)
+        else:
+            base_cadencia = projetar_por_cadencia(cadencia_aplicada, ciclos_cad, _inicio_proj, _fim_proj)
         premissa_rotulo = f"Por ciclo — {cadencia_aplicada['rotulo']}"
     else:  # Automática (cadência histórica)
         if cadencia["padrao"] == CADENCIA_MENSAL:
@@ -536,9 +546,16 @@ with tab_proj:
             st.warning("HISTÓRICO SEM PERIODICIDADE SUFICIENTE PARA PROJEÇÃO AUTOMÁTICA. "
                        f"{cadencia['explicacao']} Nenhuma mensalidade foi presumida: selecione "
                        "a premissa Mensal, Por ciclo ou Manual, ou informe os valores na tabela.")
+        elif cadencia["padrao"] == CADENCIA_POR_CICLO:
+            base_cadencia = projetar_por_ciclo_proporcional(cadencia, _inicio_proj, _fim_proj)
+            premissa_rotulo = f"Automática — {cadencia['rotulo']}"
         else:
             base_cadencia = projetar_por_cadencia(cadencia, ciclos_cad, _inicio_proj, _fim_proj)
             premissa_rotulo = f"Automática — {cadencia['rotulo']}"
+
+    proporcional_ciclo = (not usar_media and base_cadencia is not None and bool(base_cadencia)
+                          and (cadencia_aplicada or {}).get("padrao") == CADENCIA_POR_CICLO
+                          and premissa_proj != "Manual")
 
     render_leitura([
         ("Padrão histórico identificado", cadencia["rotulo"]),
@@ -547,6 +564,9 @@ with tab_proj:
     ])
     if cadencia.get("explicacao"):
         st.caption(cadencia["explicacao"])
+    if proporcional_ciclo:
+        st.caption("Para fins orçamentários, o valor recorrente do ciclo é proporcionalizado "
+                   "pelos meses restantes da vigência.")
     if cadencia.get("usa_c0"):
         st.caption("Atenção: cadência inferida a partir de C0 (implantação/investimento inicial) "
                    "por falta de histórico posterior — confiança reduzida.")
@@ -620,6 +640,9 @@ with tab_proj:
     with fb1:
         if usar_media:
             render_card_valor("Meses projetados", qtd_meses, formato="inteiro")
+        elif proporcional_ciclo:
+            render_card_valor("Meses com cobertura proporcional", ocorrencias_previstas,
+                              nota=f"{qtd_meses} meses no horizonte", formato="inteiro")
         else:
             render_card_valor("Ocorrências previstas no horizonte", ocorrencias_previstas,
                               nota=f"{qtd_meses} meses no horizonte", formato="inteiro")

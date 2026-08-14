@@ -664,6 +664,41 @@ def projetar_por_cadencia(
     return base
 
 
+def projetar_por_ciclo_proporcional(
+    cadencia: dict,
+    inicio_projecao: Any,
+    fim_projecao: Any,
+) -> dict:
+    """Base ORCAMENTARIA proporcional do padrao POR CICLO (1 ocorrencia/ciclo).
+
+    A cadencia continua explicando QUANDO o gasto historicamente ocorre; para
+    fins orcamentarios, porem, projetar a ocorrencia apenas no mes historico
+    pode deixar exercicios da vigencia sem cobertura (ex.: ocorrencia em
+    ago/set e contrato terminando em maio). Aqui o valor recorrente do ciclo
+    (valor_referencia, mediana das ocorrencias dos ciclos completos pos-C0 ja
+    apurada pela inferencia) e diluido pela duracao do ciclo em meses e
+    aplicado a TODOS os meses do horizonte [inicio_projecao, fim_projecao]:
+    cada exercicio recebe cobertura proporcional aos seus meses restantes.
+
+    Somente o padrao POR CICLO usa esta proporcionalizacao; os demais padroes
+    seguem projetar_por_cadencia e IRREGULAR permanece fail-closed ({}).
+    """
+    inicio = _as_date(inicio_projecao)
+    fim = _as_date(fim_projecao)
+    if inicio is None or fim is None:
+        return {}
+    if cadencia.get("padrao") != CADENCIA_POR_CICLO:
+        return {}
+    valor_ciclo = _num(cadencia.get("valor_referencia")) or 0.0
+    duracao = int(cadencia.get("duracao_ciclo_meses") or 12)
+    if valor_ciclo <= 0 or duracao < 1:
+        return {}
+    base_mensal = valor_ciclo / duracao
+    ini_ord = _ordinal_mes(_mes1(inicio))
+    fim_ord = _ordinal_mes(_mes1(fim))
+    return {_mes_de_ordinal(m): base_mensal for m in range(ini_ord, fim_ord + 1)}
+
+
 def calcular_adequacao_orcamentaria(
     *,
     origem: str,
