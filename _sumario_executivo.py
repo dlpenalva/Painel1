@@ -119,10 +119,14 @@ def montar_dados_sumario_executivo(
         "ciclos": ciclos_sec,
         "financeiro": financeiro_sec,
         "itens": _montar_secao_itens(memoria_ciclo, parametros),
-        # Etapa 7: historico de VU por ciclo (C0 sempre; ate o ultimo analisado).
+        # Etapa 7: historico de VU por ciclo (C0 sempre). Etapa 51D: o limite
+        # passa a ser o CICLO VIGENTE (CONTROLE!B2 via leitura["controle"]),
+        # com fallback no ultimo analisado — a tabela e historia do item, nao
+        # apenas os ciclos juridicamente apurados nesta analise.
         # Fonte canonica unica: leitura["historico_vu"] (aba historico_VU).
         "historico_vu": _montar_secao_historico_vu(
-            leitura.get("historico_vu") or {}, ciclos_sec
+            leitura.get("historico_vu") or {}, ciclos_sec,
+            (leitura.get("controle") or {}).get("ciclo_vigente"),
         ),
         "memoria_calculo": _montar_secao_memoria(memoria_calculo),
         "aditivos": _montar_secao_aditivos(dados_op, parametros),
@@ -150,20 +154,25 @@ def _ultimo_ciclo_analisado(ciclos: list[dict[str, Any]]) -> int:
 
 
 def _montar_secao_historico_vu(
-    historico_vu: dict[str, Any], ciclos: list[dict[str, Any]]
+    historico_vu: dict[str, Any], ciclos: list[dict[str, Any]],
+    ciclo_vigente: Any = None,
 ) -> dict[str, Any]:
-    """Historico de Valores Unitarios por ciclo para Saneador e Apostila.
+    """Historico de Valores Unitarios por ciclo (capitulo 5, Saneador, Apostila).
 
     Estrutura canonica unica (sem segundo parser): consome leitura["historico_vu"]
     (aba historico_VU, colunas VU_C0..VU_C4). Exibe C0 sempre e os ciclos ate o
-    ultimo efetivamente analisado; ciclos futuros fisicamente presentes na
-    planilha NAO sao carregados. Nao inventa zeros para celulas sem valor.
+    CICLO VIGENTE em execucao (Etapa 51D — preclusos continuam na historia;
+    fallback: ultimo ciclo analisado). Ciclos FUTUROS nunca sao carregados.
+    Nao inventa zeros para celulas sem valor.
 
     Observacao (Etapa 5): o VU por item e dimensao propria; nenhum campo de
     reconciliacao XLS x Python corresponde a um VU, portanto historico_VU nunca
     e mascarado pelo mapa de dependencia atual.
     """
     ultimo = _ultimo_ciclo_analisado(ciclos)
+    vigente = str(ciclo_vigente or "").strip().upper()
+    if vigente in ("C0", "C1", "C2", "C3", "C4"):
+        ultimo = int(vigente[1])
     colunas = [f"C{i}" for i in range(ultimo + 1)]  # C0..C{ultimo}
     itens_saida: list[dict[str, Any]] = []
     for reg in historico_vu.get("itens") or []:
@@ -923,12 +932,9 @@ def _bloco_identificacao(historia, dados, estilos) -> None:
     historia.append(_paragrafo(
         "Sumário Executivo — Reajuste Contratual", estilos["titulo"],
     ))
-    historia.append(_paragrafo(
-        "Documento executivo consolidado a partir do objeto canônico do "
-        "processo e do XLS processado. Nenhum valor é recalculado.",
-        estilos["subtitulo"],
-    ))
-    historia.append(Spacer(1, 6))
+    # Etapa 51D: a frase de consolidacao do cabecalho foi removida por
+    # requisito; o titulo segue direto para a secao 1.
+    historia.append(Spacer(1, 8))
     historia.append(_paragrafo("1. Identificação", estilos["secao"]))
     largura = _largura_util()
     # Etapa 26H.1: cabecalho da identificacao trocado de "Campo | Valor" para
@@ -1122,43 +1128,60 @@ def _celulas_item_no_ciclo(item: dict[str, Any], ciclo: str) -> list[str]:
 
 
 def _bloco_itens(historia, dados, estilos) -> None:
+    """5. Itens e valores atualizados — Item | C0..C(ciclo vigente).
+
+    Etapa 51D: o capitulo consome dados["historico_vu"] (fonte canonica da
+    aba historico_VU) e exibe UMA coluna monetaria por ciclo — o VALOR
+    UNITARIO registrado. Sem quantidade e sem total. Ciclos preclusos
+    permanecem como historia; ciclo futuro nunca aparece. Item nascido por
+    aditivo mostra "—" nos ciclos anteriores ao nascimento; VU ausente apos
+    o nascimento usa a convencao documental (nunca vira R$ 0,00). Nenhum
+    valor e recalculado: a historia registrada prevalece.
+    """
     from reportlab.platypus import FrameBreak
 
     estilo_titulo_paginado = estilos["secao"].clone(
         "secao_itens_paginada", keepWithNext=0,
     )
-    itens = dados.get("itens") or []
-    if not itens:
+    hist = dados.get("historico_vu") or {}
+    itens = hist.get("itens") or []
+    if not hist.get("disponivel") or not itens:
         historia.append(_paragrafo(
             "5. Itens e valores atualizados", estilos["secao"]
         ))
         historia.append(_paragrafo(
-            f"{NAO_INFORMADO} — itens do contrato não localizados no XLS "
-            "processado.",
+            f"{NAO_INFORMADO} — valores unitários por ciclo não localizados "
+            "na aba historico_VU do XLS processado.",
             estilos["normal"],
         ))
         return
     largura = _largura_util()
-    ciclos_presentes = [
-        c for c in ("C1", "C2", "C3", "C4")
-        if any((i.get("vu_ciclos") or {}).get(c) is not None for i in itens)
-    ]
-    ciclos_tabela = ["C0"] + ciclos_presentes
-    linhas: list[list[Any]] = [["Item"] + [
-        rotulo
-        for ciclo in ciclos_tabela
-        for rotulo in (f"Qtd {ciclo}", f"VU {ciclo}", f"Total {ciclo}")
-    ]]
+    ciclos_tabela = list(hist.get("ciclos") or ["C0"])
+    linhas: list[list[Any]] = [["Item"] + ciclos_tabela]
     for i in itens:
         rotulo = str(i.get("item") if i.get("item") is not None else NAO_INFORMADO)
         if i.get("descricao"):
             rotulo = f"{rotulo} — {i['descricao']}"
-        celulas = [rotulo]
-        for ciclo in ciclos_tabela:
-            celulas.extend(_celulas_item_no_ciclo(i, ciclo))
+        vus = i.get("vus") or {}
+        # Pre-nascimento (aditivo): "—" ate o primeiro ciclo com VU
+        # registrado; ausencia POS-nascimento nao vira zero.
+        indices_com_vu = [
+            n for n, ciclo in enumerate(ciclos_tabela)
+            if vus.get(ciclo) is not None
+        ]
+        primeiro_vu = indices_com_vu[0] if indices_com_vu else None
+        celulas: list[Any] = [rotulo]
+        for n, ciclo in enumerate(ciclos_tabela):
+            vu = vus.get(ciclo)
+            if vu is not None:
+                celulas.append(formatar_moeda(vu))
+            elif primeiro_vu is None or n < primeiro_vu:
+                celulas.append("—")           # item ainda nao existia
+            else:
+                celulas.append(NAO_INFORMADO)  # existia, VU ausente
         linhas.append(celulas)
-    n_valores = 3 * len(ciclos_tabela)
-    larg_item = largura * 0.16
+    n_valores = len(ciclos_tabela)
+    larg_item = largura * 0.40
     larg_col = (largura - larg_item) / n_valores
     cabecalho, corpo = linhas[0], linhas[1:]
     blocos = [corpo[:10]]

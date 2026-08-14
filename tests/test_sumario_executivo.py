@@ -11,7 +11,7 @@ Mapeamento dos 13 requisitos do documento:
   R8  Delta por ciclo e total ............ test_r7_r8_r9_metodo_financeiro
   R9  Retroativo reconhecido a pagar ..... test_r7_r8_r9_metodo_financeiro
   R10 Retroativo em analise (PC) ......... test_r10_pc_em_analise_separado
-  R11 Itens e valores por ciclo .......... test_r11_itens_vu_e_totais
+  R11 Itens: VU por ciclo (Etapa 51D) .... test_r11_itens_vu_e_totais
   R12 Memoria de calculo por ciclo ....... test_r12_memoria_*
   R13 Aditivos aplicaveis ................ test_r13_aditivos_*
 """
@@ -123,8 +123,9 @@ def leitura_simples_financeiro():
              "justificativa_vta": "Aditivo computavel (K=Sim)."},
         ]},
         "historico_vu": {"itens": [
+            # Etapa 51D: chave canonica do leitor v10 e VU_Cn (nao "Cn").
             {"item": "1", "descricao": "Servico A", "vu_original": 10.0,
-             "vu_ciclos": {"C1": 10.525}, "vu_vigente": 10.525,
+             "vu_ciclos": {"VU_C0": 10.0, "VU_C1": 10.525}, "vu_vigente": 10.525,
              "fator_acumulado": 1.0525},
         ]},
         "itens_contrato": {"itens": [
@@ -363,11 +364,14 @@ def test_r10_ausencia_de_metodo_nao_vira_zero():
 
 
 # ---------------------------------------------------------------------------
-# R11 - Itens: VU e total em C0 e por ciclo
+# R11 - Itens (Etapa 51D): capitulo 5 = Item | C0..C(ciclo vigente), VU por
+# ciclo de historico_VU — sem quantidade e sem total no PDF. A estrutura
+# compartilhada dados["itens"] permanece para os demais consumidores.
 # ---------------------------------------------------------------------------
 
 def test_r11_itens_vu_e_totais():
     dados = _dados(leitura_simples_financeiro())
+    # Estrutura compartilhada preservada (outros consumidores documentais).
     itens = dados["itens"]
     assert len(itens) == 1
     item = itens[0]
@@ -375,6 +379,18 @@ def test_r11_itens_vu_e_totais():
     assert item["total_c0"] == pytest.approx(1000.0)
     assert item["vu_ciclos"]["C1"] == pytest.approx(10.525)
     assert item["total_ciclos"]["C1"] == pytest.approx(1052.5)
+    # Contrato NOVO do capitulo 5 (Etapa 51D): o PDF exibe apenas o VU por
+    # ciclo vindo de historico_vu — Qtd/Total sumiram do capitulo.
+    hist = dados["historico_vu"]
+    assert hist["ciclos"] == ["C0", "C1"]      # ate o ciclo vigente (C1)
+    assert hist["itens"][0]["vus"]["C1"] == pytest.approx(10.525)
+    texto = _texto_pdf(gerar_sumario_executivo_pdf(dados))
+    assert "5. Itens e valores atualizados" in texto
+    assert "R$ 10,53" in texto                 # VU C1 registrado
+    for proibido in ("Qtd C0", "Qtd C1", "Total C0", "Total C1",
+                     "VU C0", "VU C1"):
+        assert proibido not in texto, proibido
+    assert "R$ 1.052,50" not in texto          # total por item fora do PDF
 
 
 def test_r11_sem_itens_lista_vazia():
