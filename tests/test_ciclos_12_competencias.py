@@ -512,14 +512,20 @@ def test_35_resultados_e_memoria_leem_a_mesma_fonte():
     assert "MEMORIA_RESULTADOS!$W$51" in str(res["B13"].value)
     assert "MEMORIA_RESULTADOS!$W$52" in str(res["H13"].value)
     # O VTA da posicao atual soma execucao historica + posicao fisica do ciclo.
+    # HOTFIX RETRO/VTA: o historico e method-aware (W66/W67); o ramo PC/Itens
+    # preserva T21+T22 e o Financeiro usa financeiro!E (W61:W65).
     w50 = str(mem["W50"].value)
-    assert "$T$21" in w50 and "$T$22" in w50
+    assert "$W$66" in w50
     assert "CICLO_EM_EXECUCAO!F13:F211" in w50
     assert "CICLO_EM_EXECUCAO!G13:G211" in w50
+    assert "$W$67" in str(mem["W48"].value)
+    w66, w67 = str(mem["W66"].value), str(mem["W67"].value)
+    assert "$T$21" in w66 and "$T$22" in w66 and '"Financeiro"' in w66
     # Execucao historica pelo VALOR CONSIDERADO (base + retroativo), nunca pelo
     # VALOR_ATUALIZADO com fator integral.
-    for endereco in ("T21", "T22", "W48"):
-        formula = str(mem[endereco].value)
+    for endereco, formula in (("T21", str(mem["T21"].value)),
+                              ("T22", str(mem["T22"].value)),
+                              ("W67", w67)):
         assert "itens_PC!$Q$" in formula, endereco
         assert "itens_PC!$P$" not in formula, endereco
     # Data de corte materializada.

@@ -86,7 +86,12 @@ FORMULAS_POR_ABA = {
     # T33:T37, as cinco medidas canonicas). T21/T22/W48/X2:X201 sao reescritas
     # (fonte trocada para o VALOR CONSIDERADO e para as aberturas temporais),
     # nao acrescentadas. B26/T25 intactos.
-    "MEMORIA_RESULTADOS": 4401,
+    # HOTFIX RETRO/VTA: +7 do bloco de apoio method-aware (W61:W65 execucao
+    # Financeiro considerada por ciclo via SUMIF financeiro!E; W66/W67
+    # historico pelo metodo oficial ate o vigente/abertura). W48/W50 sao
+    # reescritas (passam a consumir W67/W66), nao acrescentadas. B26/T25
+    # intactos.
+    "MEMORIA_RESULTADOS": 4408,
     # 57 do prototipo + 4 selos por tabela + 1 premissa da estimativa - 1
     # helper J4 removido (status global agora agrega os selos H8/H14/H24/H33).
     # 26G: +5 (linha executiva A23:E23 dos PCs sem efeito financeiro).
@@ -107,6 +112,10 @@ FORMULAS_POR_ABA = {
     # Etapa 51A: +1 formula de apresentacao (108 -> 109): E6 (rodape do card
     # do retroativo) vira o estado vazio que orienta selecionar o metodo /
     # informar a base, lendo apenas $D$22 e $J$6 ja existentes.
+    # HOTFIX RETRO/VTA: total inalterado (109): E5 perde a formula (mesclada
+    # em D5, que passa a exibir '=$D$22' sob o rotulo do card) e J8 ganha a
+    # ancora do ciclo ('=UPPER(CONTROLE!$B$2)', coluna J oculta). C3/C10/C11
+    # sao reescritas (repontagem e textos method-aware), nao acrescentadas.
     "RESULTADOS": 109,
 }
 
