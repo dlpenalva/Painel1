@@ -134,10 +134,8 @@ def test_bloco_do_primeiro_ciclo_exibe_a_elegibilidade_e_a_data_base(
 ):
     """ETAPA 45 — o destaque do bloco e a ELEGIBILIDADE (lateral + 12 meses).
 
-    A data-base informada na lateral continua visivel no bloco, uma unica vez,
-    sob o mesmo nome usado na lateral. Antes da etapa 45 o bloco destacava a
-    data-base, o que fazia a tela parecer atrasada um ano em relacao a regra
-    que o classificador ja aplicava.
+    Limpeza de leiaute: a data-base fica apenas na lateral; o bloco do ciclo
+    exibe somente a elegibilidade (em duas linhas), sem repetir a data-base.
     """
     from dateutil.relativedelta import relativedelta
     from streamlit.testing.v1 import AppTest
@@ -159,7 +157,7 @@ def test_bloco_do_primeiro_ciclo_exibe_a_elegibilidade_e_a_data_base(
     blocos = [
         str(elemento.value)
         for elemento in at.markdown
-        if "Data em que o reajuste fica apto" in str(elemento.value)
+        if "fica apto (elegibilidade)" in str(elemento.value)
     ]
     assert blocos, "o bloco do ciclo nao exibiu a elegibilidade"
     apto = (data_lateral + relativedelta(months=12)).strftime("%d/%m/%Y")
@@ -167,9 +165,9 @@ def test_bloco_do_primeiro_ciclo_exibe_a_elegibilidade_e_a_data_base(
     assert data_lateral.strftime("%d/%m/%Y") not in blocos[0]
 
     captions = [str(c.value) for c in at.caption]
-    assert (
-        "Data-base de referência (início do interregno anual): "
-        f"{data_lateral.strftime('%d/%m/%Y')}" in captions
+    assert not any(
+        "Data-base de referência (início do interregno anual)" in c
+        for c in captions
     )
     assert "Referência exata para o pedido" not in "".join(
         str(elemento.value) for elemento in at.markdown
@@ -177,7 +175,7 @@ def test_bloco_do_primeiro_ciclo_exibe_a_elegibilidade_e_a_data_base(
 
 
 def _datas_aptas_exibidas(at):
-    marca = "**Data em que o reajuste fica apto (elegibilidade):**"
+    marca = "**fica apto (elegibilidade):**"
     return [
         str(elemento.value).split(marca)[1].strip()
         for elemento in at.markdown
@@ -186,11 +184,18 @@ def _datas_aptas_exibidas(at):
 
 
 def _datas_base_exibidas(at):
-    marca = "Data-base de referência (início do interregno anual): "
+    # Limpeza de leiaute: a data-base deixou de ser exibida no bloco do ciclo.
+    # A cadeia exata continua verificavel pela elegibilidade visivel, que e
+    # SEMPRE a data-base exata + 12 meses-calendario (invariante do motor).
+    from datetime import datetime
+    from dateutil.relativedelta import relativedelta
+
     return [
-        str(c.value).split(marca)[1].strip()
-        for c in at.caption
-        if marca in str(c.value)
+        (
+            datetime.strptime(apta, "%d/%m/%Y").date()
+            - relativedelta(months=12)
+        ).strftime("%d/%m/%Y")
+        for apta in _datas_aptas_exibidas(at)
     ]
 
 

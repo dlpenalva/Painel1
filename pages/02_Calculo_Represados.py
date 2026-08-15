@@ -2218,17 +2218,8 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         # classificador ja consome; antes o bloco exibia a data-base, o que
         # fazia a tela parecer atrasada de um ano em relacao a regra aplicada.
         st.write(
-            f"**Data em que o reajuste fica apto (elegibilidade):** "
-            f"{d_aniv.strftime('%d/%m/%Y')}"
-        )
-        # A data-base de referencia deste ciclo pertence a CADEIA EXATA, nao a
-        # ancora mensal: no primeiro ciclo e a data informada na lateral; nos
-        # seguintes e a data exata do pedido anterior (TEMPESTIVO/TEMPESTIVO*)
-        # ou a referencia preservada (ADIANTADO/PRECLUSO). Fica visivel aqui
-        # uma unica vez, com o mesmo nome usado na lateral.
-        st.caption(
-            "Data-base de referência (início do interregno anual): "
-            f"{data_semente_exata.strftime('%d/%m/%Y')}"
+            "**Data em que o reajuste**  \n"
+            f"**fica apto (elegibilidade):** {d_aniv.strftime('%d/%m/%Y')}"
         )
     with col_b:
         # A chave considera a âncora do ciclo. Assim, se um ciclo anterior for admitido
@@ -2530,9 +2521,6 @@ for dados_ciclo in input_ciclos:
 
 if resumo_pre_processamento:
     st.subheader('Resumo antes de processar')
-    st.caption(
-        'Conferência preliminar dos ciclos configurados. Esta tabela é apenas orientativa e não altera índice, percentual, datas, cálculo, PDF, DOCX ou XLSX.'
-    )
     st.dataframe(
         pd.DataFrame(resumo_pre_processamento),
         use_container_width=True,
@@ -2550,13 +2538,6 @@ if processar_multiplos:
     st.session_state["processar_reajustes_multiplos_key"] = chave_analise_multiplos
 
 if st.session_state.get("processar_reajustes_multiplos_key") != chave_analise_multiplos:
-    ancora_ciclo_inicial = input_ciclos[0]['data_atual'] if input_ciclos else dt_base_original
-    st.info(
-        f"Foram configurados os ciclos **C{primeiro_ciclo_num} a C{int(ultimo_ciclo_contratual)}** para análise, "
-        f"a partir da data-base de referência do C{primeiro_ciclo_num}, em **{ancora_ciclo_inicial.strftime('%d/%m/%Y')}**. "
-        "C0 é apenas o ciclo-base inicial e não recebe reajuste. "
-        "Confira as datas dos pedidos antes de clicar em **Processar Análise**."
-    )
     st.stop()
 
 data_hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
