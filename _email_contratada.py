@@ -308,6 +308,7 @@ def gerar_rascunho_email_contratada(
     ciclos: Iterable[Mapping[str, Any]] | None,
     numero_contrato: str | None = None,
     indice: str | None = None,
+    fator_acumulado: Any = None,
 ) -> tuple[str, str]:
     """Monta a comunicacao pre-apuracao, sem qualquer valor financeiro."""
     contrato = (numero_contrato or "").strip() or "[CONTRATO]"
@@ -315,9 +316,15 @@ def gerar_rascunho_email_contratada(
     linhas = _linhas_ciclos(ciclos)
     if not linhas:
         linhas = ["• Ciclo [N]: [XX,XX%] – [situação/efeito]."]
-    # Variacao acumulada FINAL: reapresenta a cadeia canonica do sistema
-    # (ultimo fator_acumulado do payload). Nunca soma percentuais de ciclos.
-    fator_final = _fator_acumulado_final(ciclos)
+    # Variacao acumulada FINAL: reapresenta a cadeia canonica do sistema.
+    # Fonte primaria: o fator acumulado canonico calculado pela propria
+    # analise (o mesmo gravado em dados_admissibilidade['fator_acumulado']),
+    # recebido explicitamente pela pagina. Fallback: ultimo fator_acumulado
+    # numerico do payload dos ciclos. Nunca soma percentuais de ciclos.
+    try:
+        fator_final = float(fator_acumulado)
+    except (TypeError, ValueError):
+        fator_final = _fator_acumulado_final(ciclos)
     if fator_final is None:
         acumulado_txt = ""
     else:
@@ -358,6 +365,7 @@ def render_email_contratada(
     *,
     numero_contrato: str | None = None,
     indice: str | None = None,
+    fator_acumulado: Any = None,
     key: str,
 ) -> None:
     """Exibe a comunicacao pre-apuracao e o botao de download do rascunho.
@@ -368,7 +376,7 @@ def render_email_contratada(
     """
     try:
         assunto, corpo = gerar_rascunho_email_contratada(
-            ciclos, numero_contrato, indice
+            ciclos, numero_contrato, indice, fator_acumulado=fator_acumulado
         )
     except ValueError as exc:
         st.error(f"Comunicação à Contratada indisponível: {exc}")

@@ -2925,5 +2925,10 @@ if historico_coleta:
         historico_coleta,
         numero_contrato=st.session_state.get("dados_admissibilidade", {}).get("contrato"),
         indice=st.session_state.get("dados_admissibilidade", {}).get("indice"),
+        # Acumulado CANONICO da analise (mesma cadeia de fatores gravada em
+        # dados_admissibilidade['fator_acumulado']), passado explicitamente:
+        # a linha "Variação Acumulada Final" nunca depende de o campo chegar
+        # dentro de cada item do payload de ciclos.
+        fator_acumulado=float(fator_acum),
         key="baixar_email_contratada_multiciclo",
     )

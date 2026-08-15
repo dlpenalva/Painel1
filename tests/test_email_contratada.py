@@ -259,3 +259,47 @@ def test_integrado_nas_duas_calculadoras():
     assert "render_email_contratada(" in multiplo
     # Nao ha mais versao textual antiga duplicada na pagina 01
     assert "_gerar_email_fornecedor" not in simples
+    # As duas paginas passam o acumulado CANONICO explicitamente (a linha
+    # "Variação Acumulada Final" nao depende do campo dentro do payload).
+    assert 'fator_acumulado=_adm_email.get("fator_acumulado")' in simples
+    assert "fator_acumulado=float(fator_acum)" in multiplo
+
+
+def test_variacao_acumulada_final_fonte_canonica_explicita():
+    """O acumulado canonico da analise chega por parametro: a linha aparece
+    MESMO quando o payload dos ciclos nao traz fator_acumulado (defeito real
+    reproduzido no teste funcional pos-PR #61)."""
+    _, corpo = gerar_rascunho_email_contratada(
+        [{"ciclo": "C1", "situacao_aplicada": "Tempestivo",
+          "variacao_formatada": "3,27%", "financeiro_inicio": "13/02/2026"}],
+        fator_acumulado=1.1474,
+    )
+    assert "Variação Acumulada Final: 14,74%." in corpo
+    # Posicao: depois da lista dos ciclos e antes do paragrafo dos preclusos.
+    pos_ciclo = corpo.rindex("• Ciclo")
+    pos_acum = corpo.index("Variação Acumulada Final")
+    pos_preclusos = corpo.index("Eventuais ciclos preclusos")
+    assert pos_ciclo < pos_acum < pos_preclusos
+    _sem_valores_financeiros(corpo)
+
+
+def test_variacao_acumulada_final_fallback_payload():
+    """Sem parametro explicito, mantem o fallback: ultimo fator_acumulado
+    numerico do payload dos ciclos (nunca soma de percentuais)."""
+    _, corpo = gerar_rascunho_email_contratada(
+        [
+            {"ciclo": "C1", "variacao_formatada": "3,27%",
+             "fator_acumulado": 1.0327},
+            {"ciclo": "C2", "variacao_formatada": "4,30%",
+             "fator_acumulado": 1.0771},
+        ],
+    )
+    assert "Variação Acumulada Final: 7,71%." in corpo
+
+
+def test_variacao_acumulada_final_omitida_sem_fonte():
+    """Sem acumulado canonico e sem fator no payload, nada e inventado."""
+    _, corpo = gerar_rascunho_email_contratada(
+        [{"ciclo": "C1", "variacao_formatada": "3,27%"}],
+    )
+    assert "Variação Acumulada Final" not in corpo
