@@ -248,19 +248,18 @@ def test_frase_acompanha_a_data_informada_pelo_usuario():
     assert "Pedido de 07/09/2024 refere-se ao ciclo C1, apto em 07/09/2024." in notas[0]
 
 
-def test_data_base_de_referencia_aparece_uma_unica_vez_por_ciclo():
-    """Etapa 45: a data-base fica no caption proprio, sob o nome unico.
+def test_data_base_de_referencia_nao_aparece_no_bloco_do_ciclo():
+    """Limpeza de leiaute: a data-base fica apenas na lateral.
 
-    O caption anterior ("Este pedido utiliza a data-base de ...") era uma
-    terceira mencao da mesma data e foi removido.
+    O caption "Data-base de referência (início do interregno anual)" foi
+    removido do bloco de cada ciclo; o caption anterior ("Este pedido utiliza
+    a data-base de ...") ja havia sido removido na etapa 45.
     """
     at = _app()
     captions = _captions(at)
-    assert (
-        "Data-base de referência (início do interregno anual): 10/10/2022" in captions
-    )
-    assert (
-        "Data-base de referência (início do interregno anual): 10/10/2023" in captions
+    assert not any(
+        "Data-base de referência (início do interregno anual)" in c
+        for c in captions
     )
     assert not any("Este pedido utiliza a data-base" in c for c in captions)
 
