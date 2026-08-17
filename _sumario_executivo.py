@@ -112,6 +112,7 @@ def montar_dados_sumario_executivo(
 
     return {
         "disponivel": True,
+        "id_apuracao": leitura.get("id_apuracao"),
         "identificacao": _montar_identificacao(
             objeto, metodologia, memoria_calculo, identificacao
         ),
@@ -865,6 +866,13 @@ def _rodape_factory(dados: dict[str, Any]):
             doc.leftMargin, 9 * mm,
             f"Gerado em {data_rodape}.",
         )
+        id_apuracao = str(dados.get("id_apuracao") or "").strip()
+        if id_apuracao:
+            canvas.drawRightString(
+                doc.pagesize[0] - doc.rightMargin,
+                9 * mm,
+                f"ID da apuração: {id_apuracao}",
+            )
         canvas.restoreState()
 
     return _rodape

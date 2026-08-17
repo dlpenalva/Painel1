@@ -68,6 +68,16 @@ def assinatura_conteudo_upload(conteudo: bytes) -> str:
     return hashlib.sha256(conteudo).hexdigest()
 
 
+def id_apuracao_de_assinatura(assinatura: str) -> str:
+    """Converte o SHA-256 integral do upload no identificador publico curto."""
+    assinatura_normalizada = str(assinatura or "").strip().lower()
+    if len(assinatura_normalizada) != 64 or any(
+        caractere not in "0123456789abcdef" for caractere in assinatura_normalizada
+    ):
+        raise ValueError("A assinatura de origem deve ser um SHA-256 hexadecimal completo.")
+    return f"APUR-{assinatura_normalizada[:16].upper()}"
+
+
 def invalidar_estado_caso(
     estado: MutableMapping[str, Any], nova_assinatura: str
 ) -> bool:
