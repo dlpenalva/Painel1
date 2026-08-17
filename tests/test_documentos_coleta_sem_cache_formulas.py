@@ -159,15 +159,14 @@ def test_campos_manuais_permanecem_como_marcador(
     assert "[PREENCHER: Numero do processo de instrucao]" in texto_apostila
 
 
-def test_posicao_atual_ausente_nao_e_inventada(texto_apostila: str) -> None:
-    assert "Posição atual não informada" in texto_apostila
+def test_posicao_atual_ausente_nao_e_inventada(texto_saneador: str) -> None:
+    assert "Posição atual não informada" in texto_saneador
 
 
 # --- classificacao juridica das referencias do VTA ---
 
-@pytest.mark.parametrize("documento", ["texto_saneador", "texto_apostila"])
-def test_classificacao_das_tres_referencias_do_vta(documento: str, request) -> None:
-    texto = request.getfixturevalue(documento)
+def test_classificacao_das_tres_referencias_do_vta(texto_saneador: str) -> None:
+    texto = texto_saneador
     assert "Valor Total Atualizado (cadeia homologada) | Não informada | OFICIAL" in texto
     assert "VTA pela posição atual do contrato | Não informada | REFERÊNCIA AUDITÁVEL" in texto
     assert (

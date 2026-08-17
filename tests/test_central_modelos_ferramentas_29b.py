@@ -204,7 +204,7 @@ def test_neutralidade_integral_29c12():
             "necessidade de atualização ou endosso da garantia contratual") in txt_ds
     # Termo: considerandos 3 e 5, secoes 2.1 e 3.1 neutros.
     assert "A memória de cálculo a ser indicada em" in txt_ta
-    assert ("As informações da área gestora ou fiscal que vierem a fundamentar "
+    assert ("As informações da área gestora que vierem a fundamentar "
             "a formalização") in txt_ta
     assert ("Os valores financeiros que eventualmente integrem a formalização "
             "deverão ser informados") in txt_ta
@@ -213,7 +213,7 @@ def test_neutralidade_integral_29c12():
     tot_ds, sem_ds = _placeholders_e_destaque(b_ds)
     tot_ta, sem_ta = _placeholders_e_destaque(b_ta)
     assert (tot_ds, sem_ds) == (35, 0)
-    assert (tot_ta, sem_ta) == (27, 0)
+    assert (tot_ta, sem_ta) == (30, 0)
 
 
 def test_automatico_conserva_redacoes_originais_29c12():

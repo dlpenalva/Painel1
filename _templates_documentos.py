@@ -105,13 +105,15 @@ CAMPOS_MANUAIS_TERMO = [
     ("representante_telebras_1_matricula", "Matricula do 1o representante", "termo"),
     ("representante_telebras_2_cargo", "Cargo do 2o representante da Telebras", "termo"),
     ("representante_telebras_2_matricula", "Matricula do 2o representante", "termo"),
+    ("solicitacao_data", "Data da solicitacao da contratada", "termo"),
+    ("solicitacao_ref", "Referencia documental da solicitacao da contratada", "termo"),
     ("memoria_calculo_ref", "Referencia da memoria de calculo", "termo"),
     ("concordancia_ref", "Referencia da manifestacao de concordancia da contratada", "termo"),
     ("regularidade_ref", "Referencia das certidoes de regularidade", "termo"),
     ("adequacao_orcamentaria_ref", "Referencia da adequacao orcamentaria", "termo"),
     ("processo_ref", "Numero do processo de instrucao", "termo"),
     ("valor_pago_efetivo", "Valor pago efetivo (quando nao apurado automaticamente)", "termo"),
-    ("valor_teorico", "Valor teorico calculado (quando nao apurado automaticamente)", "termo"),
+    ("valor_teorico", "Valor devido apos o reajuste (quando nao apurado automaticamente)", "termo"),
     ("valor_original_contrato", "Valor original do contrato", "termo"),
     ("local_data", "Data (ex.: 20/07/2026)", "termo"),
 ]
@@ -567,14 +569,9 @@ def gerar_termo_apostila(
     _ta_abertura(doc)
     _ta_secao1_reajustes(doc, dados, campos_manuais)
     _ta_secao2_retroativo(doc, dados, campos_manuais)
-    _ta_secao3_memoria_vta(doc, dados)
-    _ta_secao4_composicao_vta(doc, dados)
-    _bloco_referencias_vta(
-        doc, dados,
-        titulo="4-A. Referências auditáveis do Valor Total Atualizado",
-    )
-    _ta_secao5_valores_unitarios(doc, dados)
-    _ta_secao6_aditivos(doc, dados)
+    _ta_secao3_composicao_vta(doc, dados)
+    _ta_secao4_valores_unitarios(doc, dados)
+    _ta_secao5_aditivos(doc, dados)
     _ta_secoes_finais(doc, campos_manuais)
     _ta_assinaturas(doc, campos_manuais)
 
@@ -654,87 +651,139 @@ def _ta_considerandos(doc: Document, dados: dict, cm: dict) -> None:
 
     p2 = item("2")
     _adicionar_run(p2,
+        "A deliberação da Diretoria Executiva da Telebras, consignada na Ata da "
+        "1869ª Reunião Ordinária, de 13 de janeiro de 2026, que revogou a "
+        "suspensão anteriormente imposta à tramitação dos reajustes contratuais "
+        "e restabeleceu a normalidade do respectivo processamento;")
+
+    p3 = item("3")
+    branco = dados.get("_modo_branco")
+    if branco:
+        _adicionar_run(p3,
+            "A solicitação da CONTRATADA a ser identificada pela data ")
+        _run_campo_manual(p3, "Data da solicitacao da contratada")
+        _adicionar_run(p3, " e pela referência documental ")
+        _run_campo_manual(p3, "Referencia documental da solicitacao da contratada")
+        _adicionar_run(p3, ";")
+    else:
+        ciclos = dados.get("ciclos_computados") or []
+        situacoes = [
+            remover_emojis_leve(c.get("situacao") or "").strip().upper()
+            for c in ciclos
+        ]
+        tempestiva = bool(situacoes) and all(
+            situacao.startswith("TEMPESTIVO") for situacao in situacoes
+        )
+        datas = {
+            str(c.get("data_pedido") or "").strip()
+            for c in ciclos
+            if str(c.get("data_pedido") or "").strip()
+            not in ("", NAO_INFORMADO)
+        }
+        data_canonica = next(iter(datas)) if len(datas) == 1 else None
+        _adicionar_run(
+            p3,
+            "A solicitação tempestiva da CONTRATADA, de " if tempestiva
+            else "A solicitação da CONTRATADA, de ",
+        )
+        _texto_ou_marcador(
+            p3,
+            data_canonica or _campo(cm, "solicitacao_data"),
+            "Data da solicitacao da contratada",
+        )
+        _adicionar_run(p3, ", instruída em ")
+        _texto_ou_marcador(
+            p3,
+            _campo(cm, "solicitacao_ref"),
+            "Referencia documental da solicitacao da contratada",
+        )
+        _adicionar_run(p3, ";")
+
+    p4 = item("4")
+    _adicionar_run(p4,
         "A necessidade de distinguir o histórico já formalizado anteriormente do "
         "objeto da presente análise, evitando duplicidade de contagem ou "
         "sobreposição de efeitos financeiros;")
 
-    p3 = item("3")
-    if dados.get("_modo_branco"):
+    p5 = item("5")
+    if branco:
+        _adicionar_run(p5,
+            "As informações da área gestora que vierem a fundamentar a "
+            "formalização deverão abranger, quando aplicável, a execução, o "
+            "saldo remanescente, os itens contratuais, os aditivos/supressões e "
+            "os documentos de suporte da apuração;")
+    else:
+        _adicionar_run(p5,
+            "As informações encaminhadas pela área gestora do contrato quanto à "
+            "execução, ao saldo remanescente, aos itens contratuais, aos "
+            "aditivos/supressões e aos documentos de suporte da apuração;")
+
+    p6 = item("6")
+    if branco:
         # Etapa 29C.1.2: nao afirma memoria existente nem valores apurados.
-        _adicionar_run(p3, "A memória de cálculo a ser indicada em ")
-        _run_campo_manual(p3, "Referencia da memoria de calculo")
-        _adicionar_run(p3,
+        _adicionar_run(p6, "A memória de cálculo a ser indicada em ")
+        _run_campo_manual(p6, "Referencia da memoria de calculo")
+        _adicionar_run(p6,
             " deverá apresentar, quando aplicável, os ciclos de reajuste, os "
             "percentuais aplicáveis, os efeitos financeiros, o eventual "
             "retroativo e a composição do Valor Total Atualizado do Contrato;")
     else:
-        _adicionar_run(p3, "A memória de cálculo constante em ")
-        _texto_ou_marcador(p3, _campo(cm, "memoria_calculo_ref"), "Referencia da memoria de calculo")
-        _adicionar_run(p3,
+        _adicionar_run(p6, "A memória de cálculo constante em ")
+        _texto_ou_marcador(p6, _campo(cm, "memoria_calculo_ref"), "Referencia da memoria de calculo")
+        _adicionar_run(p6,
             ", que apurou os ciclos de reajuste, os percentuais aplicáveis, os "
             "efeitos financeiros, o saldo retroativo a pagar e a composição do Valor "
             "Total Atualizado do Contrato;")
 
-    p4 = item("4")
-    if dados.get("_modo_branco"):
-        # Etapa 29C.1: o considerando em branco nao afirma analise nem apuracao
-        # ocorridas — apenas indica os campos a preencher (mesmos 2 placeholders).
-        _adicionar_run(p4,
-            "O índice contratual e o percentual aplicável deverão ser informados "
-            "nos campos a seguir: ")
-        _run_campo_manual(p4, "Indice contratual")
-        _adicionar_run(p4, " e ")
-        _run_campo_manual(p4, "Percentual aplicavel")
-        _adicionar_run(p4, ";")
-    else:
-        _adicionar_run(p4, "O índice contratual utilizado na análise, qual seja ")
-        indice = _indice_doc(dados)
-        if indice:
-            _adicionar_run(p4, indice, negrito=True)
-        else:
-            _run_campo_manual(p4, "Indice contratual")
-        _adicionar_run(p4, ", e o percentual acumulado apurado de ")
-        var = dados.get("var_acumulada")
-        if var is not None:
-            _adicionar_run(p4, _fmt_pct_doc(var), negrito=True)
-        else:
-            _run_campo_manual(p4, "Percentual acumulado apurado")
-        _adicionar_run(p4, ";")
-
-    p5 = item("5")
-    if dados.get("_modo_branco"):
-        # Etapa 29C.1.2: nao afirma informacoes ja encaminhadas.
-        _adicionar_run(p5,
-            "As informações da área gestora ou fiscal que vierem a fundamentar "
-            "a formalização deverão abranger, quando aplicável, a execução, o "
-            "saldo remanescente, os itens contratuais, os aditivos ou "
-            "supressões e os documentos de suporte;")
-    else:
-        _adicionar_run(p5,
-            "As informações encaminhadas pela área gestora/fiscal do contrato quanto "
-            "à execução, ao saldo remanescente, aos itens contratuais, aos "
-            "aditivos/supressões e aos documentos de suporte da apuração;")
-
-    branco = dados.get("_modo_branco")
-    p6 = item("6")
-    if branco:
-        _adicionar_run(p6, "A manifestação da CONTRATADA a registrar em ")
-        _run_campo_manual(p6, "Referencia da manifestacao de concordancia da contratada")
-        _adicionar_run(p6, ", quando aplicável;")
-    else:
-        _adicionar_run(p6, "A manifestação de concordância da CONTRATADA constante em ")
-        _texto_ou_marcador(p6, _campo(cm, "concordancia_ref"), "Referencia da manifestacao de concordancia da contratada")
-        _adicionar_run(p6, ", quando aplicável;")
-
     p7 = item("7")
     if branco:
+        # Etapa 29C.1: o considerando em branco nao afirma analise nem apuracao
+        # ocorridas — apenas indica os campos a preencher (mesmos 2 placeholders).
         _adicionar_run(p7,
-            "As certidões de regularidade da CONTRATADA e a adequação "
-            "orçamentária, a registrar quando aplicável.")
+            "O índice contratual e o percentual aplicável deverão ser informados "
+            "nos campos a seguir: ")
+        _run_campo_manual(p7, "Indice contratual")
+        _adicionar_run(p7, " e ")
+        _run_campo_manual(p7, "Percentual aplicavel")
+        _adicionar_run(p7, ";")
     else:
-        _adicionar_run(p7,
-            "As certidões de regularidade da CONTRATADA e a adequação orçamentária "
-            "constantes dos autos, quando aplicável.")
+        _adicionar_run(p7, "O índice contratual utilizado na análise, qual seja ")
+        indice = _indice_doc(dados)
+        if indice:
+            _adicionar_run(p7, indice, negrito=True)
+        else:
+            _run_campo_manual(p7, "Indice contratual")
+        _adicionar_run(p7, ", e o percentual acumulado apurado de ")
+        var = dados.get("var_acumulada")
+        if var is not None:
+            _adicionar_run(p7, _fmt_pct_doc(var), negrito=True)
+        else:
+            _run_campo_manual(p7, "Percentual acumulado apurado")
+        _adicionar_run(p7, ";")
+
+    p8 = item("8")
+    if branco:
+        _adicionar_run(p8, "A concordância da CONTRATADA, se aplicável, deverá ser registrada em ")
+        _run_campo_manual(p8, "Referencia da manifestacao de concordancia da contratada")
+        _adicionar_run(p8, ";")
+    else:
+        _adicionar_run(p8, "A manifestação de concordância da CONTRATADA constante em ")
+        _texto_ou_marcador(p8, _campo(cm, "concordancia_ref"), "Referencia da manifestacao de concordancia da contratada")
+        _adicionar_run(p8, ";")
+
+    p9 = item("9")
+    if branco:
+        _adicionar_run(p9, "As certidões de regularidade da CONTRATADA a referenciar em ")
+        _run_campo_manual(p9, "Referencia das certidoes de regularidade")
+        _adicionar_run(p9, " e a adequação orçamentária a referenciar em ")
+        _run_campo_manual(p9, "Referencia da adequacao orcamentaria")
+        _adicionar_run(p9, ".")
+    else:
+        _adicionar_run(p9, "As certidões de regularidade ")
+        _texto_ou_marcador(p9, _campo(cm, "regularidade_ref"), "Referencia das certidoes de regularidade")
+        _adicionar_run(p9, " da CONTRATADA e a adequação orçamentária ")
+        _texto_ou_marcador(p9, _campo(cm, "adequacao_orcamentaria_ref"), "Referencia da adequacao orcamentaria")
+        _adicionar_run(p9, ".")
     doc.add_paragraph()
 
 
@@ -804,8 +853,8 @@ def _ta_secao2_retroativo(doc: Document, dados: dict, cm: dict) -> None:
             "formalização deverão ser informados nos campos e quadros desta "
             "seção, incluindo o valor pago efetivo ")
         _run_campo_manual(p, "Valor pago efetivo")
-        _adicionar_run(p, ", o valor teórico calculado ")
-        _run_campo_manual(p, "Valor teorico calculado")
+        _adicionar_run(p, ", o valor devido após o reajuste ")
+        _run_campo_manual(p, "Valor devido apos o reajuste")
         _adicionar_run(p, " e a diferença ou retroativo ")
         _run_campo_manual(p, "Valor retroativo a pagar")
         _adicionar_run(p, ", quando aplicável, conforme Quadro 2.")
@@ -816,12 +865,12 @@ def _ta_secao2_retroativo(doc: Document, dados: dict, cm: dict) -> None:
             _adicionar_run(p, formatar_moeda(vp), negrito=True)
         else:
             _valor_moeda_ou_marcador(p, _campo(cm, "valor_pago_efetivo"), "Valor pago efetivo")
-        _adicionar_run(p, ", valor teórico calculado de ")
+        _adicionar_run(p, " e valor devido após o reajuste de ")
         vat = _valor_atualizado_total(dados)
         if vat is not None:
             _adicionar_run(p, formatar_moeda(vat), negrito=True)
         else:
-            _valor_moeda_ou_marcador(p, _campo(cm, "valor_teorico"), "Valor teorico calculado")
+            _valor_moeda_ou_marcador(p, _campo(cm, "valor_teorico"), "Valor devido apos o reajuste")
         _adicionar_run(p, ", resultando em valor retroativo a pagar de ")
         retro = _retroativo_total(dados)
         if retro is not None:
@@ -831,7 +880,7 @@ def _ta_secao2_retroativo(doc: Document, dados: dict, cm: dict) -> None:
         _adicionar_run(p, ", conforme Quadro 2.")
 
     _titulo_quadro(doc, "Quadro 2 — Apuração financeira por ciclo")
-    cabecalho = ["Ciclo", "Valor pago efetivo", "Valor teórico calculado", "Diferença/retroativo"]
+    cabecalho = ["Ciclo", "Valor pago efetivo", "Valor devido após o reajuste", "Diferença/retroativo"]
     linhas: list[list[str]] = []
     tot_pago = tot_teorico = tot_delta = None
     for lin in _linhas_financeiro(dados):
@@ -863,27 +912,27 @@ def _ta_secao2_retroativo(doc: Document, dados: dict, cm: dict) -> None:
     doc.add_paragraph()
 
 
-def _ta_secao3_memoria_vta(doc: Document, dados: dict) -> None:
-    _titulo_secao(doc, "3. Da memória fiscal do Valor Total Atualizado")
+def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
+    _titulo_secao(doc, "3. Da composição do Valor Total Atualizado")
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     if dados.get("_modo_branco"):
         # Etapa 29C.1.2: descreve a organizacao a ser dada, nao a ja realizada.
         _adicionar_run(p,
-            "3.1. Para fins de consolidação contratual, a memória fiscal do "
-            "Valor Total Atualizado deverá ser organizada de forma evolutiva, "
+            "3.1. Para fins de consolidação contratual, a composição do Valor "
+            "Total Atualizado deverá ser organizada de forma evolutiva, "
             "demonstrando, quando aplicável, a execução por ciclo, os "
             "remanescentes intermediários, o saldo remanescente final e os "
             "aditivos/supressões computáveis.")
     else:
         _adicionar_run(p,
-            "3.1. Para fins de consolidação contratual, a memória fiscal do Valor "
+            "3.1. Para fins de consolidação contratual, a composição do Valor "
             "Total Atualizado foi organizada de forma evolutiva, demonstrando a "
             "execução por ciclo, os remanescentes intermediários, o saldo "
             "remanescente final e os aditivos/supressões computáveis, quando "
             "aplicáveis.")
 
-    _titulo_quadro(doc, "Quadro 3 — Memória fiscal do Valor Total Atualizado")
+    _titulo_quadro(doc, "Quadro 3 — Composição do Valor Total Atualizado")
     cabecalho = ["Ref.", "Descrição", "Valor"]
     linhas: list[list[str]] = []
     for i, (desc, valor) in enumerate(_composicao_didatica_vta(dados)):
@@ -898,46 +947,6 @@ def _ta_secao3_memoria_vta(doc: Document, dados: dict) -> None:
         _vta_texto_doc(dados),
     ])
     _adicionar_tabela(doc, cabecalho, linhas)
-    doc.add_paragraph()
-
-
-def _ta_secao4_composicao_vta(doc: Document, dados: dict) -> None:
-    _titulo_secao(doc, "4. Da composição sintética do Valor Total Atualizado")
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    _adicionar_run(p,
-        "4.1. De forma sintética, o Valor Total Atualizado do Contrato pode ser "
-        "compreendido pela soma das parcelas indicadas no Quadro 4.")
-
-    componentes = _composicao_didatica_vta(dados)
-    _titulo_quadro(doc, "Quadro 4 — Composição didática do Valor Total Atualizado")
-    cabecalho = ["Ref.", "Parcela", "Valor"]
-    linhas: list[list[str]] = []
-    letras_componentes: list[str] = []
-    for i, (desc, valor) in enumerate(componentes):
-        ref = _LETRAS[i] if i < len(_LETRAS) else str(i + 1)
-        letras_componentes.append(ref)
-        linhas.append([ref, desc, formatar_moeda(valor) if valor is not None else ""])
-    ref_vta = "VTA"
-    linhas.append([ref_vta, "Valor Total Atualizado do Contrato",
-                   _vta_texto_doc(dados)])
-    _adicionar_tabela(doc, cabecalho, linhas)
-
-    # 4.2 — leitura correta: componentes = E = VTA (nunca soma o VTA a si mesmo).
-    p42 = doc.add_paragraph()
-    p42.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    _adicionar_run(p42, "4.2. A composição do Quadro 4 pode ser lida da seguinte forma: ")
-    if letras_componentes:
-        soma = " + ".join(letras_componentes)
-        _adicionar_run(p42, f"{soma} = {ref_vta} = ")
-    else:
-        _adicionar_run(p42, f"{ref_vta} = ")
-    vta_texto = _vta_texto_doc(dados)
-    if vta_texto:
-        _adicionar_run(p42, vta_texto, negrito=True)
-    else:
-        _run_campo_manual(p42, "Valor Total Atualizado")
-    _adicionar_run(p42, ".")
     doc.add_paragraph()
 
 
@@ -1039,12 +1048,12 @@ def _bloco_referencias_vta(doc: Document, dados: dict, *, titulo: str) -> None:
     doc.add_paragraph()
 
 
-def _ta_secao5_valores_unitarios(doc: Document, dados: dict) -> None:
-    _titulo_secao(doc, "5. Dos valores unitários")
+def _ta_secao4_valores_unitarios(doc: Document, dados: dict) -> None:
+    _titulo_secao(doc, "4. Dos valores unitários")
     _secao_valores_unitarios_por_ciclo(
         doc, dados,
         texto_intro=(
-            "5.1. Os valores unitários dos itens, considerados os ciclos de "
+            "4.1. Os valores unitários dos itens, considerados os ciclos de "
             "reajuste aplicáveis até a presente atualização, ficam consolidados "
             "conforme quadro abaixo."
         ),
@@ -1103,24 +1112,24 @@ def _sintese_aditivos_por_ciclo(aditivos: list[dict]) -> list[str]:
     return saida
 
 
-def _ta_secao6_aditivos(doc: Document, dados: dict) -> None:
-    _titulo_secao(doc, "6. Dos aditivos e supressões considerados")
+def _ta_secao5_aditivos(doc: Document, dados: dict) -> None:
+    _titulo_secao(doc, "5. Dos aditivos e supressões considerados")
     aditivos = dados.get("aditivos") or []
     p1 = doc.add_paragraph()
     p1.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     if dados.get("_modo_branco"):
-        _adicionar_run(p1, "6.1. Registrar os aditivos e supressões considerados: ")
+        _adicionar_run(p1, "5.1. Registrar os aditivos e supressões considerados: ")
         _run_campo_manual(p1, "Aditivos e supressões considerados")
         _adicionar_run(p1, ".")
     elif not aditivos:
         _adicionar_run(p1,
-            "6.1. Não foram identificados aditivos ou supressões específicos na "
+            "5.1. Não foram identificados aditivos ou supressões específicos na "
             "base processada, sem prejuízo da conferência dos instrumentos já "
             "formalizados no processo.")
     else:
         _adicionar_run(
             p1,
-            "6.1. Foram consideradas as alterações contratuais registradas "
+            "5.1. Foram consideradas as alterações contratuais registradas "
             "na apuração: " + "; ".join(_sintese_aditivos_por_ciclo(aditivos))
             + ".",
         )
@@ -1128,38 +1137,39 @@ def _ta_secao6_aditivos(doc: Document, dados: dict) -> None:
     p2 = doc.add_paragraph()
     p2.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     _adicionar_run(p2,
-        "6.2. Os aditivos e supressões computáveis integram o Valor Total "
+        "5.2. Os aditivos e supressões computáveis integram o Valor Total "
         "Atualizado quando não estiverem refletidos na execução atualizada, no "
         "saldo remanescente ou no valor formalizado anterior, vedada a dupla "
         "contagem.")
-    doc.add_paragraph()
+    espaco_apos_capitulo = doc.add_paragraph()
+    espaco_apos_capitulo.paragraph_format.space_after = Pt(6)
 
 
 def _ta_secoes_finais(doc: Document, cm: dict) -> None:
+    p6 = doc.add_paragraph()
+    p6.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    _adicionar_run(p6, "6. ", negrito=True)
+    _adicionar_run(p6,
+        "Permanecem inalteradas e em pleno vigor as demais cláusulas e condições "
+        "do Contrato e de seus instrumentos posteriores não modificadas por este "
+        "Termo de Apostila.")
+
     p7 = doc.add_paragraph()
     p7.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     _adicionar_run(p7, "7. ", negrito=True)
     _adicionar_run(p7,
-        "Permanecem inalteradas e em pleno vigor as demais cláusulas e condições "
-        "do Contrato e de seus instrumentos posteriores não modificadas por este "
-        "Termo de Apostila.")
+        "A CONTRATADA deverá atualizar a garantia contratual, prevista na "
+        "cláusula própria do Contrato, no prazo contratualmente estabelecido, "
+        "observado o novo valor após a formalização deste Termo de Apostila.")
 
     p8 = doc.add_paragraph()
     p8.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     _adicionar_run(p8, "8. ", negrito=True)
     _adicionar_run(p8,
-        "A CONTRATADA deverá atualizar a garantia contratual, prevista na "
-        "cláusula própria do Contrato, no prazo contratualmente estabelecido, "
-        "observado o novo valor após a formalização deste Termo de Apostila.")
-
-    p9 = doc.add_paragraph()
-    p9.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    _adicionar_run(p9, "9. ", negrito=True)
-    _adicionar_run(p9,
         "O presente apostilamento vincula-se, para todos os fins, aos documentos "
         "instruídos no Processo ")
-    _texto_ou_marcador(p9, _campo(cm, "processo_ref"), "Numero do processo de instrucao")
-    _adicionar_run(p9, ".")
+    _texto_ou_marcador(p8, _campo(cm, "processo_ref"), "Numero do processo de instrucao")
+    _adicionar_run(p8, ".")
     doc.add_paragraph()
 
 

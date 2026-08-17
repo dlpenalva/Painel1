@@ -17,8 +17,11 @@ from _templates_documentos import (  # noqa: E402
     gerar_despacho_saneador,
     gerar_termo_apostila,
     _extrair_dados,
-    _ta_secao4_composicao_vta,
+    _composicao_didatica_vta,
     _fmt_pct_doc,
+    _ta_considerandos,
+    _vta_texto_doc,
+    formatar_moeda,
 )
 from _sanitizacao_documental import contem_emoji  # noqa: E402
 from test_sumario_executivo import (  # noqa: E402
@@ -38,6 +41,8 @@ CAMPOS_TERMO = {
     "representante_telebras_1_matricula": "12345",
     "representante_telebras_2_cargo": "Diretor Financeiro",
     "representante_telebras_2_matricula": "67890",
+    "solicitacao_data": "10/10/2025",
+    "solicitacao_ref": "TLB-AUT-2025/00100",
     "memoria_calculo_ref": "TLB-AUT-2026/00700",
     "concordancia_ref": "TLB-AUT-2026/00500",
     "regularidade_ref": "TLB-AUT-2026/00400",
@@ -126,33 +131,59 @@ def test_apostila_qualificacao_canonica():
     assert "SAS Quadra 05" not in texto
 
 
-def test_apostila_sete_considerandos():
-    texto = "\n" + _texto_docx(gerar_termo_apostila(leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO))
-    assert "CONSIDERANDO:" in texto
-    for n in range(1, 8):
-        assert f"\n{n}. " in texto, f"considerando {n} ausente"
+def test_apostila_nove_considerandos_na_ordem_aprovada():
+    doc = Document(BytesIO(gerar_termo_apostila(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO
+    )))
+    textos = [p.text for p in doc.paragraphs]
+    inicio = textos.index("CONSIDERANDO:") + 1
+    considerandos = textos[inicio:inicio + 9]
+    assert len(considerandos) == 9
+    chaves_ordenadas = (
+        "Cláusula Oitava",
+        "deliberação da Diretoria Executiva",
+        "solicitação da CONTRATADA",
+        "histórico já formalizado",
+        "informações encaminhadas pela área gestora",
+        "memória de cálculo",
+        "índice contratual",
+        "concordância da CONTRATADA",
+        "certidões de regularidade",
+    )
+    for numero, (paragrafo, chave) in enumerate(
+        zip(considerandos, chaves_ordenadas), start=1
+    ):
+        assert paragrafo.startswith(f"{numero}. ")
+        assert chave in paragrafo
+    texto = "\n".join(considerandos)
+    assert "Ata da 1869ª Reunião Ordinária, de 13 de janeiro de 2026" in texto
+    assert "10/10/2025" in texto
+    assert "TLB-AUT-2025/00100" in texto
 
 
-def test_apostila_secoes_1_a_9():
+def test_apostila_estrutura_final_1_a_8_sem_duplicidades():
     texto = _texto_docx(gerar_termo_apostila(leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO))
     assert "FORMALIZA-SE O PRESENTE TERMO DE APOSTILA:" in texto
     assert "1. Dos reajustes concedidos" in texto
     assert "2. Da apuração financeira do retroativo" in texto
-    assert "3. Da memória fiscal do Valor Total Atualizado" in texto
-    assert "4. Da composição sintética do Valor Total Atualizado" in texto
-    assert "5. Dos valores unitários" in texto
-    assert "6. Dos aditivos e supressões considerados" in texto
-    assert "Termo de Apostila." in texto              # §7
-    assert "atualizar a garantia contratual" in texto  # §8
-    assert "vincula-se, para todos os fins" in texto   # §9
+    assert "3. Da composição do Valor Total Atualizado" in texto
+    assert "4. Dos valores unitários" in texto
+    assert "5. Dos aditivos e supressões considerados" in texto
+    assert "6. Permanecem inalteradas e em pleno vigor" in texto
+    assert "7. A CONTRATADA deverá atualizar a garantia contratual" in texto
+    assert "8. O presente apostilamento vincula-se" in texto
+    assert "Da composição sintética do Valor Total Atualizado" not in texto
+    assert "4-A." not in texto
+    assert "Referências auditáveis do Valor Total Atualizado" not in texto
 
 
-def test_apostila_quadros_1_a_4_presentes():
+def test_apostila_quadros_sem_composicao_duplicada():
     quadros = _titulos_quadros(gerar_termo_apostila(leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO))
     assert "Ref. | Ciclo | Percentual aplicado | Efeitos financeiros | Situação" in quadros  # Q1
-    assert "Ciclo | Valor pago efetivo | Valor teórico calculado | Diferença/retroativo" in quadros  # Q2
+    assert "Ciclo | Valor pago efetivo | Valor devido após o reajuste | Diferença/retroativo" in quadros  # Q2
     assert "Ref. | Descrição | Valor" in quadros  # Q3
-    assert "Ref. | Parcela | Valor" in quadros  # Q4
+    assert "Ref. | Parcela | Valor" not in quadros
+    assert quadros.count("Ref. | Descrição | Valor") == 1
 
 
 def test_apostila_vu_ate_ultimo_ciclo_sem_futuro():
@@ -174,22 +205,79 @@ def test_apostila_duas_assinaturas_telebras_sem_contratada():
     assert not any(l.strip() == "CONTRATADA" for l in linhas)
 
 
-def test_apostila_equacao_sintetica_nao_soma_vta_a_si_mesmo():
-    dados = _extrair_dados(leitura_simples_financeiro(), None)
-    dados["parcelas_vta"] = [
-        {"fonte_parcela": "Financeiro", "ciclo": "C0", "valor_atualizado": 1000.0},
-        {"fonte_parcela": "Financeiro", "ciclo": "C1", "valor_atualizado": 2000.0},
-        {"fonte_parcela": "Aditivo", "ciclo": "C1", "valor": 500.0},
+def test_apostila_composicao_vta_unica_preserva_componentes_canonicos():
+    leitura = leitura_multiciclo_pc()
+    leitura["composicao_vta"] = {
+        "disponivel": True,
+        "metodo": "pc",
+        "total_execucao_atualizada": 13_973_327.58,
+        "saldo_remanescente": {"valor_atualizado": 123_402_232.71},
+        "vta_composicao": 137_375_560.29,
+    }
+    dados = _extrair_dados(leitura, None)
+    componentes = _composicao_didatica_vta(dados)
+    doc = Document(BytesIO(gerar_termo_apostila(
+        leitura, campos_manuais=CAMPOS_TERMO
+    )))
+    tabela = next(
+        t for t in doc.tables
+        if [c.text for c in t.rows[0].cells] == ["Ref.", "Descrição", "Valor"]
+    )
+    linhas = [[c.text for c in row.cells] for row in tabela.rows[1:]]
+    assert [linha[1] for linha in linhas[:-1]] == [d for d, _ in componentes]
+    assert [linha[2] for linha in linhas[:-1]] == [
+        formatar_moeda(valor) if valor is not None else ""
+        for _, valor in componentes
     ]
-    dados["vta"] = 3500.0
-    doc = Document()
-    _ta_secao4_composicao_vta(doc, dados)
-    texto = "\n".join(p.text for p in doc.paragraphs)
-    assert "A + B + C = VTA = R$ 3.500,00." in texto
-    tabela = doc.tables[0]
-    valores = [row.cells[-1].text for row in tabela.rows]
-    assert valores.count("R$ 3.500,00") == 1       # uma unica linha VTA
-    assert "R$ 7.000,00" not in "\n".join(valores)  # nunca dobra o VTA
+    assert linhas[-1][1] == "Valor Total Atualizado do Contrato"
+    assert linhas[-1][2] == _vta_texto_doc(dados)
+
+
+def test_apostila_terminologia_exclusiva_e_seguranca_da_tempestividade():
+    for bytes_docx in (
+        gerar_termo_apostila(
+            leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO
+        ),
+        gerar_termo_apostila({}, {}, {}, modo_modelo_em_branco=True),
+    ):
+        texto = _texto_docx(bytes_docx)
+        assert "fiscal" not in texto.lower()
+        assert "valor teórico" not in texto.lower()
+        assert "valor devido após o reajuste" in texto
+
+    doc_neutro = Document()
+    _ta_considerandos(doc_neutro, {
+        "_modo_branco": False,
+        "ciclos_computados": [{
+            "situacao": "PRECLUSO", "data_pedido": "10/10/2025"
+        }],
+        "identificacao": {},
+        "var_acumulada": None,
+    }, CAMPOS_TERMO)
+    texto_neutro = "\n".join(p.text for p in doc_neutro.paragraphs)
+    assert "solicitação tempestiva" not in texto_neutro.lower()
+
+    doc_tempestivo = Document()
+    _ta_considerandos(doc_tempestivo, {
+        "_modo_branco": False,
+        "ciclos_computados": [{
+            "situacao": "TEMPESTIVO*", "data_pedido": "15/10/2025"
+        }],
+        "identificacao": {},
+        "var_acumulada": None,
+    }, CAMPOS_TERMO)
+    texto_tempestivo = "\n".join(p.text for p in doc_tempestivo.paragraphs)
+    assert "solicitação tempestiva da CONTRATADA, de 15/10/2025" in texto_tempestivo
+
+
+def test_apostila_espaco_visual_apos_capitulo_5():
+    doc = Document(BytesIO(gerar_termo_apostila(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO
+    )))
+    textos = [p.text for p in doc.paragraphs]
+    indice_52 = next(i for i, texto in enumerate(textos) if texto.startswith("5.2."))
+    assert textos[indice_52 + 1] == ""
+    assert textos[indice_52 + 2].startswith("6. Permanecem inalteradas")
 
 
 def test_apostila_sem_termos_tecnicos_e_sem_emoji():

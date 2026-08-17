@@ -14,7 +14,6 @@ from io import BytesIO
 from pathlib import Path
 
 import openpyxl
-import pytest
 from docx import Document
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -100,11 +99,10 @@ def test_leitor_referencias_le_da_tabela1_sintetica():
 # --------------------------------------------------------------------------- #
 # 2. Leitura Python -> documento (DOCX): classificacao e valores               #
 # --------------------------------------------------------------------------- #
-@pytest.mark.parametrize("gerador", [gerar_termo_apostila, gerar_despacho_saneador])
-def test_docx_referencias_com_classificacao(gerador):
+def test_saneador_referencias_com_classificacao():
     leit = leitura_simples_financeiro()
     leit["referencias_vta"] = dict(REF_FIXTURE)
-    texto = _texto_docx(gerador(leit))
+    texto = _texto_docx(gerar_despacho_saneador(leit))
     assert "OFICIAL" in texto
     assert "REFERÊNCIA AUDITÁVEL" in texto
     assert "COMPARATIVO" in texto
@@ -128,7 +126,7 @@ def test_docx_posicao_indisponivel_nao_inventa():
                posicao_atual_disponivel=False,
                forma1_situacao="INDISPONIVEL - POSICAO ATUAL NAO INFORMADA")
     leit["referencias_vta"] = ref
-    texto = _texto_docx(gerar_termo_apostila(leit))
+    texto = _texto_docx(gerar_despacho_saneador(leit))
     assert "Não informada" in texto
     assert "137.375.560,29" in texto
 
@@ -148,10 +146,12 @@ def test_pdf_referencias_presentes():
 # --------------------------------------------------------------------------- #
 # 4. VTA oficial nunca substituido pelas referencias auditaveis                 #
 # --------------------------------------------------------------------------- #
-def test_oficial_preservado_apesar_das_referencias():
+def test_termo_preserva_vta_oficial_sem_referencias_alternativas():
     leit = leitura_simples_financeiro()
     leit["referencias_vta"] = dict(REF_FIXTURE)
     texto = _texto_docx(gerar_termo_apostila(leit))
-    assert "OFICIAL" in texto
-    idx_comp = texto.find("integralmente reajustado")
-    assert idx_comp != -1
+    assert "Valor Total Atualizado do Contrato" in texto
+    assert "Referências auditáveis" not in texto
+    assert "REFERÊNCIA AUDITÁVEL" not in texto
+    assert "COMPARATIVO" not in texto
+    assert "integralmente reajustado" not in texto
