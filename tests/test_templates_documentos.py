@@ -54,15 +54,20 @@ CAMPOS_TERMO = {
 
 CAMPOS_SANEADOR = {
     "contrato": "TLB-CTR-2025/00001",
+    "empresa_contratada": "Empresa XPTO S.A.",
+    "objeto_contrato": "prestação de serviços especializados",
+    "vigencia_ate": "31/12/2027",
+    "tipo_atualizacao": "reajuste",
     "processo_pleito": "TLB-AUT-2025/00100",
-    "data_proposta": "02/08/2023",
     "referencia_analise": "TLB-AUT-2026/00200",
-    "data_corte_descricao": "abril de 2026, último mês com liquidação",
+    "memoria_calculo_ref": "TLB-AUT-2026/00200",
     "adequacao_orcamentaria_ref": "TLB-DES-2026/00300",
     "adequacao_orcamentaria_valor": 123456.78,
     "regularidade_ref": "TLB-AUT-2026/00400",
+    "regularidade_situacao": "documentação apresentada para conferência",
     "concordancia_ref": "TLB-AUT-2026/00500",
-    "valor_original_contrato": 1000000.0,
+    "concordancia_situacao": "manifestação juntada ao processo",
+    "garantia_situacao": "verificação documental pendente",
 }
 
 # Vocabulario de implementacao proibido nos documentos (§5).
@@ -292,28 +297,57 @@ def test_apostila_sem_termos_tecnicos_e_sem_emoji():
 # §10.3 — SANEADOR
 # ---------------------------------------------------------------------------
 
-def test_saneador_assunto():
-    texto = _texto_docx(gerar_despacho_saneador(leitura_simples_financeiro(), campos_manuais=CAMPOS_SANEADOR))
+def test_saneador_assunto_e_identificacao():
+    texto = _texto_docx(gerar_despacho_saneador(
+        leitura_simples_financeiro(), campos_manuais=CAMPOS_SANEADOR
+    ))
     assert "DESPACHO SANEADOR" in texto
-    assert "Saneamento para formalização de Termo de Apostila de Reajuste - TLB-CTR-2025/00001" in texto
+    assert "Saneamento para formalização de reajuste — TLB-CTR-2025/00001" in texto
+    assert "Referência(s): TLB-AUT-2025/00100" in texto
+    assert "celebrado com Empresa XPTO S.A." in texto
+    assert "cujo objeto é prestação de serviços especializados" in texto
+    assert "com vigência até 31/12/2027" in texto
 
 
-def test_saneador_sequencia_itens():
-    texto = "\n" + _texto_docx(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR))
-    for n in range(1, 13):
-        assert f"\n{n}. " in texto, f"item {n} ausente"
+def test_saneador_estrutura_final_1_a_6():
+    doc = Document(BytesIO(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR
+    )))
+    titulos = [p.text for p in doc.paragraphs if p.text[:2] in {f"{n}." for n in range(1, 10)}]
+    assert titulos == [
+        "1. IDENTIFICAÇÃO",
+        "2. PEDIDO E PARÂMETROS DA ANÁLISE",
+        "3. RESULTADO ESSENCIAL",
+        "4. DOCUMENTOS E VERIFICAÇÕES",
+        "5. PENDÊNCIAS",
+        "6. CONCLUSÃO",
+    ]
 
 
-def test_saneador_quadros_e_composicao():
-    b = gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR)
+def test_saneador_tres_quadros_enxutos_e_blocos_removidos():
+    b = gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR
+    )
     texto = _texto_docx(b)
     quadros = _titulos_quadros(b)
-    assert "Quadro 1 - Síntese dos ciclos de reajuste" in texto
-    assert "Ciclo | Data-base | Data do pedido | Início financeiro | Fim financeiro | Situação | Percentual aplicado" in quadros
-    assert "Ciclo | Valor pago efetivo | Valor teórico calculado | Diferença/retroativo" in quadros
-    assert "Descrição | Valor" in quadros  # Quadro 3 (sem coluna Ref.)
-    assert "Quadro 4 - Síntese dos principais valores" in texto
-    assert "De forma didática" in texto  # composicao didatica (par. 7)
+    assert len(quadros) == 3
+    assert quadros == [
+        "Ciclo | Data-base | Data do pedido | Situação | Efeito financeiro | Percentual",
+        "Resultado | Valor",
+        "Documento ou verificação | Referência ou situação",
+    ]
+    assert "Quadro 1 - Síntese da análise" in texto
+    assert "Quadro 2 - Síntese financeira" in texto
+    assert "Quadro 3 - Documentos e verificações" in texto
+    for removido in (
+        "valor teórico",
+        "Referências auditáveis",
+        "De forma didática",
+        "Memória fiscal do Valor Total Atualizado",
+        "Valores Unitários por Ciclo",
+        "Saldo remanescente",
+    ):
+        assert removido.lower() not in texto.lower()
 
 
 def test_saneador_inicio_financeiro_usa_efeito_real():
@@ -321,7 +355,7 @@ def test_saneador_inicio_financeiro_usa_efeito_real():
     tabela = Document(BytesIO(b)).tables[0]  # Quadro 1
     linha_c2 = next(r for r in tabela.rows if r.cells[0].text == "C2")
     assert linha_c2.cells[1].text == "01/05/2025"   # Data-base
-    assert linha_c2.cells[3].text == "01/08/2025"   # Inicio financeiro (efeito real)
+    assert linha_c2.cells[4].text == "A partir de 01/08/2025"
 
 
 def test_saneador_sem_tabela_de_valores_unitarios():
@@ -332,57 +366,73 @@ def test_saneador_sem_tabela_de_valores_unitarios():
 
 def test_saneador_itens_administrativos_presentes():
     texto = _texto_docx(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR))
-    assert "adequação orçamentária" in texto
-    assert "certidões de regularidade" in texto
-    assert "manifestou concordância" in texto
-    assert "garantia contratual" in texto
-    assert "alterações contratuais consideradas" in texto
+    for item in (
+        "Memória de cálculo",
+        "Adequação orçamentária",
+        "Regularidade da contratada",
+        "Concordância da contratada",
+        "Garantia contratual",
+    ):
+        assert item in texto
 
 
-def test_saneador_conclusao_normal_afirma_inexistencia():
-    texto = _texto_docx(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR))
-    assert "inexistindo pendência crítica" in texto
+def test_saneador_resultado_consolidado_sem_detalhamento_por_ciclo():
+    texto = _texto_docx(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR
+    ))
+    for rotulo in (
+        "Valor pago no período analisado",
+        "Valor devido após o reajuste",
+        "Retroativo a pagar",
+        "Valor Total Atualizado do Contrato",
+    ):
+        assert rotulo in texto
+    assert "Apuração financeira por ciclo" not in texto
 
 
-def test_saneador_softblock_nao_afirma_inexistencia():
+def test_saneador_conclusao_neutra_sem_habilitacao_nova():
+    texto = _texto_docx(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert "deverá ser avaliado o prosseguimento da instrução" in texto
+    assert "instrução encontra-se apta" not in texto
+
+
+def test_saneador_conclusao_impeditiva_com_pendencia_suportada():
     cm = dict(CAMPOS_SANEADOR, pendencia_critica=True)
     texto = _texto_docx(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=cm))
-    assert "inexistindo pendência crítica" not in texto
-    assert "permanecendo pendentes" in texto
-    assert "consolidados para análise" in texto
+    assert "A instrução deverá ser complementada quanto às pendências acima" in texto
+    assert "instrução encontra-se apta" not in texto
 
 
-def test_saneador_conclusao_numerada_13_sem_docs_desatualizados():
-    texto = _texto_docx(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR))
-    # Sem docs_desatualizados: 12 (garantia) -> 13 (conclusao) -> Quadro 4
-    assert "13. Diante do exposto" in texto
-    assert "14. " not in texto
-    assert "mostram-se desatualizados" not in texto  # item 13 de docs ausente
-
-
-def test_saneador_conclusao_numerada_14_com_docs_desatualizados():
+def test_saneador_documentos_desatualizados_ficam_nas_pendencias():
     cm = dict(CAMPOS_SANEADOR, docs_desatualizados=["SEI 999/2026", "SEI 888/2026"])
     texto = _texto_docx(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=cm))
-    # Com docs_desatualizados: 13 (documentos) -> 14 (conclusao)
-    assert "13. Após atualizações" in texto
-    assert "mostram-se desatualizados, devendo ser desconsiderados" in texto
-    assert "14. Diante do exposto" in texto
-    assert "13. Diante do exposto" not in texto
+    assert "Documentos desatualizados: SEI 999/2026, SEI 888/2026" in texto
+    assert texto.count("SEI 999/2026") == 1
 
 
-def test_saneador_conclusao_numerada_respeita_softblock():
-    # Numeracao correta mesmo sob soft-block, sem afirmar inexistencia de pendencia.
-    cm_sem = dict(CAMPOS_SANEADOR, pendencia_critica=True)
-    texto_sem = _texto_docx(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=cm_sem))
-    assert "13. Diante do exposto" in texto_sem
-    assert "permanecendo pendentes" in texto_sem
-    assert "inexistindo pendência crítica" not in texto_sem
-
-    cm_com = dict(CAMPOS_SANEADOR, pendencia_critica=True, docs_desatualizados=["SEI 999/2026"])
-    texto_com = _texto_docx(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=cm_com))
-    assert "14. Diante do exposto" in texto_com
-    assert "permanecendo pendentes" in texto_com
-    assert "inexistindo pendência crítica" not in texto_com
+def test_saneador_identificacao_externa_confiavel_e_automatica():
+    identificacao = {
+        "contrato": "TLB-CTR-2026/00077",
+        "empresa_contratada": "Contratada Canônica S.A.",
+        "objeto_contrato": "serviço continuado",
+        "vigencia_ate": "30/06/2028",
+        "tipo_atualizacao": "repactuação",
+    }
+    texto = _texto_docx(gerar_despacho_saneador(
+        leitura_simples_financeiro(), identificacao=identificacao,
+        campos_manuais={"processo_pleito": "TLB-AUT-2026/00999"},
+    ))
+    for valor in identificacao.values():
+        assert valor in texto
+    for ausente in (
+        "[PREENCHER: Numero do contrato]",
+        "[PREENCHER: Nome da empresa contratada]",
+        "[PREENCHER: Objeto resumido do contrato]",
+        "[PREENCHER: Data final da vigencia contratual]",
+    ):
+        assert ausente not in texto
 
 
 def test_saneador_sem_termos_tecnicos_e_sem_emoji():

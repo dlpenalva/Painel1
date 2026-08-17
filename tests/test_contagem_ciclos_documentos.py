@@ -112,43 +112,34 @@ def _documento(leitura: dict):
     return docx.Document(io.BytesIO(gerar_despacho_saneador(leitura)))
 
 
-def _paragrafo_4(documento) -> str:
-    for paragrafo in documento.paragraphs:
-        if paragrafo.text.strip().startswith("4."):
-            return paragrafo.text
-    raise AssertionError("item 4 ausente no Despacho Saneador")
-
-
 def _quadro_1(documento) -> list[list[str]]:
     tabela = documento.tables[0]
     return [[c.text.strip() for c in linha.cells] for linha in tabela.rows[1:]]
 
 
 @pytest.mark.parametrize("computados,esperado", [
-    ({"C1"}, "considerou 1 ciclo,"),
-    ({"C1", "C2"}, "considerou 2 ciclos,"),
-    ({"C1", "C2", "C3", "C4"}, "considerou 4 ciclos,"),
+    ({"C1"}, ["C1"]),
+    ({"C1", "C2"}, ["C1", "C2"]),
+    ({"C1", "C2", "C3", "C4"}, ["C1", "C2", "C3", "C4"]),
 ])
-def test_frase_declara_apenas_os_ciclos_computados(computados, esperado):
-    texto = _paragrafo_4(_documento(_leitura_com_computados(computados)))
-    assert esperado in texto
-    assert "ciclo(s)" not in texto
+def test_quadro_1_lista_apenas_os_ciclos_computados(computados, esperado):
+    linhas = _quadro_1(_documento(_leitura_com_computados(computados)))
+    assert [linha[0] for linha in linhas] == esperado
 
 
 def test_sem_ciclo_computado_nao_afirma_que_houve_analise_de_ciclos():
-    texto = _paragrafo_4(_documento(_leitura_com_computados(set())))
-    assert FRASE_SEM_CICLOS_COMPUTADOS in texto
-    assert "A análise de reajuste considerou" not in texto
-    assert "ciclo(s)" not in texto
-    # O valor original continua sendo declarado no mesmo item.
-    assert "valor original do contrato" in texto
+    documento = _documento(_leitura_com_computados(set()))
+    texto = "\n".join(paragrafo.text for paragrafo in documento.paragraphs)
+    linhas = _quadro_1(documento)
+    assert "considerou" not in texto
+    assert linhas[0][0] == "[PREENCHER: Ciclo]"
 
 
 def test_ciclos_existentes_marcados_como_nao_nao_sao_contados():
-    """Os quatro ciclos seguem no Quadro 1, nenhum e declarado como considerado."""
+    """Ciclos fora da apuracao nao poluem o Quadro 1 do despacho."""
     documento = _documento(_leitura_com_computados(set()))
-    assert len(_quadro_1(documento)) == len(CICLOS_REAJUSTE)
-    assert FRASE_SEM_CICLOS_COMPUTADOS in _paragrafo_4(documento)
+    ciclos = [linha[0] for linha in _quadro_1(documento)]
+    assert not set(ciclos).intersection(CICLOS_REAJUSTE)
 
 
 @pytest.mark.parametrize("computados", [
@@ -157,17 +148,12 @@ def test_ciclos_existentes_marcados_como_nao_nao_sao_contados():
     {"C1", "C2", "C3", "C4"},
 ])
 def test_concordancia_entre_a_frase_e_o_quadro_1(computados):
-    """O numero da frase nao pode exceder as linhas do quadro nem ignora-las.
-
-    O quadro continua listando todos os ciclos de reajuste; a frase declara
-    somente os computados.
-    """
+    """Cada ciclo necessario aparece uma unica vez no quadro essencial."""
     documento = _documento(_leitura_com_computados(computados))
     linhas = _quadro_1(documento)
-    assert len(linhas) == len(CICLOS_REAJUSTE)
-    esperado = expressao_quantidade_ciclos(len(computados))
-    assert esperado in _paragrafo_4(documento)
-    assert len(computados) <= len(linhas)
+    ciclos = [linha[0] for linha in linhas]
+    assert ciclos == sorted(computados)
+    assert len(ciclos) == len(set(ciclos))
 
 
 # ---------------------------------------------------------------------------
@@ -200,15 +186,14 @@ def documento_cenario_real():
 
 
 def test_cenario_real_declara_um_unico_ciclo(documento_cenario_real):
-    texto = _paragrafo_4(documento_cenario_real)
-    assert "A análise de reajuste considerou 1 ciclo, com variação acumulada de" in texto
-    assert "ciclo(s)" not in texto
-    assert "considerou 4" not in texto
+    linhas = _quadro_1(documento_cenario_real)
+    assert [linha[0] for linha in linhas] == ["C1"]
+    assert linhas[0][4] == "A partir de 01/04/2026"
+    assert linhas[0][5] == "3,08%"
 
 
-def test_cenario_real_mantem_os_demais_ciclos_no_quadro(documento_cenario_real):
+def test_cenario_real_omite_os_demais_ciclos_do_quadro(documento_cenario_real):
     linhas = _quadro_1(documento_cenario_real)
     ciclos = [linha[0] for linha in linhas]
-    assert ciclos == list(CICLOS_REAJUSTE)
-    fora = [linha for linha in linhas if "Fora da apuracao" in linha[5]]
-    assert len(fora) == 3
+    assert ciclos == ["C1"]
+    assert not {"C2", "C3", "C4"}.intersection(ciclos)
