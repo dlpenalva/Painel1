@@ -38,6 +38,7 @@ class TestFluxoUploadDocs(unittest.TestCase):
     def test_troca_invalida_no_callback_antes_do_rerun(self):
         callback = PAGINA[PAGINA.index("def _invalidar_caso_antes_do_rerun_upload"):]
         uploader = callback[:callback.index("if arquivo is None:")]
+        self.assertIn("getattr(novo_arquivo, \"size\", 0) > TAMANHO_MAXIMO_ARQUIVO", callback)
         self.assertIn("assinatura_conteudo_upload(novo_arquivo.getvalue())", callback)
         self.assertIn(
             "invalidar_estado_caso(st.session_state, nova_assinatura)", callback

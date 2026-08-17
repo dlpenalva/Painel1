@@ -22,6 +22,8 @@ from typing import Any
 
 from openpyxl import load_workbook
 
+from _seguranca_xlsx import ErroSegurancaXlsx, garantir_xlsx_validado
+
 from _masterfile_config_v10 import (
     ABAS_OBRIGATORIAS_V10,
     ABA_HISTORICO_VU,
@@ -3429,10 +3431,15 @@ def ler_masterfile_v10(
     }
 
     try:
+        if isinstance(origem, (bytes, bytearray, memoryview)):
+            origem = garantir_xlsx_validado(origem)
         fonte = BytesIO(origem) if isinstance(origem, (bytes, bytearray)) else origem
         wb = load_workbook(fonte, data_only=True)
-    except Exception as exc:
-        res["erro"] = f"Nao foi possivel abrir o arquivo: {exc}"
+    except ErroSegurancaXlsx as exc:
+        res["erro"] = str(exc)
+        return res
+    except Exception:
+        res["erro"] = "O arquivo enviado não é um XLSX válido ou está corrompido."
         return res
 
     res["versao_detectada"] = _detectar_versao(wb)

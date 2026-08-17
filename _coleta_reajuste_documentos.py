@@ -18,6 +18,11 @@ from _coleta_reajuste import ler_coleta_reajuste
 from _leitor_masterfile_v10 import ler_masterfile_v10
 from _politica_entrega_segura import avaliar_entrega_segura
 from _reconciliacao_xls_python import campos_nao_confiaveis_para_documentos
+from _seguranca_xlsx import (
+    ErroSegurancaXlsx,
+    XlsxInvalidoError,
+    garantir_xlsx_validado,
+)
 
 
 def _numero(valor: Any, padrao: float = 0.0) -> float:
@@ -101,6 +106,7 @@ def adaptar_coleta_reajuste_para_documentos(
 ) -> dict[str, Any]:
     """Monta o contrato documental, preferindo os cálculos do leitor Python."""
 
+    conteudo = garantir_xlsx_validado(conteudo)
     diagnostico = diagnostico or ler_coleta_reajuste(conteudo)
     if not diagnostico.get("valido"):
         raise ValueError("A coleta possui pendências estruturais e não pode liberar documentos.")
@@ -517,6 +523,7 @@ def aplicar_bloqueio_documental(capacidades: dict[str, Any], bloqueios: list[str
 
 def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], dict[str, Any]]:
     """Entry point único usado pelo upload real e pelos testes de integração."""
+    conteudo = garantir_xlsx_validado(conteudo)
     leitura = ler_masterfile_v10(conteudo, exigir_modelo_oficial=True)
     if not leitura.get("ok"):
         raise ValueError(leitura.get("erro") or "O Arquivo Coleta Oficial não pôde ser lido.")
@@ -526,11 +533,18 @@ def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], d
         pendencias = diagnostico.get("pendencias") or diagnostico.get("bloqueios_estruturais") or []
         raise ValueError("; ".join(str(item) for item in pendencias) or "A estrutura do Arquivo Coleta Oficial é inválida.")
 
-    resultado = adaptar_coleta_reajuste_para_documentos(
-        conteudo,
-        leitura=leitura,
-        diagnostico=diagnostico,
-    )
+    try:
+        resultado = adaptar_coleta_reajuste_para_documentos(
+            conteudo,
+            leitura=leitura,
+            diagnostico=diagnostico,
+        )
+    except ErroSegurancaXlsx:
+        raise
+    except Exception as exc:
+        raise XlsxInvalidoError(
+            "O arquivo enviado não é um XLSX válido ou está corrompido."
+        ) from exc
     reconciliacao = leitura.get("reconciliacao_xls_python") or {}
     politica = avaliar_entrega_segura(leitura)
     bloqueios = list(politica.get("bloqueios") or [])
