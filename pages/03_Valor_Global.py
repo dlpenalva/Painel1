@@ -20,6 +20,7 @@ from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
 from _estado_apuracao_upload import (
     apuracao_persistida_valida,
     assinatura_conteudo_upload,
+    id_apuracao_de_assinatura,
     invalidar_estado_caso,
 )
 from _seguranca_xlsx import (
@@ -5014,6 +5015,8 @@ else:
         st.session_state.pop("assinatura_processada_upload_docs", None)
         try:
             resultado_processado, diagnostico_processado = processar_coleta_oficial_runtime(conteudo_upload)
+            resultado_processado["assinatura_origem_xlsx"] = assinatura_upload
+            resultado_processado["id_apuracao"] = id_apuracao_de_assinatura(assinatura_upload)
             st.session_state["diagnostico_coleta_v2"] = diagnostico_processado
             st.session_state["resultado_valor_global"] = resultado_processado
             st.session_state["assinatura_processada_upload_docs"] = assinatura_upload
@@ -5057,6 +5060,8 @@ if resultado:
     resumo_ciclos.metric("Ciclos analisados", _ciclos_str)
     resumo_retro.metric("Retroativo reconhecido", _retro_str)
     resumo_acum.metric("Percentual acumulado", _acum_str)
+    if resultado.get("id_apuracao"):
+        st.caption(f"ID da apuração: {resultado['id_apuracao']}")
     # Etapa 26H (limpeza da interface): expander de cobertura temporal
     # confirmado na homologação e removido da tela; o diagnóstico permanece
     # em diagnostico_coleta["cobertura_temporal"] (camada sombra intacta).

@@ -257,6 +257,19 @@ def _configurar_documento() -> Document:
     return doc
 
 
+def _adicionar_id_apuracao_rodape(doc: Document, dados: dict) -> None:
+    """Registra a rastreabilidade sem interferir no corpo juridico do documento."""
+    id_apuracao = str(dados.get("id_apuracao") or "").strip()
+    if not id_apuracao:
+        return
+    paragrafo = doc.sections[0].footer.paragraphs[0]
+    paragrafo.alignment = WD_ALIGN_PARAGRAPH.RIGHT
+    run = paragrafo.add_run(f"ID da apuração: {id_apuracao}")
+    run.font.name = "Calibri"
+    run.font.size = Pt(8)
+    run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)
+
+
 def _adicionar_tabela(
     doc: Document,
     cabecalho: list[str],
@@ -372,6 +385,7 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
 
     return {
         "disponivel": True,
+        "id_apuracao": dados.get("id_apuracao"),
         "ciclos": ciclos,
         "ciclos_reajuste": ciclos_reajuste,
         "ciclos_computados": ciclos_computados,
@@ -597,6 +611,7 @@ def gerar_termo_apostila(
     _ta_secao5_aditivos(doc, dados)
     _ta_secoes_finais(doc, campos_manuais)
     _ta_assinaturas(doc, campos_manuais)
+    _adicionar_id_apuracao_rodape(doc, dados)
 
     buf = BytesIO()
     doc.save(buf)
@@ -1249,6 +1264,7 @@ def gerar_despacho_saneador(
     _ds_secao4_documentos(doc, dados, campos_manuais)
     _ds_secao5_pendencias(doc, dados, campos_manuais)
     _ds_secao6_conclusao(doc, dados, campos_manuais)
+    _adicionar_id_apuracao_rodape(doc, dados)
 
     buf = BytesIO()
     doc.save(buf)
