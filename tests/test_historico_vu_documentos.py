@@ -182,16 +182,15 @@ class TestDocumentoFinalEndToEnd(unittest.TestCase):
         self.assertNotIn("999,99", texto)
         self.assertNotIn("888,88", texto)
 
-    def test_saneador_final_contem_vu(self):
-        # Etapa 26D (revoga a decisao §7.13): o Saneador passa a conter o
-        # HISTORICO DOS VALORES UNITARIOS POR CICLO, com texto introdutorio
-        # vinculado a consolidacao dos valores apurados.
+    def test_saneador_final_nao_repete_historico_vu(self):
         docx_bytes = gerar_despacho_saneador(self._leitura_c2())
-        self._assert_documento(docx_bytes)
+        cab, linhas = self._tabela_vu(docx_bytes)
+        self.assertIsNone(cab)
+        self.assertIsNone(linhas)
         from io import BytesIO
         texto = chr(10).join(p.text for p in Document(BytesIO(docx_bytes)).paragraphs)
-        self.assertIn("histórico dos valores unitários dos itens", texto)
-        self.assertIn("HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO", texto)
+        self.assertNotIn("histórico dos valores unitários dos itens", texto)
+        self.assertNotIn("HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO", texto)
 
     def test_apostila_final_contem_vu(self):
         docx_bytes = gerar_termo_apostila(self._leitura_c2())
@@ -201,7 +200,7 @@ class TestDocumentoFinalEndToEnd(unittest.TestCase):
         self.assertIn("ficam consolidados conforme quadro abaixo", texto)
         self.assertIn("HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO", texto)
 
-    def test_ciclo_historico_computar_nao_aparece_nos_dois_documentos(self):
+    def test_ciclo_historico_permanece_na_apostila_mas_nao_no_saneador(self):
         # Etapa 26D secao 14: C1 fora da apuracao (COMPUTAR=Nao) CONTINUA no
         # quadro historico; colunas contiguas C0..C4 nos DOIS documentos.
         # Etapa 51D: o limite do quadro passou a ser o CICLO VIGENTE — o
@@ -221,14 +220,13 @@ class TestDocumentoFinalEndToEnd(unittest.TestCase):
                 reg["computar_nesta_apuracao"] = "Nao"
             elif nome in ("C2", "C3", "C4"):
                 reg["computar_nesta_apuracao"] = "Sim"
-        for gerador in (gerar_despacho_saneador, gerar_termo_apostila):
-            cab, _ = self._tabela_vu(gerador(leit))
-            self.assertIsNotNone(cab, gerador.__name__)
-            self.assertEqual(
-                cab,
-                ["Item", "VU_C0", "VU_C1", "VU_C2", "VU_C3", "VU_C4"],
-                gerador.__name__,
-            )
+        cab_saneador, _ = self._tabela_vu(gerar_despacho_saneador(leit))
+        self.assertIsNone(cab_saneador)
+        cab_apostila, _ = self._tabela_vu(gerar_termo_apostila(leit))
+        self.assertEqual(
+            cab_apostila,
+            ["Item", "VU_C0", "VU_C1", "VU_C2", "VU_C3", "VU_C4"],
+        )
 
 
 if __name__ == "__main__":

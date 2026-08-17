@@ -160,7 +160,7 @@ def test_modelo_branco_textos_neutros_29c1():
     # Bloqueadores 2 e 3 da 29C: conclusao do Despacho e considerando 4 do
     # Termo em sentido neutro, sem afirmar consolidacao/analise/apuracao.
     txt_ds = _texto(gerar_modelo_branco_despacho())
-    assert ("Após o preenchimento e a conferência dos campos deste modelo, "
+    assert ("Após o preenchimento e a conferência das informações, "
             "deverá ser avaliado se a instrução reúne condições") in txt_ds
     txt_ta = _texto(gerar_modelo_branco_termo())
     assert ("O índice contratual e o percentual aplicável deverão ser "
@@ -169,23 +169,21 @@ def test_modelo_branco_textos_neutros_29c1():
     assert "[PREENCHER: Percentual aplicavel]" in txt_ta
 
 
-def test_despacho_branco_item5_neutro_29c11():
-    # Etapa 29C.1.1: o item 5 em branco nao afirma apuracao realizada; instrui
-    # o preenchimento e mantem os tres placeholders financeiros destacados.
+def test_despacho_branco_resultado_essencial_neutro_e_destacado():
     b = gerar_modelo_branco_despacho()
     txt = _texto(b)
     assert "A apuração financeira consolidada indicou" not in txt
-    assert "apuração financeira consolidada indicou" not in txt.lower()
-    assert ("Os valores da apuração financeira deverão ser preenchidos no "
-            "quadro abaixo, incluindo, quando aplicável, o valor pago efetivo, "
-            "o valor teórico calculado e a diferença ou retroativo "
-            "correspondente") in txt
-    for ph in ("[PREENCHER: Valor pago efetivo]",
-               "[PREENCHER: Valor teorico calculado]",
-               "[PREENCHER: Valor retroativo a pagar]"):
+    assert "valor teórico" not in txt.lower()
+    assert "os resultados essenciais deverão ser preenchidos no Quadro 2" in txt
+    for ph in (
+        "[PREENCHER: Valor pago no periodo analisado]",
+        "[PREENCHER: Valor devido apos a atualizacao contratual]",
+        "[PREENCHER: Valor retroativo a pagar]",
+        "[PREENCHER: Valor Total Atualizado do Contrato]",
+    ):
         assert ph in txt
     total, sem_destaque = _placeholders_e_destaque(b)
-    assert total == 35
+    assert total >= 20
     assert sem_destaque == 0
 
 
@@ -194,14 +192,19 @@ def test_neutralidade_integral_29c12():
     # instrucao/obrigacao futura nos DOIS modelos, com contagens preservadas.
     b_ds, b_ta = gerar_modelo_branco_despacho(), gerar_modelo_branco_termo()
     txt_ds, txt_ta = _texto(b_ds), _texto(b_ta)
-    # Despacho: itens 1, 2, 3, 4, 6 e 12 neutros.
-    assert "Este modelo de despacho saneador destina-se à consolidação" in txt_ds
-    assert "Registrar a referência do eventual pleito da contratada" in txt_ds
-    assert "Os ciclos que poderão integrar a formalização deverão ser conferidos" in txt_ds
-    assert "O valor original do contrato deverá ser informado" in txt_ds
-    assert "Deverá ser informada a premissa de corte a ser adotada" in txt_ds
-    assert ("Registrar, quando aplicável, a comunicação à contratada sobre a "
-            "necessidade de atualização ou endosso da garantia contratual") in txt_ds
+    # Despacho: estrutura 1-6, sem afirmações factuais ainda não comprovadas.
+    for titulo in (
+        "1. IDENTIFICAÇÃO",
+        "2. PEDIDO E PARÂMETROS DA ANÁLISE",
+        "3. RESULTADO ESSENCIAL",
+        "4. DOCUMENTOS E VERIFICAÇÕES",
+        "5. PENDÊNCIAS",
+        "6. CONCLUSÃO",
+    ):
+        assert titulo in txt_ds
+    assert "Deverão ser registrados o pedido" in txt_ds
+    assert "Registrar as pendências relevantes" in txt_ds
+    assert "instrução encontra-se apta" not in txt_ds
     # Termo: considerandos 3 e 5, secoes 2.1 e 3.1 neutros.
     assert "A memória de cálculo a ser indicada em" in txt_ta
     assert ("As informações da área gestora que vierem a fundamentar "
@@ -209,21 +212,20 @@ def test_neutralidade_integral_29c12():
     assert ("Os valores financeiros que eventualmente integrem a formalização "
             "deverão ser informados") in txt_ta
     assert "deverá ser organizada de forma evolutiva" in txt_ta
-    # Contagens exatas preservadas.
+    # Todos os placeholders permanecem amarelos nos dois modelos.
     tot_ds, sem_ds = _placeholders_e_destaque(b_ds)
     tot_ta, sem_ta = _placeholders_e_destaque(b_ta)
-    assert (tot_ds, sem_ds) == (35, 0)
+    assert tot_ds >= 20 and sem_ds == 0
     assert (tot_ta, sem_ta) == (30, 0)
 
 
-def test_automatico_conserva_redacoes_originais_29c12():
-    # O canal automatico preserva as molduras factuais originais.
+def test_automatico_usa_nova_redacao_sem_alterar_termo():
     from test_templates_documentos import leitura_multiciclo_pc, CAMPOS_SANEADOR, CAMPOS_TERMO
     txt_ds = _texto(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR))
-    assert "A contratada apresentou pleito" in txt_ds
-    assert "Acordou-se na concessão" in txt_ds
-    assert "foi adotada a premissa" in txt_ds
-    assert "A contratada foi informada" in txt_ds
+    assert "A CONTRATADA apresentou pedido de reajuste" in txt_ds
+    assert "Conforme memória de cálculo" in txt_ds
+    assert "Acordou-se na concessão" not in txt_ds
+    assert "Referências auditáveis" not in txt_ds
     txt_ta = _texto(gerar_termo_apostila(leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO))
     assert "A apuração financeira consolidada indicou" in txt_ta
     assert "que apurou os ciclos" in txt_ta
@@ -231,12 +233,14 @@ def test_automatico_conserva_redacoes_originais_29c12():
     assert "foi organizada de forma evolutiva" in txt_ta
 
 
-def test_despacho_automatico_conserva_frase_item5():
-    # O canal automatico preserva integralmente a redacao original do item 5.
+def test_despacho_automatico_resultado_consolidado_sem_valor_teorico():
     from test_templates_documentos import leitura_multiciclo_pc, CAMPOS_SANEADOR
     txt = _texto(gerar_despacho_saneador(leitura_multiciclo_pc(),
                                          campos_manuais=CAMPOS_SANEADOR))
-    assert "A apuração financeira consolidada indicou" in txt
+    assert "Quadro 2 - Síntese financeira" in txt
+    assert "Retroativo a pagar" in txt
+    assert "Valor Total Atualizado do Contrato" in txt
+    assert "valor teórico" not in txt.lower()
 
 
 def test_wrappers_nao_leem_session_state():

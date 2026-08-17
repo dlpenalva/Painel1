@@ -159,21 +159,20 @@ def test_campos_manuais_permanecem_como_marcador(
     assert "[PREENCHER: Numero do processo de instrucao]" in texto_apostila
 
 
-def test_posicao_atual_ausente_nao_e_inventada(texto_saneador: str) -> None:
-    assert "Posição atual não informada" in texto_saneador
+def test_posicao_atual_nao_e_repetida_no_saneador_enxuto(
+    texto_saneador: str,
+) -> None:
+    assert "Posição atual" not in texto_saneador
 
 
 # --- classificacao juridica das referencias do VTA ---
 
-def test_classificacao_das_tres_referencias_do_vta(texto_saneador: str) -> None:
-    texto = texto_saneador
-    assert "Valor Total Atualizado (cadeia homologada) | Não informada | OFICIAL" in texto
-    assert "VTA pela posição atual do contrato | Não informada | REFERÊNCIA AUDITÁVEL" in texto
-    assert (
-        "VTA pela última posição de abertura disponível | Não informada | REFERÊNCIA AUDITÁVEL"
-        in texto
-    )
-    assert "Contrato original integralmente reajustado | Não informada | COMPARATIVO" in texto
+def test_referencias_alternativas_do_vta_nao_sao_renderizadas_no_saneador(
+    texto_saneador: str,
+) -> None:
+    for termo in ("REFERÊNCIA AUDITÁVEL", "COMPARATIVO", "cadeia homologada"):
+        assert termo not in texto_saneador
+    assert "Valor Total Atualizado do Contrato" in texto_saneador
 
 
 def test_documentos_nao_expoem_jargao_tecnico(

@@ -17,6 +17,7 @@ Interface publica:
 """
 from __future__ import annotations
 
+import re
 from io import BytesIO
 from typing import Any
 
@@ -86,16 +87,22 @@ def _indice_amigavel_doc(indice: Any) -> str | None:
 
 CAMPOS_MANUAIS_DESPACHO = [
     ("contrato", "Numero do contrato", "despacho"),
+    ("empresa_contratada", "Nome da empresa contratada", "despacho"),
+    ("objeto_contrato", "Objeto resumido do contrato", "despacho"),
+    ("vigencia_ate", "Data final da vigencia contratual", "despacho"),
+    ("tipo_atualizacao", "Tipo da atualizacao contratual", "despacho"),
     ("processo_pleito", "Referencias do pleito da contratada", "despacho"),
-    ("data_proposta", "Data da proposta (para verificacao da anualidade)", "despacho"),
     ("referencia_analise", "Referencia onde o resultado da analise consta", "despacho"),
-    ("data_corte_descricao", "Descricao da data/posicao de corte adotada", "despacho"),
+    ("memoria_calculo_ref", "Referencia da memoria de calculo", "despacho"),
     ("adequacao_orcamentaria_ref", "Referencia da adequacao orcamentaria", "despacho"),
     ("adequacao_orcamentaria_valor", "Valor da adequacao orcamentaria", "despacho"),
     ("regularidade_ref", "Referencia das certidoes de regularidade", "despacho"),
+    ("regularidade_situacao", "Situacao da regularidade da contratada", "despacho"),
     ("concordancia_ref", "Referencia da manifestacao de concordancia da contratada", "despacho"),
+    ("concordancia_situacao", "Situacao da concordancia da contratada", "despacho"),
+    ("garantia_situacao", "Situacao da garantia contratual", "despacho"),
     ("docs_desatualizados", "Lista de documentos a desconsiderar (opcional)", "despacho"),
-    ("valor_original_contrato", "Valor original do contrato", "despacho"),
+    ("pendencias_complemento", "Complemento manual das pendencias (opcional)", "despacho"),
 ]
 
 CAMPOS_MANUAIS_TERMO = [
@@ -124,7 +131,8 @@ TODOS_CAMPOS_MANUAIS = list(
 
 # Campos que sao opcionais (nao entram como pendencia critica no diagnostico).
 _CAMPOS_OPCIONAIS = {
-    "docs_desatualizados", "valor_pago_efetivo", "valor_teorico",
+    "docs_desatualizados", "pendencias_complemento", "valor_pago_efetivo",
+    "valor_teorico",
 }
 
 
@@ -256,6 +264,7 @@ def _adicionar_tabela(
     *,
     repetir_cabecalho: bool = True,
     destacar_placeholders: bool = False,
+    destacar_placeholders_embutidos: bool = False,
 ) -> Any:
     n_cols = len(cabecalho)
     tabela = doc.add_table(rows=1, cols=n_cols)
@@ -297,13 +306,21 @@ def _adicionar_tabela(
                 run_previa.font.size = Pt(10)
                 _set_highlight(run_previa, COR_HIGHLIGHT_PREVIA)
                 continue
-            run = paragrafo_celula.add_run(texto)
-            run.font.name = "Calibri"
-            run.font.size = Pt(10)
-            if destacar_placeholders and texto.startswith("[PREENCHER:"):
-                _set_highlight(run, "yellow")
-            elif negativo and "R$" in str(celula_texto):
-                run.font.color.rgb = COR_NEGATIVO
+            partes = (
+                re.split(r"(\[PREENCHER:[^\]]+\])", texto)
+                if destacar_placeholders_embutidos and "[PREENCHER:" in texto
+                else [texto]
+            )
+            for parte in partes:
+                if not parte:
+                    continue
+                run = paragrafo_celula.add_run(parte)
+                run.font.name = "Calibri"
+                run.font.size = Pt(10)
+                if destacar_placeholders and parte.startswith("[PREENCHER:"):
+                    _set_highlight(run, "yellow")
+                elif negativo and "R$" in str(celula_texto):
+                    run.font.color.rgb = COR_NEGATIVO
     return tabela
 
 
@@ -314,7 +331,11 @@ def _adicionar_tabela(
 def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
     dados = montar_dados_sumario_executivo(leitura_ou_objeto, identificacao)
     if not dados.get("disponivel"):
-        return {"disponivel": False}
+        return {
+            "disponivel": False,
+            "identificacao_externa": dict(identificacao or {}),
+            "pendencias": {},
+        }
 
     ciclos = dados.get("ciclos") or []
     ciclos_reajuste = [c for c in ciclos if not c.get("eh_base")]
@@ -368,6 +389,8 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
         "financeiro": financeiro,
         "sintese": sintese,
         "identificacao": dados.get("identificacao") or {},
+        "identificacao_externa": dict(identificacao or {}),
+        "pendencias": objeto_proc.get("pendencias") or {},
         "historico_vu": dados.get("historico_vu") or {},
         "referencias_vta": (
             (leitura_ou_objeto or {}).get("referencias_vta")
@@ -1209,11 +1232,9 @@ def gerar_despacho_saneador(
 ) -> bytes:
     """Gera o Despacho Saneador em DOCX e retorna os bytes.
 
-    Etapa 29B: `modo_modelo_em_branco=True` produz um MODELO EM BRANCO — mesma
-    estrutura, mas sem afirmar fatos nao comprovados (concordancia, adequacao,
-    certidoes, ausencia de aditivos, quantidade de ciclos, regularidade); os
-    campos variaveis viram placeholders [PREENCHER: ...] destacados. Com o
-    padrao False o documento automatico permanece identico ao main.
+    `modo_modelo_em_branco=True` reutiliza a mesma estrutura enxuta sem afirmar
+    fatos não comprovados. Nos dois modos, o gerador apenas apresenta dados já
+    consolidados; não recalcula valores nem cria classificação processual.
     """
     if campos_manuais is None:
         campos_manuais = {}
@@ -1221,31 +1242,457 @@ def gerar_despacho_saneador(
     dados["_modo_branco"] = bool(modo_modelo_em_branco)
     doc = _configurar_documento()
 
-    _ds_assunto(doc, campos_manuais)
-    _ds_par1(doc, dados)
-    _ds_par2(doc, dados, campos_manuais)
-    _ds_par3(doc, dados, campos_manuais)
-    _ds_par4_quadro1(doc, dados, campos_manuais)
-    _ds_par5_quadro2(doc, dados)
-    _ds_par6_quadro3(doc, dados, campos_manuais)
-    _ds_par7_composicao(doc, dados)
-    _bloco_referencias_vta(
-        doc, dados,
-        titulo="7-A. Referências auditáveis do Valor Total Atualizado",
-    )
-    _ds_bloco_historico_vu(doc, dados)
-    _ds_par8_aditivos(doc, dados)
-    _ds_par9_adequacao(doc, dados, campos_manuais)
-    _ds_par10_regularidade(doc, dados, campos_manuais)
-    _ds_par11_concordancia(doc, dados, campos_manuais)
-    _ds_par12_garantia(doc, dados)
-    _ds_par13_docs(doc, campos_manuais)
-    _ds_conclusao(doc, dados, campos_manuais)
-    _ds_quadro4(doc, dados, campos_manuais)
+    _ds_assunto_enxuto(doc, dados, campos_manuais)
+    _ds_secao1_identificacao(doc, dados, campos_manuais)
+    _ds_secao2_pedido_parametros(doc, dados, campos_manuais)
+    _ds_secao3_resultado(doc, dados, campos_manuais)
+    _ds_secao4_documentos(doc, dados, campos_manuais)
+    _ds_secao5_pendencias(doc, dados, campos_manuais)
+    _ds_secao6_conclusao(doc, dados, campos_manuais)
 
     buf = BytesIO()
     doc.save(buf)
     return buf.getvalue()
+
+
+def _ds_valor_identificacao(dados: dict, cm: dict, chave_manual: str,
+                            *aliases: str) -> Any:
+    externa = dados.get("identificacao_externa") or {}
+    for alias in aliases:
+        valor = externa.get(alias)
+        if valor is not None and str(valor).strip():
+            return valor
+    return _campo(cm, chave_manual)
+
+
+def _ds_texto_ou_tag(valor: Any, descricao: str) -> str:
+    if valor is None or not str(valor).strip() or str(valor).strip() == NAO_INFORMADO:
+        return PREENCHER_TAG.format(descricao)
+    if hasattr(valor, "strftime"):
+        try:
+            return valor.strftime("%d/%m/%Y")
+        except (TypeError, ValueError):
+            pass
+    return remover_emojis_leve(valor).strip()
+
+
+def _ds_tipo_atualizacao(dados: dict, cm: dict) -> str | None:
+    valor = _ds_valor_identificacao(
+        dados, cm, "tipo_atualizacao",
+        "tipo_atualizacao", "tipo_instrumento", "tipo_analise",
+    )
+    if valor is not None and str(valor).strip():
+        return remover_emojis_leve(valor).strip()
+    if dados.get("_modo_branco"):
+        return None
+    return "atualização contratual"
+
+
+def _ds_assunto_enxuto(doc: Document, dados: dict, cm: dict) -> None:
+    _titulo_secao(doc, "DESPACHO SANEADOR", tamanho=12,
+                  alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    doc.add_paragraph()
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _adicionar_run(p, "Assunto: ", negrito=True)
+    _adicionar_run(p, "Saneamento para formalização de ")
+    tipo = _ds_tipo_atualizacao(dados, cm)
+    if tipo:
+        _adicionar_run(p, tipo)
+    else:
+        _run_campo_manual(p, "Tipo ou instrumento")
+    _adicionar_run(p, " — ")
+    contrato = _ds_valor_identificacao(
+        dados, cm, "contrato", "contrato", "numero_contrato"
+    )
+    _texto_ou_marcador(p, contrato, "Numero do contrato")
+    _adicionar_run(p, ".")
+
+    p_ref = doc.add_paragraph()
+    p_ref.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _adicionar_run(p_ref, "Referência(s): ", negrito=True)
+    _texto_ou_marcador(
+        p_ref, _campo(cm, "processo_pleito"), "Referencia do pedido"
+    )
+    doc.add_paragraph()
+
+
+def _ds_titulo(doc: Document, numero: int, texto: str) -> Any:
+    p = _titulo_secao(doc, f"{numero}. {texto.upper()}", tamanho=11)
+    p.paragraph_format.keep_with_next = True
+    return p
+
+
+def _ds_titulo_quadro(doc: Document, texto: str) -> None:
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.paragraph_format.keep_with_next = True
+    _adicionar_run(p, texto, negrito=True, tamanho=10)
+
+
+def _ds_secao1_identificacao(doc: Document, dados: dict, cm: dict) -> None:
+    _ds_titulo(doc, 1, "Identificação")
+    contrato = _ds_valor_identificacao(
+        dados, cm, "contrato", "contrato", "numero_contrato"
+    )
+    contratada = _ds_valor_identificacao(
+        dados, cm, "empresa_contratada",
+        "empresa_contratada", "contratada",
+    )
+    objeto = _ds_valor_identificacao(
+        dados, cm, "objeto_contrato", "objeto_contrato", "objeto"
+    )
+    vigencia = _ds_valor_identificacao(
+        dados, cm, "vigencia_ate",
+        "vigencia_ate", "fim_vigencia", "data_fim_vigencia",
+    )
+
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    _adicionar_run(p, "Realiza-se o saneamento processual do Contrato nº ")
+    _texto_ou_marcador(p, contrato, "Numero do contrato")
+    _adicionar_run(p, ", celebrado com ")
+    _texto_ou_marcador(p, contratada, "Nome da empresa contratada")
+    _adicionar_run(p, ", cujo objeto é ")
+    _texto_ou_marcador(p, objeto, "Objeto resumido do contrato")
+    _adicionar_run(p, ", com vigência até ")
+    if vigencia is not None:
+        _adicionar_run(p, _ds_texto_ou_tag(vigencia, "Data final da vigencia contratual"))
+    else:
+        _run_campo_manual(p, "Data final da vigencia contratual")
+    _adicionar_run(p, ".")
+
+
+def _ds_ciclos_relevantes(dados: dict) -> list[dict]:
+    return list(dados.get("ciclos_computados") or [])
+
+
+def _ds_secao2_pedido_parametros(doc: Document, dados: dict, cm: dict) -> None:
+    _ds_titulo(doc, 2, "Pedido e parâmetros da análise")
+    branco = bool(dados.get("_modo_branco"))
+    ciclos = _ds_ciclos_relevantes(dados)
+    tipo = _ds_tipo_atualizacao(dados, cm)
+
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    if branco:
+        _adicionar_run(p, "Deverão ser registrados o pedido de ")
+        _run_campo_manual(p, "Tipo da atualizacao contratual")
+        _adicionar_run(
+            p,
+            ", a data correspondente e a respectiva referência documental. "
+            "Os parâmetros da análise deverão constar do Quadro 1.",
+        )
+    else:
+        _adicionar_run(p, "A CONTRATADA apresentou pedido de ")
+        _adicionar_run(p, tipo or "atualização contratual")
+        if len(ciclos) == 1:
+            _adicionar_run(p, " em ")
+            pedido = ciclos[0].get("data_pedido")
+            if pedido and pedido != NAO_INFORMADO:
+                _adicionar_run(p, pedido)
+            else:
+                _run_campo_manual(p, "Data do pedido")
+        elif ciclos:
+            _adicionar_run(p, " nas datas indicadas no Quadro 1")
+        else:
+            _adicionar_run(p, " em ")
+            _run_campo_manual(p, "Data do pedido")
+        _adicionar_run(p, ", conforme ")
+        _texto_ou_marcador(p, _campo(cm, "processo_pleito"), "Referencia do pedido")
+        if not ciclos:
+            _adicionar_run(
+                p,
+                ". Os parâmetros de ciclo não foram disponibilizados pela fonte "
+                "canônica; o Quadro 1 deve ser complementado.",
+            )
+        elif len(ciclos) == 1:
+            _adicionar_run(p, ". A análise considerou ")
+            ciclo = ciclos[0]
+            _adicionar_run(p, "a data-base ")
+            _adicionar_run(p, _ds_texto_ou_tag(ciclo.get("data_inicio"), "Data-base"))
+            _adicionar_run(p, ", a referência econômica ")
+            indice = _indice_doc(dados)
+            if indice:
+                _adicionar_run(p, indice)
+            else:
+                _run_campo_manual(p, "Indice ou referencia economica")
+            _adicionar_run(p, " e classificou o pedido como ")
+            situacao = ciclo.get("situacao")
+            if situacao and situacao != NAO_INFORMADO:
+                _adicionar_run(p, remover_emojis_leve(situacao))
+            else:
+                _run_campo_manual(p, "Situacao do pedido")
+            _adicionar_run(p, ", com efeitos financeiros ")
+            efeito = _efeito_financeiro_ciclo(ciclo)
+            if efeito != NAO_INFORMADO:
+                _adicionar_run(p, efeito.lower())
+            else:
+                _run_campo_manual(p, "Data ou competencia do efeito financeiro")
+            _adicionar_run(p, ".")
+        else:
+            _adicionar_run(p, ". A análise considerou ")
+            _adicionar_run(
+                p,
+                "as datas-base, situações e efeitos financeiros indicados no "
+                "Quadro 1, com referência econômica ",
+            )
+            indice = _indice_doc(dados)
+            if indice:
+                _adicionar_run(p, indice)
+            else:
+                _run_campo_manual(p, "Indice ou referencia economica")
+            _adicionar_run(p, ".")
+
+    _ds_titulo_quadro(doc, "Quadro 1 - Síntese da análise")
+    cabecalho = [
+        "Ciclo", "Data-base", "Data do pedido", "Situação",
+        "Efeito financeiro", "Percentual",
+    ]
+    if branco:
+        linhas = [[PREENCHER_TAG.format(rotulo) for rotulo in cabecalho]]
+    else:
+        linhas = []
+        for ciclo in ciclos:
+            pct = ciclo.get("percentual_reajuste")
+            linhas.append([
+                _ds_texto_ou_tag(ciclo.get("ciclo"), "Ciclo"),
+                _ds_texto_ou_tag(ciclo.get("data_inicio"), "Data-base"),
+                _ds_texto_ou_tag(ciclo.get("data_pedido"), "Data do pedido"),
+                _ds_texto_ou_tag(
+                    remover_emojis_leve(ciclo.get("situacao") or ""), "Situacao"
+                ),
+                _ds_texto_ou_tag(
+                    _efeito_financeiro_ciclo(ciclo), "Efeito financeiro"
+                ),
+                _fmt_pct_doc(pct) if pct is not None
+                else PREENCHER_TAG.format("Percentual"),
+            ])
+        if not linhas:
+            linhas = [[PREENCHER_TAG.format(rotulo) for rotulo in cabecalho]]
+    _adicionar_tabela(
+        doc, cabecalho, linhas,
+        destacar_placeholders=True,
+        destacar_placeholders_embutidos=True,
+    )
+    doc.add_paragraph()
+
+
+def _ds_total_presente(dados: dict, chave: str) -> float | None:
+    linhas = _linhas_financeiro(dados)
+    if not linhas:
+        return None
+    valores = []
+    for linha in linhas:
+        valor = _num_ou_none(linha.get(chave))
+        if valor is None:
+            return None
+        valores.append(valor)
+    return round(sum(valores), 2)
+
+
+def _ds_secao3_resultado(doc: Document, dados: dict, cm: dict) -> None:
+    _ds_titulo(doc, 3, "Resultado essencial")
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    _adicionar_run(p, "Conforme memória de cálculo ")
+    memoria_ref = _campo(cm, "memoria_calculo_ref") or _campo(cm, "referencia_analise")
+    if dados.get("_modo_branco"):
+        _run_campo_manual(p, "Referencia da memoria de calculo")
+        _adicionar_run(
+            p, ", os resultados essenciais deverão ser preenchidos no Quadro 2."
+        )
+    else:
+        _texto_ou_marcador(p, memoria_ref, "Referencia da memoria de calculo")
+        _adicionar_run(p, ", a apuração apresentou os resultados abaixo.")
+
+    tipo = (_ds_tipo_atualizacao(dados, cm) or "").strip().lower()
+    rotulo_devido = (
+        "Valor devido após o reajuste"
+        if tipo == "reajuste"
+        else "Valor devido após a atualização contratual"
+    )
+    pago = _ds_total_presente(dados, "valor_pago")
+    devido = _ds_total_presente(dados, "valor_atualizado")
+    retro = _retroativo_total(dados)
+    vta = _vta_texto_doc(dados)
+    linhas = [
+        [
+            "Valor pago no período analisado",
+            formatar_moeda(pago) if pago is not None
+            else PREENCHER_TAG.format("Valor pago no periodo analisado"),
+        ],
+        [
+            rotulo_devido,
+            formatar_moeda(devido) if devido is not None
+            else PREENCHER_TAG.format("Valor devido apos a atualizacao contratual"),
+        ],
+        [
+            "Retroativo a pagar",
+            formatar_moeda(retro) if retro is not None
+            else PREENCHER_TAG.format("Valor retroativo a pagar"),
+        ],
+        [
+            "Valor Total Atualizado do Contrato",
+            vta or PREENCHER_TAG.format("Valor Total Atualizado do Contrato"),
+        ],
+    ]
+    _ds_titulo_quadro(doc, "Quadro 2 - Síntese financeira")
+    _adicionar_tabela(
+        doc, ["Resultado", "Valor"], linhas,
+        destacar_placeholders=True,
+        destacar_placeholders_embutidos=True,
+    )
+    doc.add_paragraph()
+
+
+def _ds_juntar_campos(*valores: tuple[Any, str]) -> str:
+    partes = []
+    for valor, descricao in valores:
+        if valor is None or not str(valor).strip():
+            partes.append(PREENCHER_TAG.format(descricao))
+        elif isinstance(valor, (int, float)) and not isinstance(valor, bool):
+            partes.append(formatar_moeda(valor))
+        else:
+            partes.append(remover_emojis_leve(valor).strip())
+    return " / ".join(partes)
+
+
+def _ds_secao4_documentos(doc: Document, dados: dict, cm: dict) -> None:
+    _ds_titulo(doc, 4, "Documentos e verificações")
+    memoria_ref = _campo(cm, "memoria_calculo_ref") or _campo(cm, "referencia_analise")
+    linhas = [
+        ["Memória de cálculo", _ds_juntar_campos(
+            (memoria_ref, "Referencia da memoria de calculo"),
+        )],
+        ["Adequação orçamentária", _ds_juntar_campos(
+            (_campo(cm, "adequacao_orcamentaria_ref"),
+             "Referencia da adequacao orcamentaria"),
+            (_campo(cm, "adequacao_orcamentaria_valor"),
+             "Valor ou situacao da adequacao orcamentaria"),
+        )],
+        ["Regularidade da contratada", _ds_juntar_campos(
+            (_campo(cm, "regularidade_ref"),
+             "Referencia da regularidade da contratada"),
+            (_campo(cm, "regularidade_situacao"),
+             "Situacao da regularidade da contratada"),
+        )],
+        ["Concordância da contratada", _ds_juntar_campos(
+            (_campo(cm, "concordancia_ref"),
+             "Referencia da concordancia da contratada"),
+            (_campo(cm, "concordancia_situacao"),
+             "Situacao da concordancia da contratada"),
+        )],
+        ["Garantia contratual", _ds_juntar_campos(
+            (_campo(cm, "garantia_situacao"),
+             "Situacao da garantia contratual"),
+        )],
+    ]
+    _ds_titulo_quadro(doc, "Quadro 3 - Documentos e verificações")
+    _adicionar_tabela(
+        doc, ["Documento ou verificação", "Referência ou situação"], linhas,
+        destacar_placeholders=True,
+        destacar_placeholders_embutidos=True,
+    )
+    doc.add_paragraph()
+
+
+def _ds_pendencias_tecnicas(dados: dict, cm: dict) -> list[str]:
+    resultado: list[str] = []
+    pendencias = dados.get("pendencias") or {}
+    for chave in ("bloqueantes", "advertencias"):
+        for item in pendencias.get(chave) or []:
+            texto = remover_emojis_leve(item).strip()
+            if texto and texto not in resultado:
+                resultado.append(texto)
+    docs = _campo(cm, "docs_desatualizados")
+    if docs:
+        itens = docs if isinstance(docs, (list, tuple)) else [docs]
+        texto = "Documentos desatualizados: " + ", ".join(str(item) for item in itens)
+        resultado.append(remover_emojis_leve(texto))
+    complemento = _campo(cm, "pendencias_complemento")
+    if complemento:
+        resultado.append(remover_emojis_leve(complemento).strip())
+    if cm.get("pendencia_critica") and not resultado:
+        resultado.append("Pendência impeditiva indicada para complementação.")
+    return resultado
+
+
+def _ds_secao5_pendencias(doc: Document, dados: dict, cm: dict) -> None:
+    _ds_titulo(doc, 5, "Pendências")
+    pendencias = _ds_pendencias_tecnicas(dados, cm)
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    if dados.get("_modo_branco"):
+        _adicionar_run(p, "Registrar as pendências relevantes para o prosseguimento: ")
+        _run_campo_manual(p, "Pendencias relevantes")
+        _adicionar_run(p, ".")
+    elif pendencias:
+        _adicionar_run(p, "Pendências: " + "; ".join(pendencias) + ".")
+    else:
+        _adicionar_run(p, "Não foram identificadas pendências técnicas na apuração.")
+    if _ds_ha_pendencia_documental(dados, cm):
+        _adicionar_run(
+            p,
+            " Os campos documentais destacados permanecem sujeitos a "
+            "preenchimento e conferência.",
+        )
+
+
+def _ds_ha_pendencia_documental(dados: dict, cm: dict) -> bool:
+    if dados.get("_modo_branco"):
+        return True
+    memoria_ref = _campo(cm, "memoria_calculo_ref") or _campo(cm, "referencia_analise")
+    obrigatorios = (
+        memoria_ref,
+        _campo(cm, "adequacao_orcamentaria_ref"),
+        _campo(cm, "adequacao_orcamentaria_valor"),
+        _campo(cm, "regularidade_ref"),
+        _campo(cm, "regularidade_situacao"),
+        _campo(cm, "concordancia_ref"),
+        _campo(cm, "concordancia_situacao"),
+        _campo(cm, "garantia_situacao"),
+    )
+    return any(
+        valor is None or (isinstance(valor, str) and not valor.strip())
+        for valor in obrigatorios
+    )
+
+
+def _ds_tem_pendencia_impeditiva(dados: dict, cm: dict) -> bool:
+    pendencias = dados.get("pendencias") or {}
+    if pendencias.get("bloqueantes"):
+        return True
+    flag = cm.get("pendencia_critica")
+    if isinstance(flag, str):
+        return flag.strip().lower() in ("sim", "true", "1", "critica", "critico")
+    return bool(flag)
+
+
+def _ds_secao6_conclusao(doc: Document, dados: dict, cm: dict) -> None:
+    _ds_titulo(doc, 6, "Conclusão")
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    if dados.get("_modo_branco"):
+        _adicionar_run(
+            p,
+            "Após o preenchimento e a conferência das informações, deverá ser "
+            "avaliado se a instrução reúne condições para prosseguir à "
+            "formalização.",
+        )
+    elif _ds_tem_pendencia_impeditiva(dados, cm):
+        _adicionar_run(
+            p,
+            "A instrução deverá ser complementada quanto às pendências acima "
+            "antes do prosseguimento para formalização.",
+        )
+    else:
+        _adicionar_run(
+            p,
+            "Após a complementação e conferência das informações documentais "
+            "indicadas, deverá ser avaliado o prosseguimento da instrução para "
+            "formalização.",
+        )
 
 
 def _ds_assunto(doc: Document, cm: dict) -> None:

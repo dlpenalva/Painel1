@@ -99,27 +99,20 @@ def test_leitor_referencias_le_da_tabela1_sintetica():
 # --------------------------------------------------------------------------- #
 # 2. Leitura Python -> documento (DOCX): classificacao e valores               #
 # --------------------------------------------------------------------------- #
-def test_saneador_referencias_com_classificacao():
+def test_saneador_nao_repete_referencias_alternativas_do_vta():
     leit = leitura_simples_financeiro()
     leit["referencias_vta"] = dict(REF_FIXTURE)
     texto = _texto_docx(gerar_despacho_saneador(leit))
-    assert "OFICIAL" in texto
-    assert "REFERÊNCIA AUDITÁVEL" in texto
-    assert "COMPARATIVO" in texto
-    assert "posição atual do contrato" in texto
-    assert "última posição de abertura" in texto
-    assert "integralmente reajustado" in texto
-    assert "127.975.842,65" in texto
-    assert "137.375.560,29" in texto
-    assert "145.000.000,00" in texto
-    assert "15/06/2027" in texto
-    assert "REVISE" in texto
-    # Provenienca em linguagem juridica limpa (sem jargao aba!celula no corpo).
-    assert "Cadeia homologada do VTA" in texto
-    assert "RESULTADOS!B26" not in texto and "VTA_FINAL" not in texto
+    for termo in (
+        "OFICIAL", "REFERÊNCIA AUDITÁVEL", "COMPARATIVO",
+        "posição atual do contrato", "última posição de abertura",
+        "integralmente reajustado", "Cadeia homologada do VTA",
+    ):
+        assert termo not in texto
+    assert "Valor Total Atualizado do Contrato" in texto
 
 
-def test_docx_posicao_indisponivel_nao_inventa():
+def test_saneador_posicao_indisponivel_nao_vira_bloco_autonomo():
     leit = leitura_simples_financeiro()
     ref = dict(REF_FIXTURE)
     ref.update(forma1_posicao_atual=None, data_posicao_atual=None,
@@ -127,8 +120,8 @@ def test_docx_posicao_indisponivel_nao_inventa():
                forma1_situacao="INDISPONIVEL - POSICAO ATUAL NAO INFORMADA")
     leit["referencias_vta"] = ref
     texto = _texto_docx(gerar_despacho_saneador(leit))
-    assert "Não informada" in texto
-    assert "137.375.560,29" in texto
+    assert "posição atual" not in texto.lower()
+    assert "REFERÊNCIA AUDITÁVEL" not in texto
 
 
 # --------------------------------------------------------------------------- #
