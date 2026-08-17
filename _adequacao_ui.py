@@ -20,6 +20,8 @@ import re
 
 import pandas as pd
 
+from _seguranca_xlsx import opcoes_excel_writer_seguro
+
 # A matematica vive no motor. A UI (esta camada) apenas delega.
 from _adequacao_orcamentaria import (
     _round2,
@@ -548,7 +550,11 @@ def cronograma_por_exercicio(df_projecao, retroativo):
 
 def gerar_xlsx_projecao(df_ultimos, df_projecao, resumo):
     output = BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+    with pd.ExcelWriter(
+        output,
+        engine="xlsxwriter",
+        engine_kwargs=opcoes_excel_writer_seguro(),
+    ) as writer:
         workbook = writer.book
         fmt_title = workbook.add_format({"bold": True, "font_size": 14, "font_color": "#0B1F3A"})
         fmt_header = workbook.add_format({"bold": True, "font_color": "white", "bg_color": "#1F4E78", "border": 1, "align": "center", "valign": "vcenter", "text_wrap": True})

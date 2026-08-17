@@ -22,6 +22,13 @@ from _estado_apuracao_upload import (
     assinatura_conteudo_upload,
     invalidar_estado_caso,
 )
+from _seguranca_xlsx import (
+    ErroSegurancaXlsx,
+    MENSAGEM_LIMITE_XLSX,
+    TAMANHO_MAXIMO_ARQUIVO,
+    opcoes_excel_writer_seguro,
+    validar_xlsx_antes_do_parser,
+)
 from _capacidades_apuracao import SEIS_DOCUMENTOS_CANONICOS
 from _sumario_executivo import gerar_sumario_executivo
 from _templates_documentos import gerar_despacho_saneador, gerar_termo_apostila
@@ -1197,7 +1204,11 @@ def gerar_excel_valores_unitarios_por_ciclo(df_valores, ciclos):
     cálculos do Valor Global.
     """
     output = BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+    with pd.ExcelWriter(
+        output,
+        engine="xlsxwriter",
+        engine_kwargs=opcoes_excel_writer_seguro(),
+    ) as writer:
         workbook = writer.book
 
         fmt_header = workbook.add_format({
@@ -1409,7 +1420,11 @@ def gerar_planilha_executiva(resultado):
     - DETALHAMENTO_ITENS: matriz item x ciclos com quantidade, VU e total;
     """
     output = BytesIO()
-    with pd.ExcelWriter(output, engine="xlsxwriter") as writer:
+    with pd.ExcelWriter(
+        output,
+        engine="xlsxwriter",
+        engine_kwargs=opcoes_excel_writer_seguro(),
+    ) as writer:
         workbook = writer.book
         # >>> XLS_EXECUTIVO_VISUAL_V2
         fonte_executiva_xls = "Aptos"
@@ -4889,6 +4904,9 @@ def _invalidar_caso_antes_do_rerun_upload() -> None:
     novo_arquivo = st.session_state.get("upload_coleta_documentos")
     if novo_arquivo is None:
         return
+    if getattr(novo_arquivo, "size", 0) > TAMANHO_MAXIMO_ARQUIVO:
+        invalidar_estado_caso(st.session_state, "upload-rejeitado-limite-xlsx")
+        return
     nova_assinatura = assinatura_conteudo_upload(novo_arquivo.getvalue())
     invalidar_estado_caso(st.session_state, nova_assinatura)
 
@@ -4974,7 +4992,15 @@ if arquivo is None:
     else:
         st.stop()
 else:
+    if getattr(arquivo, "size", 0) > TAMANHO_MAXIMO_ARQUIVO:
+        st.error(MENSAGEM_LIMITE_XLSX)
+        st.stop()
     conteudo_upload = arquivo.getvalue()
+    try:
+        conteudo_upload = validar_xlsx_antes_do_parser(conteudo_upload)
+    except ErroSegurancaXlsx as exc:
+        st.error(str(exc))
+        st.stop()
     assinatura_upload = assinatura_conteudo_upload(conteudo_upload)
     # A identidade e verificada antes do botao e antes de qualquer resultado:
     # nunca existe uma tela intermediaria com o arquivo B e derivados do caso A.
@@ -4991,8 +5017,12 @@ else:
             st.session_state["diagnostico_coleta_v2"] = diagnostico_processado
             st.session_state["resultado_valor_global"] = resultado_processado
             st.session_state["assinatura_processada_upload_docs"] = assinatura_upload
-        except Exception as exc:
-            st.error(f"Não foi possível processar o arquivo: {exc}")
+        except ErroSegurancaXlsx as exc:
+            st.error(str(exc))
+        except ValueError as exc:
+            st.error(str(exc))
+        except Exception:
+            st.error("Não foi possível processar o arquivo XLSX enviado.")
 
 if st.session_state.get("assinatura_processada_upload_docs") != assinatura_upload:
     st.stop()

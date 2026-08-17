@@ -20,6 +20,8 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 from openpyxl.styles import Font, PatternFill
 
+from _seguranca_xlsx import garantir_xlsx_validado
+
 from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
 from _capacidades_apuracao import avaliar_capacidades_apuracao
 from _efeitos_financeiros_pc import (
@@ -461,8 +463,7 @@ def _celula_tem_observacao(valor: Any) -> bool:
 def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
     """Valida o XLS no upload sem recalcular nem substituir resultados do Excel."""
 
-    if not conteudo:
-        raise ValueError("Arquivo vazio.")
+    conteudo = garantir_xlsx_validado(conteudo)
     try:
         wb = load_workbook(BytesIO(conteudo), data_only=False, read_only=False)
     except Exception as exc:
@@ -948,6 +949,7 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
 
 def eh_coleta_reajuste(conteudo: bytes) -> bool:
     try:
+        conteudo = garantir_xlsx_validado(conteudo)
         wb = load_workbook(BytesIO(conteudo), read_only=True, data_only=False)
         nomes = set(wb.sheetnames)
         nucleares = {"CONTROLE", "parametros", "financeiro"}
