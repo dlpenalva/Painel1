@@ -1477,10 +1477,6 @@ def gerar_planilha_executiva(resultado):
             except Exception:
                 pass
 
-            id_apuracao = str(resultado.get("id_apuracao") or "").strip()
-            if id_apuracao:
-                ws.set_footer(f"&LID da apuração: {id_apuracao}&R&P de &N")
-
             try:
                 if nome_aba == "CONFERENCIA":
                     ws.freeze_panes(4, 0)

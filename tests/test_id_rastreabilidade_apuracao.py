@@ -1,20 +1,15 @@
 """Contratos da Prioridade 5: ID curto e rastreabilidade documental."""
 from __future__ import annotations
 
-import ast
-import re
 from io import BytesIO
 from pathlib import Path
 
-import openpyxl
-import pandas as pd
 from docx import Document
 from _estado_apuracao_upload import (
     assinatura_conteudo_upload,
     id_apuracao_de_assinatura,
     invalidar_estado_caso,
 )
-from _seguranca_xlsx import opcoes_excel_writer_seguro
 from _sumario_executivo import _rodape_factory
 from _templates_documentos import (
     gerar_despacho_saneador,
@@ -44,35 +39,6 @@ def _texto_docx_com_rodape(conteudo: bytes) -> str:
     for secao in doc.sections:
         partes.extend(p.text for p in secao.footer.paragraphs)
     return "\n".join(partes)
-
-
-def _gerador_planilha_executiva():
-    arvore = ast.parse(PAGINA, filename=str(ROOT / "pages" / "03_Valor_Global.py"))
-    nomes = {
-        "numero_ciclo",
-        "numero_seguro",
-        "limpar_nan_inf_df",
-        "normalizar_ciclo",
-        "normalizar_texto",
-        "numero_br",
-        "texto_seguro",
-        "formatar_data_br",
-        "gerar_planilha_executiva",
-    }
-    funcoes = [
-        no for no in arvore.body
-        if isinstance(no, ast.FunctionDef) and no.name in nomes
-    ]
-    modulo = ast.Module(body=funcoes, type_ignores=[])
-    ast.fix_missing_locations(modulo)
-    espaco = {
-        "BytesIO": BytesIO,
-        "pd": pd,
-        "re": re,
-        "opcoes_excel_writer_seguro": opcoes_excel_writer_seguro,
-    }
-    exec(compile(modulo, str(ROOT / "pages" / "03_Valor_Global.py"), "exec"), espaco)
-    return espaco["gerar_planilha_executiva"]
 
 
 def test_id_tem_formato_canonico_e_valor_conhecido() -> None:
@@ -161,17 +127,7 @@ def test_modelos_em_branco_nao_recebem_id_nem_placeholder() -> None:
         assert "ID da apuração" not in texto
 
 
-def test_planilha_executiva_usa_id_canonico_em_todas_as_abas() -> None:
-    conteudo = _gerador_planilha_executiva()({"id_apuracao": ID_APURACAO})
-    wb = openpyxl.load_workbook(BytesIO(conteudo), data_only=False)
-    assert wb.sheetnames
-    for ws in wb.worksheets:
-        assert ID_APURACAO in (ws.oddFooter.left.text or "")
-    assert ASSINATURA not in conteudo.decode("latin1", errors="ignore")
-    assert "hashlib" not in PAGINA
-
-
-def test_quatro_destinos_nao_derivam_id_proprio() -> None:
+def test_tres_documentos_nao_derivam_id_proprio() -> None:
     fontes = [
         (ROOT / "_sumario_executivo.py").read_text(encoding="utf-8"),
         (ROOT / "_templates_documentos.py").read_text(encoding="utf-8"),
