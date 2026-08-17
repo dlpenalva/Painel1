@@ -1,0 +1,50 @@
+name: CI PR
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-pr-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ci-rapido:
+    name: CI rapido
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Obter repositorio
+        uses: actions/checkout@v7
+
+      - name: Preparar Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Instalar dependencias
+        run: python -m pip install --disable-pip-version-check -r requirements.txt pytest==8.4.1
+
+      - name: Verificar sintaxe Python
+        env:
+          PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pycache
+        run: python -m compileall -q .
+
+      - name: Executar testes sentinela
+        run: |
+          python -m pytest -q \
+            tests/test_data_exata_adiantado.py \
+            tests/test_timeline_ciclos_visual.py \
+            tests/test_26j_aditivos_vta_documentos.py \
+            tests/test_invalidacao_estado_caso.py
