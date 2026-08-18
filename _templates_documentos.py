@@ -200,6 +200,87 @@ def _titulo_quadro(doc: Document, texto: str) -> None:
     _adicionar_run(p, texto, negrito=True, tamanho=10)
 
 
+def _configurar_box_discreto(paragrafo) -> None:
+    ppr = paragrafo._p.get_or_add_pPr()
+    shd = OxmlElement("w:shd")
+    shd.set(qn("w:fill"), "F2F2F2")
+    ppr.append(shd)
+    bordas = OxmlElement("w:pBdr")
+    for lado in ("top", "left", "bottom", "right"):
+        borda = OxmlElement(f"w:{lado}")
+        borda.set(qn("w:val"), "single")
+        borda.set(qn("w:sz"), "6")
+        borda.set(qn("w:space"), "6")
+        borda.set(qn("w:color"), "BFBFBF")
+        bordas.append(borda)
+    ppr.append(bordas)
+
+
+def _adicionar_box_retroativos(doc: Document, dados: dict, *, saneador: bool) -> None:
+    situacao = dados.get("situacao_retroativos_pc") or {}
+    reconhecido = _num_ou_none(situacao.get("reconhecido"))
+    em_analise = _num_ou_none(situacao.get("em_analise"))
+    potencial = _num_ou_none(situacao.get("potencial"))
+    if saneador:
+        exibir = any(abs(v or 0.0) > 0.004 for v in (reconhecido, em_analise, potencial))
+    else:
+        exibir = any(abs(v or 0.0) > 0.004 for v in (reconhecido, potencial))
+    if not exibir:
+        return
+
+    reconhecido = reconhecido or 0.0
+    em_analise = em_analise or 0.0
+    potencial = potencial or 0.0
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    _configurar_box_discreto(p)
+    _adicionar_run(p, "SITUAÇÃO DOS VALORES RETROATIVOS", negrito=True, tamanho=10)
+    p.add_run().add_break()
+    _adicionar_run(p, f"Retroativo reconhecido: {formatar_moeda(reconhecido)}", tamanho=10)
+    if saneador:
+        p.add_run().add_break()
+        _adicionar_run(
+            p, f"Valor atualizado em análise: {formatar_moeda(em_analise)}", tamanho=10
+        )
+    p.add_run().add_break()
+    _adicionar_run(p, f"Retroativo potencial: {formatar_moeda(potencial)}", tamanho=10)
+    p.add_run().add_break()
+    p.add_run().add_break()
+
+    if saneador:
+        texto = (
+            f"A apuração identificou retroativo reconhecido no valor de "
+            f"{formatar_moeda(reconhecido)}. Foram identificados, ainda, "
+            "Pedidos de Compra com valores sujeitos à confirmação, "
+            f"correspondentes a retroativo potencial de até {formatar_moeda(potencial)}.\n\n"
+            "A conversão do retroativo potencial em valor reconhecido dependerá "
+            "da aceitação dos respectivos Pedidos de Compra pela área gestora do "
+            "contrato, a quem compete conduzir a validação desses eventos e os "
+            "procedimentos relacionados ao eventual pagamento.\n\n"
+            "Enquanto não houver essa confirmação, o retroativo potencial não "
+            "integra o valor reconhecido a pagar."
+        )
+    else:
+        texto = (
+            f"No âmbito da apuração, foi reconhecido retroativo de "
+            f"{formatar_moeda(reconhecido)}. Adicionalmente, foi identificado "
+            f"retroativo potencial de até {formatar_moeda(potencial)}, relacionado "
+            "a Pedidos de Compra ainda sujeitos à aceitação pela área gestora do "
+            "contrato.\n\n"
+            "A confirmação desses valores e a condução do eventual pagamento "
+            "competem à área gestora, observados os critérios, o índice, o "
+            "percentual e o período de efeitos formalizados nesta Apostila.\n\n"
+            "O retroativo potencial não integra, nesta data, o montante "
+            "reconhecido a pagar."
+        )
+    partes = texto.split("\n")
+    for indice, parte in enumerate(partes):
+        if indice:
+            p.add_run().add_break()
+        if parte:
+            _adicionar_run(p, parte, tamanho=10)
+
+
 def _run_campo_manual(p, descricao: str, tamanho: int = 11) -> Any:
     run = p.add_run(PREENCHER_TAG.format(descricao))
     run.font.name = "Calibri"
@@ -363,6 +444,8 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
 
     objeto_proc = obter_objeto_processo_reajuste(leitura_ou_objeto) or {}
     dados_op = objeto_proc.get("dados_operacionais") or {}
+    if not dados_op and isinstance(leitura_ou_objeto, dict):
+        dados_op = leitura_ou_objeto
     vta_sombra = dados_op.get("vta_sombra") or {}
     parcelas_vta = vta_sombra.get("parcelas_computadas") or []
 
@@ -411,7 +494,44 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
             or (dados.get("referencias_vta") if isinstance(dados, dict) else None)
             or {}
         ),
+        "situacao_retroativos_pc": _situacao_retroativos_pc(dados_op),
     }
+
+
+def _situacao_retroativos_pc(dados_operacionais: dict) -> dict[str, float] | None:
+    """Consolida somente as tres medidas ja calculadas para PCs relevantes."""
+    itens = (dados_operacionais.get("itens_pc_v10") or {}).get("itens") or []
+    totais = {
+        "reconhecido": 0.0,
+        "em_analise": 0.0,
+        "potencial": 0.0,
+    }
+    relevantes = 0
+    for item in itens:
+        if str(item.get("entra_no_calculo") or "Sim").strip().lower() not in {
+            "sim", "s", "true", "1"
+        }:
+            continue
+        if (item.get("campos_vta") or {}).get(
+            "status_consolidacao"
+        ) == "DESCARTADO_DUPLICIDADE":
+            continue
+        valores = {
+            "reconhecido": _num_ou_none(
+                item.get("retroativo_reconhecido_a_pagar")
+            ),
+            "em_analise": _num_ou_none(
+                item.get("valor_atualizado_em_analise")
+            ),
+            "potencial": _num_ou_none(item.get("delta_potencial")),
+        }
+        if any(valor is not None for valor in valores.values()):
+            relevantes += 1
+        for chave, valor in valores.items():
+            totais[chave] += valor or 0.0
+    if not relevantes or not any(abs(valor) > 0.004 for valor in totais.values()):
+        return None
+    return {chave: round(valor, 2) for chave, valor in totais.items()}
 
 
 def _retroativo_total(dados: dict) -> float | None:
@@ -986,6 +1106,7 @@ def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
     ])
     _adicionar_tabela(doc, cabecalho, linhas)
     doc.add_paragraph()
+    _adicionar_box_retroativos(doc, dados, saneador=False)
 
 
 _MARC_POS_NAO_INFORMADA = "Não informada"
@@ -1560,6 +1681,7 @@ def _ds_secao3_resultado(doc: Document, dados: dict, cm: dict) -> None:
         destacar_placeholders_embutidos=True,
     )
     doc.add_paragraph()
+    _adicionar_box_retroativos(doc, dados, saneador=True)
 
 
 def _ds_juntar_campos(*valores: tuple[Any, str]) -> str:

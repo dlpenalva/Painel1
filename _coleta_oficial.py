@@ -567,6 +567,64 @@ def _garantir_orientacao_novo_item_por_aditivo(wb) -> None:
             )
 
 
+_VERDE_RETROATIVO_RECONHECIDO = "FFC6EFCE"
+_AMBAR_RETROATIVO_POTENCIAL = "FFFFEB9C"
+_NEUTRO_VALOR_EM_ANALISE = "FFF2F2F2"
+
+
+def _garantir_apresentacao_retroativos_e_aditivos(wb) -> None:
+    """Aplica apenas a apresentacao user-facing e a decisao tecnica de K.
+
+    Os nomes tecnicos do template permanecem aceitos pela validacao estrutural.
+    Na copia entregue, reconhecido e potencial recebem rotulos amigaveis e
+    cores opostas. Em ``aditivos``, todo delta valido ja alimenta
+    ``posicao_contratual`` e o remanescente; K registra automaticamente essa
+    prevencao de dupla contagem e fica oculto da visao normal.
+    """
+    from copy import copy as _copy
+    from openpyxl.styles import Font, PatternFill
+
+    if "itens_PC" in wb.sheetnames:
+        ws = wb["itens_PC"]
+        for coord in ("H1", "Q1"):
+            ws[coord].value = "RETROATIVO RECONHECIDO"
+        for coord in ("J1", "S1"):
+            ws[coord].value = "RETROATIVO POTENCIAL"
+
+        estilos = (
+            (("H", 1, 1), _VERDE_RETROATIVO_RECONHECIDO),
+            (("I", 1, 1), _NEUTRO_VALOR_EM_ANALISE),
+            (("J", 1, 1), _AMBAR_RETROATIVO_POTENCIAL),
+            (("Q", 1, 7), _VERDE_RETROATIVO_RECONHECIDO),
+            (("R", 1, 7), _NEUTRO_VALOR_EM_ANALISE),
+            (("S", 1, 7), _AMBAR_RETROATIVO_POTENCIAL),
+        )
+        for (coluna, inicio, fim), cor in estilos:
+            fill = PatternFill("solid", fgColor=cor)
+            for linha in range(inicio, fim + 1):
+                ws[f"{coluna}{linha}"].fill = fill
+        for coord in ("H1", "I1", "J1", "Q1", "R1", "S1"):
+            fonte = _copy(ws[coord].font)
+            fonte.color = "FF1F1F1F"
+            fonte.bold = True
+            ws[coord].font = fonte
+
+    if "aditivos" in wb.sheetnames:
+        ws = wb["aditivos"]
+        for linha in range(2, 201):
+            celula = ws[f"K{linha}"]
+            celula.value = (
+                f'=IF(A{linha}="","",IF(M{linha}="OK","Nao",""))'
+            )
+            celula.fill = PatternFill("solid", fgColor=_NEUTRO_VALOR_EM_ANALISE)
+            celula.font = Font(name="Calibri", size=9, color="FF666666")
+        ws.column_dimensions["K"].hidden = True
+        ws.data_validations.dataValidation = [
+            dv for dv in ws.data_validations.dataValidation
+            if "K2" not in str(dv.sqref)
+        ]
+
+
 def _validar_estrutura_itens_pc(wb) -> None:
     """Barreira contra regressao critica: itens_PC jamais pode sair esvaziada.
 
@@ -638,6 +696,7 @@ def obter_coleta_oficial_bytes() -> bytes:
     _garantir_cinza_nao_aplicavel_visivel(wb)
     _garantir_orientacao_novo_item_por_aditivo(wb)
     _validar_estrutura_itens_pc(wb)
+    _garantir_apresentacao_retroativos_e_aditivos(wb)
 
     wb.calculation.calcMode = "auto"
     wb.calculation.fullCalcOnLoad = True
