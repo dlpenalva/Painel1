@@ -45,15 +45,17 @@ NOME_DOWNLOAD_COLETA = "Coleta_Reajuste.xlsx"
 
 
 def nome_download_coleta(dados_admissibilidade=None):
-    """Nome user-facing do download, com os ciclos abrangidos pela analise.
+    """Nome user-facing do download, com ciclos e indice da analise.
 
     Mantem o nome-base atual e acrescenta os ciclos ja apurados, ordenados e
-    sem repeticao: Coleta_Reajuste_C1_C2.xlsx. Ciclo precluso tambem entra —
-    o nome representa o ESCOPO da apuracao, nao o resultado da admissibilidade.
+    sem repeticao, seguidos do indice canonico: Coleta_Reajuste_C1_C2_IPCA.xlsx.
+    Ciclo precluso tambem entra — o nome representa o ESCOPO da apuracao, nao
+    o resultado da admissibilidade.
 
     Altera apenas o parametro `file_name` do download: conteudo, template,
     abas e processamento do XLSX nao dependem desta funcao. Sem ciclos
-    recuperaveis com seguranca, devolve NOME_DOWNLOAD_COLETA (fallback).
+    recuperaveis com seguranca, devolve NOME_DOWNLOAD_COLETA. Sem indice
+    reconhecivel, preserva o nome anterior composto apenas pelos ciclos.
     """
     from _reajuste_utils import ciclos_da_analise
 
@@ -66,6 +68,22 @@ def nome_download_coleta(dados_admissibilidade=None):
 
     base, _, extensao = NOME_DOWNLOAD_COLETA.rpartition(".")
     sufixo = "_".join(f"C{numero}" for numero in ciclos)
+    indice = str((dados_admissibilidade or {}).get("indice") or "").strip().upper()
+    indice_sem_hifen = indice.replace("-", "")
+    if indice.startswith("IST"):
+        sufixo_indice = "IST"
+    elif indice.startswith("ICTI"):
+        sufixo_indice = "ICTI"
+    elif indice.startswith("IPCA"):
+        sufixo_indice = "IPCA"
+    elif indice_sem_hifen.startswith("IGPM"):
+        sufixo_indice = "IGPM"
+    elif indice.startswith("INPC"):
+        sufixo_indice = "INPC"
+    else:
+        sufixo_indice = ""
+    if sufixo_indice:
+        sufixo = f"{sufixo}_{sufixo_indice}"
     return f"{base}_{sufixo}.{extensao}"
 
 # Ordem oficial das abas do novo modelo. CICLO_EM_EXECUCAO e acrescentada em
