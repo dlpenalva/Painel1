@@ -6,7 +6,8 @@ Duas melhorias isoladas do fluxo da Calculadora:
    do PRIMEIRO ciclo abrangido pela analise, exibido apenas para
    C2 ou superior. NAO e o periodo de efeitos financeiros do ciclo anterior —
    o ciclo anterior pode ter sido pedido com atraso;
-2. nome do arquivo no download com os ciclos apurados, inclusive preclusos.
+2. nome do arquivo no download com os ciclos apurados e o indice canonico,
+   inclusive quando ha ciclo precluso.
 
 Nada aqui toca motor, admissibilidade, datas apuradas, indices, fatores,
 resultados ou o conteudo do XLSX.
@@ -174,15 +175,35 @@ class TestNomeDownloadColeta(unittest.TestCase):
         self.assertEqual(NOME_DOWNLOAD_COLETA, "Coleta_Reajuste.xlsx")
 
     def test_cenarios_manuais_de_nome(self):
-        self.assertEqual(nome_download_coleta(SO_C1), "Coleta_Reajuste_C1.xlsx")
-        self.assertEqual(nome_download_coleta(SO_C2), "Coleta_Reajuste_C2.xlsx")
-        self.assertEqual(nome_download_coleta(SO_C3), "Coleta_Reajuste_C3.xlsx")
-        self.assertEqual(nome_download_coleta(C1_C2), "Coleta_Reajuste_C1_C2.xlsx")
-        self.assertEqual(nome_download_coleta(C2_C3), "Coleta_Reajuste_C2_C3.xlsx")
+        self.assertEqual(nome_download_coleta(SO_C1), "Coleta_Reajuste_C1_IPCA.xlsx")
+        self.assertEqual(nome_download_coleta(SO_C2), "Coleta_Reajuste_C2_IPCA.xlsx")
+        self.assertEqual(nome_download_coleta(SO_C3), "Coleta_Reajuste_C3_IPCA.xlsx")
+        self.assertEqual(nome_download_coleta(C1_C2), "Coleta_Reajuste_C1_C2_IPCA.xlsx")
+        self.assertEqual(nome_download_coleta(C2_C3), "Coleta_Reajuste_C2_C3_IPCA.xlsx")
+
+    def test_sufixo_canonico_dos_cinco_indices(self):
+        casos = {
+            "IST (Anatel)": "IST",
+            "ICTI (Ipeadata)": "ICTI",
+            "IPCA (433)": "IPCA",
+            "IGP-M (189)": "IGPM",
+            "INPC (188)": "INPC",
+        }
+        for indice, sufixo in casos.items():
+            with self.subTest(indice=indice):
+                dados = {**C1_C2, "indice": indice}
+                self.assertEqual(
+                    nome_download_coleta(dados),
+                    f"Coleta_Reajuste_C1_C2_{sufixo}.xlsx",
+                )
+
+    def test_igpm_sem_hifen_tambem_e_reconhecido(self):
+        dados = {**SO_C1, "indice": "IGPM (189)"}
+        self.assertEqual(nome_download_coleta(dados), "Coleta_Reajuste_C1_IGPM.xlsx")
 
     def test_precluso_entra_no_nome_sem_marcar_situacao(self):
         nome = nome_download_coleta(COM_PRECLUSO)
-        self.assertEqual(nome, "Coleta_Reajuste_C2_C3.xlsx")
+        self.assertEqual(nome, "Coleta_Reajuste_C2_C3_IPCA.xlsx")
         for proibido in ("precluso", "Precluso", "tempestivo", "Tempestivo"):
             self.assertNotIn(proibido, nome)
 
@@ -190,10 +211,16 @@ class TestNomeDownloadColeta(unittest.TestCase):
         for entrada in (None, {}, {"ciclos": []}, {"ciclos": [{"ciclo": "-"}]}, "lixo"):
             self.assertEqual(nome_download_coleta(entrada), NOME_DOWNLOAD_COLETA, entrada)
 
+    def test_indice_ausente_ou_desconhecido_preserva_nome_anterior_com_ciclos(self):
+        for indice in (None, "", "Indice nao catalogado"):
+            with self.subTest(indice=indice):
+                dados = {**C2_C3, "indice": indice}
+                self.assertEqual(nome_download_coleta(dados), "Coleta_Reajuste_C2_C3.xlsx")
+
     def test_sempre_xlsx_e_sem_ciclo_repetido(self):
         dados = _dados(_ciclo("C4", "01/02/2027"), _ciclo("C4", "01/02/2027"),
                        _ciclo("C2", "01/02/2025"))
-        self.assertEqual(nome_download_coleta(dados), "Coleta_Reajuste_C2_C4.xlsx")
+        self.assertEqual(nome_download_coleta(dados), "Coleta_Reajuste_C2_C4_IPCA.xlsx")
 
     def test_nao_altera_os_dados_da_analise(self):
         antes = repr(C2_C3)
@@ -338,7 +365,7 @@ class TestXlsxIntacto(unittest.TestCase):
 
     def test_conteudo_da_coleta_independe_do_nome_do_arquivo(self):
         antes = gerar_coleta_oficial_preenchida(XLSX_C2_C3)
-        self.assertEqual(nome_download_coleta(XLSX_C2_C3), "Coleta_Reajuste_C2_C3.xlsx")
+        self.assertEqual(nome_download_coleta(XLSX_C2_C3), "Coleta_Reajuste_C2_C3_IPCA.xlsx")
         self.assertIsNotNone(referencia_temporal_anterior(XLSX_C2_C3))
         depois = gerar_coleta_oficial_preenchida(XLSX_C2_C3)
         # Bytes brutos nunca coincidem: o zip carimba a hora de cada membro.
