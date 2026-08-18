@@ -2,11 +2,13 @@
 from __future__ import annotations
 
 from datetime import date
+from io import BytesIO
 
 import pytest
 from openpyxl import load_workbook
 
-from _coleta_oficial import TEMPLATE_COLETA_OFICIAL
+from _coleta_oficial import TEMPLATE_COLETA_OFICIAL, obter_coleta_oficial_bytes
+from _leitor_masterfile_v10 import _col, _mapear_colunas_por_cabecalho
 from _motor_composicao_vta import _aditivos
 from _objeto_processo_reajuste import _montar_memoria_por_ciclo
 from _sumario_executivo import _montar_secao_aditivos, _montar_secao_itens
@@ -24,6 +26,40 @@ def wb_template():
     wb = load_workbook(TEMPLATE_COLETA_OFICIAL, data_only=False)
     yield wb
     wb.close()
+
+
+@pytest.fixture(scope="module")
+def wb_runtime():
+    wb = load_workbook(BytesIO(obter_coleta_oficial_bytes()), data_only=False)
+    yield wb
+    wb.close()
+
+
+def test_itens_pc_apresenta_reconhecido_e_potencial_com_cores_opostas(wb_runtime):
+    ws = wb_runtime["itens_PC"]
+    assert ws["Q1"].value == "RETROATIVO RECONHECIDO"
+    assert ws["R1"].value == "VALOR_ATUALIZADO_EM_ANALISE"
+    assert ws["S1"].value == "RETROATIVO POTENCIAL"
+    assert ws["Q2"].fill.fgColor.rgb == "FFC6EFCE"
+    assert ws["R2"].fill.fgColor.rgb == "FFF2F2F2"
+    assert ws["S2"].fill.fgColor.rgb == "FFFFEB9C"
+
+
+def test_leitor_aceita_rotulos_tecnicos_antigos_e_novos(wb_template, wb_runtime):
+    mapa_antigo = _mapear_colunas_por_cabecalho(wb_template["itens_PC"])
+    mapa_novo = _mapear_colunas_por_cabecalho(wb_runtime["itens_PC"])
+    for mapa in (mapa_antigo, mapa_novo):
+        assert _col(
+            mapa, "RETROATIVO_RECONHECIDO_A_PAGAR", "RETROATIVO RECONHECIDO"
+        ) == 8
+        assert _col(mapa, "DELTA_POTENCIAL", "RETROATIVO POTENCIAL") == 10
+
+
+def test_aditivos_k_e_automatico_tecnico_e_oculto(wb_runtime):
+    ws = wb_runtime["aditivos"]
+    assert ws.column_dimensions["K"].hidden is True
+    assert ws["K2"].value == '=IF(A2="","",IF(M2="OK","Nao",""))'
+    assert not any("K2" in str(dv.sqref) for dv in ws.data_validations.dataValidation)
 
 
 def test_template_integra_delta_no_remanescente_uma_vez(wb_template):
@@ -109,6 +145,20 @@ def test_aditivo_ja_materializado_no_remanescente_nao_soma_novamente():
     assert "nao soma novamente" in fora[0]["motivo"]
 
 
+def test_aditivo_nao_refletido_preserva_computo_existente():
+    leitura = {"aditivos_visiveis": {"ok": True, "itens": [{
+        "evento": "Aditivo computavel",
+        "ciclo_marco": "C1",
+        "valor_assinatura": 100.0,
+        "fator_acumulado": 1.05,
+        "valor_atualizado": 105.0,
+        "ja_refletido_em": "Nao",
+    }]}}
+    computados, fora = _aditivos(leitura, [])
+    assert fora == []
+    assert computados[0]["valor_atualizado"] == 105.0
+
+
 def test_documentos_usam_componentes_canonicos_sem_repetir_aditivos():
     dados = {
         "vta": None,
@@ -127,6 +177,21 @@ def test_documentos_usam_componentes_canonicos_sem_repetir_aditivos():
         ("Saldo remanescente atualizado no corte", 123402232.71),
     ]
     assert round(sum(valor for _, valor in componentes), 2) == 137375560.29
+
+
+def test_retroativo_potencial_nao_altera_composicao_do_vta():
+    base = {
+        "vta": 1000.0,
+        "vta_execucao_atualizada": 100.0,
+        "vta_saldo_remanescente_atualizado": 900.0,
+    }
+    com_potencial = dict(
+        base,
+        situacao_retroativos_pc={
+            "reconhecido": 10.0, "em_analise": 110.0, "potencial": 100.0
+        },
+    )
+    assert _composicao_didatica_vta(com_potencial) == _composicao_didatica_vta(base)
 
 
 def test_tabela_docx_marca_cabecalho_para_repeticao_em_todas_as_paginas():

@@ -2224,9 +2224,11 @@ def _ler_itens_pc_v10(
     col_obs    = mapa.get("observacao_itens_abrangidos") or mapa.get("observacao")
     col_check  = mapa.get("check")
     col_efeito_pc = mapa.get("efeito_financeiro_pc")
-    col_retro = mapa.get("retroativo_reconhecido_a_pagar")
+    col_retro = _col(
+        mapa, "RETROATIVO_RECONHECIDO_A_PAGAR", "RETROATIVO RECONHECIDO"
+    )
     col_analise = mapa.get("valor_atualizado_em_analise")
-    col_delta = mapa.get("delta_potencial")
+    col_delta = _col(mapa, "DELTA_POTENCIAL", "RETROATIVO POTENCIAL")
     col_pagto_smart = _col(
         mapa,
         "STATUS_PAGAMENTO_PC",

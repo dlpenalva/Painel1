@@ -238,6 +238,49 @@ def test_apostila_composicao_vta_unica_preserva_componentes_canonicos():
     assert linhas[-1][2] == _vta_texto_doc(dados)
 
 
+def test_documentos_exibem_situacao_retroativos_pc_sem_promover_potencial():
+    leitura = leitura_multiciclo_pc()
+    primeiro, segundo = leitura["itens_pc_v10"]["itens"]
+    primeiro.update({
+        "retroativo_reconhecido_a_pagar": 100.0,
+        "valor_atualizado_em_analise": 0.0,
+        "delta_potencial": 0.0,
+    })
+    segundo.update({
+        "retroativo_reconhecido_a_pagar": 0.0,
+        "valor_atualizado_em_analise": 1100.0,
+        "delta_potencial": 100.0,
+    })
+
+    saneador = _texto_docx(gerar_despacho_saneador(
+        leitura, campos_manuais=CAMPOS_SANEADOR
+    ))
+    termo = _texto_docx(gerar_termo_apostila(
+        leitura, campos_manuais=CAMPOS_TERMO
+    ))
+
+    assert "SITUAÇÃO DOS VALORES RETROATIVOS" in saneador
+    assert "Retroativo reconhecido: R$ 100,00" in saneador
+    assert "Valor atualizado em análise: R$ 1.100,00" in saneador
+    assert "Retroativo potencial: R$ 100,00" in saneador
+    assert "aceitação dos respectivos Pedidos de Compra pela área gestora" in saneador
+    assert "eventual pagamento" in saneador
+    assert "não integra o valor reconhecido a pagar" in saneador
+
+    assert "SITUAÇÃO DOS VALORES RETROATIVOS" in termo
+    assert "Retroativo reconhecido: R$ 100,00" in termo
+    assert "Retroativo potencial: R$ 100,00" in termo
+    assert "Pedidos de Compra ainda sujeitos à aceitação pela área gestora" in termo
+    assert "condução do eventual pagamento competem à área gestora" in termo
+    assert "não integra, nesta data, o montante reconhecido a pagar" in termo
+
+
+def test_documentos_nao_exibem_bloco_retroativos_sem_pc_relevante():
+    for gerador in (gerar_despacho_saneador, gerar_termo_apostila):
+        texto = _texto_docx(gerador(leitura_ausencias()))
+        assert "SITUAÇÃO DOS VALORES RETROATIVOS" not in texto
+
+
 def test_apostila_terminologia_exclusiva_e_seguranca_da_tempestividade():
     for bytes_docx in (
         gerar_termo_apostila(
