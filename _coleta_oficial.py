@@ -611,7 +611,10 @@ def _garantir_apresentacao_retroativos_e_aditivos(wb) -> None:
 
     if "aditivos" in wb.sheetnames:
         ws = wb["aditivos"]
+        ws["H1"].value = "Aplicar reajuste? (Sim/Nao)"
         for linha in range(2, 201):
+            if ws[f"H{linha}"].value == "Não":
+                ws[f"H{linha}"].value = "Nao"
             celula = ws[f"K{linha}"]
             celula.value = (
                 f'=IF(A{linha}="","",IF(M{linha}="OK","Nao",""))'
@@ -619,10 +622,18 @@ def _garantir_apresentacao_retroativos_e_aditivos(wb) -> None:
             celula.fill = PatternFill("solid", fgColor=_NEUTRO_VALOR_EM_ANALISE)
             celula.font = Font(name="Calibri", size=9, color="FF666666")
         ws.column_dimensions["K"].hidden = True
-        ws.data_validations.dataValidation = [
-            dv for dv in ws.data_validations.dataValidation
-            if "K2" not in str(dv.sqref)
-        ]
+        for validacao in list(ws.data_validations.dataValidation):
+            faixas = [
+                str(faixa)
+                for faixa in validacao.sqref.ranges
+                if str(faixa) != "K2:K200"
+            ]
+            if len(faixas) == len(validacao.sqref.ranges):
+                continue
+            if faixas:
+                validacao.sqref = " ".join(faixas)
+            else:
+                ws.data_validations.dataValidation.remove(validacao)
 
 
 def _validar_estrutura_itens_pc(wb) -> None:
