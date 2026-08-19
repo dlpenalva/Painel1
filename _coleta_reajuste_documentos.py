@@ -472,6 +472,10 @@ def adaptar_coleta_reajuste_para_documentos(
             "historico_vu": leitura.get("historico_vu") or {},
             "memoria_calculo": leitura.get("memoria_calculo") or {},
             "resultados_xls": leitura.get("resultados_xls") or {},
+            # Fonte canônica já exibida no Quadro 2/Tabela 1. A camada de
+            # apresentação pode selecionar a última posição disponível sem
+            # recalcular o VTA nem alterar sua composição.
+            "referencias_vta": leitura.get("referencias_vta") or {},
             # Payload canonico unico dos PCs: as sete medidas separadas por
             # significado (informado, ate o corte, enquadrado nos ciclos, com
             # efeito, sem efeito no ciclo, intervalo precluso, retroativo). Os

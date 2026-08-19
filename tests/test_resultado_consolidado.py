@@ -25,6 +25,11 @@ def _resultado_base(metodo="pc"):
             "data_corte": "31/12/2025",
         },
         "memoria_por_ciclo": {"vta": {"metodo": metodo}},
+        "referencias_vta": {
+            "posicao_atual_disponivel": True,
+            "forma1_posicao_atual": 1_000.0,
+            "forma2_ultima_abertura": 900.0,
+        },
         "totais_canonicos_pc": {
             "data_corte": "31/12/2025",
             "ate_o_corte": {

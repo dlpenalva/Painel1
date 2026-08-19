@@ -9,13 +9,6 @@ import pandas as pd
 import streamlit as st
 import streamlit.components.v1 as components
 
-from _coleta_oficial import (
-    NOME_ARQUIVO_COLETA_OFICIAL,
-    TEMPLATE_COLETA_OFICIAL,
-    assinatura_template_coleta,
-    gerar_coleta_oficial_preenchida,
-    nome_download_coleta,
-)
 from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
 from _estado_apuracao_upload import (
     apuracao_persistida_valida,
@@ -4802,6 +4795,13 @@ _CSS_RESULTADO_CONSOLIDADO = """
     font-size:clamp(1.55rem, 2.55vw, 2.25rem);
     font-weight:850;
 }
+.resultado-valor-ultima-posicao { color:#9A5B00; }
+.resultado-nota-vta {
+    color:#64748B;
+    font-size:0.76rem;
+    line-height:1.3;
+    margin-top:0.28rem;
+}
 .resultado-valor-potencial { color:#9A6700; }
 .resultado-status {
     border-left:4px solid;
@@ -4851,15 +4851,30 @@ def _fator_resultado(valor):
         return "—"
 
 
-def _celula_resultado(rotulo, valor, *, principal=False, potencial=False):
+def _celula_resultado(
+    rotulo,
+    valor,
+    *,
+    principal=False,
+    potencial=False,
+    ultima_posicao=False,
+    nota=None,
+):
     classes = ["resultado-valor"]
     if principal:
         classes.append("resultado-valor-principal")
     if potencial:
         classes.append("resultado-valor-potencial")
+    if ultima_posicao:
+        classes.append("resultado-valor-ultima-posicao")
+    nota_html = (
+        f'<div class="resultado-nota-vta">{html.escape(str(nota))}</div>'
+        if nota else ""
+    )
     st.markdown(
         f'<div class="resultado-rotulo">{html.escape(str(rotulo))}</div>'
-        f'<div class="{" ".join(classes)}">{html.escape(str(valor))}</div>',
+        f'<div class="{" ".join(classes)}">{html.escape(str(valor))}</div>'
+        f'{nota_html}',
         unsafe_allow_html=True,
     )
 
@@ -4891,10 +4906,16 @@ def render_resultado_consolidado(resultado, diagnostico):
         )
         col_vta, col_reconhecido, col_potencial = st.columns([1.45, 1, 1])
         with col_vta:
+            usa_ultima_posicao = bool(consolidado.get("vta_usa_ultima_posicao"))
             _celula_resultado(
                 "Valor Total Atualizado — VTA",
                 _moeda_resultado(consolidado.get("vta")),
                 principal=True,
+                ultima_posicao=usa_ultima_posicao,
+                nota=(
+                    "Sem posição atual informada. Utilizado o VTA da última posição disponível."
+                    if usa_ultima_posicao else None
+                ),
             )
         with col_reconhecido:
             _celula_resultado(
@@ -5128,42 +5149,10 @@ render_cabecalho_pagina(
     "",
 )
 
-@st.cache_data(show_spinner=False)
-def _coleta_oficial_cacheada(assinatura: str, dados_calculadora: dict) -> bytes:  # noqa: ARG001
-    """Gera o download usando a assinatura SHA-256 do template como chave do cache."""
-    return gerar_coleta_oficial_preenchida(dados_calculadora)
-
 with st.container(border=True):
     st.markdown(
         '<span class="cl8us-docs-card-marker"></span>'
-        '<div class="cl8us-docs-card-title">1 · Baixar arquivo de trabalho</div>',
-        unsafe_allow_html=True,
-    )
-    st.caption("Use o modelo oficial com fórmulas para registrar a apuração contratual.")
-    if TEMPLATE_COLETA_OFICIAL.exists():
-        try:
-            _assinatura_coleta = assinatura_template_coleta(TEMPLATE_COLETA_OFICIAL)
-            _dados_calculadora_coleta = st.session_state.get("dados_admissibilidade", {}) or {}
-            st.download_button(
-                "Baixar Arquivo Coleta Oficial",
-                data=_coleta_oficial_cacheada(_assinatura_coleta, _dados_calculadora_coleta),
-                file_name=nome_download_coleta(_dados_calculadora_coleta),
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                type="primary",
-                key="download_coleta_documentos",
-            )
-        except Exception as exc:
-            st.error(f"Não foi possível gerar o Arquivo Coleta Oficial: {exc}")
-    else:
-        st.error(
-            "Não foi possível localizar o Arquivo Coleta Oficial neste ambiente. "
-            "O download foi bloqueado para evitar o uso de modelo incompatível."
-        )
-
-with st.container(border=True):
-    st.markdown(
-        '<span class="cl8us-docs-card-marker"></span>'
-        '<div class="cl8us-docs-card-title">2 · Enviar Arquivo Coleta Oficial preenchido</div>',
+        '<div class="cl8us-docs-card-title">Enviar Arquivo Coleta Oficial preenchido</div>',
         unsafe_allow_html=True,
     )
     arquivo = st.file_uploader(

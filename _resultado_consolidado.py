@@ -93,6 +93,8 @@ def montar_resultado_consolidado(
     totais_pc = resultado.get("totais_canonicos_pc") or {}
     controle = resultado.get("controle") or {}
     memoria = resultado.get("memoria_por_ciclo") or {}
+    referencias_informadas = isinstance(resultado.get("referencias_vta"), dict)
+    referencias_vta = resultado.get("referencias_vta") or {}
 
     metodo_controle = _normalizar_metodo(controle.get("modo"))
     metodo_efetivo = _normalizar_metodo(
@@ -208,7 +210,18 @@ def montar_resultado_consolidado(
 
     status_politica = str(politica.get("status") or "").strip().upper()
     status_base = str(diagnostico.get("status_base") or "").strip().upper()
-    vta = resultado.get("valor_atualizado_contrato")
+    vta_atual = resultado.get("valor_atualizado_contrato")
+    posicao_atual_valida = bool(referencias_vta.get("posicao_atual_disponivel"))
+    vta_ultima_posicao = _numero(referencias_vta.get("forma2_ultima_abertura"))
+    if not referencias_informadas or posicao_atual_valida:
+        vta = vta_atual
+        vta_origem = "posicao_atual" if vta is not None else "indisponivel"
+    elif vta_ultima_posicao is not None:
+        vta = vta_ultima_posicao
+        vta_origem = "ultima_posicao_disponivel"
+    else:
+        vta = None
+        vta_origem = "indisponivel"
     resultado_incompleto = bool(
         vta is None
         or retroativo_reconhecido is None
@@ -254,6 +267,8 @@ def montar_resultado_consolidado(
 
     return {
         "vta": vta,
+        "vta_origem": vta_origem,
+        "vta_usa_ultima_posicao": vta_origem == "ultima_posicao_disponivel",
         "retroativo_reconhecido": retroativo_reconhecido,
         "valor_atualizado_em_analise": valor_em_analise,
         "retroativo_potencial": retroativo_potencial,
