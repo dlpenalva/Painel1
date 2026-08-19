@@ -4815,7 +4815,7 @@ _CSS_RESULTADO_CONSOLIDADO = """
 .resultado-status-confiavel { background:#ECFDF3; border-color:#16803A; color:#14532D; }
 .resultado-status-ressalvas,
 .resultado-status-pendente { background:#FFF8E6; border-color:#D69E00; color:#713F12; }
-.resultado-status-bloqueado { background:#FFF1F2; border-color:#C62828; color:#7F1D1D; }
+.resultado-status-bloqueado { background:#FFF8E6; border-color:#D69E00; color:#713F12; }
 .resultado-divisor { border-top:1px solid #E2E8F0; margin:0.85rem 0; }
 .resultado-rodape-vta {
     background:#F1F5F9;
@@ -4888,6 +4888,16 @@ def render_resultado_consolidado(resultado, diagnostico):
 
     st.markdown(_CSS_RESULTADO_CONSOLIDADO, unsafe_allow_html=True)
     status = consolidado.get("status_confiabilidade") or "PENDENTE DE CONFIRMAÇÃO"
+    status_em_conferencia = status == "BLOQUEADO"
+    status_exibicao = (
+        "PENDENTE DE CONFERÊNCIA" if status_em_conferencia else status
+    )
+    mensagem_status_exibicao = (
+        "Pode haver divergência entre a planilha e a apuração do retroativo "
+        "por Pedidos de Compra."
+        if status_em_conferencia
+        else consolidado.get("mensagem_status") or ""
+    )
     classe_status = {
         "CONFIÁVEL": "confiavel",
         "CONFIÁVEL COM RESSALVAS": "ressalvas",
@@ -4948,7 +4958,10 @@ def render_resultado_consolidado(resultado, diagnostico):
                 f"{quantidade_fmt} PC(s) — {_moeda_resultado(fora.get('valor_informado'))} informado(s)",
             ))
         formalizacao = consolidado.get("formalizacao") or {}
-        colunas_segunda_linha.append(("Formalização", formalizacao.get("status") or "—"))
+        formalizacao_exibicao = formalizacao.get("status") or "—"
+        if status_em_conferencia and formalizacao_exibicao == "BLOQUEADA":
+            formalizacao_exibicao = "EM CONFERÊNCIA"
+        colunas_segunda_linha.append(("Formalização", formalizacao_exibicao))
         colunas = st.columns(len(colunas_segunda_linha))
         for coluna, (rotulo, valor) in zip(colunas, colunas_segunda_linha):
             with coluna:
@@ -4956,8 +4969,8 @@ def render_resultado_consolidado(resultado, diagnostico):
 
         st.markdown(
             f'<div class="resultado-status resultado-status-{classe_status}">'
-            f'<strong>Status de confiabilidade: {html.escape(str(status))}</strong>'
-            f'{html.escape(str(consolidado.get("mensagem_status") or ""))}</div>',
+            f'<strong>Status de confiabilidade: {html.escape(str(status_exibicao))}</strong>'
+            f'{html.escape(str(mensagem_status_exibicao))}</div>',
             unsafe_allow_html=True,
         )
         detalhes = consolidado.get("bloqueios") or consolidado.get("ressalvas") or []
