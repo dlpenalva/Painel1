@@ -31,6 +31,7 @@ from _seguranca_xlsx import (
     validar_xlsx_antes_do_parser,
 )
 from _capacidades_apuracao import SEIS_DOCUMENTOS_CANONICOS
+from _resultado_consolidado import montar_resultado_consolidado
 from _sumario_executivo import gerar_sumario_executivo
 from _templates_documentos import gerar_despacho_saneador, gerar_termo_apostila
 
@@ -4765,6 +4766,211 @@ div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-c
 </style>
 """
 
+_CSS_RESULTADO_CONSOLIDADO = """
+<style>
+.resultado-cabecalho {
+    color:#17324D;
+    font-size:0.78rem;
+    font-weight:800;
+    letter-spacing:0.09em;
+    margin-bottom:0.2rem;
+    text-transform:uppercase;
+}
+.resultado-metodo {
+    color:#64748B;
+    font-size:0.82rem;
+    margin-bottom:0.85rem;
+}
+.resultado-rotulo {
+    color:#64748B;
+    font-size:0.72rem;
+    font-weight:750;
+    letter-spacing:0.045em;
+    line-height:1.25;
+    text-transform:uppercase;
+}
+.resultado-valor {
+    color:#1E293B;
+    font-size:clamp(1.02rem, 1.65vw, 1.35rem);
+    font-variant-numeric:tabular-nums;
+    font-weight:750;
+    line-height:1.2;
+    margin-top:0.22rem;
+}
+.resultado-valor-principal {
+    color:#17324D;
+    font-size:clamp(1.55rem, 2.55vw, 2.25rem);
+    font-weight:850;
+}
+.resultado-valor-potencial { color:#9A6700; }
+.resultado-status {
+    border-left:4px solid;
+    border-radius:5px;
+    font-size:0.88rem;
+    line-height:1.4;
+    margin:0.8rem 0 0.25rem 0;
+    padding:0.62rem 0.78rem;
+}
+.resultado-status strong { display:block; margin-bottom:0.08rem; }
+.resultado-status-confiavel { background:#ECFDF3; border-color:#16803A; color:#14532D; }
+.resultado-status-ressalvas,
+.resultado-status-pendente { background:#FFF8E6; border-color:#D69E00; color:#713F12; }
+.resultado-status-bloqueado { background:#FFF1F2; border-color:#C62828; color:#7F1D1D; }
+.resultado-divisor { border-top:1px solid #E2E8F0; margin:0.85rem 0; }
+.resultado-rodape-vta {
+    background:#F1F5F9;
+    border-left:4px solid #17324D;
+    color:#17324D;
+    font-variant-numeric:tabular-nums;
+    font-weight:800;
+    margin-top:0.55rem;
+    padding:0.58rem 0.75rem;
+}
+</style>
+"""
+
+
+def _moeda_resultado(valor, *, nao_aplicavel=False):
+    if nao_aplicavel:
+        return "NÃO APLICÁVEL"
+    if valor is None or isinstance(valor, bool):
+        return "INDISPONÍVEL"
+    try:
+        numero = float(valor)
+    except (TypeError, ValueError):
+        return "INDISPONÍVEL"
+    return "R$ " + f"{numero:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+
+
+def _fator_resultado(valor):
+    if valor is None or isinstance(valor, bool):
+        return "—"
+    try:
+        return f"{float(valor):.6f}".rstrip("0").rstrip(".").replace(".", ",")
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _celula_resultado(rotulo, valor, *, principal=False, potencial=False):
+    classes = ["resultado-valor"]
+    if principal:
+        classes.append("resultado-valor-principal")
+    if potencial:
+        classes.append("resultado-valor-potencial")
+    st.markdown(
+        f'<div class="resultado-rotulo">{html.escape(str(rotulo))}</div>'
+        f'<div class="{" ".join(classes)}">{html.escape(str(valor))}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def render_resultado_consolidado(resultado, diagnostico):
+    """Apresenta somente o contrato consolidado; não calcula grandezas."""
+    consolidado = resultado.get("resultado_consolidado")
+    if not isinstance(consolidado, dict):
+        consolidado = montar_resultado_consolidado(resultado, diagnostico)
+        resultado["resultado_consolidado"] = consolidado
+
+    st.markdown(_CSS_RESULTADO_CONSOLIDADO, unsafe_allow_html=True)
+    status = consolidado.get("status_confiabilidade") or "PENDENTE DE CONFIRMAÇÃO"
+    classe_status = {
+        "CONFIÁVEL": "confiavel",
+        "CONFIÁVEL COM RESSALVAS": "ressalvas",
+        "PENDENTE DE CONFIRMAÇÃO": "pendente",
+        "BLOQUEADO": "bloqueado",
+    }.get(status, "pendente")
+    metodo = (consolidado.get("metodo") or {}).get("rotulo") or "Indeterminado"
+    ciclo = consolidado.get("ciclo_vigente") or "—"
+
+    with st.container(border=True):
+        st.markdown('<div class="resultado-cabecalho">Resultado da apuração</div>', unsafe_allow_html=True)
+        st.markdown(
+            f'<div class="resultado-metodo">Método: {html.escape(str(metodo))} · '
+            f'Ciclo vigente: {html.escape(str(ciclo))}</div>',
+            unsafe_allow_html=True,
+        )
+        col_vta, col_reconhecido, col_potencial = st.columns([1.45, 1, 1])
+        with col_vta:
+            _celula_resultado(
+                "Valor Total Atualizado — VTA",
+                _moeda_resultado(consolidado.get("vta")),
+                principal=True,
+            )
+        with col_reconhecido:
+            _celula_resultado(
+                "Retroativo reconhecido",
+                _moeda_resultado(consolidado.get("retroativo_reconhecido")),
+            )
+        with col_potencial:
+            _celula_resultado(
+                "Retroativo potencial",
+                _moeda_resultado(
+                    consolidado.get("retroativo_potencial"),
+                    nao_aplicavel=not consolidado.get("medidas_pc_aplicaveis"),
+                ),
+                potencial=True,
+            )
+
+        st.markdown('<div class="resultado-divisor"></div>', unsafe_allow_html=True)
+        colunas_segunda_linha = []
+        if consolidado.get("medidas_pc_aplicaveis"):
+            colunas_segunda_linha.append((
+                "Valor atualizado em análise",
+                _moeda_resultado(consolidado.get("valor_atualizado_em_analise")),
+            ))
+        fora = consolidado.get("fora_do_corte") or {}
+        quantidade_fora = fora.get("quantidade")
+        if fora.get("aplicavel") and isinstance(quantidade_fora, (int, float)) and quantidade_fora > 0:
+            quantidade_fmt = int(quantidade_fora) if float(quantidade_fora).is_integer() else quantidade_fora
+            colunas_segunda_linha.append((
+                "Fora da data de corte",
+                f"{quantidade_fmt} PC(s) — {_moeda_resultado(fora.get('valor_informado'))} informado(s)",
+            ))
+        formalizacao = consolidado.get("formalizacao") or {}
+        colunas_segunda_linha.append(("Formalização", formalizacao.get("status") or "—"))
+        colunas = st.columns(len(colunas_segunda_linha))
+        for coluna, (rotulo, valor) in zip(colunas, colunas_segunda_linha):
+            with coluna:
+                _celula_resultado(rotulo, valor)
+
+        st.markdown(
+            f'<div class="resultado-status resultado-status-{classe_status}">'
+            f'<strong>Status de confiabilidade: {html.escape(str(status))}</strong>'
+            f'{html.escape(str(consolidado.get("mensagem_status") or ""))}</div>',
+            unsafe_allow_html=True,
+        )
+        detalhes = consolidado.get("bloqueios") or consolidado.get("ressalvas") or []
+        if detalhes:
+            with st.expander("Ver fundamentos do status"):
+                for detalhe in detalhes:
+                    st.markdown(f"- {detalhe}")
+
+    st.markdown("### COMPOSIÇÃO DO VTA")
+    composicao = consolidado.get("composicao_vta") or {}
+    if composicao.get("exibivel") and composicao.get("linhas"):
+        linhas_ui = []
+        for linha in composicao["linhas"]:
+            linhas_ui.append({
+                "Parcela": linha.get("descricao") or "—",
+                "Ciclo ou marco": linha.get("ciclo") or linha.get("marco") or "—",
+                "Base": _moeda_resultado(linha.get("valor_base")),
+                "Fator": _fator_resultado(linha.get("fator_acumulado")),
+                "Valor atualizado": _moeda_resultado(linha.get("valor_atualizado")),
+                "Origem": linha.get("fonte") or "—",
+            })
+        st.dataframe(pd.DataFrame(linhas_ui), hide_index=True, use_container_width=True)
+    else:
+        st.info(composicao.get("mensagem") or "A composição detalhada do VTA não está disponível.")
+    st.markdown(
+        '<div class="resultado-rodape-vta">VALOR TOTAL ATUALIZADO — VTA OFICIAL · '
+        f'{html.escape(_moeda_resultado(consolidado.get("vta")))}</div>',
+        unsafe_allow_html=True,
+    )
+    if composicao.get("ha_aditivos_nao_computados"):
+        st.caption("Há alteração contratual já refletida na posição e não somada novamente.")
+
+    return consolidado
+
 
 def _render_pendencia_documento(chave, documento):
     rotulo = documento.get("rotulo") or "Aguardando dados"
@@ -5024,29 +5230,7 @@ resultado = st.session_state.get("resultado_valor_global")
 render_avisos_override_efeito_financeiro(diagnostico_coleta)
 
 if resultado:
-    metadados = diagnostico_coleta.get("metadados", {})
-    contagens = diagnostico_coleta.get("contagens", {})
-    _ciclos_str = ", ".join(metadados.get("ciclos_em_analise", [])) or "—"
-    _st_res = (metadados.get("status_resultados") or {})
-    # Fonte canonica do retroativo reconhecido: o bloco "ate o corte" do payload
-    # unico dos PCs — ja sem os PCs sem efeito financeiro, sem os do intervalo
-    # precluso e sem os posteriores a data de corte. O valor do XLS permanece
-    # como queda para arquivos anteriores a essa medida (sem regressao).
-    _tc_pc = (resultado.get("totais_canonicos_pc") or {}) if resultado else {}
-    _retro_val = (_tc_pc.get("ate_o_corte") or {}).get("retroativo")
-    if _retro_val is None:
-        _retro_val = (_st_res.get("valores") or {}).get("retroativo_oficial")
-    _retro_str = (
-        "R$ " + f"{_retro_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
-        if isinstance(_retro_val, (int, float)) else "—"
-    )
-    _acum_val = resultado.get("variacao_acumulada")
-    _acum_str = f"{_acum_val * 100:.2f}%".replace(".", ",") if isinstance(_acum_val, (int, float)) else "—"
-    resumo_indice, resumo_ciclos, resumo_retro, resumo_acum = st.columns(4)
-    resumo_indice.metric("Índice", metadados.get("indice", "—"))
-    resumo_ciclos.metric("Ciclos analisados", _ciclos_str)
-    resumo_retro.metric("Retroativo reconhecido", _retro_str)
-    resumo_acum.metric("Percentual acumulado", _acum_str)
+    render_resultado_consolidado(resultado, diagnostico_coleta)
     if resultado.get("id_apuracao"):
         st.caption(f"ID da apuração: {resultado['id_apuracao']}")
     # Etapa 26H (limpeza da interface): expander de cobertura temporal
