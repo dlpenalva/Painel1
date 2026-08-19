@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 
-ATUALIZADO_EM_FALLBACK = "18/08/2026 19:50"
+ATUALIZADO_EM_FALLBACK = "18/08/2026 22:17"
 
 
 def _data_ultimo_commit() -> str | None:

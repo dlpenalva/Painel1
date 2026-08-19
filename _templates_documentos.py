@@ -499,37 +499,19 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
 
 
 def _situacao_retroativos_pc(dados_operacionais: dict) -> dict[str, float] | None:
-    """Consolida somente as tres medidas ja calculadas para PCs relevantes."""
-    itens = (dados_operacionais.get("itens_pc_v10") or {}).get("itens") or []
+    """Expõe nos documentos o mesmo consolidado canônico usado em RESULTADOS."""
+    totais_pc = (dados_operacionais.get("itens_pc_v10") or {}).get(
+        "totais_canonicos"
+    ) or dados_operacionais.get("totais_canonicos_pc") or {}
+    ate_o_corte = totais_pc.get("ate_o_corte") or {}
     totais = {
-        "reconhecido": 0.0,
-        "em_analise": 0.0,
-        "potencial": 0.0,
+        "reconhecido": _num_ou_none(ate_o_corte.get("retroativo")) or 0.0,
+        "em_analise": (
+            _num_ou_none(ate_o_corte.get("valor_atualizado_em_analise")) or 0.0
+        ),
+        "potencial": _num_ou_none(ate_o_corte.get("delta_potencial")) or 0.0,
     }
-    relevantes = 0
-    for item in itens:
-        if str(item.get("entra_no_calculo") or "Sim").strip().lower() not in {
-            "sim", "s", "true", "1"
-        }:
-            continue
-        if (item.get("campos_vta") or {}).get(
-            "status_consolidacao"
-        ) == "DESCARTADO_DUPLICIDADE":
-            continue
-        valores = {
-            "reconhecido": _num_ou_none(
-                item.get("retroativo_reconhecido_a_pagar")
-            ),
-            "em_analise": _num_ou_none(
-                item.get("valor_atualizado_em_analise")
-            ),
-            "potencial": _num_ou_none(item.get("delta_potencial")),
-        }
-        if any(valor is not None for valor in valores.values()):
-            relevantes += 1
-        for chave, valor in valores.items():
-            totais[chave] += valor or 0.0
-    if not relevantes or not any(abs(valor) > 0.004 for valor in totais.values()):
+    if not any(abs(valor) > 0.004 for valor in totais.values()):
         return None
     return {chave: round(valor, 2) for chave, valor in totais.items()}
 

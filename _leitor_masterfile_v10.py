@@ -2060,8 +2060,14 @@ def _totais_canonicos_pc(
     medida aplica fator a PC sem efeito financeiro.
     """
     def _bloco() -> dict[str, float]:
-        return {"quantidade": 0, "valor_pc": 0.0, "valor_considerado": 0.0,
-                "retroativo": 0.0}
+        return {
+            "quantidade": 0,
+            "valor_pc": 0.0,
+            "valor_considerado": 0.0,
+            "retroativo": 0.0,
+            "valor_atualizado_em_analise": 0.0,
+            "delta_potencial": 0.0,
+        }
 
     chaves = (
         "informado", "ate_o_corte", "enquadrado_ciclos", "com_efeito",
@@ -2071,12 +2077,20 @@ def _totais_canonicos_pc(
     blocos = {chave: _bloco() for chave in chaves}
     por_ciclo: dict[str, dict[str, float]] = {}
 
-    def _somar(bloco: dict[str, float], valor: float, considerado: float,
-               retro: float) -> None:
+    def _somar(
+        bloco: dict[str, float],
+        valor: float,
+        considerado: float,
+        retro: float,
+        em_analise: float,
+        potencial: float,
+    ) -> None:
         bloco["quantidade"] += 1
         bloco["valor_pc"] += valor
         bloco["valor_considerado"] += considerado
         bloco["retroativo"] += retro
+        bloco["valor_atualizado_em_analise"] += em_analise
+        bloco["delta_potencial"] += potencial
 
     for item in itens:
         if str(item.get("entra_no_calculo") or "Sim").strip().lower() not in (
@@ -2093,33 +2107,80 @@ def _totais_canonicos_pc(
             if item.get("valor_historico_considerado") is not None else valor
         )
         retro = float(item.get("retroativo_reconhecido_a_pagar") or 0.0)
+        em_analise = float(item.get("valor_atualizado_em_analise") or 0.0)
+        potencial = float(item.get("delta_potencial") or 0.0)
         enq = str(item.get("enquadramento") or ENQ_CICLO)
         no_corte = bool(item.get("dentro_do_corte", True))
 
-        _somar(blocos["informado"], valor, considerado, retro)
+        _somar(
+            blocos["informado"], valor, considerado, retro, em_analise, potencial
+        )
         if not no_corte:
-            _somar(blocos["posterior_ao_corte"], valor, considerado, retro)
+            _somar(
+                blocos["posterior_ao_corte"],
+                valor,
+                considerado,
+                retro,
+                em_analise,
+                potencial,
+            )
             continue
-        _somar(blocos["ate_o_corte"], valor, considerado, retro)
+        _somar(
+            blocos["ate_o_corte"], valor, considerado, retro, em_analise, potencial
+        )
 
         if enq == ENQ_INTERVALO_PRECLUSO:
-            _somar(blocos["intervalo_precluso"], valor, considerado, retro)
+            _somar(
+                blocos["intervalo_precluso"],
+                valor,
+                considerado,
+                retro,
+                em_analise,
+                potencial,
+            )
             continue
         if enq == ENQ_INDETERMINADO or not item.get("ciclo"):
-            _somar(blocos["indeterminado"], valor, considerado, retro)
+            _somar(
+                blocos["indeterminado"],
+                valor,
+                considerado,
+                retro,
+                em_analise,
+                potencial,
+            )
             continue
 
-        _somar(blocos["enquadrado_ciclos"], valor, considerado, retro)
+        _somar(
+            blocos["enquadrado_ciclos"],
+            valor,
+            considerado,
+            retro,
+            em_analise,
+            potencial,
+        )
         destino = (
             "com_efeito" if str(item.get("efeito_financeiro_pc") or "").strip()
             == "Sim" else "sem_efeito_ciclo"
         )
-        _somar(blocos[destino], valor, considerado, retro)
+        _somar(blocos[destino], valor, considerado, retro, em_analise, potencial)
         ciclo = str(item["ciclo"]).strip().upper()
-        _somar(por_ciclo.setdefault(ciclo, _bloco()), valor, considerado, retro)
+        _somar(
+            por_ciclo.setdefault(ciclo, _bloco()),
+            valor,
+            considerado,
+            retro,
+            em_analise,
+            potencial,
+        )
 
     for bloco in list(blocos.values()) + list(por_ciclo.values()):
-        for campo in ("valor_pc", "valor_considerado", "retroativo"):
+        for campo in (
+            "valor_pc",
+            "valor_considerado",
+            "retroativo",
+            "valor_atualizado_em_analise",
+            "delta_potencial",
+        ):
             bloco[campo] = round(bloco[campo], 2)
 
     return {
