@@ -5232,6 +5232,28 @@ resultado = st.session_state.get("resultado_valor_global")
 render_avisos_override_efeito_financeiro(diagnostico_coleta)
 
 if resultado:
+    metadados = diagnostico_coleta.get("metadados", {})
+    _ciclos_str = ", ".join(metadados.get("ciclos_em_analise", [])) or "—"
+    _st_res = (metadados.get("status_resultados") or {})
+    # Fonte canonica do retroativo reconhecido: o bloco "ate o corte" do payload
+    # unico dos PCs — ja sem os PCs sem efeito financeiro, sem os do intervalo
+    # precluso e sem os posteriores a data de corte. O valor do XLS permanece
+    # como queda para arquivos anteriores a essa medida (sem regressao).
+    _tc_pc = (resultado.get("totais_canonicos_pc") or {}) if resultado else {}
+    _retro_val = (_tc_pc.get("ate_o_corte") or {}).get("retroativo")
+    if _retro_val is None:
+        _retro_val = (_st_res.get("valores") or {}).get("retroativo_oficial")
+    _retro_str = (
+        "R$ " + f"{_retro_val:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        if isinstance(_retro_val, (int, float)) else "—"
+    )
+    _acum_val = resultado.get("variacao_acumulada")
+    _acum_str = f"{_acum_val * 100:.2f}%".replace(".", ",") if isinstance(_acum_val, (int, float)) else "—"
+    resumo_indice, resumo_ciclos, resumo_retro, resumo_acum = st.columns(4)
+    resumo_indice.metric("Índice", metadados.get("indice", "—"))
+    resumo_ciclos.metric("Ciclos analisados", _ciclos_str)
+    resumo_retro.metric("Retroativo reconhecido", _retro_str)
+    resumo_acum.metric("Percentual acumulado", _acum_str)
     render_resultado_consolidado(resultado, diagnostico_coleta)
     if resultado.get("id_apuracao"):
         st.caption(f"ID da apuração: {resultado['id_apuracao']}")

@@ -205,7 +205,7 @@ def test_composicao_copia_linhas_sem_criar_total_concorrente():
     assert consolidado["vta"] == 1_000.0
 
 
-def test_runtime_anexa_objeto_consolidado_e_pagina_substitui_cards_antigos():
+def test_runtime_anexa_objeto_consolidado_e_pagina_preserva_cards_originais():
     runtime = (ROOT / "_coleta_reajuste_documentos.py").read_text(encoding="utf-8")
     pagina = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
 
@@ -213,7 +213,14 @@ def test_runtime_anexa_objeto_consolidado_e_pagina_substitui_cards_antigos():
     assert "render_resultado_consolidado(resultado, diagnostico_coleta)" in pagina
     assert "Resultado da apuração" in pagina
     assert "COMPOSIÇÃO DO VTA" in pagina
-    assert 'resumo_indice.metric("Índice"' not in pagina
-    assert 'resumo_ciclos.metric("Ciclos analisados"' not in pagina
-    assert 'resumo_retro.metric("Retroativo reconhecido"' not in pagina
-    assert 'resumo_acum.metric("Percentual acumulado"' not in pagina
+    cards = [
+        'resumo_indice.metric("Índice"',
+        'resumo_ciclos.metric("Ciclos analisados"',
+        'resumo_retro.metric("Retroativo reconhecido"',
+        'resumo_acum.metric("Percentual acumulado"',
+    ]
+    posicoes = [pagina.index(card) for card in cards]
+    assert posicoes == sorted(posicoes)
+    assert posicoes[-1] < pagina.index(
+        "render_resultado_consolidado(resultado, diagnostico_coleta)"
+    )
