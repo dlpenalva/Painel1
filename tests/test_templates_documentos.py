@@ -4,6 +4,7 @@ Despacho Saneador (§7/§10.3).
 from __future__ import annotations
 
 import sys
+from datetime import date
 from io import BytesIO
 from pathlib import Path
 
@@ -24,6 +25,10 @@ from _templates_documentos import (  # noqa: E402
     formatar_moeda,
 )
 from _sanitizacao_documental import contem_emoji  # noqa: E402
+from _leitor_masterfile_v10 import (  # noqa: E402
+    _pc_dentro_do_corte,
+    _totais_canonicos_pc,
+)
 from test_sumario_executivo import (  # noqa: E402
     leitura_ausencias,
     leitura_multiciclo_pc,
@@ -238,19 +243,35 @@ def test_apostila_composicao_vta_unica_preserva_componentes_canonicos():
     assert linhas[-1][2] == _vta_texto_doc(dados)
 
 
-def test_documentos_exibem_situacao_retroativos_pc_sem_promover_potencial():
+def _leitura_retroativos_corte(data_pc_pago: date) -> dict:
     leitura = leitura_multiciclo_pc()
+    corte = date(2026, 8, 18)
+    leitura["controle"]["data_corte"] = corte
     primeiro, segundo = leitura["itens_pc_v10"]["itens"]
     primeiro.update({
-        "retroativo_reconhecido_a_pagar": 100.0,
+        "data_pc": date(2026, 4, 12),
+        "dentro_do_corte": True,
+        "pc_pago_a_contratada": "Nao",
+        "retroativo_reconhecido_a_pagar": 0.0,
+        "valor_atualizado_em_analise": 44.63,
+        "delta_potencial": 44.63,
+    })
+    segundo.update({
+        "data_pc": data_pc_pago,
+        "dentro_do_corte": _pc_dentro_do_corte(data_pc_pago, corte),
+        "pc_pago_a_contratada": "Sim",
+        "retroativo_reconhecido_a_pagar": 20.08,
         "valor_atualizado_em_analise": 0.0,
         "delta_potencial": 0.0,
     })
-    segundo.update({
-        "retroativo_reconhecido_a_pagar": 0.0,
-        "valor_atualizado_em_analise": 1100.0,
-        "delta_potencial": 100.0,
-    })
+    leitura["itens_pc_v10"]["totais_canonicos"] = _totais_canonicos_pc(
+        [primeiro, segundo], corte
+    )
+    return leitura
+
+
+def test_documentos_usam_corte_canonico_e_excluem_pc_posterior():
+    leitura = _leitura_retroativos_corte(date(2026, 12, 12))
 
     saneador = _texto_docx(gerar_despacho_saneador(
         leitura, campos_manuais=CAMPOS_SANEADOR
@@ -260,19 +281,36 @@ def test_documentos_exibem_situacao_retroativos_pc_sem_promover_potencial():
     ))
 
     assert "SITUAÇÃO DOS VALORES RETROATIVOS" in saneador
-    assert "Retroativo reconhecido: R$ 100,00" in saneador
-    assert "Valor atualizado em análise: R$ 1.100,00" in saneador
-    assert "Retroativo potencial: R$ 100,00" in saneador
+    assert "Retroativo reconhecido: R$ 0,00" in saneador
+    assert "Valor atualizado em análise: R$ 44,63" in saneador
+    assert "Retroativo potencial: R$ 44,63" in saneador
+    assert "R$ 20,08" not in saneador
     assert "aceitação dos respectivos Pedidos de Compra pela área gestora" in saneador
     assert "eventual pagamento" in saneador
     assert "não integra o valor reconhecido a pagar" in saneador
 
     assert "SITUAÇÃO DOS VALORES RETROATIVOS" in termo
-    assert "Retroativo reconhecido: R$ 100,00" in termo
-    assert "Retroativo potencial: R$ 100,00" in termo
+    assert "Retroativo reconhecido: R$ 0,00" in termo
+    assert "Retroativo potencial: R$ 44,63" in termo
+    assert "R$ 20,08" not in termo
     assert "Pedidos de Compra ainda sujeitos à aceitação pela área gestora" in termo
     assert "condução do eventual pagamento competem à área gestora" in termo
     assert "não integra, nesta data, o montante reconhecido a pagar" in termo
+
+
+def test_documentos_reincluem_reconhecido_quando_pc_pago_esta_antes_do_corte():
+    leitura = _leitura_retroativos_corte(date(2026, 8, 12))
+
+    saneador = _texto_docx(gerar_despacho_saneador(
+        leitura, campos_manuais=CAMPOS_SANEADOR
+    ))
+    termo = _texto_docx(gerar_termo_apostila(
+        leitura, campos_manuais=CAMPOS_TERMO
+    ))
+
+    for texto in (saneador, termo):
+        assert "Retroativo reconhecido: R$ 20,08" in texto
+        assert "Retroativo potencial: R$ 44,63" in texto
 
 
 def test_documentos_nao_exibem_bloco_retroativos_sem_pc_relevante():

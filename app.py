@@ -31,7 +31,7 @@ PAGINA_INICIO = _page("00_Calculadora_Reajustes.py", "Início", default=True)
 # Etapa 28A: nomenclatura visivel dos fluxos; rotas/constantes/keys intactas.
 PAGINA_UM_CICLO = _page("01_Calculo_Simples.py", "Analisar um único ciclo")
 PAGINA_MULTICICLO = _page("02_Calculo_Represados.py", "Analisar vários ciclos")
-PAGINA_UPLOAD = _page("03_Valor_Global.py", "Upload e docs")
+PAGINA_UPLOAD = _page("03_Valor_Global.py", "Upload e resultados")
 # Etapa 29B: Central de Modelos e Ferramentas (acesso sem Coleta).
 PAGINA_MODELOS_FERRAMENTAS = _page(
     "14_Central_Modelos_Ferramentas.py", "Modelos e ferramentas")
@@ -389,7 +389,7 @@ def _render_sidebar() -> None:
         st.page_link(PAGINA_UM_CICLO, label="Analisar um único ciclo")
         st.page_link(PAGINA_MULTICICLO, label="Analisar vários ciclos")
         st.markdown('<div class="cl8us-side-group">Documentos</div>', unsafe_allow_html=True)
-        st.page_link(PAGINA_UPLOAD, label="Upload e docs")
+        st.page_link(PAGINA_UPLOAD, label="Upload e resultados")
         st.page_link(PAGINA_MODELOS_FERRAMENTAS, label="Modelos e ferramentas")
 
         render_versao_sidebar()

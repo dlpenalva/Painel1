@@ -125,7 +125,14 @@ def adaptar_coleta_reajuste_para_documentos(
         if "MEMORIA_RESULTADOS" in wb.sheetnames
         else wb["RESULTADOS"]
     )
-    origem_label = _rotulo_origem_coleta(conteudo)
+    # No runtime oficial, a leitura já comprovou o modelo antes da adaptação.
+    # Evita reabrir os mesmos 2+ MB apenas para obter um rótulo que seria
+    # substituído abaixo; consumidores legados sem leitura preservam o detector.
+    origem_label = (
+        "COLETA_REAJUSTE_OFICIAL.xlsx"
+        if leitura
+        else _rotulo_origem_coleta(conteudo)
+    )
 
     ciclos_rows = []
     fatores: dict[str, float | None] = {}

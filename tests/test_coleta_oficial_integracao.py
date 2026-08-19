@@ -197,6 +197,7 @@ def test_calculadoras_e_upload_usam_o_mesmo_fluxo_oficial() -> None:
     assert "ler_masterfile_v10(conteudo, exigir_modelo_oficial=True)" in runtime
     assert "reconciliacao_xls_python" in runtime
     assert "avaliar_entrega_segura" in runtime
+    assert 'if leitura\n        else _rotulo_origem_coleta(conteudo)' in runtime
 
 
 def test_geracao_pos_calculadora_preserva_e_preenche_modelo_oficial() -> None:

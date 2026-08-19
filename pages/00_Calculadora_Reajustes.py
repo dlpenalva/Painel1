@@ -75,10 +75,10 @@ with linha_1[1]:
     with st.container(border=True):
         _conteudo_card(
             "2 · Retorno do fiscal",
-            "Upload e docs",
+            "Upload e resultados",
             "Envie o XLS preenchido. A web confere a estrutura e sinaliza lacunas antes de liberar totais ou documentos.",
         )
-        if st.button("Abrir Upload e docs", use_container_width=True, key="abrir_upload_inicio"):
+        if st.button("Abrir Upload e resultados", use_container_width=True, key="abrir_upload_inicio"):
             st.switch_page("pages/03_Valor_Global.py")
 
 st.subheader("Preparar os marcos da coleta")

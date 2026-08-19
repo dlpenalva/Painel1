@@ -23,7 +23,7 @@ class TestCascaXlsFirst(unittest.TestCase):
         # Etapa 28A: nomenclatura visivel dos fluxos (identificadores intactos).
         self.assertIn('st.page_link(PAGINA_UM_CICLO, label="Analisar um único ciclo")', APP)
         self.assertIn('st.page_link(PAGINA_MULTICICLO, label="Analisar vários ciclos")', APP)
-        self.assertIn('st.page_link(PAGINA_UPLOAD, label="Upload e docs")', APP)
+        self.assertIn('st.page_link(PAGINA_UPLOAD, label="Upload e resultados")', APP)
         self.assertIn('position="hidden"', APP)
 
     def test_menu_replica_rotulos_e_densidade_do_modelo_3(self):

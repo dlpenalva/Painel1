@@ -4922,22 +4922,6 @@ render_cabecalho_pagina(
     "",
 )
 
-# Etapa 29B.1: acesso direto à Central de Modelos e Ferramentas, visível antes
-# do fluxo de upload e independente de qualquer Coleta ou apuração em sessão.
-with st.container(border=True):
-    st.markdown(
-        '<span class="cl8us-docs-card-marker"></span>'
-        '<div class="cl8us-docs-card-title">Não possui uma Planilha de Coleta?</div>',
-        unsafe_allow_html=True,
-    )
-    st.caption(
-        "Acesse modelos em branco e ferramentas que podem ser utilizados sem "
-        "processamento de uma apuração."
-    )
-    if st.button("Abrir Modelos e Ferramentas", key="abrir_modelos_ferramentas_upload"):
-        st.switch_page("pages/14_Central_Modelos_Ferramentas.py")
-
-
 @st.cache_data(show_spinner=False)
 def _coleta_oficial_cacheada(assinatura: str, dados_calculadora: dict) -> bytes:  # noqa: ARG001
     """Gera o download usando a assinatura SHA-256 do template como chave do cache."""
@@ -5014,7 +4998,10 @@ else:
         st.session_state.pop("diagnostico_coleta_v2", None)
         st.session_state.pop("assinatura_processada_upload_docs", None)
         try:
-            resultado_processado, diagnostico_processado = processar_coleta_oficial_runtime(conteudo_upload)
+            with st.spinner("Processando Coleta..."):
+                resultado_processado, diagnostico_processado = (
+                    processar_coleta_oficial_runtime(conteudo_upload)
+                )
             resultado_processado["assinatura_origem_xlsx"] = assinatura_upload
             resultado_processado["id_apuracao"] = id_apuracao_de_assinatura(assinatura_upload)
             st.session_state["diagnostico_coleta_v2"] = diagnostico_processado

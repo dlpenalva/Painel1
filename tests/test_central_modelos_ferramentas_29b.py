@@ -498,80 +498,25 @@ def test_regra_retorno_garantia_pura():
     assert _destino_voltar("apuracao") == "pages/03_Valor_Global.py"
 
 
-# ---------------------------------------------- 29B.1: acesso em Upload e docs
-TITULO_293B1 = "Não possui uma Planilha de Coleta?"
-TEXTO_29B1 = (
-    "Acesse modelos em branco e ferramentas que podem ser utilizados sem "
-    "processamento de uma apuração."
-)
-
-
-def _bloco_29b1():
-    """Fatia do fonte de pages/03 do título do bloco até o switch_page."""
-    ini = PAGE03.index(TITULO_293B1)
-    fim = PAGE03.index('st.switch_page("pages/14_Central_Modelos_Ferramentas.py")', ini)
-    return PAGE03[ini:fim]
-
-
-def test_upload_docs_textos_exatos_29b1():
-    assert TITULO_293B1 in PAGE03
-    assert "Acesse modelos em branco e ferramentas que podem ser utilizados sem " in PAGE03
-    assert "processamento de uma apuração." in PAGE03
-    assert "Abrir Modelos e Ferramentas" in PAGE03
-    assert 'st.switch_page("pages/14_Central_Modelos_Ferramentas.py")' in PAGE03
-
-
-def test_upload_docs_bloco_antes_do_uploader():
-    # O bloco deve aparecer antes do uploader principal e antes de qualquer
-    # st.stop() (logo, fora de condições dependentes de upload).
-    pos_bloco = PAGE03.index(TITULO_293B1)
-    pos_uploader = PAGE03.index("st.file_uploader")
-    pos_stop = PAGE03.index("st.stop()")
-    assert pos_bloco < pos_uploader
-    assert pos_bloco > PAGE03.index('render_cabecalho_pagina(\n    "Painel da Apuração Contratual"')
-    # interface comeca depois das funcoes; o primeiro st.stop() da interface
-    # vem depois do uploader — basta garantir bloco < uploader < stop da interface
-    assert pos_uploader < PAGE03.index("st.stop()", pos_uploader)
-    assert pos_stop  # sanity
-
-
-def test_upload_docs_bloco_independente_de_apuracao():
-    bloco = _bloco_29b1()
-    assert "resultado_valor_global" not in bloco
-    assert "diagnostico_coleta_v2" not in bloco
-    assert "session_state" not in bloco  # não lê nem grava chaves da apuração
-    assert "file_uploader" not in bloco  # não depende de arquivo carregado
-    assert "if arquivo" not in bloco
-
-
-def test_upload_docs_clique_apenas_navega():
-    # Entre o botão e o switch_page não há qualquer outra instrução.
-    bloco = _bloco_29b1()
-    pos_btn = bloco.index('st.button("Abrir Modelos e Ferramentas"')
-    cauda = bloco[pos_btn:]
-    assert 'key="abrir_modelos_ferramentas_upload"' in cauda
-    corpo = cauda.split("):", 1)[1]
-    assert corpo.strip() == "", f"instrucoes inesperadas no clique: {corpo!r}"
+def test_upload_nao_repete_box_de_modelos_e_ferramentas():
+    assert "Não possui uma Planilha de Coleta?" not in PAGE03
+    assert "Abrir Modelos e Ferramentas" not in PAGE03
 
 
 def test_navegacao_bidirecional_upload_modelos():
-    # Upload e docs -> Modelos (novo bloco). Etapa 47: o card de retorno
-    # "Gerar documentos com dados da apuração" saiu da Central; o caminho de
-    # volta permanece pelo menu lateral, verificado abaixo.
-    assert "pages/14_Central_Modelos_Ferramentas.py" in PAGE03
-    # menu lateral: ambos os links registrados no app
-    assert 'label="Upload e docs"' in APP
+    # O acesso à Central permanece exclusivamente no menu lateral.
+    assert 'label="Upload e resultados"' in APP
     assert 'label="Modelos e ferramentas"' in APP
 
 
 def test_upload_docs_apptest_sessao_limpa():
-    # Comportamental: pagina 03 em sessao limpa renderiza o bloco sem excecao
-    # e sem criar chaves de apuracao.
+    # Comportamental: pagina 03 em sessao limpa renderiza sem excecao e sem
+    # criar chaves de apuracao.
     from streamlit.testing.v1 import AppTest
     at = AppTest.from_file(str(ROOT / "pages" / "03_Valor_Global.py"), default_timeout=60)
     at.run()
     assert not at.exception
-    assert any(b.label == "Abrir Modelos e Ferramentas" for b in at.button)
+    assert not any(b.label == "Abrir Modelos e Ferramentas" for b in at.button)
     assert "resultado_valor_global" not in at.session_state
     assert "diagnostico_coleta_v2" not in at.session_state
 
