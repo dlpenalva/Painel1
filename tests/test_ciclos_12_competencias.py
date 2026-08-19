@@ -567,24 +567,21 @@ def test_35c_resultados_publica_as_doze_medidas():
 
 
 # --------------------------------------------------------------------------- #
-# 36 — quatro boxes de metrica
+# 36 — resultado consolidado na web
 # --------------------------------------------------------------------------- #
-def test_36_quatro_metricas_coerentes():
-    """Titulos, ordem e quantidade preservados; valores do payload canonico."""
+def test_36_resultado_consolidado_preserva_payload_canonico():
+    """A nova apresentação usa o payload canônico e remove os quatro boxes."""
     fonte = (RAIZ / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
-    ordem = [
-        'resumo_indice.metric("Índice"',
-        'resumo_ciclos.metric("Ciclos analisados"',
-        'resumo_retro.metric("Retroativo reconhecido"',
-        'resumo_acum.metric("Percentual acumulado"',
-    ]
-    posicoes = [fonte.find(t) for t in ordem]
-    assert all(p > 0 for p in posicoes), posicoes
-    assert posicoes == sorted(posicoes)
-    assert "st.columns(4)" in fonte
-    # O box do retroativo le a medida canonica "ate o corte".
-    assert 'resultado.get("totais_canonicos_pc")' in fonte
-    assert '_tc_pc.get("ate_o_corte")' in fonte
+    consolidacao = (RAIZ / "_resultado_consolidado.py").read_text(encoding="utf-8")
+    assert "render_resultado_consolidado(resultado, diagnostico_coleta)" in fonte
+    assert "Valor Total Atualizado — VTA" in fonte
+    assert "Retroativo reconhecido" in fonte
+    assert "Retroativo potencial" in fonte
+    assert 'resumo_indice.metric("Índice"' not in fonte
+    assert 'resumo_ciclos.metric("Ciclos analisados"' not in fonte
+    # O reconhecido continua lendo a medida canônica "ate_o_corte".
+    assert 'totais_pc.get("ate_o_corte")' in consolidacao
+    assert 'bloco_corte.get("retroativo")' in consolidacao
     # Valores dos dois cenarios.
     tc_a = _totais_canonicos_pc(_vinte_pcs(data_corte=CORTE_A), data_corte=CORTE_A)
     tc_b = _totais_cenario_b()

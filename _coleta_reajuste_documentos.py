@@ -18,6 +18,7 @@ from _coleta_reajuste import ler_coleta_reajuste
 from _leitor_masterfile_v10 import ler_masterfile_v10
 from _politica_entrega_segura import avaliar_entrega_segura
 from _reconciliacao_xls_python import campos_nao_confiaveis_para_documentos
+from _resultado_consolidado import montar_resultado_consolidado
 from _seguranca_xlsx import (
     ErroSegurancaXlsx,
     XlsxInvalidoError,
@@ -590,4 +591,7 @@ def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], d
         "formalizacao_bloqueada": bool(bloqueios),
         "bloqueios_formalizacao": bloqueios,
     })
+    resultado["resultado_consolidado"] = montar_resultado_consolidado(
+        resultado, diagnostico
+    )
     return resultado, diagnostico

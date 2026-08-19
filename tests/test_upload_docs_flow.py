@@ -84,20 +84,15 @@ class TestFluxoUploadDocs(unittest.TestCase):
         ):
             self.assertNotIn(titulo, PAGINA)
 
-    def test_apos_processar_restaura_exatamente_quatro_resumos_antes_dos_cards(self):
+    def test_apos_processar_exibe_resultado_consolidado_antes_dos_cards(self):
         inicio = PAGINA.index("if resultado:", PAGINA.index("diagnostico_coleta ="))
         render = PAGINA.index("render_documentos_funcionais_upload(resultado)", inicio)
         trecho = PAGINA[inicio:render]
-        self.assertEqual(trecho.count(".metric("), 4)
-        rotulos = (
-            'metric("Índice"',
-            'metric("Ciclos analisados"',
-            'metric("Retroativo reconhecido"',
-            'metric("Percentual acumulado"',
+        self.assertEqual(trecho.count(".metric("), 0)
+        self.assertIn(
+            "render_resultado_consolidado(resultado, diagnostico_coleta)", trecho
         )
-        posicoes = [trecho.index(rotulo) for rotulo in rotulos]
-        self.assertEqual(posicoes, sorted(posicoes))
-        self.assertIn('metadados.get("indice"', trecho)
+        self.assertIn('st.caption(f"ID da apuração:', trecho)
 
     def test_pendencias_multiplas_usam_chaves_semanticas_unicas(self):
         inicio = PAGINA.index("def _render_pendencia_documento")
