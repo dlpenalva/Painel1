@@ -11,8 +11,14 @@ from _capacidades_apuracao import SEIS_DOCUMENTOS_CANONICOS
 
 
 class TestFluxoUploadDocs(unittest.TestCase):
-    def test_antes_do_upload_exibe_somente_download_e_upload(self):
-        self.assertIn('"Baixar Arquivo Coleta Oficial"', PAGINA)
+    def test_antes_do_upload_exibe_somente_o_uploader(self):
+        self.assertNotIn('"Baixar Arquivo Coleta Oficial"', PAGINA)
+        self.assertNotIn("Baixar arquivo de trabalho", PAGINA)
+        self.assertNotIn(
+            "Use o modelo oficial com fórmulas para registrar a apuração contratual.",
+            PAGINA,
+        )
+        self.assertIn("Enviar Arquivo Coleta Oficial preenchido", PAGINA)
         self.assertIn('key="upload_coleta_documentos"', PAGINA)
         trecho = PAGINA[PAGINA.index("if arquivo is None:"):PAGINA.index("conteudo_upload =")]
         self.assertIn("st.stop()", trecho)
@@ -140,9 +146,10 @@ class TestFluxoUploadDocs(unittest.TestCase):
         self.assertIn("from _templates_documentos import gerar_despacho_saneador, gerar_termo_apostila", PAGINA)
         self.assertIn("from _capacidades_apuracao import SEIS_DOCUMENTOS_CANONICOS", PAGINA)
 
-    def test_novo_arquivo_coleta_e_backend_oficial_permanecem_no_fluxo(self):
-        self.assertIn("TEMPLATE_COLETA_OFICIAL", PAGINA)
-        self.assertIn("assinatura_template_coleta", PAGINA)
+    def test_backend_oficial_permanece_no_fluxo_sem_gerador_de_download(self):
+        self.assertNotIn("TEMPLATE_COLETA_OFICIAL", PAGINA)
+        self.assertNotIn("assinatura_template_coleta", PAGINA)
+        self.assertNotIn("_coleta_oficial_cacheada", PAGINA)
         self.assertIn("processar_coleta_oficial_runtime", PAGINA)
         self.assertIn("resultado_valor_global", PAGINA)
         self.assertIn("diagnostico_coleta_v2", PAGINA)
