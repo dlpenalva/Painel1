@@ -1,6 +1,7 @@
 """Central de Modelos e Ferramentas — acesso sem Coleta (Etapa 29B).
 
 Área acessível sem upload de Planilha de Coleta. Oferece:
+  - download da Coleta Oficial sem dados de apuração;
   - modelos EM BRANCO do Despacho Saneador e do Termo de Apostila
     (gerados pelos wrappers canônicos ``gerar_modelo_branco_*``, sem qualquer
     dado de session_state, Coleta ou apuração anterior);
@@ -17,6 +18,12 @@ bytes são produzidos localmente e nunca gravados em session_state.
 """
 import streamlit as st
 
+from _coleta_oficial import (
+    TEMPLATE_COLETA_OFICIAL,
+    assinatura_template_coleta,
+    gerar_coleta_oficial_preenchida,
+    nome_download_coleta,
+)
 from _ui_utils import render_cabecalho_pagina
 from _templates_documentos import (
     gerar_modelo_branco_despacho,
@@ -37,6 +44,11 @@ AVISO_MODELOS = (
     "Os modelos desta área não utilizam dados de uma Coleta e não são "
     "preenchidos automaticamente. Revise e complete todos os campos destacados."
 )
+
+
+@st.cache_data(show_spinner=False)
+def _bytes_coleta_oficial(assinatura: str) -> bytes:  # noqa: ARG001
+    return gerar_coleta_oficial_preenchida({})
 
 
 @st.cache_data(show_spinner=False)
@@ -66,6 +78,30 @@ if not st.session_state.get("_calculadora_reajustes_embedded", False):
         "Modelos em branco e ferramentas que podem ser usados sem carregar uma "
         "Planilha de Coleta.",
     )
+
+# ---------------------------------------------------------------- Coleta
+st.subheader("Arquivo de trabalho")
+with st.container(border=True):
+    _card(
+        "Arquivo Coleta Oficial",
+        "Modelo oficial com fórmulas para registrar a apuração contratual.",
+    )
+    if TEMPLATE_COLETA_OFICIAL.exists():
+        st.download_button(
+            "Baixar Arquivo Coleta Oficial",
+            data=_bytes_coleta_oficial(
+                assinatura_template_coleta(TEMPLATE_COLETA_OFICIAL)
+            ),
+            file_name=nome_download_coleta({}),
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            type="primary",
+            use_container_width=True,
+            key="dl_coleta_oficial_modelos",
+        )
+    else:
+        st.error(
+            "Não foi possível localizar o Arquivo Coleta Oficial neste ambiente."
+        )
 
 # ---------------------------------------------------------------- Seção 1
 st.subheader("Modelos em branco")

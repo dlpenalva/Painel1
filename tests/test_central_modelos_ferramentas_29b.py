@@ -322,6 +322,13 @@ def test_pagina14_downloads_modelos():
     assert "gerar_modelo_branco_termo" in PAGE14
 
 
+def test_coleta_oficial_disponivel_somente_na_central_documental():
+    assert "Baixar Arquivo Coleta Oficial" in PAGE14
+    assert "gerar_coleta_oficial_preenchida({})" in PAGE14
+    assert 'key="dl_coleta_oficial_modelos"' in PAGE14
+    assert "Baixar Arquivo Coleta Oficial" not in PAGE03
+
+
 def test_pagina14_ferramentas_presentes():
     for alvo in ["pages/05_Garantia.py", "pages/08_Avaliacao_Aditivos.py"]:
         assert alvo in PAGE14
