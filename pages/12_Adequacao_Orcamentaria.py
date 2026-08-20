@@ -28,6 +28,8 @@ from _ui_utils import render_cabecalho_pagina
 # A matematica vive no motor de dominio. Os adaptadores de view-model (formatacao
 # e preparacao de dados, delegando ao motor) vivem em _adequacao_ui.
 from _adequacao_orcamentaria import (
+    _as_date,
+    janela_automatica_pcs,
     media_pedidos_compra,
     valor_original_foi_informado,
     pedidos_de_itens_pc,
@@ -167,6 +169,16 @@ modo_apuracao = resultado.get("modo_apuracao", "Completo") if isinstance(resulta
 modo_reduzido_estoque = modo_apuracao == "Reduzido por Itens/Estoque"
 modo_consumo_itens_ciclo = modo_apuracao == "Consumo por Itens/Ciclo"
 
+# Medidas canonicas ja consolidadas pela apuracao (_resultado_consolidado).
+# A Adequacao LE daqui e nao recalcula: retroativo reconhecido e potencial sao
+# grandezas distintas produzidas la, e a data de corte tem precedencia unica
+# (totais_canonicos_pc.data_corte -> controle.data_corte).
+consolidado_ad = (resultado.get("resultado_consolidado") or {}) if isinstance(resultado, dict) else {}
+medidas_pc = bool(consolidado_ad.get("medidas_pc_aplicaveis"))
+data_corte_canonica = _as_date((consolidado_ad.get("fora_do_corte") or {}).get("data_corte"))
+retroativo_potencial = consolidado_ad.get("retroativo_potencial") if medidas_pc else None
+valor_em_analise_pc = consolidado_ad.get("valor_atualizado_em_analise") if medidas_pc else None
+
 # Base financeira por competencia (ZERO x VAZIO preservados) e janela de 6
 # competencias-calendario terminando na ultima competencia INFORMADA.
 fin_por_comp, origem_financeira = financeiro_por_competencia(resultado)
@@ -216,13 +228,37 @@ with tab_base:
     st.subheader("1. Base da adequação")
     label_retroativo = ("Retroativo (itens consumidos/ciclo)" if modo_consumo_itens_ciclo
                         else ("Retroativo estimado por itens/estoque" if modo_reduzido_estoque
-                              else "Retroativo apurado"))
-    render_leitura([
+                              else ("Retroativo reconhecido" if medidas_pc
+                                    else "Retroativo apurado")))
+    linhas_base = [
         (label_retroativo, moeda(ctx["valor_represado"]) if tem_apuracao else "Não localizado"),
-        ("Percentual do reajuste", pct(ctx["variacao"]) if tem_apuracao else "Não localizado"),
-        ("Última competência", ultima_comp_fin_txt),
+    ]
+    # Metodo PC: reconhecido e potencial sao grandezas DIFERENTES e aparecem
+    # separadas. Ausencia nao vira zero — potencial nao apurado sai como
+    # "Não localizado"; potencial zero e exibido como zero, sem alarde.
+    if medidas_pc:
+        linhas_base.append((
+            "Retroativo potencial",
+            moeda(retroativo_potencial) if retroativo_potencial is not None else "Não localizado",
+        ))
+        if valor_em_analise_pc is not None:
+            linhas_base.append(("Valor atualizado em análise", moeda(valor_em_analise_pc)))
+    linhas_base.append(
+        ("Percentual do reajuste", pct(ctx["variacao"]) if tem_apuracao else "Não localizado"))
+    # Corte e vigencia sao conceitos distintos e aparecem lado a lado: o corte
+    # fecha o HISTORICO; a vigencia (campo abaixo) fecha a PROJECAO.
+    if data_corte_canonica is not None:
+        linhas_base.append(
+            ("Data de corte da apuração", data_corte_canonica.strftime("%d/%m/%Y")))
+    linhas_base.extend([
+        ("Última competência do histórico financeiro", ultima_comp_fin_txt),
         ("Fontes encontradas", fontes_txt),
     ])
+    render_leitura(linhas_base)
+    if medidas_pc:
+        st.caption("O retroativo potencial ainda não é reconhecido: entra apenas como "
+                   "cenário de planejamento e não integra a complementação confirmada. "
+                   "O valor atualizado em análise é exposição — não é somado à adequação.")
 
     st.markdown("**Data final da vigência contratual**")
     data_final_vigencia = st.text_input(
@@ -259,8 +295,12 @@ with tab_base:
         st.caption("Ajustes excepcionais. O usuário comum não precisa abrir esta seção.")
         if not tem_apuracao:
             st.caption("Valores não localizados na apuração — informe manualmente.")
-        retroativo = input_moeda("Ajustar retroativo", ctx["valor_represado"], "adequacao_v3_retroativo",
-                                 help="Retroativo oficial vem da apuração; ajuste apenas se necessário.")
+        retroativo = input_moeda(
+            "Ajuste excepcional do retroativo reconhecido", ctx["valor_represado"],
+            "adequacao_v3_retroativo",
+            help="O retroativo reconhecido vem da apuração; ajuste apenas em caráter "
+                 "excepcional. NÃO some aqui o retroativo potencial: ele é importado "
+                 "automaticamente da apuração e permanece em grandeza separada.")
         percentual_txt = st.text_input("Ajustar percentual de reajuste aplicado",
                                        value=pct(ctx["variacao"]), key="adequacao_v3_percentual")
         percentual_prev = (float(ctx["variacao"])
@@ -300,6 +340,7 @@ with tab_hist:
     media_ref = media_6
     origem_hist_rotulo = "Financeiro mensal"
     janela_meses_pc = None
+    janela_rotulo = ""
     ultima_comp = ultima_comp_fin
     ultima_comp_txt = ultima_comp_fin_txt
 
@@ -381,13 +422,39 @@ with tab_hist:
         # ----- HISTORICO PEDIDOS DE COMPRA: tabela com checkbox USAR -----
         origem_hist_rotulo = "Pedidos de compra"
         registros_pc = carregar_itens_pc_da_sessao(resultado, diagnostico)
-        ultima_comp_data = ultima_comp_fin.to_timestamp().date() if ultima_comp_fin is not None else None
-        if ultima_comp_data is None:
+        # A competencia final do HISTORICO e a data de corte da apuracao. A data
+        # final da VIGENCIA e outro conceito, continua informada separadamente na
+        # aba Base e nunca substitui o corte: confundir os dois zerava a projecao
+        # futura. Precedencia unica: corte canonico -> ultima competencia do
+        # historico financeiro -> campo manual (queda para apuracao sem corte).
+        origem_comp_final = ""
+        if data_corte_canonica is not None:
+            ultima_comp_data = data_corte_canonica
+            origem_comp_final = "data de corte da apuração"
+        elif ultima_comp_fin is not None:
+            ultima_comp_data = ultima_comp_fin.to_timestamp().date()
+            origem_comp_final = "última competência do histórico financeiro"
+        else:
+            ultima_comp_data = None
+
+        if ultima_comp_data is not None:
+            ultima_comp = pd.Period(ultima_comp_data, freq="M")
+            ultima_comp_txt = periodo_para_label(ultima_comp)
+            render_leitura([
+                ("Competência final do histórico", ultima_comp_txt),
+                ("Origem", origem_comp_final),
+            ])
+            st.caption("A competência final do histórico vem da apuração — não há "
+                       "redigitação. A data final da vigência contratual é informada "
+                       "separadamente na aba Base e delimita apenas a projeção futura.")
+        else:
             comp_ref_txt = st.text_input(
                 "Competência final considerada (mm/aaaa)",
                 value=st.session_state.get("adequacao_v3_comp_ref_pc", ""),
                 placeholder="Ex.: 06/2026", key="adequacao_v3_comp_ref_pc",
-                help="Sem histórico financeiro que determine a competência; informe a competência final da janela.")
+                help="Esta apuração não possui data de corte utilizável nem histórico "
+                     "financeiro; informe a competência final do histórico. Não informe "
+                     "aqui a data final da vigência: são conceitos distintos.")
             comp_ref = normalizar_competencia(comp_ref_txt)
             if comp_ref is not None:
                 ultima_comp = comp_ref
@@ -403,7 +470,27 @@ with tab_hist:
                        "janela histórica dos Pedidos de Compra.")
             media_ref = 0.0
         else:
-            janela_meses_pc = int(st.session_state.get("adequacao_v3_janela", 39))
+            # JANELA. O padrao e o historico realmente disponivel ate o corte:
+            # comeca no primeiro mes com PC importado e termina no mes do corte.
+            # Nao existe mais bloco fixo de meses como default — nada de meses
+            # artificiais anteriores ao primeiro PC so para completar tamanho.
+            # A janela olha TODOS os PCs importados: exclusao manual muda a
+            # media, nunca desloca o inicio do historico.
+            # A janela automatica e ancorada na DATA DE CORTE canonica. Sem
+            # corte na apuracao nao existe janela derivavel: o comportamento
+            # anterior (janela informada) permanece, sem mudar o golden.
+            janela_auto = janela_automatica_pcs(
+                pedidos_de_itens_pc(registros_pc), data_corte_canonica)
+            janela_manual = bool(st.session_state.get("adequacao_v3_janela_manual", False))
+            if janela_auto is not None and not janela_manual:
+                janela_meses_pc = janela_auto["meses"]
+                janela_rotulo = "Automático — histórico disponível até o corte"
+            else:
+                janela_meses_pc = int(st.session_state.get(
+                    "adequacao_v3_janela", (janela_auto or {}).get("meses") or 39))
+                janela_rotulo = ("Ajuste avançado — janela informada manualmente"
+                                 if janela_auto is not None
+                                 else "Sem data de corte na apuração — janela informada")
             # ELEGIBILIDADE TEMPORAL (janela) e' separada de EXCLUSAO MANUAL. A
             # classificacao PURA (sem exclusoes) da a situacao temporal de cada PC.
             cl_prev = classificar_pedidos(pedidos_de_itens_pc(registros_pc),
@@ -453,6 +540,7 @@ with tab_hist:
                 ("Período utilizado",
                  f"{base_pc['inicio_janela'].strftime('%d/%m/%Y')} a {base_pc['fim_janela'].strftime('%d/%m/%Y')}"),
                 ("Meses", str(janela_meses_pc)),
+                ("Janela", janela_rotulo),
                 ("PCs considerados", str(base_pc["pedidos_considerados"])),
                 ("Média mensal", moeda(media_ref)),
             ])
@@ -460,8 +548,14 @@ with tab_hist:
                 st.info("0 PCs considerados na janela escolhida. A janela permanece soberana "
                         "(não é movida para encaixar pedidos).")
             with st.expander("Opções avançadas do histórico", expanded=False):
+                st.checkbox(
+                    "Ajustar manualmente a janela histórica",
+                    key="adequacao_v3_janela_manual",
+                    help="Por padrão a janela é o histórico disponível até o corte. "
+                         "Marque apenas para arbitrar outra janela em caráter excepcional.")
                 nova_janela = st.slider("Janela histórica dos pedidos (meses)", 1, 60,
-                                        value=janela_meses_pc, key="adequacao_v3_janela")
+                                        value=janela_meses_pc, key="adequacao_v3_janela",
+                                        disabled=not janela_manual)
                 st.caption(f"Meses com PCs: {base_pc['meses_com_pedido']} · "
                            f"Meses sem PCs: {base_pc['meses_sem_pedido']} · "
                            f"Total histórico: {moeda(base_pc['total_historico'])}.")
@@ -678,14 +772,36 @@ with tab_result:
 
     col_a1, col_a2, col_a3 = st.columns(3)
     with col_a1:
-        render_card_valor("Retroativo já apurado", retroativo)
+        render_card_valor("Retroativo reconhecido considerado" if medidas_pc
+                          else "Retroativo já apurado", retroativo)
     with col_a2:
         render_card_valor("Diferença futura projetada", diferenca_futura, nota=f"{qtd_meses} meses")
     with col_a3:
-        render_card_valor("COMPLEMENTAÇÃO NECESSÁRIA", complementacao, destaque=True)
-    st.caption("Complementação necessária = retroativo oficial + diferença futura projetada.")
+        render_card_valor("COMPLEMENTAÇÃO CONFIRMADA", complementacao, destaque=True)
+    st.caption("Complementação confirmada = retroativo reconhecido considerado + "
+               "diferença futura projetada.")
+
+    # Cenario de planejamento. O potencial NAO integra o reconhecido, nem a
+    # complementacao confirmada, nem a programacao por exercicio: enquanto nao
+    # reconhecido, e apenas exposicao.
+    if medidas_pc and retroativo_potencial is not None:
+        cenario_potencial = _round2(complementacao + float(retroativo_potencial or 0))
+        st.markdown("**Cenário de planejamento com retroativo potencial**")
+        col_p1, col_p2 = st.columns(2)
+        with col_p1:
+            render_card_valor("Retroativo potencial (não reconhecido)", retroativo_potencial)
+        with col_p2:
+            render_card_valor("Cenário com potencial", cenario_potencial)
+        st.caption("Cenário com potencial = complementação confirmada + retroativo "
+                   "potencial. Valor de planejamento: o potencial não é reconhecido e "
+                   "não entra na programação por exercício abaixo.")
+    elif medidas_pc:
+        st.caption("Retroativo potencial não localizado nesta apuração.")
 
     st.markdown("**Programação por exercício**")
+    if medidas_pc:
+        st.caption("A programação representa a COMPLEMENTAÇÃO CONFIRMADA. O retroativo "
+                   "potencial não é distribuído aqui.")
     if isinstance(cronograma, pd.DataFrame) and not cronograma.empty:
         total_cron = float(pd.to_numeric(cronograma["Valor"], errors="coerce").sum())
         df_cron = cronograma.copy()
@@ -718,8 +834,18 @@ with tab_result:
         ("Quantidade de meses projetados", str(qtd_meses)),
         ("Ocorrências previstas no horizonte", str(ocorrencias_previstas)),
         ("Diferença futura projetada", diferenca_futura),
-        ("Complementação necessária", complementacao),
+        ("Complementação confirmada", complementacao),
     ]
+    if medidas_pc:
+        resumo_xlsx.append((
+            "Retroativo potencial (não reconhecido)",
+            retroativo_potencial if retroativo_potencial is not None else "Não localizado",
+        ))
+        if retroativo_potencial is not None:
+            resumo_xlsx.append((
+                "Cenário de planejamento com potencial",
+                _round2(complementacao + float(retroativo_potencial or 0)),
+            ))
     if origem_pc and janela_meses_pc is not None:
         _base_pc_exp = media_pedidos_compra(
             pedidos_de_itens_pc(carregar_itens_pc_da_sessao(resultado, diagnostico),
@@ -727,6 +853,8 @@ with tab_result:
             ultima_comp.to_timestamp().date(), janela_meses_pc)
         resumo_xlsx[3:3] = [
             ("Janela histórica (meses)", str(janela_meses_pc)),
+            ("Origem da janela histórica", janela_rotulo),
+            ("Competência final do histórico", ultima_comp_txt),
             ("PCs considerados", str(_base_pc_exp["pedidos_considerados"])),
             ("Meses com PCs", str(_base_pc_exp["meses_com_pedido"])),
             ("Meses sem PCs", str(_base_pc_exp["meses_sem_pedido"])),

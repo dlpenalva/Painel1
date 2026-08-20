@@ -565,7 +565,9 @@ def gerar_xlsx_projecao(df_ultimos, df_projecao, resumo):
         ws = workbook.add_worksheet("RESUMO")
         writer.sheets["RESUMO"] = ws
         ws.write(0, 0, "Adequação Orçamentária — Delta do Reajuste", fmt_title)
-        ws.write(1, 0, "Complementação necessária = retroativo apurado + diferença futura projetada.", fmt_note)
+        ws.write(1, 0, "Complementação confirmada = retroativo reconhecido considerado + "
+                       "diferença futura projetada. O retroativo potencial, quando existente, "
+                       "é informado à parte e não integra a complementação.", fmt_note)
         ws.write(3, 0, "Indicador", fmt_header)
         ws.write(3, 1, "Valor", fmt_header)
         for r, (label, valor) in enumerate(resumo, start=4):

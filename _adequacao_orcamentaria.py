@@ -241,6 +241,40 @@ def janela_financeira_competencias(por_competencia: Iterable[Any], n: int = 6) -
     }
 
 
+def janela_automatica_pcs(
+    pedidos: Iterable[Pedido | dict],
+    data_corte: Any,
+) -> dict | None:
+    """Janela historica derivada do proprio historico de PCs importado.
+
+    INICIO = primeiro mes em que existe PC com data valida ate a data de corte.
+    FIM    = ultimo dia do mes da data de corte.
+
+    A janela e ESTAVEL: olha todos os PCs importados com data valida, sem
+    considerar exclusao manual. Desmarcar um PC ajusta a media, nunca desloca
+    o inicio do historico. Meses sem PC dentro do intervalo permanecem no
+    denominador, conforme a metodologia vigente.
+
+    Devolve None quando nao ha data de corte ou nenhum PC ate ela: sem
+    historico nao existe janela derivavel, e nenhum bloco fixo de meses
+    anterior ao primeiro PC e inventado para completar um tamanho.
+    """
+    corte = _as_date(data_corte)
+    if corte is None:
+        return None
+    fim = _eomonth(corte, 0)
+    meses_com_pc: list[date] = []
+    for x in (pedidos or []):
+        p = x if isinstance(x, Pedido) else Pedido.de_dict(x)
+        if p.data is not None and p.data <= corte:
+            meses_com_pc.append(_mes1(p.data))
+    if not meses_com_pc:
+        return None
+    inicio = min(meses_com_pc)
+    meses = (fim.year - inicio.year) * 12 + (fim.month - inicio.month) + 1
+    return {"inicio_janela": inicio, "fim_janela": fim, "meses": meses}
+
+
 def pedidos_de_itens_pc(registros: Iterable[dict], exclusoes: Iterable[Any] | None = None) -> list[Pedido]:
     """Mapeia registros estruturados de itens_PC (NUMERO_PC/DATA_PC/VALOR_PC) em
     Pedido, sem redigitacao. `exclusoes` = identificadores marcados como nao
