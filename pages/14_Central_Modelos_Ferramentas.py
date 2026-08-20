@@ -20,6 +20,7 @@ import streamlit as st
 
 from _coleta_oficial import (
     TEMPLATE_COLETA_OFICIAL,
+    assinatura_codigo_coleta,
     assinatura_template_coleta,
     gerar_coleta_oficial_preenchida,
     nome_download_coleta,
@@ -47,7 +48,7 @@ AVISO_MODELOS = (
 
 
 @st.cache_data(show_spinner=False)
-def _bytes_coleta_oficial(assinatura: str) -> bytes:  # noqa: ARG001
+def _bytes_coleta_oficial(assinatura: str, assinatura_codigo: str) -> bytes:  # noqa: ARG001 — chaves SHA-256 do cache (template + codigo de geracao)
     return gerar_coleta_oficial_preenchida({})
 
 
@@ -90,7 +91,8 @@ with st.container(border=True):
         st.download_button(
             "Baixar Arquivo Coleta Oficial",
             data=_bytes_coleta_oficial(
-                assinatura_template_coleta(TEMPLATE_COLETA_OFICIAL)
+                assinatura_template_coleta(TEMPLATE_COLETA_OFICIAL),
+                assinatura_codigo_coleta(),
             ),
             file_name=nome_download_coleta({}),
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
