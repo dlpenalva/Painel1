@@ -32,6 +32,7 @@ from pathlib import Path
 from typing import Any
 
 from openpyxl import load_workbook
+from openpyxl.utils import get_column_letter
 from dateutil.relativedelta import relativedelta
 
 from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
@@ -591,16 +592,16 @@ _NEUTRO_VALOR_EM_ANALISE = "FFF2F2F2"
 
 
 def _garantir_apresentacao_retroativos_e_aditivos(wb) -> None:
-    """Aplica apenas a apresentacao user-facing e a decisao tecnica de K.
+    """Aplica apenas a apresentacao user-facing das abas entregues.
 
     Os nomes tecnicos do template permanecem aceitos pela validacao estrutural.
     Na copia entregue, reconhecido e potencial recebem rotulos amigaveis e
-    cores opostas. Em ``aditivos``, todo delta valido ja alimenta
-    ``posicao_contratual`` e o remanescente; K registra automaticamente essa
-    prevencao de dupla contagem e fica oculto da visao normal.
+    cores opostas. Em ``aditivos``, apenas o rotulo de H e a normalizacao de
+    "Nao" sao tocados: K permanece EXATAMENTE como o template oficial a
+    define (coluna visivel, celulas de entrada e lista suspensa Sim/Nao).
     """
     from copy import copy as _copy
-    from openpyxl.styles import Font, PatternFill
+    from openpyxl.styles import PatternFill
 
     if "itens_PC" in wb.sheetnames:
         ws = wb["itens_PC"]
@@ -633,36 +634,18 @@ def _garantir_apresentacao_retroativos_e_aditivos(wb) -> None:
         for linha in range(2, 201):
             if ws[f"H{linha}"].value == "Não":
                 ws[f"H{linha}"].value = "Nao"
-            celula = ws[f"K{linha}"]
-            celula.value = (
-                f'=IF(A{linha}="","",IF(M{linha}="OK","Nao",""))'
-            )
-            celula.fill = PatternFill("solid", fgColor=_NEUTRO_VALOR_EM_ANALISE)
-            celula.font = Font(name="Calibri", size=9, color="FF666666")
-        ws.column_dimensions["K"].hidden = True
-        for validacao in list(ws.data_validations.dataValidation):
-            faixas = [
-                str(faixa)
-                for faixa in validacao.sqref.ranges
-                if str(faixa) != "K2:K200"
-            ]
-            if len(faixas) == len(validacao.sqref.ranges):
-                continue
-            if faixas:
-                validacao.sqref = " ".join(faixas)
-            else:
-                ws.data_validations.dataValidation.remove(validacao)
 
 
 _VALIDACOES_CRITICAS_ADITIVOS: dict[str, tuple[str, str]] = {
     "H2:H200": ("list", '"Sim,Nao"'),
+    "K2:K200": ("list", '"Sim,Nao"'),
     "D2:D200": ("list", '"Acrescimo,Supressao"'),
 }
 
 
 def _validar_validacoes_aditivos_criticas(wb) -> None:
-    """Barreira contra regressao critica: aditivos!H e D jamais podem sair
-    sem a lista suspensa (Sim/Nao e Acrescimo/Supressao, respectivamente).
+    """Barreira contra regressao critica: aditivos!H, K e D jamais podem sair
+    sem a lista suspensa (Sim/Nao, Sim/Nao e Acrescimo/Supressao).
 
     Mesma familia de guarda de ``_validar_estrutura_itens_pc``: nao e so o
     teste que protege a entrega, e a propria geracao. Se por qualquer motivo
@@ -687,6 +670,42 @@ def _validar_validacoes_aditivos_criticas(wb) -> None:
         raise ValueError(
             "aditivos invalida: validacao de lista ausente ou divergente em "
             f"{', '.join(faltantes)} (regressao critica de dropdown)"
+        )
+
+
+# itens_PC: faixa das colunas tecnicas/derivadas V:AC (22..29). O template
+# oficial as define ocultas e a copia entregue jamais pode reexibi-las.
+_COLS_TECNICAS_ITENS_PC = frozenset(range(22, 30))
+
+
+def _garantir_colunas_tecnicas_itens_pc_ocultas(wb) -> None:
+    """Assegura que itens_PC!V:AC saiam OCULTAS no XLSX entregue.
+
+    Altera SOMENTE a propriedade ``hidden`` de faixas de coluna ja existentes
+    e inteiramente contidas em V:AC. Nunca cria, divide ou redimensiona
+    faixas (o que produziria elementos <col> sobrepostos e reparo do Excel)
+    e nunca oculta coluna fora dessa janela. Se alguma coluna de V:AC ficar
+    sem faixa que a cubra, a geracao falha explicitamente em vez de entregar
+    a aba com as colunas tecnicas visiveis.
+    """
+    if "itens_PC" not in wb.sheetnames:
+        return
+    ws = wb["itens_PC"]
+    pendentes = set(_COLS_TECNICAS_ITENS_PC)
+    for dimensao in list(ws.column_dimensions.values()):
+        if dimensao.min is None or dimensao.max is None:
+            continue
+        alcance = set(range(dimensao.min, dimensao.max + 1))
+        if alcance and alcance <= _COLS_TECNICAS_ITENS_PC:
+            dimensao.hidden = True
+            pendentes -= alcance
+    if pendentes:
+        faltantes = ", ".join(
+            get_column_letter(coluna) for coluna in sorted(pendentes)
+        )
+        raise ValueError(
+            "itens_PC invalida: colunas tecnicas sem ocultacao garantida "
+            f"({faltantes}) — o template oficial define V:AC ocultas"
         )
 
 
@@ -762,6 +781,7 @@ def obter_coleta_oficial_bytes() -> bytes:
     _garantir_orientacao_novo_item_por_aditivo(wb)
     _validar_estrutura_itens_pc(wb)
     _garantir_apresentacao_retroativos_e_aditivos(wb)
+    _garantir_colunas_tecnicas_itens_pc_ocultas(wb)
     _validar_validacoes_aditivos_criticas(wb)
 
     wb.calculation.calcMode = "auto"
