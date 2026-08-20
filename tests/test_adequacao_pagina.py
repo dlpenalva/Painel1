@@ -95,7 +95,9 @@ def test_reset_limpa_somente_v3():  # Secao 26
 def test_resultado_e_complemento():  # Secao 23, N
     assert "referencia_reajustada = _round2(media_ref * fator_reajuste)" in PAGINA
     assert "complementacao = _round2(float(retroativo or 0) + diferenca_futura)" in PAGINA
-    assert "COMPLEMENTAÇÃO NECESSÁRIA" in PAGINA
+    # Rotulo passou a distinguir o CONFIRMADO do cenario com retroativo
+    # potencial, que nao integra a complementacao.
+    assert "COMPLEMENTAÇÃO CONFIRMADA" in PAGINA
 
 
 def test_projecao_usa_referencia_da_origem():  # Secao 17/18 — media_ref comum as origens
