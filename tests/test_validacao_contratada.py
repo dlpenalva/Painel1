@@ -145,7 +145,15 @@ class TestAppTestValidacaoContratada(unittest.TestCase):
                             {"ciclo": "C2", "data_inicio_ddmmaaaa": "01/01/2026", "data_fim_ddmmaaaa": "31/12/2026"},
                         ]
                     },
-                }
+                },
+                "dados_operacionais": {
+                    "parametros_v10": {
+                        "por_ciclo": {
+                            "C1": {"data_inicio": "2025-01-01", "inicio_efeito_financeiro": "2025-02-01"},
+                            "C2": {"data_inicio": "2026-01-01", "inicio_efeito_financeiro": "2026-01-01"},
+                        }
+                    }
+                },
             },
             "df_ciclos": pd.DataFrame([
                 {"Ciclo": "C1", "Variação": 0.045},
@@ -192,8 +200,13 @@ class TestAppTestValidacaoContratada(unittest.TestCase):
         self.assertIn("[a preencher]", texto)  # contrato/contratada sem fonte automática hoje
         self.assertIn("TOTAL RETROATIVO RECONHECIDO: R$ 12.345,67", texto)
         self.assertIn("TOTAL RETROATIVO POTENCIAL: R$ 890,12", texto)
-        self.assertIn("C1 | 01/2025 | R$ 1.500,00", texto)
+        # EFEITO FINANCEIRO: fonte canonica parametros_v10.por_ciclo, nao df_financeiro_mensal.
+        self.assertIn("C1 | 01/01/2025 a 31/12/2025 | IST | 4,50% | A partir de 01/02/2025", texto)
+        # COMPETÊNCIAS SEM EFEITO: mesma regra homologada do Sumário Executivo (Requisito 5).
+        self.assertIn("C1 | 01/2025 | —", texto)
         self.assertNotIn("Não houve perda de competências neste ciclo.", texto)
+        self.assertNotIn("Para facilitar o registro, a concordância poderá ser manifestada", texto)
+        self.assertNotIn("De acordo com os ciclos, índices, efeitos financeiros e valores apresentados", texto)
 
     def test_metodo_financeiro_sem_potencial_e_sem_perda(self):
         import pandas as pd
