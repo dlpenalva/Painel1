@@ -371,10 +371,11 @@ def test_app_registra_pagina_e_link():
     assert "PAGINA_MODELOS_FERRAMENTAS" in APP
 
 
-def test_inicio_tem_card_modelos():
-    assert "5 · Modelos e ferramentas" in INICIO
-    assert "Abrir Modelos e Ferramentas" in INICIO
-    assert "pages/14_Central_Modelos_Ferramentas.py" in INICIO
+def test_inicio_nao_repete_o_acesso_a_modelos():
+    # Redesign da HOME: o acesso vive no menu lateral (test_app_registra_pagina_e_link).
+    assert "5 · Modelos e ferramentas" not in INICIO
+    assert "Abrir Modelos e Ferramentas" not in INICIO
+    assert "pages/14_Central_Modelos_Ferramentas.py" not in INICIO
 
 
 # --------------------------------------------------- retorno da Garantia

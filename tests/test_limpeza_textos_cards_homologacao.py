@@ -79,8 +79,10 @@ def test_titulos_funcionais_permanecem():
 
 
 def test_call_sites_passam_descricao_vazia():
-    for src in (INICIO, SIMPLES, DOCUMENTOS, ADEQUACAO):
+    # A HOME passou a ter cabecalho proprio; as rotas internas seguem no helper.
+    for src in (SIMPLES, DOCUMENTOS, ADEQUACAO):
         assert "render_cabecalho_pagina(" in src
+    assert "home-hero" in INICIO
     # helper com default retrocompativel
     assert 'def render_cabecalho_pagina(titulo, descricao="")' in UI
 

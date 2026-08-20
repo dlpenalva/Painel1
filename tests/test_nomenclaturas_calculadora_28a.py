@@ -36,8 +36,10 @@ class TestTextosPrincipais(unittest.TestCase):
         self.assertIn('st.page_link(PAGINA_MULTICICLO, label="Analisar vários ciclos")', APP)
 
     def test_inicio_e_cabecalhos_usam_os_textos_aprovados(self):
-        self.assertIn('"Analisar um único ciclo"', INICIO)
-        self.assertIn('"Analisar vários ciclos"', INICIO)
+        # Apos o redesign da HOME, os rotulos dos fluxos vivem no menu lateral
+        # (app.py) e nas proprias paginas — a home nao os repete.
+        self.assertIn('label="Analisar um único ciclo"', APP)
+        self.assertIn('label="Analisar vários ciclos"', APP)
         self.assertIn('"Analisar um único ciclo"', SIMPLES)
         self.assertIn('"Analisar vários ciclos"', MULTI)
 
@@ -50,9 +52,12 @@ class TestTextosPrincipais(unittest.TestCase):
         self.assertNotIn("Ciclo final desta análise", MULTI)
         self.assertNotIn("Último ciclo concedido/formalizado:", MULTI)
 
-    def test_keys_de_navegacao_do_inicio_preservadas(self):
-        self.assertIn('key="abrir_um_ciclo_inicio"', INICIO)
-        self.assertIn('key="abrir_multiciclo_inicio"', INICIO)
+    def test_inicio_nao_tem_mais_botoes_de_navegacao(self):
+        # Os botoes de navegacao sairam da HOME no redesign; os rotulos
+        # continuam provados na sidebar (app.py) e nas proprias paginas.
+        self.assertNotIn('key="abrir_um_ciclo_inicio"', INICIO)
+        self.assertNotIn('key="abrir_multiciclo_inicio"', INICIO)
+        self.assertIn('key="download_coleta_inicio"', INICIO)
 
 
 class TestCicloUnico(unittest.TestCase):

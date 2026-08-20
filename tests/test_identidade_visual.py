@@ -44,9 +44,13 @@ def test_render_marca_topo_usa_imagem():
     assert '<span class="tlb-cl8us-name">' not in html   # marca textual antiga removida
 
 
-def test_homepage_percorre_render_cabecalho_pagina():
+def test_homepage_usa_o_mesmo_asset_oficial_da_marca():
+    # Redesign da HOME: cabecalho proprio (logo com mais respiro), porem
+    # servido pelo MESMO asset oficial do cabecalho global.
     src = (ROOT / "pages" / "00_Calculadora_Reajustes.py").read_text(encoding="utf-8")
-    assert "render_cabecalho_pagina(" in src   # a homepage usa a funcao corrigida
+    assert "_header_data_uri" in src
+    assert "home-hero" in src
+    assert "cl8us-page-privacy" in src
 
 
 def test_favicon_configurado_no_entrypoint_e_paginas():
