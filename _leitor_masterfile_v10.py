@@ -364,6 +364,10 @@ def _ler_parametros_v10(wb) -> dict[str, Any]:
     col_inicio_efeito = _col(
         mapa, "INICIO_EFEITO_FINANCEIRO", "INICIO DO EFEITO FINANCEIRO"
     )
+    # DATA_PEDIDO (parametros!U): data em que a CONTRATADA apresentou o pedido,
+    # gravada pelo gerador. Arquivo anterior a essa gravacao nao tem a coluna e
+    # devolve None — ausencia continua sendo ausencia, nunca vira data presumida.
+    col_data_pedido = _col(mapa, "DATA_PEDIDO", "DATA DO PEDIDO")
     from _efeitos_financeiros_pc import reconciliar_inicios_efeito
     inicios_reconciliados, erros_inicio, tem_inicio_visivel, tem_inicio_metadado = (
         reconciliar_inicios_efeito(wb)
@@ -415,6 +419,10 @@ def _ler_parametros_v10(wb) -> dict[str, Any]:
                 ws.cell(r, col_efeito_fin).value if col_efeito_fin else None
             ),
             "situacao": ws.cell(r, col_situacao).value if col_situacao else None,
+            "data_pedido": (
+                _normalizar_data(ws.cell(r, col_data_pedido).value)
+                if col_data_pedido else None
+            ),
             "inicio_efeito_financeiro": inicios_reconciliados.get(ciclo),
             "inicio_efeito_financeiro_parametros": (
                 _normalizar_data(ws.cell(r, col_inicio_efeito).value)

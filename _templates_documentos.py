@@ -561,6 +561,98 @@ def _efeito_financeiro_ciclo(c: dict) -> str:
     return NAO_INFORMADO
 
 
+_MESES_EXTENSO = (
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro",
+)
+
+
+def _lista_natural(itens: list[str]) -> str:
+    if not itens:
+        return ""
+    if len(itens) == 1:
+        return itens[0]
+    return ", ".join(itens[:-1]) + " e " + itens[-1]
+
+
+def _competencias_sem_efeito(c: dict) -> list[str]:
+    """Competencias do ciclo que nao produzem efeitos financeiros.
+
+    Fonte unica: o bloco `meses_sem_efeito` que a apuracao ja consolida a
+    partir dos marcos canonicos (inicio do ciclo x INICIO_EFEITO_FINANCEIRO).
+    O gerador NAO recria temporalidade: sem status "ok" nao ha o que declarar.
+    """
+    situacao = remover_emojis_leve(c.get("situacao") or "").strip().lower()
+    if "preclu" in situacao:
+        # Preclusao integral ja e declarada como "Sem efeitos financeiros";
+        # nunca vira perda parcial de competencias.
+        return []
+    bloco = c.get("meses_sem_efeito") or {}
+    if str(bloco.get("status") or "") != "ok":
+        return []
+    return [str(x).strip() for x in (bloco.get("competencias") or []) if str(x).strip()]
+
+
+def _competencias_por_extenso(competencias: list[str]) -> str:
+    """'01/2026', '02/2026' -> 'janeiro e fevereiro de 2026'."""
+    grupos: list[tuple[str, list[str]]] = []
+    for comp in competencias:
+        mes_txt, _, ano = str(comp).partition("/")
+        try:
+            nome_mes = _MESES_EXTENSO[int(mes_txt) - 1]
+        except (ValueError, IndexError):
+            nome_mes = mes_txt
+        if grupos and grupos[-1][0] == ano:
+            grupos[-1][1].append(nome_mes)
+        else:
+            grupos.append((ano, [nome_mes]))
+    return _lista_natural([f"{_lista_natural(m)} de {ano}" for ano, m in grupos])
+
+
+def _frase_perda_efeitos(c: dict, *, nomear_ciclo: bool) -> str | None:
+    competencias = _competencias_sem_efeito(c)
+    if not competencias:
+        return None
+    inicio = str(c.get("inicio_efeito_financeiro") or "").strip()
+    if not inicio or inicio == NAO_INFORMADO or "/" not in inicio:
+        return None
+    ciclo = remover_emojis_leve(c.get("ciclo") or "").strip()
+    referencia = f"do ciclo {ciclo}" if (nomear_ciclo and ciclo) else "deste ciclo"
+    rotulo = "a competência de" if len(competencias) == 1 else "as competências de"
+    return (
+        "Em razão da data do pedido, os efeitos financeiros do reajuste "
+        f"{referencia} iniciam-se em {inicio}, não alcançando {rotulo} "
+        f"{_competencias_por_extenso(competencias)}."
+    )
+
+
+def _paragrafos_perda_efeitos(doc: Document, dados: dict) -> None:
+    """Declara, ciclo a ciclo, as competencias sem efeitos financeiros.
+
+    Compartilhada pelo Despacho Saneador e pelo Termo de Apostila para que os
+    dois documentos declarem a mesma perda a partir da mesma fonte temporal.
+    """
+    if dados.get("_modo_branco"):
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        _adicionar_run(
+            p,
+            "Havendo competências não alcançadas pelos efeitos financeiros do "
+            "reajuste em razão da data do pedido, deverão ser expressamente "
+            "indicadas neste item.",
+        )
+        return
+    ciclos = dados.get("ciclos_computados") or []
+    nomear = len(ciclos) > 1
+    for c in ciclos:
+        frase = _frase_perda_efeitos(c, nomear_ciclo=nomear)
+        if not frase:
+            continue
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        _adicionar_run(p, frase)
+
+
 # ---------------------------------------------------------------------------
 # Camada de apresentacao humanizada do VTA (nunca expoe vocabulario do XLS)
 # ---------------------------------------------------------------------------
@@ -955,6 +1047,7 @@ def _ta_secao1_reajustes(doc: Document, dados: dict, cm: dict) -> None:
             "[PREENCHER: Percentual aplicável]", "[PREENCHER: Efeitos financeiros]",
             "[PREENCHER: Situação]",
         ]], destacar_placeholders=True)
+        _paragrafos_perda_efeitos(doc, dados)
         doc.add_paragraph()
         return
     linhas: list[list[str]] = []
@@ -978,6 +1071,7 @@ def _ta_secao1_reajustes(doc: Document, dados: dict, cm: dict) -> None:
         "Percentual acumulado apurado",
     ])
     _adicionar_tabela(doc, cabecalho, linhas)
+    _paragrafos_perda_efeitos(doc, dados)
     doc.add_paragraph()
 
 
@@ -1562,6 +1656,8 @@ def _ds_secao2_pedido_parametros(doc: Document, dados: dict, cm: dict) -> None:
             else:
                 _run_campo_manual(p, "Indice ou referencia economica")
             _adicionar_run(p, ".")
+
+    _paragrafos_perda_efeitos(doc, dados)
 
     _ds_titulo_quadro(doc, "Quadro 1 - Síntese da análise")
     cabecalho = [
