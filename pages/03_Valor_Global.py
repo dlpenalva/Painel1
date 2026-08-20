@@ -25,7 +25,7 @@ from _seguranca_xlsx import (
 )
 from _capacidades_apuracao import SEIS_DOCUMENTOS_CANONICOS
 from _resultado_consolidado import montar_resultado_consolidado
-from _sumario_executivo import gerar_sumario_executivo
+from _sumario_executivo import gerar_sumario_executivo, _fmt_data, _meses_sem_efeito, NAO_INFORMADO
 from _templates_documentos import gerar_despacho_saneador, gerar_termo_apostila
 
 aditivos_somados_ao_valor_total = 0.0  # fallback: planilha sem aditivos computaveis
@@ -5229,13 +5229,37 @@ def _ciclos_para_validacao_contratada(resultado, diagnostico):
     return linhas
 
 
-def _financeiro_por_ciclo_para_validacao_contratada(resultado):
-    """Inicio do efeito financeiro e competencias sem efeito, por ciclo:
-    agregacao de apresentacao sobre df_financeiro_mensal (ja calculado pelo
-    leitor, com os mesmos helpers de competencia usados no restante desta
-    pagina); nenhum valor financeiro novo e produzido aqui."""
-    df_fin = resultado.get("df_financeiro_mensal")
+def _financeiro_por_ciclo_para_validacao_contratada(resultado, consolidado):
+    """Inicio do efeito financeiro e competencias sem efeito, por ciclo.
+
+    Metodo PC: fonte temporal canonica de
+    objeto_processo.dados_operacionais.parametros_v10.por_ciclo (a mesma
+    usada por montar_dados_sumario_executivo/_montar_secao_ciclos), com
+    INICIO_EFEITO_FINANCEIRO reconciliado e a mesma regra de meses sem
+    efeito ja homologada no Sumario Executivo (Requisito 5) — nenhuma regra
+    temporal nova e criada aqui. Demais metodos: agregacao de apresentacao
+    sobre df_financeiro_mensal (ja calculado pelo leitor); nenhum valor
+    financeiro novo e produzido em nenhum dos dois caminhos."""
     saida = {}
+    if consolidado.get("medidas_pc_aplicaveis"):
+        dados_operacionais = (
+            ((resultado.get("objeto_processo") or {}).get("dados_operacionais")) or {}
+        )
+        por_ciclo = (dados_operacionais.get("parametros_v10") or {}).get("por_ciclo") or {}
+        for ciclo, reg in por_ciclo.items():
+            if not isinstance(reg, dict):
+                continue
+            inicio = reg.get("inicio_efeito_financeiro") or reg.get("inicio_efeito_financeiro_parametros")
+            inicio_fmt = _fmt_data(inicio) if inicio is not None else NAO_INFORMADO
+            meses = _meses_sem_efeito(str(ciclo).upper(), reg)
+            saida[str(ciclo).upper()] = {
+                "inicio_efeito": inicio_fmt if inicio_fmt != NAO_INFORMADO else None,
+                "competencias_sem_efeito": list(meses.get("competencias") or []),
+                "valor_sem_efeito": None,
+            }
+        return saida
+
+    df_fin = resultado.get("df_financeiro_mensal")
     if not isinstance(df_fin, pd.DataFrame) or df_fin.empty:
         return saida
     for ciclo, grupo in df_fin.groupby("Ciclo"):
@@ -5288,7 +5312,7 @@ def gerar_texto_validacao_contratada(resultado, diagnostico):
     consolidado = resultado.get("resultado_consolidado") or montar_resultado_consolidado(resultado, diagnostico)
     contrato, contratada = _contrato_contratada_automaticos(resultado)
     ciclos = _ciclos_para_validacao_contratada(resultado, diagnostico)
-    financeiro_ciclo = _financeiro_por_ciclo_para_validacao_contratada(resultado)
+    financeiro_ciclo = _financeiro_por_ciclo_para_validacao_contratada(resultado, consolidado)
     retro_ciclo = _retroativo_por_ciclo_para_validacao_contratada(resultado, consolidado)
     indice = ((diagnostico or {}).get("metadados") or {}).get("indice") or resultado.get("indice") or "—"
 
@@ -5307,7 +5331,8 @@ def gerar_texto_validacao_contratada(resultado, diagnostico):
         "CICLO | PERÍODO | ÍNDICE | VARIAÇÃO | EFEITO FINANCEIRO",
     ]
     for c in ciclos:
-        inicio_ef = financeiro_ciclo.get(c["ciclo"], {}).get("inicio_efeito") or "—"
+        inicio_efeito = financeiro_ciclo.get(c["ciclo"], {}).get("inicio_efeito")
+        inicio_ef = f"A partir de {inicio_efeito}" if inicio_efeito else "—"
         linhas.append(
             f"{c['ciclo']} | {c['periodo']} | {indice} | {_percentual_ou_traco(c['variacao'])} | {inicio_ef}"
         )
@@ -5391,11 +5416,6 @@ def gerar_texto_validacao_contratada(resultado, diagnostico):
         "",
         "Caso haja alguma divergência, pedimos que seja indicada objetivamente a informação ou o "
         "valor a ser revisto.",
-        "",
-        "Para facilitar o registro, a concordância poderá ser manifestada nos seguintes termos:",
-        "",
-        "“De acordo com os ciclos, índices, efeitos financeiros e valores apresentados, para "
-        "prosseguimento da formalização do reajuste.”",
         "",
         "Caso exista divergência, favor indicar o ciclo, competência, Pedido de Compra ou valor "
         "correspondente.",
