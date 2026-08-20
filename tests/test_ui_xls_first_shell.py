@@ -45,12 +45,15 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn('--cl8us-main-end: #F2ECE1;', APP)
         self.assertNotIn('--cl8us-bg-start:', APP)
 
-    def test_inicio_expoe_quatro_boxes_e_os_destinos_corretos(self):
-        for numero in range(1, 5):
-            self.assertEqual(INICIO.count(f'"{numero} ·'), 1)
-        self.assertIn('st.switch_page("pages/03_Valor_Global.py")', INICIO)
-        self.assertIn('st.switch_page("pages/01_Calculo_Simples.py")', INICIO)
-        self.assertIn('st.switch_page("pages/02_Calculo_Represados.py")', INICIO)
+    def test_inicio_nao_duplica_a_navegacao_do_menu_lateral(self):
+        # A HOME deixou de repetir os destinos do menu: as rotas continuam
+        # registradas em app.py e acessiveis pela sidebar, e a home passa a
+        # explicar o fluxo em tres etapas.
+        self.assertNotIn("st.switch_page(", INICIO)
+        for numero in range(1, 6):
+            self.assertEqual(INICIO.count(f'"{numero} ·'), 0)
+        for etapa in ("1. PREPARE", "2. PREENCHA", "3. APURE"):
+            self.assertIn(etapa, INICIO)
 
     def test_modelo_xls_e_a_fonte_do_download_inicial(self):
         self.assertIn("TEMPLATE_COLETA_OFICIAL", INICIO)
@@ -69,11 +72,16 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertNotIn("Se as informações forem parciais", INICIO)
         self.assertNotIn("A ausência de base segura", INICIO)
 
-    def test_cabecalho_em_box_e_usado_nas_quatro_rotas(self):
+    def test_cabecalho_em_box_e_usado_nas_rotas_internas(self):
         self.assertIn("def render_cabecalho_pagina", UI)
         self.assertIn("cl8us-page-header", APP)
-        for pagina in (INICIO, SIMPLES, MULTI, DOCUMENTOS):
+        for pagina in (SIMPLES, MULTI, DOCUMENTOS):
             self.assertIn("render_cabecalho_pagina(", pagina)
+        # A HOME tem cabecalho proprio (logo com mais respiro), mas reutiliza o
+        # MESMO asset oficial e o mesmo aviso de privacidade.
+        self.assertIn("_header_data_uri", INICIO)
+        self.assertIn("home-hero", INICIO)
+        self.assertIn("cl8us-page-privacy", INICIO)
 
     def test_documentos_fica_enxuto_antes_do_upload_e_preserva_o_motor(self):
         self.assertNotIn("Mesa GCC", DOCUMENTOS)
