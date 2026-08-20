@@ -48,4 +48,5 @@ jobs:
             tests/test_timeline_ciclos_visual.py \
             tests/test_26j_aditivos_vta_documentos.py \
             tests/test_invalidacao_estado_caso.py \
-            tests/test_aditivos_dropdown_h.py
+            tests/test_aditivos_dropdown_h.py \
+            tests/test_preserva_dropdowns_e_colunas_ocultas.py

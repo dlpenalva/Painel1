@@ -68,15 +68,19 @@ def test_a_aditivos_h_tem_lista_sim_nao(workbooks):
     assert len(validacoes) == 1
     assert validacoes[0].type == "list"
     assert validacoes[0].formula1 == '"Sim,Nao"'
-    assert str(validacoes[0].sqref) == "H2:H200"
+    # Faixa combinada do template oficial: a mesma lista atende H e K.
+    assert str(validacoes[0].sqref) == "H2:H200 K2:K200"
 
 
-def test_b_aditivos_k_sem_validacao_automatico_e_oculto(workbooks):
-    _, runtime = workbooks
+def test_b_aditivos_k_preserva_dropdown_e_visibilidade_do_template(workbooks):
+    """Determinacao anterior (K automatico e oculto) REVOGADA: K volta a ser
+    entrada do usuario, exatamente como o template oficial a define."""
+    base, runtime = workbooks
     ws = runtime["aditivos"]
-    assert ws.column_dimensions["K"].hidden is True
-    assert ws["K2"].value == '=IF(A2="","",IF(M2="OK","Nao",""))'
-    assert not any("K2:K200" in str(dv.sqref) for dv in ws.data_validations.dataValidation)
+    assert ws.column_dimensions["K"].hidden is base["aditivos"].column_dimensions["K"].hidden
+    assert ws.column_dimensions["K"].hidden is False
+    assert ws["K2"].value is None
+    assert any("K2:K200" in str(dv.sqref) for dv in ws.data_validations.dataValidation)
 
 
 def test_c_aditivos_d_preserva_validacao_existente(workbooks):
@@ -89,7 +93,6 @@ def test_c_aditivos_d_preserva_validacao_existente(workbooks):
 def test_d_todas_as_demais_validacoes_do_template_sao_preservadas(workbooks):
     base, runtime = workbooks
     esperadas = _validacoes_por_faixa(base)
-    esperadas.pop(("aditivos", "K2:K200"))
     encontradas = _validacoes_por_faixa(runtime)
     assert not (set(esperadas) - set(encontradas))
     assert {
@@ -190,7 +193,7 @@ def test_i_xml_bruto_do_xlsx_real_persiste_h_e_d():
     derruba este teste."""
     xml_aditivos = _xml_da_aba(obter_coleta_oficial_bytes(), "aditivos")
     validacoes = _validacoes_lista_do_xml(xml_aditivos)
-    assert validacoes.get("H2:H200") == '"Sim,Nao"'
+    assert validacoes.get("H2:H200 K2:K200") == '"Sim,Nao"'
     assert validacoes.get("D2:D200") == '"Acrescimo,Supressao"'
 
 
