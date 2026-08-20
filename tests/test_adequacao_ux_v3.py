@@ -135,10 +135,11 @@ def _run(origem=None, vigencia=None, sessao=None):
     return at
 
 
-def test_web_quatro_abas_e_base_leitura():  # A, B
+def test_web_cinco_abas_e_base_leitura():  # A, B
     at = _run()
     assert not at.exception, at.exception
-    assert len(at.tabs) == 4
+    # Aba 5 "Texto SIGA" (apresentacional) somada as 4 abas originais.
+    assert len(at.tabs) == 5
     blob = "\n".join(str(m.value) for m in at.markdown)
     assert "Fontes encontradas" in blob
     assert "Financeiro + Pedidos de Compra" in blob   # ambas as fontes detectadas

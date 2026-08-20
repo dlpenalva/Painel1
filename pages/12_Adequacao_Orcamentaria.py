@@ -77,10 +77,15 @@ def data_hora_brasilia():
     return datetime.now(ZoneInfo("America/Sao_Paulo")).strftime("%d/%m/%Y %H:%M")
 
 
-def render_card_valor(label, valor, nota="", destaque=False, formato="moeda"):
-    bg = "#EAF2F8" if destaque else "#FFFFFF"
-    border = "#9EC5E8" if destaque else "#E5EAF0"
-    cor_valor = "#0B1F3A" if destaque else "#0F172A"
+def render_card_valor(label, valor, nota="", destaque=False, formato="moeda", alerta=False):
+    if alerta:
+        # Vermelho suave: comunica "não reconhecido/não incluído" sem
+        # aparência de erro crítico (paleta distinta de st.error).
+        bg, border, cor_valor = "#FDF2F2", "#F0B8B8", "#8A3A3A"
+    else:
+        bg = "#EAF2F8" if destaque else "#FFFFFF"
+        border = "#9EC5E8" if destaque else "#E5EAF0"
+        cor_valor = "#0B1F3A" if destaque else "#0F172A"
     fs = "1.65rem" if destaque else "1.12rem"
     nota_html = f"<div style='color:#64748B; font-size:0.82rem; margin-top:5px;'>{escape(str(nota))}</div>" if nota else ""
     if formato == "inteiro":
@@ -156,6 +161,34 @@ def _metodologia_valor_importado_texto(resultado_valor_global):
             f"Remanescente: {remanescente}. Valor Total Atualizado importado: {valor_total}.")
 
 
+def _valor_contratual_automatico(resultado, adm, *chaves):
+    """Busca o primeiro valor nao vazio entre as fontes ja usadas em outras
+    paginas para identificacao contratual (mesmo padrao de
+    extrair_apostilado em pages/13_DOU.py e do fallback contrato/
+    numero_contrato em pages/04_Relatorio_Global.py). Nunca inventa: se
+    nenhuma fonte tiver o dado, devolve string vazia para o campo manual
+    decidir o placeholder."""
+    fontes = []
+    for base in (resultado, adm):
+        if not isinstance(base, dict):
+            continue
+        fontes.append(base)
+        contexto = base.get("contexto_contratual_anterior")
+        if isinstance(contexto, dict):
+            fontes.append(contexto)
+    for fonte in fontes:
+        for chave in chaves:
+            texto = texto_seguro(fonte.get(chave), "")
+            if texto:
+                return texto
+    return ""
+
+
+def _data_siga(valor):
+    d = _as_date(valor)
+    return d.strftime("%d/%m/%Y") if d else "[campo a preencher]"
+
+
 # ---------------------------------------------------------------- cabecalho + contexto
 
 render_cabecalho_pagina("Adequação Orçamentária", "")
@@ -219,8 +252,8 @@ elif modo_reduzido_estoque:
     st.info("Modo Reduzido por Itens/Estoque: a base mensal por competência não foi informada. "
             "A adequação será tratada como estimativa.")
 
-tab_base, tab_hist, tab_proj, tab_result = st.tabs(
-    ["1. Base", "2. Histórico", "3. Projeção", "4. Resultado"])
+tab_base, tab_hist, tab_proj, tab_result, tab_siga = st.tabs(
+    ["1. Base", "2. Histórico", "3. Projeção", "4. Resultado", "5. Texto SIGA"])
 
 
 # ================================================================ TAB 1 — BASE
@@ -789,7 +822,7 @@ with tab_result:
         st.markdown("**Cenário de planejamento com retroativo potencial**")
         col_p1, col_p2 = st.columns(2)
         with col_p1:
-            render_card_valor("Retroativo potencial (não reconhecido)", retroativo_potencial)
+            render_card_valor("Retroativo potencial (não reconhecido)", retroativo_potencial, alerta=True)
         with col_p2:
             render_card_valor("Cenário com potencial", cenario_potencial)
         st.caption("Cenário com potencial = complementação confirmada + retroativo "
@@ -865,3 +898,78 @@ with tab_result:
         file_name="adequacao_orcamentaria.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=False)
+
+
+# ================================================================ TAB 5 — TEXTO SIGA
+with tab_siga:
+    # Redacao apenas apresentacional: consome os valores canonicos ja
+    # calculados na aba 4 (retroativo, diferenca_futura, complementacao,
+    # qtd_meses, retroativo_potencial, cenario_potencial). Nao recalcula
+    # nada — mesma regra de negocio da aba 4: o potencial nao integra a
+    # complementacao confirmada nem o total a readequar.
+    st.subheader("Texto para solicitação no SIGA")
+    st.caption("Confira os dados abaixo e copie o texto para utilização no processo.")
+
+    adm_siga = st.session_state.get("dados_admissibilidade", {}) or {}
+    contrato_auto = _valor_contratual_automatico(resultado, adm_siga, "contrato", "numero_contrato")
+    contratada_auto = _valor_contratual_automatico(resultado, adm_siga, "contratada", "apostilado", "fornecedor")
+
+    col_id1, col_id2, col_id3 = st.columns(3)
+    with col_id1:
+        contrato_siga = st.text_input(
+            "Contrato", value=st.session_state.get("adequacao_v3_siga_contrato", contrato_auto),
+            key="adequacao_v3_siga_contrato", placeholder="Ex.: 12/2024",
+            help="Preenchido automaticamente quando disponível na apuração; editável.")
+    with col_id2:
+        contratada_siga = st.text_input(
+            "Contratada", value=st.session_state.get("adequacao_v3_siga_contratada", contratada_auto),
+            key="adequacao_v3_siga_contratada", placeholder="Ex.: Empresa XPTO S.A.",
+            help="Preenchido automaticamente quando disponível na apuração; editável.")
+    with col_id3:
+        clausula_siga = st.text_input(
+            "Cláusula de reajuste",
+            value=st.session_state.get("adequacao_v3_siga_clausula", "Cláusula Oitava"),
+            key="adequacao_v3_siga_clausula")
+
+    contrato_txt = texto_seguro(contrato_siga)
+    contratada_txt = texto_seguro(contratada_siga)
+    clausula_txt = texto_seguro(clausula_siga)
+    vigencia_txt = _data_siga(data_final_vigencia)
+
+    # Mesma condicao da aba 4 (linha do cenario de planejamento): o cenario
+    # com potencial so existe quando ha medida de PC e retroativo potencial
+    # localizado. cenario_potencial e a variavel ja calculada la em cima.
+    tem_potencial = medidas_pc and retroativo_potencial is not None
+    retroativo_txt = moeda(retroativo)
+    diferenca_txt = moeda(diferenca_futura)
+    complementacao_txt = moeda(complementacao)
+    potencial_txt = moeda(retroativo_potencial) if tem_potencial else "Não localizado nesta apuração"
+    cenario_txt = (moeda(cenario_potencial) if tem_potencial
+                   else "Não aplicável (retroativo potencial não localizado)")
+
+    texto_siga = (
+        "Solicitação de adequação orçamentária\n\n"
+        f"1. Solicita-se adequação orçamentária para o Contrato {contrato_txt}, firmado com a "
+        f"{contratada_txt}, com vigência até {vigencia_txt}.\n\n"
+        "2. A adequação decorre da atualização dos valores contratuais resultante do reajuste "
+        f"previsto na {clausula_txt}.\n\n"
+        "3. Para fins de adequação orçamentária, foram considerados os seguintes valores:\n\n"
+        "Composição da adequação orçamentária\n\n"
+        f"Retroativo reconhecido considerado: {retroativo_txt}\n"
+        f"Diferença futura projetada – {qtd_meses} meses: {diferenca_txt}\n\n"
+        f"TOTAL A READEQUAR: {complementacao_txt}\n\n"
+        "4. Informações complementares:\n\n"
+        f"Retroativo reconhecido considerado: {retroativo_txt}\n\n"
+        f"Retroativo potencial, ainda em aceitação e não incluído nesta adequação: {potencial_txt}\n\n"
+        f"Diferença futura projetada para {qtd_meses} meses: {diferenca_txt}\n\n"
+        "Cenário de planejamento considerando eventual reconhecimento do retroativo potencial: "
+        f"{cenario_txt}\n"
+    )
+
+    st.text_area("Texto pronto para copiar", value=texto_siga, height=440,
+                 key="adequacao_v3_siga_texto_area",
+                 help="Selecione tudo (Ctrl+A) e copie (Ctrl+C), ou use Baixar .txt abaixo.")
+    st.download_button(
+        "Baixar .txt", data=texto_siga.encode("utf-8"),
+        file_name="solicitacao_adequacao_orcamentaria_siga.txt", mime="text/plain",
+        key="adequacao_v3_siga_download")
