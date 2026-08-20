@@ -11,7 +11,9 @@ retroativo potencial, cenario com potencial). Estes testes protegem:
   4. os meses do texto vem da projecao ja calculada (qtd_meses);
   5. o cenario com potencial usa o valor canonico ja calculado na aba 4;
   6. a vigencia (aba 1) aparece formatada dd/mm/aaaa no texto;
-  7. editar a clausula de reajuste (campo manual) reflete no texto;
+  7. o bloco de campos manuais (Contrato/Contratada/Cláusula de reajuste)
+     foi retirado da interface: cláusula usa o mesmo default fixo de antes,
+     contrato/contratada vêm direto da fonte automática já existente;
   8. ausencia de identificacao contratual produz placeholder, nunca
      None/nan;
   9. a aba 4 continua reproduzindo os mesmos resultados de antes;
@@ -114,6 +116,33 @@ def test_aba_texto_siga_existe():
     assert at.tabs[4].label == "5. Texto SIGA"
 
 
+# --------------------------------------------- 1b. bloco superior removido (limpeza)
+
+def test_bloco_de_campos_manuais_removido_sem_espaco_vazio():
+    """Prova a remoção cirúrgica pedida: a frase introdutória e os 3 campos
+    manuais (com seus ícones de ajuda) somem da interface, sem deixar um
+    st.caption/st.columns órfão no lugar; o texto passa a começar direto no
+    subheader seguido da área de cópia."""
+    pagina = open("pages/12_Adequacao_Orcamentaria.py", encoding="utf-8").read()
+    bloco_aba5 = pagina[pagina.index("with tab_siga:"):]
+
+    assert "Confira os dados abaixo e copie o texto para utilização no processo." not in bloco_aba5
+    assert 'st.text_input(\n            "Contrato"' not in bloco_aba5
+    assert '"Contratada", value=' not in bloco_aba5
+    assert '"Cláusula de reajuste"' not in bloco_aba5
+    assert "col_id1, col_id2, col_id3" not in bloco_aba5
+    assert (
+        "Preenchido automaticamente quando disponível na apuração; editável."
+        not in bloco_aba5
+    )
+
+    at = _run_pc()
+    assert not at.exception, at.exception
+    assert "adequacao_v3_siga_contrato" not in at.session_state
+    assert "adequacao_v3_siga_contratada" not in at.session_state
+    assert "adequacao_v3_siga_clausula" not in at.session_state
+
+
 # --------------------------------------------------------- 2. total = confirmada
 
 def test_total_a_readequar_e_exatamente_a_complementacao_confirmada_da_aba4():
@@ -190,23 +219,31 @@ def test_vigencia_exibida_dd_mm_aaaa():
     assert "com vigência até 29/02/2028." in texto
 
 
-# --------------------------------------------------------------- 7. clausula editavel
+# ------------------------------------------------- 7. clausula fixa (campo removido)
 
-def test_alteracao_manual_da_clausula_reflete_no_texto():
+def test_clausula_e_fixa_sem_campo_manual():
+    """PR de limpeza da aba 5: o campo manual "Cláusula de reajuste" foi
+    retirado da interface. Sem fonte automática para esse dado, o texto
+    preserva o MESMO default fixo que o campo já usava antes ("Cláusula
+    Oitava"), nunca uma fonte nova."""
     at = _run_pc()
     assert "previsto na Cláusula Oitava." in _texto_siga(at)
-    at.text_input(key="adequacao_v3_siga_clausula").set_value("Cláusula Nona")
-    at.run()
-    texto = _texto_siga(at)
-    assert "previsto na Cláusula Nona." in texto
-    assert "Cláusula Oitava" not in texto
+    assert "adequacao_v3_siga_clausula" not in {w.key for w in at.text_input}
 
 
-def test_alteracao_manual_de_contrato_e_contratada_reflete_no_texto():
-    at = _run_pc()
-    at.text_input(key="adequacao_v3_siga_contrato").set_value("12/2024")
-    at.text_input(key="adequacao_v3_siga_contratada").set_value("Empresa XPTO S.A.")
-    at.run()
+def test_contrato_e_contratada_vem_automaticos_sem_campo_manual():
+    """PR de limpeza da aba 5: os campos manuais "Contrato" e "Contratada"
+    foram retirados da interface. O texto passa a usar diretamente a fonte
+    automática já existente (_valor_contratual_automatico), sem qualquer
+    interação de widget."""
+    sessao = _sessao_pc()
+    sessao["contexto_contratual_anterior"] = {
+        "contrato": "12/2024", "contratada": "Empresa XPTO S.A.",
+    }
+    at = _run_pc(sessao)
+    chaves_widgets = {w.key for w in at.text_input}
+    assert "adequacao_v3_siga_contrato" not in chaves_widgets
+    assert "adequacao_v3_siga_contratada" not in chaves_widgets
     texto = _texto_siga(at)
     assert "para o Contrato 12/2024, firmado com a Empresa XPTO S.A.," in texto
 
@@ -275,20 +312,20 @@ def test_texto_area_resincroniza_mesmo_se_session_state_ficar_congelado():
     texto_correto = _texto_siga(at)
     at.session_state["adequacao_v3_siga_texto_area"] = "TEXTO OBSOLETO DE UM RUN ANTERIOR CONGELADO"
     at.session_state["adequacao_v3_siga_assinatura"] = "assinatura-que-nao-bate-mais"
-    # qualquer interacao dispara um novo rerun, sem tocar nos insumos do texto
-    at.text_input(key="adequacao_v3_siga_clausula").set_value("Cláusula Oitava")
+    # qualquer rerun, mesmo sem nenhuma interacao nova de widget, deve
+    # resincronizar o texto a partir da assinatura dos insumos atuais.
     at.run()
     assert not at.exception, at.exception
     assert "TEXTO OBSOLETO" not in _texto_siga(at)
     assert _texto_siga(at) == texto_correto
 
 
-def test_reruns_sucessivos_mudando_cada_insumo_nao_congelam_o_texto():
-    """Reproduz uma sequencia de reruns sucessivos alterando, um de cada
-    vez, cada insumo do texto (vigencia, contrato, contratada, clausula) —
-    o mesmo padrao de interacao do navegador real que expos o bug. O texto
-    deve refletir cada mudanca imediatamente, nunca preservando um valor de
-    um rerun anterior."""
+def test_reruns_sucessivos_mudando_a_vigencia_nao_congelam_o_texto():
+    """Reproduz reruns sucessivos alterando a vigencia (aba 1) — unico
+    insumo do texto ainda editavel pelo usuario apos a limpeza da aba 5 —
+    o mesmo padrao de interacao do navegador real que expos o bug original.
+    O texto deve refletir cada mudanca imediatamente, nunca preservando um
+    valor de um rerun anterior."""
     at = AppTest.from_file("pages/12_Adequacao_Orcamentaria.py", default_timeout=180)
     at.session_state["resultado_valor_global"] = _sessao_pc(com_potencial=True)
     at.run()
@@ -300,23 +337,13 @@ def test_reruns_sucessivos_mudando_cada_insumo_nao_congelam_o_texto():
     at.run()
     assert "29/02/2028" in _texto_siga(at)
     assert "18 meses" in _texto_siga(at)
-    assert "[campo a preencher]" in _texto_siga(at)  # contrato/contratada ainda vazios
+    assert "[campo a preencher]" in _texto_siga(at)  # sem contrato/contratada na apuracao
 
-    at.text_input(key="adequacao_v3_siga_contrato").set_value("12/2024")
-    at.run()
-    assert "Contrato 12/2024," in _texto_siga(at)
-    assert "29/02/2028" in _texto_siga(at)  # vigencia do rerun anterior nao se perdeu
-
-    at.text_input(key="adequacao_v3_siga_contratada").set_value("Empresa XPTO S.A.")
-    at.run()
-    assert "firmado com a Empresa XPTO S.A.," in _texto_siga(at)
-    assert "Contrato 12/2024," in _texto_siga(at)  # contrato do rerun anterior persiste
-
-    at.text_input(key="adequacao_v3_siga_clausula").set_value("Cláusula Nona")
+    at.text_input(key="adequacao_v3_data_final_vigencia").set_value("31/03/2028")
     at.run()
     texto_final = _texto_siga(at)
-    assert "previsto na Cláusula Nona." in texto_final
-    assert "Contrato 12/2024, firmado com a Empresa XPTO S.A., com vigência até 29/02/2028." in texto_final
+    assert "31/03/2028" in texto_final
+    assert "29/02/2028" not in texto_final  # nao preserva a vigencia do rerun anterior
 
 
 def test_txt_baixado_usa_a_mesma_variavel_do_texto_exibido_sem_duplicar():
