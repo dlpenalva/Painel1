@@ -42,7 +42,7 @@ def _ler_modelo(assinatura: str) -> bytes:  # noqa: ARG001 — chave SHA-256 do 
 # ---------------------------------------------------------------------------
 
 _SVG_ABRE = (
-    '<svg viewBox="0 0 32 32" width="24" height="24" fill="none" '
+    '<svg viewBox="0 0 32 32" width="20" height="20" fill="none" '
     'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" '
     'stroke-linejoin="round" aria-hidden="true" focusable="false">'
 )
@@ -89,7 +89,7 @@ SETA_ETAPA = (
 
 # Pilha de documentos + folha principal + escudo com check.
 ILUSTRACAO_COLETA = (
-    '<svg viewBox="0 0 122 92" width="86" height="65" fill="none" '
+    '<svg viewBox="0 0 122 92" width="72" height="54" fill="none" '
     'stroke="#1F5F8B" stroke-width="1.7" stroke-linecap="round" '
     'stroke-linejoin="round" aria-hidden="true" focusable="false">'
     '<rect x="10" y="18" width="48" height="62" rx="5" fill="#FFFFFF" opacity=".55"/>'
@@ -135,47 +135,47 @@ def _estilos_home() -> None:
         ".home-hero h1{color:var(--cl8us-navy);font-size:1.6rem;letter-spacing:-.015em;margin:0;padding:0;}"
         ".home-hero .cl8us-page-privacy{font-size:.65rem;padding:.18rem .5rem;}"
         # -- Tres etapas: compactas, horizontais, mesma altura ---------------
-        ".home-fluxo{display:flex;align-items:stretch;gap:.45rem;margin:0 0 .95rem;}"
+        ".home-fluxo{display:flex;align-items:stretch;gap:.35rem;margin:0 0 .85rem;}"
         ".home-etapa{background:#FFFFFF;border:1px solid rgba(18,59,99,.13);border-radius:13px;"
         "box-shadow:0 2px 9px rgba(18,59,99,.045);display:flex;flex:1 1 0;flex-direction:column;"
-        "min-width:0;padding:.68rem .9rem .74rem;text-align:center;}"
+        "min-width:0;padding:.52rem .78rem .58rem;text-align:center;}"
         ".home-ico{align-items:center;background:#E9F2F9;border-radius:50%;color:#1F5F8B;"
-        "display:inline-flex;flex:0 0 auto;height:40px;justify-content:center;width:40px;}"
-        ".home-etapa .home-ico{margin:0 auto .42rem;}"
-        ".home-etapa h3{color:var(--cl8us-navy);font-size:.84rem;font-weight:850;"
-        "letter-spacing:.055em;margin:0 0 .24rem;padding:0;}"
-        ".home-etapa p{color:var(--cl8us-muted);font-size:.9rem;line-height:1.34;margin:0;}"
+        "display:inline-flex;flex:0 0 auto;height:34px;justify-content:center;width:34px;}"
+        ".home-etapa .home-ico{margin:0 auto .32rem;}"
+        ".home-etapa h3{color:var(--cl8us-navy);font-size:.8rem;font-weight:850;"
+        "letter-spacing:.05em;margin:0 0 .18rem;padding:0;}"
+        ".home-etapa p{color:var(--cl8us-muted);font-size:.9rem;line-height:1.32;margin:0;}"
         ".home-seta{align-items:center;color:rgba(31,95,139,.4);display:flex;flex:0 0 auto;"
-        "justify-content:center;padding:0 .05rem;}"
+        "justify-content:center;padding:0;}"
         # -- Cartoes inferiores: a COLUNA e o cartao, para o botao real de
         # download ficar dentro dele (nenhuma logica de geracao duplicada).
         '[data-testid="stColumn"]:has(.home-coleta-corpo){border-radius:14px;'
         "background:linear-gradient(180deg,#FFFFFF 0%,#F8FBFD 100%);"
         "border:1px solid rgba(18,59,99,.15);box-shadow:0 2px 9px rgba(18,59,99,.05);"
-        "padding:.9rem 1.05rem .95rem;}"
+        "padding:.7rem .9rem .78rem;}"
         '[data-testid="stColumn"]:has(.home-dica-corpo){border-radius:14px;background:#F5FAFC;'
         "border:1px solid rgba(31,95,139,.14);display:flex;flex-direction:column;"
-        "justify-content:center;padding:.8rem .95rem;}"
+        "justify-content:center;padding:.6rem .8rem;}"
         '[data-testid="stColumn"]:has(.home-dica-corpo) [data-testid="stVerticalBlock"]{'
         "justify-content:center;}"
         # Botao dentro do cartao, alinhado ao titulo/texto e sem virar faixa.
         '[data-testid="stColumn"]:has(.home-coleta-corpo) .stDownloadButton{'
-        "margin:.6rem 0 0 calc(86px + 1rem);}"
+        "margin:.5rem 0 0 calc(72px + .85rem);}"
         '[data-testid="stColumn"]:has(.home-coleta-corpo) .stDownloadButton button{'
-        "font-size:.86rem;min-height:2.05rem;padding:.15rem 1.15rem;}"
-        ".home-coleta-corpo{display:flex;align-items:center;gap:1rem;}"
-        ".home-coleta-corpo .home-arte{flex:0 0 86px;line-height:0;}"
-        ".home-coleta-corpo h2{color:var(--cl8us-navy);font-size:1.05rem;margin:0 0 .25rem;padding:0;}"
-        ".home-coleta-corpo p{color:var(--cl8us-muted);font-size:.9rem;line-height:1.36;margin:0;}"
-        ".home-dica-corpo{align-items:center;display:flex;gap:.75rem;}"
-        ".home-dica-corpo .home-ico{height:38px;width:38px;background:#E7F0F7;}"
-        ".home-dica-corpo p{color:var(--cl8us-muted);font-size:.86rem;font-weight:500;"
-        "line-height:1.4;margin:0;}"
+        "font-size:.83rem;min-height:1.9rem;padding:.12rem 1rem;}"
+        ".home-coleta-corpo{display:flex;align-items:center;gap:.85rem;}"
+        ".home-coleta-corpo .home-arte{flex:0 0 72px;line-height:0;}"
+        ".home-coleta-corpo h2{color:var(--cl8us-navy);font-size:1rem;margin:0 0 .18rem;padding:0;}"
+        ".home-coleta-corpo p{color:var(--cl8us-muted);font-size:.89rem;line-height:1.34;margin:0;}"
+        ".home-dica-corpo{align-items:center;display:flex;gap:.62rem;}"
+        ".home-dica-corpo .home-ico{height:30px;width:30px;background:#E7F0F7;}"
+        ".home-dica-corpo p{color:var(--cl8us-muted);font-size:.83rem;font-weight:500;"
+        "line-height:1.38;margin:0;}"
         # -- Largura menor: empilha, gira as setas e solta o recuo do botao ---
         "@media (max-width:900px){"
         ".home-fluxo{flex-direction:column;}"
         ".home-seta{transform:rotate(90deg);padding:.1rem 0;}"
-        ".home-coleta-corpo{flex-direction:column;text-align:center;gap:.7rem;}"
+        ".home-coleta-corpo{flex-direction:column;text-align:center;gap:.6rem;}"
         '[data-testid="stColumn"]:has(.home-coleta-corpo) .stDownloadButton{margin-left:0;}'
         ".home-hero img{width:min(230px,68%);}"
         ".home-hero h1{font-size:1.36rem;}"
