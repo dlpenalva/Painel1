@@ -17,6 +17,21 @@ retroativo potencial, cenario com potencial). Estes testes protegem:
   9. a aba 4 continua reproduzindo os mesmos resultados de antes;
   10. o box de retroativo potencial da aba 4 recebeu SOMENTE alteracao
       visual (mesmo valor, cor de alerta vermelho suave).
+
+ANTI-CONGELAMENTO (bug reproduzido em producao real no PR #83): um
+st.text_area com key fixa so usa o parametro value= na primeira vez que o
+widget e registrado — em reruns seguintes o Streamlit preserva o valor ja
+associado a key, ignorando o novo value= calculado (confirmado em
+streamlit/runtime/state/session_state.py, SessionState.register_widget).
+O texto ficava congelado no primeiro calculo (antes da vigencia ser
+informada) e nunca mais atualizava. O AppTest nao reproduz esse mecanismo
+espontaneamente (testado empiricamente), entao os testes abaixo forcam
+deliberadamente o cenario congelado — escrevendo um valor obsoleto em
+session_state antes do rerun, como aconteceria no navegador real — e
+provam que a logica de assinatura (comparar os insumos e resincronizar
+st.session_state[key] antes do widget) sempre corrige o texto exibido.
+Validado tambem manualmente em navegador real (local e producao): o .txt
+baixado e byte a byte identico ao texto exibido em todos os casos.
 """
 from __future__ import annotations
 
@@ -235,3 +250,87 @@ def test_box_retroativo_potencial_recebe_apenas_alteracao_visual():
     blob = _blob(at)
     # o valor exibido no card continua sendo exatamente retroativo_potencial.
     assert _valor_do_card(blob, "Retroativo potencial (não reconhecido)") == pytest.approx(POTENCIAL)
+
+
+# --------------------------------------------- anti-congelamento (regressao)
+
+def test_widget_nao_passa_value_junto_com_key_no_text_area():
+    """Causa-raiz do congelamento: value= e key= juntos fazem o Streamlit
+    ignorar o novo value em reruns seguintes ao primeiro. A correcao exige
+    que o text_area nao receba mais value= (o conteudo vem exclusivamente
+    de st.session_state[key], sincronizado explicitamente antes)."""
+    pagina = open("pages/12_Adequacao_Orcamentaria.py", encoding="utf-8").read()
+    assert 'st.text_area("Texto pronto para copiar", value=texto_siga' not in pagina
+    assert 'key="adequacao_v3_siga_texto_area"' in pagina
+    assert 'st.session_state["adequacao_v3_siga_texto_area"] = texto_siga' in pagina
+
+
+def test_texto_area_resincroniza_mesmo_se_session_state_ficar_congelado():
+    """Simula exatamente o bug observado em producao: um valor OBSOLETO
+    gravado em session_state[chave do text_area] antes de um rerun (e' o
+    que acontecia quando o widget ficava preso no primeiro calculo, antes
+    da vigencia ser informada). Prova que a logica de assinatura detecta a
+    divergencia dos insumos atuais e resincroniza o widget."""
+    at = _run_pc()
+    texto_correto = _texto_siga(at)
+    at.session_state["adequacao_v3_siga_texto_area"] = "TEXTO OBSOLETO DE UM RUN ANTERIOR CONGELADO"
+    at.session_state["adequacao_v3_siga_assinatura"] = "assinatura-que-nao-bate-mais"
+    # qualquer interacao dispara um novo rerun, sem tocar nos insumos do texto
+    at.text_input(key="adequacao_v3_siga_clausula").set_value("Cláusula Oitava")
+    at.run()
+    assert not at.exception, at.exception
+    assert "TEXTO OBSOLETO" not in _texto_siga(at)
+    assert _texto_siga(at) == texto_correto
+
+
+def test_reruns_sucessivos_mudando_cada_insumo_nao_congelam_o_texto():
+    """Reproduz uma sequencia de reruns sucessivos alterando, um de cada
+    vez, cada insumo do texto (vigencia, contrato, contratada, clausula) —
+    o mesmo padrao de interacao do navegador real que expos o bug. O texto
+    deve refletir cada mudanca imediatamente, nunca preservando um valor de
+    um rerun anterior."""
+    at = AppTest.from_file("pages/12_Adequacao_Orcamentaria.py", default_timeout=180)
+    at.session_state["resultado_valor_global"] = _sessao_pc(com_potencial=True)
+    at.run()
+    assert "[campo a preencher]" in _texto_siga(at)
+    assert "0 meses" in _texto_siga(at)
+
+    at.radio(key="adequacao_v3_origem").set_value("Pedidos de Compra")
+    at.text_input(key="adequacao_v3_data_final_vigencia").set_value(VIGENCIA)
+    at.run()
+    assert "29/02/2028" in _texto_siga(at)
+    assert "18 meses" in _texto_siga(at)
+    assert "[campo a preencher]" in _texto_siga(at)  # contrato/contratada ainda vazios
+
+    at.text_input(key="adequacao_v3_siga_contrato").set_value("12/2024")
+    at.run()
+    assert "Contrato 12/2024," in _texto_siga(at)
+    assert "29/02/2028" in _texto_siga(at)  # vigencia do rerun anterior nao se perdeu
+
+    at.text_input(key="adequacao_v3_siga_contratada").set_value("Empresa XPTO S.A.")
+    at.run()
+    assert "firmado com a Empresa XPTO S.A.," in _texto_siga(at)
+    assert "Contrato 12/2024," in _texto_siga(at)  # contrato do rerun anterior persiste
+
+    at.text_input(key="adequacao_v3_siga_clausula").set_value("Cláusula Nona")
+    at.run()
+    texto_final = _texto_siga(at)
+    assert "previsto na Cláusula Nona." in texto_final
+    assert "Contrato 12/2024, firmado com a Empresa XPTO S.A., com vigência até 29/02/2028." in texto_final
+
+
+def test_txt_baixado_usa_a_mesma_variavel_do_texto_exibido_sem_duplicar():
+    """NAO duplicar a montagem do texto: o download_button precisa usar a
+    MESMA variavel Python texto_siga que sincroniza o widget — nunca uma
+    segunda montagem/f-string independente. Prova estatica (uma unica
+    definicao de texto_siga no arquivo) + funcional (a mesma variavel
+    alimenta session_state[key] e o data= do download_button)."""
+    pagina = open("pages/12_Adequacao_Orcamentaria.py", encoding="utf-8").read()
+    assert pagina.count("texto_siga = (") == 1
+    assert 'st.session_state["adequacao_v3_siga_texto_area"] = texto_siga' in pagina
+    assert 'data=texto_siga.encode("utf-8")' in pagina
+
+    at = _run_pc()
+    # o valor que alimentaria o download (texto_siga daquele run) e
+    # exatamente o que ficou sincronizado em session_state[key].
+    assert at.session_state["adequacao_v3_siga_texto_area"] == _texto_siga(at)

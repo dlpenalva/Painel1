@@ -966,7 +966,31 @@ with tab_siga:
         f"{cenario_txt}\n"
     )
 
-    st.text_area("Texto pronto para copiar", value=texto_siga, height=440,
+    # SINCRONIZACAO FORCADA (bug reproduzido em producao no PR #83): um
+    # st.text_area com key fixa so usa o parametro value= na PRIMEIRA vez
+    # que aquele widget e registrado. Em qualquer rerun seguinte, o
+    # Streamlit preserva o valor ja associado a key (session_state), e o
+    # novo value=texto_siga calculado e silenciosamente ignorado — o texto
+    # exibido ficava congelado no primeiro calculo (ex.: antes da vigencia
+    # ser informada). Fonte: streamlit/runtime/state/session_state.py,
+    # SessionState.register_widget — so grava o valor "on first registration".
+    # Este text_area e apenas area de copia (secao 5 da tarefa): nao ha
+    # edicao livre do usuario a preservar, so os campos oficiais acima
+    # (contrato/contratada/clausula). Por isso a correcao e legitima:
+    # sempre que a ASSINATURA dos insumos mudar, sobrescrevemos
+    # st.session_state[key] com o texto canonico ANTES de instanciar o
+    # widget (sem passar value=), que e o padrao suportado pelo Streamlit
+    # para atualizacao programatica de um widget com key.
+    assinatura_siga = (
+        contrato_txt, contratada_txt, clausula_txt, vigencia_txt,
+        retroativo_txt, qtd_meses, diferenca_txt, complementacao_txt,
+        potencial_txt, cenario_txt,
+    )
+    if st.session_state.get("adequacao_v3_siga_assinatura") != assinatura_siga:
+        st.session_state["adequacao_v3_siga_texto_area"] = texto_siga
+        st.session_state["adequacao_v3_siga_assinatura"] = assinatura_siga
+
+    st.text_area("Texto pronto para copiar", height=440,
                  key="adequacao_v3_siga_texto_area",
                  help="Selecione tudo (Ctrl+A) e copie (Ctrl+C), ou use Baixar .txt abaixo.")
     st.download_button(
