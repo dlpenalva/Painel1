@@ -5152,6 +5152,279 @@ def _invalidar_caso_antes_do_rerun_upload() -> None:
     invalidar_estado_caso(st.session_state, nova_assinatura)
 
 
+# >>> VALIDACAO_CONTRATADA_POS_COLETA_V1
+# Bloco aditivo (comunicado de validacao com a contratada). So le e formata
+# resultados canonicos ja calculados por processar_coleta_oficial_runtime
+# (resultado_consolidado, totais_canonicos_pc, df_financeiro_mensal, objeto
+# do processo) — nenhuma grandeza financeira e recalculada aqui.
+
+def _moeda_ou_traco(valor):
+    return "—" if valor is None else moeda(valor)
+
+
+def _percentual_ou_traco(valor):
+    return "—" if valor is None else percentual(valor, 2)
+
+
+def _contrato_contratada_automaticos(resultado):
+    """Mesmo padrao defensivo usado na aba 5 (Texto SIGA) da Adequacao
+    Orcamentaria: contrato/contratada nao sao gravados por nenhum fluxo hoje,
+    entao a deteccao cai no placeholder — comportamento esperado, e nao uma
+    nova fonte de dados inventada para esta tarefa."""
+    dados_basicos = (
+        ((resultado.get("objeto_processo") or {}).get("contrato") or {}).get("dados_basicos") or {}
+    )
+    fontes = (dados_basicos, resultado.get("contexto_contratual_anterior") or {}, resultado)
+    contrato = next(
+        (
+            f.get("contrato") or f.get("numero_contrato")
+            for f in fontes
+            if isinstance(f, dict) and (f.get("contrato") or f.get("numero_contrato"))
+        ),
+        None,
+    )
+    contratada = next(
+        (
+            f.get("contratada") or f.get("fornecedor")
+            for f in fontes
+            if isinstance(f, dict) and (f.get("contratada") or f.get("fornecedor"))
+        ),
+        None,
+    )
+    return (
+        str(contrato).strip() if contrato else "[a preencher]",
+        str(contratada).strip() if contratada else "[a preencher]",
+    )
+
+
+def _ciclos_para_validacao_contratada(resultado, diagnostico):
+    """Ciclos considerados: a mesma lista canonica ja usada no card "Ciclos
+    analisados" (metadados.ciclos_em_analise). O periodo de cada ciclo vem do
+    objeto do processo, ja calculado pelo leitor — nenhuma regra temporal
+    nova e criada aqui."""
+    metadados = (diagnostico or {}).get("metadados") or {}
+    ciclos_ativos = list(metadados.get("ciclos_em_analise") or [])
+    objeto_ciclos = {
+        str(c.get("ciclo") or "").upper(): c
+        for c in (
+            ((resultado.get("objeto_processo") or {}).get("contrato") or {}).get("datas_relevantes") or {}
+        ).get("ciclos") or []
+    }
+    df_ciclos = resultado.get("df_ciclos")
+    variacao_por_ciclo = {}
+    if isinstance(df_ciclos, pd.DataFrame) and not df_ciclos.empty:
+        for _, row in df_ciclos.iterrows():
+            variacao_por_ciclo[str(row.get("Ciclo") or "").upper()] = row.get("Variação")
+
+    linhas = []
+    for ciclo in ciclos_ativos:
+        info = objeto_ciclos.get(ciclo, {})
+        ini = info.get("data_inicio_ddmmaaaa")
+        fim = info.get("data_fim_ddmmaaaa")
+        linhas.append({
+            "ciclo": ciclo,
+            "periodo": f"{ini} a {fim}" if ini and fim else "—",
+            "variacao": variacao_por_ciclo.get(ciclo),
+        })
+    return linhas
+
+
+def _financeiro_por_ciclo_para_validacao_contratada(resultado):
+    """Inicio do efeito financeiro e competencias sem efeito, por ciclo:
+    agregacao de apresentacao sobre df_financeiro_mensal (ja calculado pelo
+    leitor, com os mesmos helpers de competencia usados no restante desta
+    pagina); nenhum valor financeiro novo e produzido aqui."""
+    df_fin = resultado.get("df_financeiro_mensal")
+    saida = {}
+    if not isinstance(df_fin, pd.DataFrame) or df_fin.empty:
+        return saida
+    for ciclo, grupo in df_fin.groupby("Ciclo"):
+        com_efeito = grupo[grupo["Efeito financeiro"] == "Sim"]
+        sem_efeito = grupo[grupo["Efeito financeiro"] != "Sim"]
+        periodos_com_efeito = sorted(
+            p for p in com_efeito["Competência"].apply(normalizar_competencia_periodo) if p is not None
+        )
+        periodos_sem_efeito = sorted(
+            p for p in sem_efeito["Competência"].apply(normalizar_competencia_periodo) if p is not None
+        )
+        saida[str(ciclo).upper()] = {
+            "inicio_efeito": periodo_para_label_br(periodos_com_efeito[0]) if periodos_com_efeito else None,
+            "competencias_sem_efeito": [periodo_para_label_br(p) for p in periodos_sem_efeito],
+            "valor_sem_efeito": float(sem_efeito["Valor pago/faturado"].sum()) if not sem_efeito.empty else 0.0,
+        }
+    return saida
+
+
+def _retroativo_por_ciclo_para_validacao_contratada(resultado, consolidado):
+    """Retroativo reconhecido/potencial por ciclo, lido das mesmas fontes
+    canonicas do box "Resultado da apuracao": totais_canonicos_pc no metodo
+    PC, df_financeiro_por_ciclo nos demais metodos. Nada e recalculado."""
+    saida = {}
+    if consolidado.get("medidas_pc_aplicaveis"):
+        por_ciclo_pc = ((resultado.get("totais_canonicos_pc") or {}).get("por_ciclo")) or {}
+        for ciclo, bloco in por_ciclo_pc.items():
+            saida[str(ciclo).upper()] = {
+                "retroativo_reconhecido": bloco.get("retroativo"),
+                "retroativo_potencial": bloco.get("delta_potencial"),
+                "quantidade_potencial": bloco.get("quantidade"),
+            }
+    else:
+        df_fin_ciclo = resultado.get("df_financeiro_por_ciclo")
+        if isinstance(df_fin_ciclo, pd.DataFrame):
+            for _, row in df_fin_ciclo.iterrows():
+                ciclo = str(row.get("Ciclo") or "").upper()
+                saida[ciclo] = {
+                    "retroativo_reconhecido": row.get("Delta do ciclo"),
+                    "retroativo_potencial": None,
+                    "quantidade_potencial": None,
+                }
+    return saida
+
+
+def gerar_texto_validacao_contratada(resultado, diagnostico):
+    """Monta o comunicado de validacao com a contratada a partir de valores ja
+    apurados (resultado_consolidado + fontes por ciclo acima). Nenhuma
+    grandeza financeira e recalculada nesta funcao."""
+    consolidado = resultado.get("resultado_consolidado") or montar_resultado_consolidado(resultado, diagnostico)
+    contrato, contratada = _contrato_contratada_automaticos(resultado)
+    ciclos = _ciclos_para_validacao_contratada(resultado, diagnostico)
+    financeiro_ciclo = _financeiro_por_ciclo_para_validacao_contratada(resultado)
+    retro_ciclo = _retroativo_por_ciclo_para_validacao_contratada(resultado, consolidado)
+    indice = ((diagnostico or {}).get("metadados") or {}).get("indice") or resultado.get("indice") or "—"
+
+    linhas = [
+        "VALIDAÇÃO DOS VALORES APURADOS PARA O REAJUSTE CONTRATUAL",
+        "",
+        "Prezados,",
+        "",
+        f"1. Em continuidade à análise do reajuste do Contrato {contrato}, firmado com a "
+        f"{contratada}, encaminhamos abaixo o resultado da apuração realizada com base nas "
+        "informações contratuais, nos índices aplicáveis e nos dados de execução apresentados "
+        "pela fiscalização/gestão do contrato.",
+        "",
+        "2. Foram considerados os seguintes ciclos:",
+        "",
+        "CICLO | PERÍODO | ÍNDICE | VARIAÇÃO | EFEITO FINANCEIRO",
+    ]
+    for c in ciclos:
+        inicio_ef = financeiro_ciclo.get(c["ciclo"], {}).get("inicio_efeito") or "—"
+        linhas.append(
+            f"{c['ciclo']} | {c['periodo']} | {indice} | {_percentual_ou_traco(c['variacao'])} | {inicio_ef}"
+        )
+
+    linhas += [
+        "",
+        "3. Em razão das datas dos pedidos e das regras de efeito financeiro aplicáveis, foram "
+        "identificadas as seguintes competências sem efeito financeiro:",
+        "",
+    ]
+    ciclos_com_perda = [
+        (c["ciclo"], financeiro_ciclo.get(c["ciclo"], {}))
+        for c in ciclos
+        if financeiro_ciclo.get(c["ciclo"], {}).get("competencias_sem_efeito")
+    ]
+    if ciclos_com_perda:
+        linhas.append("CICLO | COMPETÊNCIAS SEM EFEITO | VALOR CORRESPONDENTE")
+        for ciclo, info in ciclos_com_perda:
+            linhas.append(
+                f"{ciclo} | {', '.join(info['competencias_sem_efeito'])} | "
+                f"{_moeda_ou_traco(info.get('valor_sem_efeito'))}"
+            )
+    else:
+        linhas.append("Não houve perda de competências neste ciclo.")
+
+    linhas += [
+        "",
+        "4. Após a conferência dos valores de execução, foi apurado:",
+        "",
+        "CICLO | PERÍODO/ANO | RETROATIVO RECONHECIDO",
+    ]
+    for c in ciclos:
+        valor_reconhecido = retro_ciclo.get(c["ciclo"], {}).get("retroativo_reconhecido")
+        linhas.append(f"{c['ciclo']} | {c['periodo']} | {_moeda_ou_traco(valor_reconhecido)}")
+
+    linhas += [
+        "",
+        f"TOTAL RETROATIVO RECONHECIDO: {_moeda_ou_traco(consolidado.get('retroativo_reconhecido'))}",
+        "",
+        "5. Nos casos apurados pelo método de Pedidos de Compra, também podem existir valores "
+        "relativos a pedidos enquadrados nos ciclos analisados, mas que ainda não possuem aceite "
+        "ou processamento concluído pela fiscalização/gestão do contrato.",
+        "",
+        "A ausência de aceite, nessa etapa, não significa que o valor seja inexistente ou indevido, "
+        "mas que sua confirmação e eventual pagamento dependem da conclusão das verificações e dos "
+        "respectivos aceites pela área gestora/fiscalizadora.",
+        "",
+    ]
+
+    total_potencial = consolidado.get("retroativo_potencial")
+    tem_potencial = bool(consolidado.get("medidas_pc_aplicaveis")) and total_potencial not in (None, 0)
+    if tem_potencial:
+        linhas.append("CICLO | SITUAÇÃO | RETROATIVO POTENCIAL")
+        for c in ciclos:
+            info_retro = retro_ciclo.get(c["ciclo"], {})
+            potencial = info_retro.get("retroativo_potencial")
+            if not potencial:
+                continue
+            qtd = info_retro.get("quantidade_potencial")
+            situacao = (
+                f"{int(qtd)} PC(s) sem aceite/processamento concluído"
+                if qtd else "Pendente de aceite/processamento concluído"
+            )
+            linhas.append(f"{c['ciclo']} | {situacao} | {_moeda_ou_traco(potencial)}")
+        linhas += [
+            "",
+            f"TOTAL RETROATIVO POTENCIAL: {_moeda_ou_traco(total_potencial)}",
+            "",
+            "Os valores potenciais não integram, nesta etapa, o montante reconhecido a pagar.",
+            "",
+        ]
+
+    linhas += [
+        "6. Os valores reconhecidos e os valores ainda em análise serão registrados na "
+        "documentação da apuração e apresentados de forma separada. No Termo de Apostila, quando "
+        "aplicável, essa distinção também será evidenciada, de modo a separar os montantes já "
+        "reconhecidos daqueles que permanecem dependentes de aceite pela área gestora/fiscalizadora.",
+        "",
+        "7. Solicitamos a conferência das informações acima e, caso estejam de acordo, a "
+        "confirmação de concordância para prosseguimento da formalização do reajuste.",
+        "",
+        "Caso haja alguma divergência, pedimos que seja indicada objetivamente a informação ou o "
+        "valor a ser revisto.",
+        "",
+        "Para facilitar o registro, a concordância poderá ser manifestada nos seguintes termos:",
+        "",
+        "“De acordo com os ciclos, índices, efeitos financeiros e valores apresentados, para "
+        "prosseguimento da formalização do reajuste.”",
+        "",
+        "Caso exista divergência, favor indicar o ciclo, competência, Pedido de Compra ou valor "
+        "correspondente.",
+    ]
+    return "\n".join(linhas)
+
+
+def render_validacao_contratada(resultado, diagnostico):
+    """Bloco aditivo pos-Coleta: comunicado para conferencia da apuracao pela
+    contratada antes da formalizacao da Apostila. Renderizado sempre depois de
+    todo o conteudo atual da pagina; nao altera nenhum card, calculo ou
+    documento existente."""
+    st.divider()
+    with st.container(border=True):
+        st.markdown("### Validação com a contratada")
+        st.caption("Comunicado para conferência da apuração antes da formalização da Apostila.")
+        texto_comunicado = gerar_texto_validacao_contratada(resultado, diagnostico)
+        with st.expander("Visualizar comunicado"):
+            st.code(texto_comunicado, language=None)
+        st.download_button(
+            "Baixar TXT",
+            data=texto_comunicado.encode("utf-8"),
+            file_name="Validacao_Contratada.txt",
+            mime="text/plain",
+            key="baixar_validacao_contratada_txt",
+        )
+# <<< VALIDACAO_CONTRATADA_POS_COLETA_V1
+
+
 # ============================================================
 # Interface
 # ============================================================
@@ -5261,6 +5534,7 @@ if resultado:
     # confirmado na homologação e removido da tela; o diagnóstico permanece
     # em diagnostico_coleta["cobertura_temporal"] (camada sombra intacta).
     render_documentos_funcionais_upload(resultado)
+    render_validacao_contratada(resultado, diagnostico_coleta)
     st.stop()
 
 if diagnostico_coleta:

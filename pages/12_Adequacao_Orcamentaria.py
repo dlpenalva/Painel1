@@ -908,32 +908,21 @@ with tab_siga:
     # nada — mesma regra de negocio da aba 4: o potencial nao integra a
     # complementacao confirmada nem o total a readequar.
     st.subheader("Texto para solicitação no SIGA")
-    st.caption("Confira os dados abaixo e copie o texto para utilização no processo.")
 
     adm_siga = st.session_state.get("dados_admissibilidade", {}) or {}
     contrato_auto = _valor_contratual_automatico(resultado, adm_siga, "contrato", "numero_contrato")
     contratada_auto = _valor_contratual_automatico(resultado, adm_siga, "contratada", "apostilado", "fornecedor")
 
-    col_id1, col_id2, col_id3 = st.columns(3)
-    with col_id1:
-        contrato_siga = st.text_input(
-            "Contrato", value=st.session_state.get("adequacao_v3_siga_contrato", contrato_auto),
-            key="adequacao_v3_siga_contrato", placeholder="Ex.: 12/2024",
-            help="Preenchido automaticamente quando disponível na apuração; editável.")
-    with col_id2:
-        contratada_siga = st.text_input(
-            "Contratada", value=st.session_state.get("adequacao_v3_siga_contratada", contratada_auto),
-            key="adequacao_v3_siga_contratada", placeholder="Ex.: Empresa XPTO S.A.",
-            help="Preenchido automaticamente quando disponível na apuração; editável.")
-    with col_id3:
-        clausula_siga = st.text_input(
-            "Cláusula de reajuste",
-            value=st.session_state.get("adequacao_v3_siga_clausula", "Cláusula Oitava"),
-            key="adequacao_v3_siga_clausula")
-
-    contrato_txt = texto_seguro(contrato_siga)
-    contratada_txt = texto_seguro(contratada_siga)
-    clausula_txt = texto_seguro(clausula_siga)
+    # Limpeza visual: o bloco de campos manuais (Contrato/Contratada/Cláusula
+    # de reajuste) foi retirado da interface. Contrato/Contratada preservam a
+    # MESMA fonte automática já existente (_valor_contratual_automatico);
+    # sem edição manual, o placeholder "[campo a preencher]" de texto_seguro
+    # cobre a ausência de fonte, exatamente como já cobria antes. Cláusula
+    # não tinha fonte automática — preserva o mesmo default fixo que o campo
+    # manual já usava ("Cláusula Oitava"), sem inventar fonte nova.
+    contrato_txt = texto_seguro(contrato_auto)
+    contratada_txt = texto_seguro(contratada_auto)
+    clausula_txt = texto_seguro("Cláusula Oitava")
     vigencia_txt = _data_siga(data_final_vigencia)
 
     # Mesma condicao da aba 4 (linha do cenario de planejamento): o cenario
