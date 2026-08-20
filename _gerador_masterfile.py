@@ -622,6 +622,33 @@ def _registrar_datas_abertura_fisica(
         ws[f"I{linha}"].number_format = "dd/mm/yyyy"
 
 
+def _registrar_datas_pedido(wb, ciclos: dict[str, Any]) -> None:
+    """parametros!U: DATA_PEDIDO por ciclo.
+
+    A data em que a CONTRATADA apresentou o pedido ja chega decidida pela
+    Calculadora (ciclo["data_pedido"]) e ate aqui era usada apenas para
+    definir efeitos financeiros, sem ficar registrada no arquivo. Sem esse
+    registro, os documentos gerados a partir de um MasterFile enviado nao
+    tinham como exibi-la e caiam no marcador de preenchimento manual.
+
+    Coluna U: primeira livre a direita do bloco MEMORIA DE CALCULO (J:R) e da
+    lista de validacao (T), portanto sem colisao de cabecalho. A leitura e por
+    nome de coluna: arquivo antigo, sem a coluna, simplesmente nao traz a data
+    e a politica documental de ausencia permanece valendo. Nenhum calculo,
+    formula ou classificacao depende desta coluna.
+    """
+    ws = wb["parametros"] if "parametros" in wb.sheetnames else None
+    if ws is None or str(ws["B1"].value or "").strip().upper() != "CICLO":
+        return
+    ws["U1"] = "DATA_PEDIDO"
+    for linha, nome in enumerate(("C0", "C1", "C2", "C3", "C4"), start=2):
+        valor = (ciclos.get(nome) or {}).get("data_pedido")
+        if isinstance(valor, datetime):
+            valor = valor.date()
+        _escrever_entrada(ws, f"U{linha}", valor if isinstance(valor, date) else None)
+        ws[f"U{linha}"].number_format = "dd/mm/yyyy"
+
+
 def _preencher_datas_fotografias_remanescentes(
     ws, ciclos: dict[str, Any], data_corte: Any, ciclo_vigente: str,
 ) -> None:
@@ -825,6 +852,7 @@ def gerar_masterfile_preenchido(
     ciclos_completos = _completar_periodos_ciclos(ciclos, dados_calculadora.get("data_corte"))
     _registrar_inicio_efeitos_financeiros(wb, ciclos_completos)
     _registrar_datas_abertura_fisica(wb, ciclos_completos, ciclos)
+    _registrar_datas_pedido(wb, ciclos_completos)
 
     ciclos_computados: list[tuple[str, Any]] = []
     for linha, nome in enumerate(("C0", "C1", "C2", "C3", "C4"), start=2):

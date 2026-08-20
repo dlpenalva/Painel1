@@ -367,7 +367,14 @@ def _montar_secao_ciclos(
             "computar": _sim_nao(reg.get("computar_nesta_apuracao")),
             "data_inicio": _fmt_data(reg.get("data_inicio")),
             "data_fim": _fmt_data(reg.get("data_fim")),
-            "data_pedido": _fmt_data(pedidos.get(nome)),
+            # Precedencia unica: identificacao explicita do chamador vence;
+            # na falta dela, a data gravada em parametros!DATA_PEDIDO pelo
+            # gerador. Sem nenhuma das duas, o campo sai vazio e cada documento
+            # aplica a sua politica de ausencia.
+            "data_pedido": _fmt_data(
+                pedidos.get(nome) if pedidos.get(nome) is not None
+                else reg.get("data_pedido")
+            ),
             # Apresentacao documental: inicio real do efeito financeiro do ciclo
             # (INICIO_EFEITO_FINANCEIRO). Nunca cai para data_inicio por conveniencia.
             "inicio_efeito_financeiro": _fmt_data(
