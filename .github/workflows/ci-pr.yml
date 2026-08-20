@@ -47,4 +47,5 @@ jobs:
             tests/test_data_exata_adiantado.py \
             tests/test_timeline_ciclos_visual.py \
             tests/test_26j_aditivos_vta_documentos.py \
-            tests/test_invalidacao_estado_caso.py
+            tests/test_invalidacao_estado_caso.py \
+            tests/test_aditivos_dropdown_h.py

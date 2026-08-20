@@ -16,6 +16,7 @@ from _coleta_oficial import (
     NOME_ARQUIVO_COLETA_OFICIAL,
     NOME_DOWNLOAD_COLETA,
     TEMPLATE_COLETA_OFICIAL,
+    assinatura_codigo_coleta,
     assinatura_template_coleta,
     gerar_coleta_oficial_preenchida,
 )
@@ -32,7 +33,7 @@ MIME_XLSX = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
 
 
 @st.cache_data(show_spinner=False)
-def _ler_modelo(assinatura: str) -> bytes:  # noqa: ARG001 — chave SHA-256 do cache
+def _ler_modelo(assinatura: str, assinatura_codigo: str) -> bytes:  # noqa: ARG001 — chaves SHA-256 do cache (template + codigo de geracao)
     return gerar_coleta_oficial_preenchida(None)
 
 
@@ -242,7 +243,7 @@ with coluna_coleta:
     if TEMPLATE_COLETA_OFICIAL.exists():
         st.download_button(
             "Baixar Arquivo Coleta Oficial",
-            data=_ler_modelo(assinatura_template_coleta()),
+            data=_ler_modelo(assinatura_template_coleta(), assinatura_codigo_coleta()),
             file_name=NOME_DOWNLOAD_COLETA,
             mime=MIME_XLSX,
             type="primary",

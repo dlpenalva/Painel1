@@ -1,13 +1,19 @@
 """Regressão cirúrgica das validações e fórmulas de aditivos."""
 
+import re
+import zipfile
 from io import BytesIO
+from pathlib import Path
 
 import pytest
 from openpyxl import load_workbook
 
+import _coleta_oficial
 from _coleta_oficial import (
     TEMPLATE_COLETA_OFICIAL,
     _garantir_apresentacao_retroativos_e_aditivos,
+    _validar_validacoes_aditivos_criticas,
+    assinatura_codigo_coleta,
     obter_coleta_oficial_bytes,
 )
 
@@ -131,3 +137,103 @@ def test_normaliza_nao_com_til_sem_tocar_sim_e_nao():
     _garantir_apresentacao_retroativos_e_aditivos(wb)
     assert [ws[f"H{linha}"].value for linha in range(2, 5)] == ["Nao", "Sim", "Nao"]
     wb.close()
+
+
+def _xml_da_aba(dados_zip: bytes, nome_aba: str) -> str:
+    """Le o XML bruto de uma aba a partir dos BYTES REAIS do XLSX entregue.
+
+    Resolve o relacionamento nome->r:id->arquivo via workbook.xml e
+    workbook.xml.rels (em vez de supor sheet1.xml/sheet2.xml por ordem),
+    para provar que a validacao foi de fato SERIALIZADA no XML, e nao
+    apenas presente no modelo de objetos do openpyxl em memoria.
+    """
+    with zipfile.ZipFile(BytesIO(dados_zip)) as zf:
+        workbook_xml = zf.read("xl/workbook.xml").decode("utf-8")
+        rels_xml = zf.read("xl/_rels/workbook.xml.rels").decode("utf-8")
+
+        tags = re.findall(r"<sheet\b[^>]*/>", workbook_xml)
+        tag = next((t for t in tags if f'name="{nome_aba}"' in t), None)
+        assert tag is not None, f"aba {nome_aba!r} nao encontrada em workbook.xml"
+        r_id_match = re.search(r'r:id="(rId\d+)"', tag)
+        assert r_id_match, f"aba {nome_aba!r} sem r:id em workbook.xml"
+        r_id = r_id_match.group(1)
+
+        rel_tags = re.findall(r"<Relationship\b[^>]*/>", rels_xml)
+        rel_tag = next((t for t in rel_tags if f'Id="{r_id}"' in t), None)
+        assert rel_tag is not None, f"relationship {r_id} nao encontrado"
+        alvo = re.search(r'Target="([^"]+)"', rel_tag).group(1)
+        caminho = f"xl/{alvo}" if not alvo.startswith("/") else alvo.lstrip("/")
+        return zf.read(caminho).decode("utf-8")
+
+
+def _validacoes_lista_do_xml(xml_aba: str) -> dict[str, str | None]:
+    blocos = re.findall(
+        r"<dataValidation\b[^>]*>.*?</dataValidation>|<dataValidation\b[^>]*/>",
+        xml_aba,
+        re.DOTALL,
+    )
+    por_sqref: dict[str, str | None] = {}
+    for bloco in blocos:
+        sqref_m = re.search(r'sqref="([^"]+)"', bloco)
+        if not sqref_m:
+            continue
+        formula_m = re.search(r"<formula1>(.*?)</formula1>", bloco, re.DOTALL)
+        por_sqref[sqref_m.group(1)] = formula_m.group(1) if formula_m else None
+    return por_sqref
+
+
+def test_i_xml_bruto_do_xlsx_real_persiste_h_e_d():
+    """REGRA PERMANENTE: prova nos BYTES REAIS entregues (nao so no modelo
+    de objetos openpyxl) que aditivos!H2:H200 e D2:D200 tem a lista suspensa
+    persistida no XML da planilha. Qualquer perda futura — cache de
+    processo servindo bytes antigos, bug de serializacao, template trocado —
+    derruba este teste."""
+    xml_aditivos = _xml_da_aba(obter_coleta_oficial_bytes(), "aditivos")
+    validacoes = _validacoes_lista_do_xml(xml_aditivos)
+    assert validacoes.get("H2:H200") == '"Sim,Nao"'
+    assert validacoes.get("D2:D200") == '"Acrescimo,Supressao"'
+
+
+def test_j_guarda_estrutural_nao_barra_geracao_correta():
+    obter_coleta_oficial_bytes()  # nao deve levantar ValueError
+
+
+def test_k_guarda_estrutural_detecta_regressao_de_dropdown():
+    """Prova que a barreira de _validar_validacoes_aditivos_criticas
+    efetivamente falha (CI vermelho) se H2:H200 sumir do workbook, do mesmo
+    jeito que _validar_estrutura_itens_pc ja protege itens_PC."""
+    wb = load_workbook(TEMPLATE_COLETA_OFICIAL, data_only=False)
+    _garantir_apresentacao_retroativos_e_aditivos(wb)
+    _validar_validacoes_aditivos_criticas(wb)  # fluxo correto: nao levanta
+
+    ws = wb["aditivos"]
+    for dv in list(ws.data_validations.dataValidation):
+        if "H2:H200" in str(dv.sqref):
+            ws.data_validations.dataValidation.remove(dv)
+    with pytest.raises(ValueError, match="aditivos invalida"):
+        _validar_validacoes_aditivos_criticas(wb)
+    wb.close()
+
+
+def test_l_assinatura_codigo_coleta_estavel_e_sensivel_ao_conteudo(tmp_path):
+    """Prova o mecanismo da segunda chave de cache: uma correcao neste
+    modulo (mesmo sem tocar no template) muda a assinatura, o que invalida
+    o cache do download em producao no proximo deploy — sem depender de
+    reboot manual (causa raiz da recorrencia investigada nesta tarefa)."""
+    a = assinatura_codigo_coleta()
+    b = assinatura_codigo_coleta()
+    assert a == b
+    assert len(a) == 64
+
+    modulo_original = Path(_coleta_oficial.__file__)
+    copia = tmp_path / "_coleta_oficial_copia.py"
+    conteudo = bytearray(modulo_original.read_bytes())
+    conteudo.append(ord("\n"))
+    copia.write_bytes(bytes(conteudo))
+
+    original_file = _coleta_oficial.__file__
+    try:
+        _coleta_oficial.__file__ = str(copia)
+        assert assinatura_codigo_coleta() != a
+    finally:
+        _coleta_oficial.__file__ = original_file

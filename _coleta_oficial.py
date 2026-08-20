@@ -199,6 +199,24 @@ def assinatura_template_coleta(caminho: str | Path | None = None) -> str:
         return ""
 
 
+def assinatura_codigo_coleta() -> str:
+    """SHA-256 do codigo-fonte deste modulo — segunda chave de cache do
+    download, ao lado de ``assinatura_template_coleta``.
+
+    ``assinatura_template_coleta`` so muda quando o XLS binario muda; uma
+    correcao de logica de geracao (este arquivo) nao altera o template e,
+    sem esta segunda chave, o cache do processo em producao (st.cache_data)
+    pode continuar servindo bytes gerados por uma versao antiga do codigo
+    mesmo apos o deploy da correcao, ate um reboot manual do app. Incluir
+    esta assinatura na chave garante que qualquer alteracao deste arquivo
+    invalide o cache no proximo deploy, sem depender de reboot.
+    """
+    try:
+        return hashlib.sha256(Path(__file__).read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
 def eh_layout_coleta_oficial(wb) -> bool:
     """True quando o workbook segue o novo modelo (aba posicao_contratual)."""
     return ABA_POSICAO_CONTRATUAL in wb.sheetnames
@@ -636,6 +654,42 @@ def _garantir_apresentacao_retroativos_e_aditivos(wb) -> None:
                 ws.data_validations.dataValidation.remove(validacao)
 
 
+_VALIDACOES_CRITICAS_ADITIVOS: dict[str, tuple[str, str]] = {
+    "H2:H200": ("list", '"Sim,Nao"'),
+    "D2:D200": ("list", '"Acrescimo,Supressao"'),
+}
+
+
+def _validar_validacoes_aditivos_criticas(wb) -> None:
+    """Barreira contra regressao critica: aditivos!H e D jamais podem sair
+    sem a lista suspensa (Sim/Nao e Acrescimo/Supressao, respectivamente).
+
+    Mesma familia de guarda de ``_validar_estrutura_itens_pc``: nao e so o
+    teste que protege a entrega, e a propria geracao. Se por qualquer motivo
+    (bug de codigo, cache de processo desatualizado, template trocado) o
+    workbook sair sem essas validacoes, a geracao falha explicitamente em
+    vez de entregar um XLS silenciosamente quebrado.
+    """
+    if "aditivos" not in wb.sheetnames:
+        return
+    ws = wb["aditivos"]
+    encontradas = {
+        str(faixa): (dv.type, dv.formula1)
+        for dv in ws.data_validations.dataValidation
+        for faixa in dv.sqref.ranges
+    }
+    faltantes = [
+        faixa
+        for faixa, esperado in _VALIDACOES_CRITICAS_ADITIVOS.items()
+        if encontradas.get(faixa) != esperado
+    ]
+    if faltantes:
+        raise ValueError(
+            "aditivos invalida: validacao de lista ausente ou divergente em "
+            f"{', '.join(faltantes)} (regressao critica de dropdown)"
+        )
+
+
 def _validar_estrutura_itens_pc(wb) -> None:
     """Barreira contra regressao critica: itens_PC jamais pode sair esvaziada.
 
@@ -708,6 +762,7 @@ def obter_coleta_oficial_bytes() -> bytes:
     _garantir_orientacao_novo_item_por_aditivo(wb)
     _validar_estrutura_itens_pc(wb)
     _garantir_apresentacao_retroativos_e_aditivos(wb)
+    _validar_validacoes_aditivos_criticas(wb)
 
     wb.calculation.calcMode = "auto"
     wb.calculation.fullCalcOnLoad = True
