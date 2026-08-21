@@ -197,16 +197,23 @@ class TestAppTestValidacaoContratada(unittest.TestCase):
         self.assertIn("Visualizar comunicado", [e.label for e in at.expander])
 
         texto = next(c.value for c in at.code)
-        self.assertIn("[a preencher]", texto)  # contrato/contratada sem fonte automática hoje
+        self.assertIn("[a preencher]", texto)  # contrato sem fonte automática hoje
+        self.assertNotIn("firmado com a", texto)  # item 1: trecho excluído
         self.assertIn("TOTAL RETROATIVO RECONHECIDO: R$ 12.345,67", texto)
         self.assertIn("TOTAL RETROATIVO POTENCIAL: R$ 890,12", texto)
         # EFEITO FINANCEIRO: fonte canonica parametros_v10.por_ciclo, nao df_financeiro_mensal.
         self.assertIn("C1 | 01/01/2025 a 31/12/2025 | IST | 4,50% | A partir de 01/02/2025", texto)
         # COMPETÊNCIAS SEM EFEITO: mesma regra homologada do Sumário Executivo (Requisito 5).
-        self.assertIn("C1 | 01/2025 | —", texto)
+        # item 3: sem a coluna VALOR CORRESPONDENTE.
+        self.assertIn("CICLO | COMPETÊNCIAS SEM EFEITO", texto)
+        self.assertNotIn("VALOR CORRESPONDENTE", texto)
+        self.assertIn("C1 | 01/2025", texto)
+        self.assertNotIn("C1 | 01/2025 | —", texto)
         self.assertNotIn("Não houve perda de competências neste ciclo.", texto)
         self.assertNotIn("Para facilitar o registro, a concordância poderá ser manifestada", texto)
         self.assertNotIn("De acordo com os ciclos, índices, efeitos financeiros e valores apresentados", texto)
+        # item 7: parágrafo final removido.
+        self.assertNotIn("favor indicar o ciclo, competência, Pedido de Compra", texto)
 
     def test_metodo_financeiro_sem_potencial_e_sem_perda(self):
         import pandas as pd
@@ -264,6 +271,9 @@ class TestAppTestValidacaoContratada(unittest.TestCase):
         self.assertIn("TOTAL RETROATIVO RECONHECIDO: R$ 4.321,00", texto)
         self.assertNotIn("TOTAL RETROATIVO POTENCIAL", texto)
         self.assertIn("Não houve perda de competências neste ciclo.", texto)
+        self.assertNotIn("firmado com a", texto)  # item 1
+        self.assertNotIn("VALOR CORRESPONDENTE", texto)  # item 3
+        self.assertNotIn("favor indicar o ciclo, competência, Pedido de Compra", texto)  # item 7
 
 
 if __name__ == "__main__":
