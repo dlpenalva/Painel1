@@ -415,7 +415,7 @@ def render_cobertura_temporal(cobertura):
             return
         col_fis, col_fin, col_pc = st.columns(3)
         with col_fis:
-            st.markdown("**Posição física**")
+            st.markdown("**Quantitativo restante**")
             st.markdown(f"Utilizada: **{r['posicao_fisica_utilizada']}**")
             st.markdown(f"Data: **{r['data_posicao_fisica']}**")
         with col_fin:
