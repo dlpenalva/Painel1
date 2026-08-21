@@ -5310,7 +5310,7 @@ def gerar_texto_validacao_contratada(resultado, diagnostico):
     apurados (resultado_consolidado + fontes por ciclo acima). Nenhuma
     grandeza financeira e recalculada nesta funcao."""
     consolidado = resultado.get("resultado_consolidado") or montar_resultado_consolidado(resultado, diagnostico)
-    contrato, contratada = _contrato_contratada_automaticos(resultado)
+    contrato, _contratada = _contrato_contratada_automaticos(resultado)
     ciclos = _ciclos_para_validacao_contratada(resultado, diagnostico)
     financeiro_ciclo = _financeiro_por_ciclo_para_validacao_contratada(resultado, consolidado)
     retro_ciclo = _retroativo_por_ciclo_para_validacao_contratada(resultado, consolidado)
@@ -5321,10 +5321,9 @@ def gerar_texto_validacao_contratada(resultado, diagnostico):
         "",
         "Prezados,",
         "",
-        f"1. Em continuidade à análise do reajuste do Contrato {contrato}, firmado com a "
-        f"{contratada}, encaminhamos abaixo o resultado da apuração realizada com base nas "
-        "informações contratuais, nos índices aplicáveis e nos dados de execução apresentados "
-        "pela fiscalização/gestão do contrato.",
+        f"1. Em continuidade à análise do reajuste do Contrato {contrato}, encaminhamos abaixo "
+        "o resultado da apuração realizada com base nas informações contratuais, nos índices "
+        "aplicáveis e nos dados de execução apresentados pela fiscalização/gestão do contrato.",
         "",
         "2. Foram considerados os seguintes ciclos:",
         "",
@@ -5349,12 +5348,9 @@ def gerar_texto_validacao_contratada(resultado, diagnostico):
         if financeiro_ciclo.get(c["ciclo"], {}).get("competencias_sem_efeito")
     ]
     if ciclos_com_perda:
-        linhas.append("CICLO | COMPETÊNCIAS SEM EFEITO | VALOR CORRESPONDENTE")
+        linhas.append("CICLO | COMPETÊNCIAS SEM EFEITO")
         for ciclo, info in ciclos_com_perda:
-            linhas.append(
-                f"{ciclo} | {', '.join(info['competencias_sem_efeito'])} | "
-                f"{_moeda_ou_traco(info.get('valor_sem_efeito'))}"
-            )
+            linhas.append(f"{ciclo} | {', '.join(info['competencias_sem_efeito'])}")
     else:
         linhas.append("Não houve perda de competências neste ciclo.")
 
@@ -5416,9 +5412,6 @@ def gerar_texto_validacao_contratada(resultado, diagnostico):
         "",
         "Caso haja alguma divergência, pedimos que seja indicada objetivamente a informação ou o "
         "valor a ser revisto.",
-        "",
-        "Caso exista divergência, favor indicar o ciclo, competência, Pedido de Compra ou valor "
-        "correspondente.",
     ]
     return "\n".join(linhas)
 

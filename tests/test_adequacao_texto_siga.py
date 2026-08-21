@@ -346,6 +346,29 @@ def test_reruns_sucessivos_mudando_a_vigencia_nao_congelam_o_texto():
     assert "29/02/2028" not in texto_final  # nao preserva a vigencia do rerun anterior
 
 
+# --------------------------------------------- 11. programacao por exercicio
+
+def test_programacao_por_exercicio_usa_a_mesma_fonte_da_aba4():
+    """A secao 'Programacao por exercicio' do Texto SIGA consome exatamente
+    o mesmo DataFrame (cronograma_por_exercicio) ja renderizado na aba 4 —
+    mesmos anos, mesmos valores, mesmo TOTAL. Nada e recalculado aqui."""
+    at = _run_pc(_sessao_pc(com_potencial=True))
+    blob = _blob(at)
+    complementacao = _valor_do_card(blob, "COMPLEMENTAÇÃO CONFIRMADA")
+
+    df_cron = next(d.value for d in at.dataframe if "Exercício" in d.value.columns)
+    texto = _texto_siga(at)
+    assert "Programação por exercício" in texto
+    bloco = texto.split("Programação por exercício", 1)[1]
+
+    for _, row in df_cron.iterrows():
+        assert f"{row['Exercício']} | {row['Valor']}" in bloco
+
+    linha_total = _linha(texto, "TOTAL | ")
+    total_texto = parse_moeda_br(linha_total.split("|", 1)[1])
+    assert total_texto == pytest.approx(complementacao)
+
+
 def test_txt_baixado_usa_a_mesma_variavel_do_texto_exibido_sem_duplicar():
     """NAO duplicar a montagem do texto: o download_button precisa usar a
     MESMA variavel Python texto_siga que sincroniza o widget — nunca uma

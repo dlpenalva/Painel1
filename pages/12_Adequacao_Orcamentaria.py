@@ -936,6 +936,24 @@ with tab_siga:
     cenario_txt = (moeda(cenario_potencial) if tem_potencial
                    else "Não aplicável (retroativo potencial não localizado)")
 
+    # Mesma fonte canonica da aba 4 (cronograma_por_exercicio ja calculado
+    # ali); nao recalcula nem reconstroi o rateio.
+    if isinstance(cronograma, pd.DataFrame) and not cronograma.empty:
+        total_cron_siga = float(pd.to_numeric(cronograma["Valor"], errors="coerce").sum())
+        linhas_programacao = "\n".join(
+            f"{row['Exercício']} | {moeda(row['Valor'])}" for _, row in cronograma.iterrows()
+        )
+        programacao_txt = (
+            "Programação por exercício\n\n"
+            f"{linhas_programacao}\n"
+            f"TOTAL | {moeda(total_cron_siga)}"
+        )
+    else:
+        programacao_txt = (
+            "Programação por exercício\n\n"
+            "Não disponível (depende de projeção futura calculada)."
+        )
+
     texto_siga = (
         "Solicitação de adequação orçamentária\n\n"
         f"1. Solicita-se adequação orçamentária para o Contrato {contrato_txt}, firmado com a "
@@ -947,6 +965,7 @@ with tab_siga:
         f"Retroativo reconhecido considerado: {retroativo_txt}\n"
         f"Diferença futura projetada – {qtd_meses} meses: {diferenca_txt}\n\n"
         f"TOTAL A READEQUAR: {complementacao_txt}\n\n"
+        f"{programacao_txt}\n\n"
         "4. Informações complementares:\n\n"
         f"Retroativo reconhecido considerado: {retroativo_txt}\n\n"
         f"Retroativo potencial, ainda em aceitação e não incluído nesta adequação: {potencial_txt}\n\n"
@@ -973,7 +992,7 @@ with tab_siga:
     assinatura_siga = (
         contrato_txt, contratada_txt, clausula_txt, vigencia_txt,
         retroativo_txt, qtd_meses, diferenca_txt, complementacao_txt,
-        potencial_txt, cenario_txt,
+        potencial_txt, cenario_txt, programacao_txt,
     )
     if st.session_state.get("adequacao_v3_siga_assinatura") != assinatura_siga:
         st.session_state["adequacao_v3_siga_texto_area"] = texto_siga
