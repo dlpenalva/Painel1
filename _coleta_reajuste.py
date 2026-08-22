@@ -137,15 +137,27 @@ def _tem_metadado_inicio_efeito(wb) -> bool:
     return "CL8US_INICIO_EFEITO:" in str(wb.properties.keywords or "")
 
 
-def _ciclo_por_competencia_financeira(wb, competencia: Any) -> str:
+def _tabela_ciclos_financeiros(wb) -> list[tuple[str, date | None, date | None]]:
+    ws = wb["parametros"]
+    return [
+        (
+            str(ws[f"B{row}"].value or "").strip().upper(),
+            _data(ws[f"C{row}"].value),
+            _data(ws[f"D{row}"].value),
+        )
+        for row in range(2, 7)
+    ]
+
+
+def _ciclo_por_competencia_financeira(
+    wb, competencia: Any, tabela_ciclos: list[tuple[str, date | None, date | None]] | None = None
+) -> str:
     data_comp = _data(competencia)
     if data_comp is None:
         return ""
-    ws = wb["parametros"]
-    for row in range(2, 7):
-        ciclo = str(ws[f"B{row}"].value or "").strip().upper()
-        inicio = _data(ws[f"C{row}"].value)
-        fim = _data(ws[f"D{row}"].value)
+    if tabela_ciclos is None:
+        tabela_ciclos = _tabela_ciclos_financeiros(wb)
+    for ciclo, inicio, fim in tabela_ciclos:
         if ciclo and inicio and fim and inicio <= data_comp <= fim:
             return ciclo
     return ""
@@ -659,6 +671,7 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
             bloqueios_criticos.append(
                 f"Ha mais {len(_duplicados) - 8} NUMERO_PC duplicados em itens_PC."
             )
+    tabela_ciclos_fin = _tabela_ciclos_financeiros(wb)
     for row in range(2, ULTIMA_LINHA_PCS + 1):
         if not any(
             ws_pc[f"{col}{row}"].value not in (None, "")
@@ -677,7 +690,7 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
                 f"DATA_PC vazia ou invalida: PC {numero_pc}, linha {row}."
             )
             continue
-        ciclo_pc = _ciclo_por_competencia_financeira(wb, data_pc)
+        ciclo_pc = _ciclo_por_competencia_financeira(wb, data_pc, tabela_ciclos_fin)
         if not ciclo_pc:
             bloqueios_criticos.append(
                 f"Ciclo cronologico nao identificado: PC {numero_pc}, linha {row}."
@@ -727,7 +740,7 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         competencia = financeiro[f"A{row}"].value
         valor = _numero(financeiro[f"C{row}"].value)
         efeito = str(financeiro[f"G{row}"].value or "")
-        ciclo = _ciclo_por_competencia_financeira(wb, competencia)
+        ciclo = _ciclo_por_competencia_financeira(wb, competencia, tabela_ciclos_fin)
         data_comp = _data(competencia)
         referencia = (
             f"ciclo {ciclo or 'nao identificado'}, competencia "
