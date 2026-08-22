@@ -386,8 +386,8 @@ def _composicao_vta_pc(
         if consumido:
             presente = {
                 "descricao": (
-                    f"{vigente} executado ate a posicao fisica"
-                    + (f" de {data_pos:%d/%m/%Y}" if hasattr(data_pos, "year") else "")
+                    f"{vigente} executado ate o levantamento do quantitativo restante"
+                    + (f" em {data_pos:%d/%m/%Y}" if hasattr(data_pos, "year") else "")
                 ),
                 "valor_base": consumido,
                 "fator_acumulado": fator_vig,
@@ -397,7 +397,7 @@ def _composicao_vta_pc(
             }
         if remanescente:
             saldo = {
-                "descricao": f"{vigente} remanescente fisico atual (por item)",
+                "descricao": f"{vigente} quantitativo restante atual (por item)",
                 "valor_base": remanescente,
                 "fator_acumulado": fator_vig,
                 "valor_atualizado": remanescente,

@@ -41,11 +41,6 @@ MIME_DOCX = (
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 )
 
-AVISO_MODELOS = (
-    "Os modelos desta área não utilizam dados de uma Coleta e não são "
-    "preenchidos automaticamente. Revise e complete todos os campos destacados."
-)
-
 
 @st.cache_data(show_spinner=False)
 def _bytes_coleta_oficial(assinatura: str, assinatura_codigo: str) -> bytes:  # noqa: ARG001 — chaves SHA-256 do cache (template + codigo de geracao)
@@ -106,9 +101,6 @@ with st.container(border=True):
         )
 
 # ---------------------------------------------------------------- Seção 1
-st.subheader("Modelos em branco")
-st.warning(AVISO_MODELOS)
-
 col_a, col_b = st.columns(2, gap="large")
 with col_a:
     with st.container(border=True):

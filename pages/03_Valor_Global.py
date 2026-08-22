@@ -25,7 +25,7 @@ from _seguranca_xlsx import (
 )
 from _capacidades_apuracao import SEIS_DOCUMENTOS_CANONICOS
 from _resultado_consolidado import montar_resultado_consolidado
-from _sumario_executivo import gerar_sumario_executivo, _fmt_data, _meses_sem_efeito, NAO_INFORMADO
+from _sumario_executivo import gerar_sumario_executivo, _fmt_data, _fmt_competencia, _meses_sem_efeito, NAO_INFORMADO
 from _templates_documentos import gerar_despacho_saneador, gerar_termo_apostila
 
 aditivos_somados_ao_valor_total = 0.0  # fallback: planilha sem aditivos computaveis
@@ -4982,15 +4982,17 @@ def render_resultado_consolidado(resultado, diagnostico):
     st.markdown("### COMPOSIÇÃO DO VTA")
     composicao = consolidado.get("composicao_vta") or {}
     if composicao.get("exibivel") and composicao.get("linhas"):
+        rotulos_origem = {"posicao_fisica": "quantitativo restante"}
         linhas_ui = []
         for linha in composicao["linhas"]:
+            fonte = linha.get("fonte") or "—"
             linhas_ui.append({
                 "Parcela": linha.get("descricao") or "—",
                 "Ciclo ou marco": linha.get("ciclo") or linha.get("marco") or "—",
                 "Base": _moeda_resultado(linha.get("valor_base")),
                 "Fator": _fator_resultado(linha.get("fator_acumulado")),
                 "Valor atualizado": _moeda_resultado(linha.get("valor_atualizado")),
-                "Origem": linha.get("fonte") or "—",
+                "Origem": rotulos_origem.get(fonte, fonte),
             })
         st.dataframe(pd.DataFrame(linhas_ui), hide_index=True, use_container_width=True)
     else:
@@ -5223,7 +5225,7 @@ def _ciclos_para_validacao_contratada(resultado, diagnostico):
         fim = info.get("data_fim_ddmmaaaa")
         linhas.append({
             "ciclo": ciclo,
-            "periodo": f"{ini} a {fim}" if ini and fim else "—",
+            "periodo": f"{_fmt_competencia(ini)} a {_fmt_competencia(fim)}" if ini and fim else "—",
             "variacao": variacao_por_ciclo.get(ciclo),
         })
     return linhas
@@ -5250,7 +5252,7 @@ def _financeiro_por_ciclo_para_validacao_contratada(resultado, consolidado):
             if not isinstance(reg, dict):
                 continue
             inicio = reg.get("inicio_efeito_financeiro") or reg.get("inicio_efeito_financeiro_parametros")
-            inicio_fmt = _fmt_data(inicio) if inicio is not None else NAO_INFORMADO
+            inicio_fmt = _fmt_competencia(inicio) if inicio is not None else NAO_INFORMADO
             meses = _meses_sem_efeito(str(ciclo).upper(), reg)
             saida[str(ciclo).upper()] = {
                 "inicio_efeito": inicio_fmt if inicio_fmt != NAO_INFORMADO else None,

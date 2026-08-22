@@ -201,8 +201,11 @@ class TestAppTestValidacaoContratada(unittest.TestCase):
         self.assertNotIn("firmado com a", texto)  # item 1: trecho excluído
         self.assertIn("TOTAL RETROATIVO RECONHECIDO: R$ 12.345,67", texto)
         self.assertIn("TOTAL RETROATIVO POTENCIAL: R$ 890,12", texto)
+        # PERÍODO/ANO tambem em mm/aaaa (hotfix pos-PR#87, item 4).
+        self.assertIn("C1 | 01/2025 a 12/2025 | R$ 5.000,00", texto)
         # EFEITO FINANCEIRO: fonte canonica parametros_v10.por_ciclo, nao df_financeiro_mensal.
-        self.assertIn("C1 | 01/01/2025 a 31/12/2025 | IST | 4,50% | A partir de 01/02/2025", texto)
+        # PERIODO e EFEITO FINANCEIRO em mm/aaaa (hotfix pos-PR#87, item 2).
+        self.assertIn("C1 | 01/2025 a 12/2025 | IST | 4,50% | A partir de 02/2025", texto)
         # COMPETÊNCIAS SEM EFEITO: mesma regra homologada do Sumário Executivo (Requisito 5).
         # item 3: sem a coluna VALOR CORRESPONDENTE.
         self.assertIn("CICLO | COMPETÊNCIAS SEM EFEITO", texto)
