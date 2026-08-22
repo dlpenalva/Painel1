@@ -304,13 +304,14 @@ def test_pagina14_existe_e_titulo():
     assert "Central de Modelos e Ferramentas" in PAGE14
 
 
-def test_pagina14_aviso_exato():
-    # O aviso e uma constante quebrada em duas literais no fonte; verificamos
-    # os dois fragmentos exatos que, concatenados, formam a mensagem mandatoria.
-    assert "Os modelos desta área não utilizam dados de uma Coleta e não são " in PAGE14
+def test_pagina14_titulo_e_aviso_removidos():
+    # Hotfix pos-PR#87 (item 4): titulo "Modelos em branco" e o aviso
+    # AVISO_MODELOS foram removidos da apresentacao; os cards permanecem.
+    assert 'st.subheader("Modelos em branco")' not in PAGE14
+    assert "Os modelos desta área não utilizam dados de uma Coleta e não são " not in PAGE14
     assert (
         "preenchidos automaticamente. Revise e complete todos os campos destacados."
-    ) in PAGE14
+    ) not in PAGE14
 
 
 def test_pagina14_downloads_modelos():
