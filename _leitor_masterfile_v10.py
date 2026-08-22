@@ -869,13 +869,15 @@ def _resumo_masterfile_fiscal_v2(wb) -> dict[str, Any]:
     }
 
 
-def _linha_exemplo_fiscal(ws, r: int) -> bool:
+def _linha_exemplo_fiscal(ws, r: int, max_col: int | None = None) -> bool:
     """Linha ilustrativa do Arquivo 3.0: qualquer celula iniciando por EXEMPLO.
 
     O gerador do XLS de entrada planta linhas de exemplo prefixadas; se o
     fiscal nao as apagar, elas nao podem contaminar VTA nem retroativo.
     """
-    for c in range(1, ws.max_column + 1):
+    if max_col is None:
+        max_col = ws.max_column
+    for c in range(1, max_col + 1):
         valor = ws.cell(r, c).value
         if isinstance(valor, str) and valor.strip().upper().startswith("EXEMPLO"):
             return True
@@ -2622,8 +2624,9 @@ def _ler_itens_pc_v10(
     limite_operacional = (
         min(ws.max_row, ULTIMA_LINHA_PCS) if ws.title == "itens_PC" else ws.max_row
     )
+    max_col_itens_pc = ws.max_column
     for r in range(2, limite_operacional + 1):
-        if _linha_exemplo_fiscal(ws, r):
+        if _linha_exemplo_fiscal(ws, r, max_col_itens_pc):
             continue
         item_ou_grupo = ws.cell(r, col_item).value if col_item else None
         num_pc        = ws.cell(r, col_num).value  if col_num  else None
