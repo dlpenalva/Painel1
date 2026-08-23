@@ -37,16 +37,24 @@ from _sumario_executivo import (  # noqa: E402
 )
 
 
-@pytest.mark.parametrize("status", ["REVISE", "ESTIMADO"])
-def test_vta_numerico_permanece_previa_enquanto_status_nao_definitivo(status):
+# VTA-M5: o gate de PREVIA deixou de usar status_resultados["geral"]
+# (RESULTADOS!B3, agregado que inclui eixos alheios ao VTA, ex.: H33/posicao
+# fisica atual) e passou a usar exclusivamente o selo especifico do VTA_FINAL
+# (H8, via status_resultados["vta"]/MEMORIA_RESULTADOS!E26). Um status geral
+# ESTIMADO/REVISE por motivo NAO relacionado ao VTA nao rebaixa mais um VTA
+# especificamente validado.
+@pytest.mark.parametrize("status_geral", ["REVISE", "ESTIMADO"])
+def test_vta_conciliado_permanece_definitivo_apesar_de_status_geral_nao_validado(
+    status_geral,
+):
     sintese = {"vta": 137375560.29}
     _aplicar_previa_vta(
         sintese,
         {"valores": {"VTA_FINAL": 137375560.29}},
-        {"geral": status},
+        {"geral": status_geral, "vta": "CALCULADO — CONFERIR"},
     )
-    assert sintese["vta"] is None
-    assert sintese["vta_previa"] == 137375560.29
+    assert sintese["vta"] == 137375560.29
+    assert "vta_previa" not in sintese
 
 
 def test_vta_validado_nao_recebe_selo_previa():
@@ -54,10 +62,25 @@ def test_vta_validado_nao_recebe_selo_previa():
     _aplicar_previa_vta(
         sintese,
         {"valores": {"VTA_FINAL": 137375560.29}},
-        {"geral": "VALIDADO"},
+        {"geral": "VALIDADO", "vta": "CALCULADO — CONFERIR"},
     )
     assert sintese["vta"] == 137375560.29
     assert "vta_previa" not in sintese
+
+
+@pytest.mark.parametrize("status_geral", ["VALIDADO", "REVISE", "ESTIMADO"])
+def test_vta_com_selo_especifico_revise_recebe_previa(status_geral):
+    """Selo especifico do VTA_FINAL (MEMORIA_RESULTADOS!E26) sem os
+    marcadores de calculo reconhecido -> PREVIA, independente do status
+    geral (mesmo quando o geral esta VALIDADO por outros eixos)."""
+    sintese = {"vta": 137375560.29}
+    _aplicar_previa_vta(
+        sintese,
+        {"valores": {"VTA_FINAL": 137375560.29}},
+        {"geral": status_geral, "vta": "SEM CALCULO"},
+    )
+    assert sintese["vta"] is None
+    assert sintese["vta_previa"] == 137375560.29
 
 
 # ---------------------------------------------------------------------------
