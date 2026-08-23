@@ -160,7 +160,10 @@ ROOT = Path(__file__).resolve().parents[1]
 # I11 quando I10="REVISE", senao "nao preenchido ou incompleto") e, no
 # ESTIMADO, acrescenta linha INFORMATIVA fora da lista de pendencias com as
 # datas da posicao fisica e da data de corte (DAY/MONTH/YEAR locale-safe).
-SHA256_TEMPLATE_ESPERADO = "30228a0b516963ebb0eb600a959075c98b03066649d0fb4615565f728757238f"
+# VTA-M2: SHA atualizado apos correcao do VTA Financeiro no template
+# (D20/B26/B28 no ramo Financeiro + bloco CONFERENCIA DA EXECUCAO em
+# RESULTADOS); PC e Consumido preservados byte-a-byte fora dessas celulas.
+SHA256_TEMPLATE_ESPERADO = "7d9b06f1b738270d48fcbb40c2b821d6caff8511c73bbba1fe5d938f02da723d"
 
 
 def _dados_calculadora() -> dict:
