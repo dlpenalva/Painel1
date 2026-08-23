@@ -28,6 +28,7 @@ from _objeto_processo_reajuste import (
     montar_objeto_processo_reajuste,
     obter_objeto_processo_reajuste,
 )
+from _reajuste_utils import gerado_em_brasilia
 from _reconciliacao_xls_python import campos_nao_confiaveis_para_documentos
 
 NAO_INFORMADO = "Não informado"
@@ -284,7 +285,7 @@ def _montar_identificacao(
         "metodo": _texto_ou_nao_informado(metodo),
         "ciclo_vigente": _texto_ou_nao_informado(controle.get("ciclo_vigente")),
         "data_corte": _fmt_data(controle.get("data_corte")),
-        "gerado_em": datetime.now().strftime("%d/%m/%Y"),
+        "gerado_em": gerado_em_brasilia(),
     }
 
 
@@ -854,10 +855,10 @@ def _rodape_factory(dados: dict[str, Any]):
     from reportlab.lib import colors
     from reportlab.lib.units import mm
 
-    gerado_em = (dados.get("identificacao") or {}).get("gerado_em") \
-        or datetime.now().strftime("%d/%m/%Y")
-    # Garante formato dd/mm/aaaa (sem hora, sem texto adicional).
-    data_rodape = gerado_em[:10] if len(gerado_em) >= 10 else gerado_em
+    # Instante de materializacao destes bytes especificos — nao a apuracao,
+    # o upload, o commit ou o deploy (fonte unica: gerado_em_brasilia()).
+    data_rodape = (dados.get("identificacao") or {}).get("gerado_em") \
+        or gerado_em_brasilia()
 
     def _rodape(canvas, doc):
         canvas.saveState()
