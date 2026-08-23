@@ -35,7 +35,11 @@ from _sumario_executivo import (
     _num_ou_none,
 )
 from _objeto_processo_reajuste import obter_objeto_processo_reajuste
-from _reajuste_utils import FRASE_SEM_CICLOS_COMPUTADOS, expressao_quantidade_ciclos
+from _reajuste_utils import (
+    FRASE_SEM_CICLOS_COMPUTADOS,
+    expressao_quantidade_ciclos,
+    gerado_em_brasilia,
+)
 from _sanitizacao_documental import remover_emojis_leve
 
 # ---------------------------------------------------------------------------
@@ -339,13 +343,21 @@ def _configurar_documento() -> Document:
 
 
 def _adicionar_id_apuracao_rodape(doc: Document, dados: dict) -> None:
-    """Registra a rastreabilidade sem interferir no corpo juridico do documento."""
+    """Registra a rastreabilidade sem interferir no corpo juridico do documento.
+
+    So escreve quando ha id_apuracao (nunca em modelo em branco, cujo `dados`
+    nao carrega essa chave). A data/hora acompanha o mesmo bloco/run — nao e
+    a apuracao, o upload ou o commit: e o instante em que estes bytes
+    especificos foram montados (fonte unica: gerado_em_brasilia()).
+    """
     id_apuracao = str(dados.get("id_apuracao") or "").strip()
     if not id_apuracao:
         return
     paragrafo = doc.sections[0].footer.paragraphs[0]
     paragrafo.alignment = WD_ALIGN_PARAGRAPH.RIGHT
-    run = paragrafo.add_run(f"ID da apuração: {id_apuracao}")
+    run = paragrafo.add_run(
+        f"ID da apuração: {id_apuracao} | Gerado em {gerado_em_brasilia()}"
+    )
     run.font.name = "Calibri"
     run.font.size = Pt(8)
     run.font.color.rgb = RGBColor(0x66, 0x66, 0x66)

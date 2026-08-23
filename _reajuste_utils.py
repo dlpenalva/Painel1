@@ -1,5 +1,9 @@
 import re
 import unicodedata
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+FUSO_BRASILIA = ZoneInfo("America/Sao_Paulo")
 
 # --- Quantidade de ciclos efetivamente considerados na apuracao -------------
 # Regra unica de contagem e de redacao, compartilhada por todos os documentos.
@@ -304,3 +308,15 @@ def referencia_temporal_anterior(dados_admissibilidade):
         "ultimo_dia_anterior": periodo_fim.strftime("%d/%m/%Y"),
         "meses": 12,
     }
+
+
+def gerado_em_brasilia() -> str:
+    """Carimbo do instante em que ESTA copia dos bytes do documento foi montada.
+
+    Fonte unica de tempo para o rodape de rastreabilidade dos documentos
+    gerados (Despacho Saneador, Termo de Apostila, Sumario Executivo). Nao
+    representa apuracao, upload, commit ou deploy — apenas a materializacao
+    dos bytes desta geracao especifica, lida no fuso de Brasilia no momento
+    da chamada (sem cache, sem hora do commit).
+    """
+    return datetime.now(FUSO_BRASILIA).strftime("%d/%m/%Y %H:%M") + " (Brasília)"

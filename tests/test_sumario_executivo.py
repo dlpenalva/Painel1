@@ -580,18 +580,22 @@ def test_pdf_sem_secao_observacoes():
 
 
 def test_pdf_rodape_somente_data():
-    """Rodape deve conter exclusivamente 'Gerado em dd/mm/aaaa.'"""
+    """Rodape (lado esquerdo) deve conter 'Gerado em dd/mm/aaaa HH:MM (Brasília).'
+
+    R1A: o carimbo passou a incluir hora e fuso explicito — instante de
+    materializacao destes bytes, nao a apuracao/upload/commit/deploy.
+    """
     fitz = pytest.importorskip("fitz")
     import re
     pdf = gerar_sumario_executivo(leitura_simples_financeiro())
     doc = fitz.open(stream=pdf, filetype="pdf")
-    padrao_data = re.compile(r"Gerado em \d{2}/\d{2}/\d{4}\.")
+    padrao_data = re.compile(r"Gerado em \d{2}/\d{2}/\d{4} \d{2}:\d{2} \(Brasília\)\.")
     for page in doc:
         texto = page.get_text()
         assert padrao_data.search(texto), (
-            f"Rodape sem 'Gerado em dd/mm/aaaa.': {texto!r}"
+            f"Rodape sem 'Gerado em dd/mm/aaaa HH:MM (Brasília).': {texto!r}"
         )
-        # Nenhum outro conteudo no rodape
+        # Nenhum outro conteudo alem da data e do ID da apuracao (quando houver).
         assert "Página" not in texto
         assert "Cl8us" not in texto
 
