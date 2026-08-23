@@ -7,8 +7,6 @@ silenciosa do cálculo Python.
 
 from __future__ import annotations
 
-import time
-import uuid
 from datetime import datetime
 from io import BytesIO
 from typing import Any
@@ -26,18 +24,6 @@ from _seguranca_xlsx import (
     XlsxInvalidoError,
     garantir_xlsx_validado,
 )
-
-
-def _obs_evento(mensagem: str, *args: Any) -> None:
-    """Observabilidade tecnica best-effort via stdout (sem logging/config global).
-
-    Uma falha aqui nunca pode afetar o processamento: captura somente
-    exceções da própria emissão, nunca a exceção funcional do chamador.
-    """
-    try:
-        print(mensagem % args if args else mensagem)
-    except Exception:
-        pass
 
 
 def _numero(valor: Any, padrao: float = 0.0) -> float:
@@ -549,28 +535,16 @@ def aplicar_bloqueio_documental(capacidades: dict[str, Any], bloqueios: list[str
 
 def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], dict[str, Any]]:
     """Entry point único usado pelo upload real e pelos testes de integração."""
-    id_proc = uuid.uuid4().hex[:8]
-    t_inicio_total = time.perf_counter()
-    _obs_evento("PROCESSAMENTO_INICIO id=%s", id_proc)
-
-    t0 = time.perf_counter()
     conteudo = garantir_xlsx_validado(conteudo)
-    _obs_evento("ETAPA_CONCLUIDA id=%s etapa=validacao_xlsx duracao_s=%s", id_proc, round(time.perf_counter() - t0, 3))
-
-    t0 = time.perf_counter()
     leitura = ler_masterfile_v10(conteudo, exigir_modelo_oficial=True)
     if not leitura.get("ok"):
         raise ValueError(leitura.get("erro") or "O Arquivo Coleta Oficial não pôde ser lido.")
-    _obs_evento("ETAPA_CONCLUIDA id=%s etapa=leitura_masterfile duracao_s=%s", id_proc, round(time.perf_counter() - t0, 3))
 
-    t0 = time.perf_counter()
     diagnostico = ler_coleta_reajuste(conteudo)
     if not diagnostico.get("valido"):
         pendencias = diagnostico.get("pendencias") or diagnostico.get("bloqueios_estruturais") or []
         raise ValueError("; ".join(str(item) for item in pendencias) or "A estrutura do Arquivo Coleta Oficial é inválida.")
-    _obs_evento("ETAPA_CONCLUIDA id=%s etapa=leitura_coleta duracao_s=%s", id_proc, round(time.perf_counter() - t0, 3))
 
-    t0 = time.perf_counter()
     try:
         resultado = adaptar_coleta_reajuste_para_documentos(
             conteudo,
@@ -583,12 +557,8 @@ def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], d
         raise XlsxInvalidoError(
             "O arquivo enviado não é um XLSX válido ou está corrompido."
         ) from exc
-    _obs_evento("ETAPA_CONCLUIDA id=%s etapa=adaptacao_documental duracao_s=%s", id_proc, round(time.perf_counter() - t0, 3))
     reconciliacao = leitura.get("reconciliacao_xls_python") or {}
-
-    t0 = time.perf_counter()
     politica = avaliar_entrega_segura(leitura)
-    _obs_evento("ETAPA_CONCLUIDA id=%s etapa=entrega_segura duracao_s=%s", id_proc, round(time.perf_counter() - t0, 3))
     bloqueios = list(politica.get("bloqueios") or [])
 
     # Etapa 5b: campos oficiais nao-confiaveis (divergentes + dependentes) que os
@@ -607,14 +577,11 @@ def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], d
     # payload do leitor (sem reler o Excel). Fail-safe: erro do motor temporal
     # NAO derruba o upload nem os demais resultados; vira indisponibilidade do
     # eixo temporal. Nao altera o VTA e nao bloqueia documentos.
-    t0 = time.perf_counter()
     try:
         from _motor_cobertura_temporal import montar_cobertura_temporal
         diagnostico["cobertura_temporal"] = montar_cobertura_temporal(leitura).to_dict()
     except Exception as exc:  # diagnostico e sombra; nunca hard-reject estrutural
         diagnostico["cobertura_temporal"] = {"ok": False, "erro": str(exc)}
-        _obs_evento("ETAPA_FALHA_FAILSAFE id=%s etapa=cobertura_temporal tipo=%s", id_proc, type(exc).__name__)
-    _obs_evento("ETAPA_CONCLUIDA id=%s etapa=cobertura_temporal duracao_s=%s", id_proc, round(time.perf_counter() - t0, 3))
 
     capacidades = resultado.get("capacidades") or {}
     aplicar_bloqueio_documental(capacidades, bloqueios)
@@ -628,11 +595,7 @@ def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], d
         "formalizacao_bloqueada": bool(bloqueios),
         "bloqueios_formalizacao": bloqueios,
     })
-    t0 = time.perf_counter()
     resultado["resultado_consolidado"] = montar_resultado_consolidado(
         resultado, diagnostico
     )
-    _obs_evento("ETAPA_CONCLUIDA id=%s etapa=resultado_consolidado duracao_s=%s", id_proc, round(time.perf_counter() - t0, 3))
-
-    _obs_evento("PROCESSAMENTO_FIM id=%s duracao_s=%s", id_proc, round(time.perf_counter() - t_inicio_total, 3))
     return resultado, diagnostico
