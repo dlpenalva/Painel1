@@ -234,25 +234,53 @@ def _mascarar_financeiro_por_divergencia(financeiro: dict[str, Any], campos_nc: 
         financeiro["retroativo_estado"] = MOTIVO_DIVERGENCIA_XLS_PYTHON
 
 
+# VTA-M5: marcadores textuais que RESULTADOS!H8 (selo especifico do VTA_FINAL)
+# procura em MEMORIA_RESULTADOS!E26 via SEARCH(...) para classificar o VTA
+# como VALIDADO. status_resultados["vta"] (populado a partir de E26 em
+# _coleta_reajuste.py) transporta esse mesmo texto ao Python — e o sinal
+# especifico do VTA, distinto de status_resultados["geral"] (RESULTADOS!B3),
+# que agrega eixos alheios ao VTA (ex.: H33, posicao fisica atual).
+_MARCADORES_VTA_VALIDADO = ("CALCULADO", "MANUAL VALIDADO", "COM AJUSTE MANUAL")
+
+
+def _selo_vta_validado(status_resultados: dict[str, Any] | None) -> bool:
+    """Espelha RESULTADOS!H8: VALIDADO quando MEMORIA_RESULTADOS!E26 contem um
+    dos marcadores de calculo reconhecido; caso contrario, REVISE. Nao usa
+    status_resultados["geral"] (agregado de eixos alheios ao VTA)."""
+    texto = str((status_resultados or {}).get("vta") or "").strip().upper()
+    return any(marcador in texto for marcador in _MARCADORES_VTA_VALIDADO)
+
+
 def _aplicar_previa_vta(
     sintese: dict[str, Any],
     resultados_xls: dict[str, Any] | None,
     status_resultados: dict[str, Any] | None = None,
 ) -> None:
-    """Etapa 26H: PREVIA documental do VTA a partir do numero XLS oficial.
+    """Etapa 26H / VTA-M5: PREVIA documental do VTA a partir do numero XLS
+    oficial, ou rebaixamento do VTA ja calculado quando o SELO ESPECIFICO do
+    VTA_FINAL (RESULTADOS!H8, via MEMORIA_RESULTADOS!E26) nao o considerar
+    validado.
 
-    Aplica-se somente quando o VTA oficial nao pode ser exibido (mascarado por
-    divergencia ou indisponivel) e o XLS possui VTA_FINAL numerico. O valor e
-    apresentado como PREVIA — nunca como VALIDADO — e a divergencia permanece
-    registrada (residual 26C intocado).
+    Aplica-se quando o VTA oficial nao pode ser exibido (mascarado por
+    divergencia, indisponivel, ou com selo especifico REVISE) e o XLS possui
+    VTA_FINAL numerico. O valor e apresentado como PREVIA — nunca como
+    VALIDADO — e a divergencia permanece registrada (residual 26C intocado).
+
+    VTA-M5: o gate deixou de usar status_resultados["geral"] (RESULTADOS!B3,
+    agregado que inclui eixos alheios ao VTA — ex.: H33/posicao fisica atual)
+    e passou a usar exclusivamente o selo especifico do VTA_FINAL (H8, via
+    status_resultados["vta"]/MEMORIA_RESULTADOS!E26). Um VTA conciliado e
+    especificamente validado deixa de ser rebaixado so porque outro
+    componente da apuracao esta ESTIMADO/REVISE.
     """
-    status = str((status_resultados or {}).get("geral") or "").strip().upper()
     if sintese.get("vta") is not None:
-        # Igualdade XLS x Python torna o numero calculavel, mas nao transforma
-        # um processo ainda marcado como REVISE/ESTIMADO em resultado
-        # definitivo. Nessa situacao, preserva o numero e muda somente o selo
-        # documental para PREVIA.
-        if status in {"REVISE", "ESTIMADO"}:
+        # Igualdade XLS x Python torna o numero calculavel, mas o selo
+        # especifico do VTA_FINAL pode mesmo assim marca-lo como REVISE
+        # (MEMORIA_RESULTADOS!E26 sem os marcadores de calculo reconhecido).
+        # Nessa situacao, preserva o numero e muda somente o selo documental
+        # para PREVIA. Motivos alheios ao VTA (status geral agregado) nao
+        # disparam mais este rebaixamento.
+        if not _selo_vta_validado(status_resultados):
             sintese["vta_previa"] = round(float(sintese["vta"]), 2)
             sintese["vta"] = None
         return
