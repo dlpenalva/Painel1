@@ -295,3 +295,146 @@ def test_l_python_nao_copia_b26_quando_consumido_sem_evidencia():
     else:
         valor_total = vta_python if vta_python is not None else vta_capacidade_valor
     assert valor_total is None
+
+
+# ---------------------------------------------------------------------------
+# VTA-C2.1 — casos-limite (futuro zero real, completude, sobreconsumo)
+# ---------------------------------------------------------------------------
+
+_ITEM_100_CONSUMIDO = {
+    "item": "D", "qtd_contratada": 15, "vu_original": 5.0, "qtd_total": 15,
+    "consumos": {
+        "C0": {"qtd": 15, "valor": 75.0},
+        "C1": {"qtd": None, "valor": None},
+        "C2": {"qtd": None, "valor": None},
+        "C3": {"qtd": None, "valor": None},
+        "C4": {"qtd": None, "valor": None},
+    },
+}
+
+
+def test_futuro_zero_real_contrato_100_por_cento_consumido():
+    """Item A: qtd_contratada=20; qtd_total=18 (nao 100%). Substitui por um
+    item onde qtd_total==qtd_contratada -> remanescente=0,00 valido, VTA =
+    execucao atualizada (nao vira None so porque o saldo deu zero)."""
+    leitura = _leitura_consumidos([_ITEM_100_CONSUMIDO], ciclo_vigente="C0")
+    memoria = _montar_memoria_por_ciclo(leitura, {}, [], {})
+    conf = _conferencia_consumidos(memoria)
+    assert conf["executado_atualizado"] == 75.0
+    assert conf["potencial_restante_atualizado"] == 0.0
+    assert conf["valor_total_atualizado"] == 75.0
+    assert memoria["vta"]["valor_total_atualizado"] == 75.0
+
+
+def test_item_incompleto_bloqueia_futuro_nao_soma_apenas_item_completo():
+    """Item A completo + item incompleto (sem qtd_total) -> remanescente
+    Consumido fica indisponivel; VTA nao pode ser fabricado so com o item
+    completo."""
+    item_incompleto = {
+        "item": "E", "qtd_contratada": 10, "vu_original": 5.0, "qtd_total": None,
+        "consumos": {c: {"qtd": None, "valor": None} for c in ("C0", "C1", "C2", "C3", "C4")},
+    }
+    leitura = _leitura_consumidos([_ITEM_A, _ITEM_B, item_incompleto])
+    memoria = _montar_memoria_por_ciclo(leitura, {}, [], {})
+    conf = _conferencia_consumidos(memoria)
+    assert conf["potencial_restante_atualizado"] is None
+    assert conf["valor_total_atualizado"] is None
+    assert memoria["vta"]["valor_total_atualizado"] is None
+
+
+def test_consumo_numerico_sem_valoracao_bloqueia_execucao_inteira():
+    """QTD_CONS numerica mas sem VU_original -> execucao Consumido inteira
+    fica indisponivel (nao soma so as parcelas validas)."""
+    item_sem_vu = {
+        "item": "F", "qtd_contratada": 10, "vu_original": None, "qtd_total": 4,
+        "consumos": {
+            "C0": {"qtd": 4, "valor": None},
+            "C1": {"qtd": None, "valor": None},
+            "C2": {"qtd": None, "valor": None},
+            "C3": {"qtd": None, "valor": None},
+            "C4": {"qtd": None, "valor": None},
+        },
+    }
+    leitura = _leitura_consumidos([_ITEM_A, item_sem_vu])
+    memoria = _montar_memoria_por_ciclo(leitura, {}, [], {})
+    conf = _conferencia_consumidos(memoria)
+    assert conf["valor_total_atualizado"] is None
+    assert memoria["vta"]["valor_total_atualizado"] is None
+
+
+def test_sobreconsumo_sinalizado_por_check_bloqueia_remanescente():
+    """itens_Consumidos!CHECK (ja existente no template, "DIVERGENCIA:
+    CONSUMO MAIOR QUE CONTRATADO" quando O>B) precisa ser respeitado: um
+    item com check divergente nao pode ter seu saldo mascarado como zero
+    valido via MAX(diferenca,0)."""
+    item_sobreconsumo = {
+        "item": "G", "qtd_contratada": 5, "vu_original": 10.0, "qtd_total": 8,
+        "check": "DIVERGENCIA: CONSUMO MAIOR QUE CONTRATADO",
+        "consumos": {
+            "C0": {"qtd": 8, "valor": 80.0},
+            "C1": {"qtd": None, "valor": None},
+            "C2": {"qtd": None, "valor": None},
+            "C3": {"qtd": None, "valor": None},
+            "C4": {"qtd": None, "valor": None},
+        },
+    }
+    leitura = _leitura_consumidos([_ITEM_A, item_sobreconsumo])
+    memoria = _montar_memoria_por_ciclo(leitura, {}, [], {})
+    conf = _conferencia_consumidos(memoria)
+    assert conf["potencial_restante_atualizado"] is None
+    assert conf["valor_total_atualizado"] is None
+
+
+def test_residuo_de_outro_metodo_nao_contamina_selecao_mas_nao_esconde_divergencia_real():
+    """Distincao pedida pela tarefa: dado residual de outro metodo (ex.:
+    parcela financeiro) nao pode CONTAMINAR a selecao do metodo (item N,
+    ja coberto por test_n_...); aqui confirmamos apenas que a conferencia
+    'financeiro' continua calculavel/visivel (nao escondida), mesmo que o
+    metodo oficialmente escolhido seja consumidos — a divergencia real
+    entre bases, se existir, permanece auditavel via conferencias, nao
+    suprimida."""
+    leitura = _leitura_consumidos([_ITEM_A, _ITEM_B], modo="d")
+    leitura["vta_sombra"] = {
+        "parcelas_computadas": [
+            {
+                "fonte_parcela": "Financeiro", "identificador": "financeiro:residual",
+                "ciclo": "C0", "valor": 999.0, "valor_atualizado": 999.0,
+            }
+        ]
+    }
+    memoria = _montar_memoria_por_ciclo(leitura, {}, [], {})
+    conf_fin = next(c for c in memoria["conferencias_metodologicas"] if c["metodo"] == "financeiro")
+    # A conferencia financeiro continua disponivel/auditavel (nao escondida),
+    # mas o VTA OFICIAL veio do metodo explicitamente selecionado.
+    assert conf_fin["disponivel"] is True
+    assert conf_fin["executado_atualizado"] == 999.0
+    assert memoria["vta"]["metodo"] == "consumidos"
+    assert memoria["vta"]["valor_total_atualizado"] == 410.0
+
+
+# ---------------------------------------------------------------------------
+# XLS — formulas fail-closed (F20/V/C33)
+# ---------------------------------------------------------------------------
+
+def test_f20_fail_closed_qtd_sem_valor_correspondente(wb):
+    f20 = str(wb["MEMORIA_RESULTADOS"]["F20"].value)
+    for qtd_col, valor_col in (("E", "F"), ("G", "H"), ("I", "J"), ("K", "L"), ("M", "N")):
+        assert (
+            f"COUNT(itens_Consumidos!${qtd_col}$2:${qtd_col}$200)"
+            f"<>COUNT(itens_Consumidos!${valor_col}$2:${valor_col}$200)"
+        ) in f20
+
+
+def test_coluna_v_fail_closed_incompleto_ou_sobreconsumo():
+    from tools.aplicar_vta_consumido_canonico import _linha_v_consumidos
+    formula = _linha_v_consumidos(2)
+    assert "NOT(ISNUMBER(B2))" in formula
+    assert "NOT(ISNUMBER(O2))" in formula
+    assert "NOT(ISNUMBER(C2))" in formula
+    assert 'Q2<>"OK"' in formula
+
+
+def test_c33_fail_closed_qualquer_item_com_v_vazio(wb):
+    c33 = str(wb["MEMORIA_RESULTADOS"]["C33"].value)
+    assert 'COUNTIFS(itens_Consumidos!$A$2:$A$200,"<>",itens_Consumidos!$V$2:$V$200,"")' in c33
+    assert "SUMPRODUCT" not in c33

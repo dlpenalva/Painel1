@@ -178,7 +178,11 @@ ROOT = Path(__file__).resolve().parents[1]
 # VTA-C2: SHA atualizado apos correcao do VTA Consumido no template
 # (F20/B26/B28/C33/D33 no ramo Itens + coluna auxiliar itens_Consumidos!V);
 # Financeiro e PC preservados byte-a-byte fora dessas celulas.
-SHA256_TEMPLATE_ESPERADO = "ec7f05e921ff3a72c3741b52b09f53b65aaadcd53e8d9f1760fd736ffa15f11e"
+# VTA-C2.1: SHA atualizado apos saneamento fail-closed do Consumido
+# (F20/coluna V/C33 fortalecidos contra zero-vira-None, item incompleto,
+# consumo sem valoracao e sobreconsumo). Contagem de formulas inalterada
+# (mesmas celulas, conteudo interno mais robusto).
+SHA256_TEMPLATE_ESPERADO = "9d9b10e28f10c3399c40ceda01fe5004e7ad3248703bd60c3637981b58df8ebf"
 
 
 def _dados_calculadora() -> dict:

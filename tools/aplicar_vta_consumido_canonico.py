@@ -115,13 +115,27 @@ _B26_NOVO = (
     + ')))))'
 )
 
+# VTA-C2.1 (item 4): F20 fica vazio quando QUALQUER par QTD_CONS_Cn/
+# VALOR_CONS_Cn tiver contagens numericas diferentes — sinal de que uma
+# quantidade foi informada mas nao pode ser valorada (ex.: VU_original ou
+# fator ausente), o que a formula VALOR_CONS_Cn ja expressa devolvendo ""
+# nesse caso. COUNT(par qtd)<>COUNT(par valor) detecta essa divergencia
+# sem somar apenas as parcelas validas. Zero explicito continua valido
+# (COUNT conta zeros).
 _F20_FORMULA = (
-    '=IF(COUNT(itens_Consumidos!$E$2:$E$200,itens_Consumidos!$G$2:$G$200,'
+    '=IF(OR('
+    'COUNT(itens_Consumidos!$E$2:$E$200)<>COUNT(itens_Consumidos!$F$2:$F$200),'
+    'COUNT(itens_Consumidos!$G$2:$G$200)<>COUNT(itens_Consumidos!$H$2:$H$200),'
+    'COUNT(itens_Consumidos!$I$2:$I$200)<>COUNT(itens_Consumidos!$J$2:$J$200),'
+    'COUNT(itens_Consumidos!$K$2:$K$200)<>COUNT(itens_Consumidos!$L$2:$L$200),'
+    'COUNT(itens_Consumidos!$M$2:$M$200)<>COUNT(itens_Consumidos!$N$2:$N$200)'
+    '),"",'
+    'IF(COUNT(itens_Consumidos!$E$2:$E$200,itens_Consumidos!$G$2:$G$200,'
     'itens_Consumidos!$I$2:$I$200,itens_Consumidos!$K$2:$K$200,'
     'itens_Consumidos!$M$2:$M$200)=0,"",'
     'ROUND(SUM(itens_Consumidos!$F$2:$F$200,itens_Consumidos!$H$2:$H$200,'
     'itens_Consumidos!$J$2:$J$200,itens_Consumidos!$L$2:$L$200,'
-    'itens_Consumidos!$N$2:$N$200),2))'
+    'itens_Consumidos!$N$2:$N$200),2)))'
 )
 
 _B28_ANTES = '=IF($B$4="Financeiro",$B$23,$B$26)'
@@ -131,9 +145,14 @@ _FATOR_VIGENTE_EXPR = (
     'IF($F$4="C0",parametros!$F$2,IF($F$4="C1",parametros!$F$3,'
     'IF($F$4="C2",parametros!$F$4,IF($F$4="C3",parametros!$F$5,parametros!$F$6))))'
 )
+# VTA-C2.1 (item 6): C33 fica vazio quando QUALQUER item real (A<>"") tiver
+# V vazio (dado incompleto ou sobreconsumo sinalizado por V, ver
+# _linha_v_consumidos) — nunca soma so os itens validos. COUNTIFS evita o
+# bug real de SUMPRODUCT com mascara booleana ja identificado nesta tarefa.
 _C33_NOVO = (
     '=IF(COUNTIF(itens_Consumidos!$A$2:$A$200,"<>")=0,"",'
-    'ROUND(SUM(itens_Consumidos!$V$2:$V$200),2))'
+    'IF(COUNTIFS(itens_Consumidos!$A$2:$A$200,"<>",itens_Consumidos!$V$2:$V$200,"")>0,"",'
+    'ROUND(SUM(itens_Consumidos!$V$2:$V$200),2)))'
 )
 _D33_NOVO = (
     f'=IF(OR(C33="",NOT(ISNUMBER({_FATOR_VIGENTE_EXPR}))),"",'
@@ -142,8 +161,19 @@ _D33_NOVO = (
 
 
 def _linha_v_consumidos(linha: int) -> str:
+    # VTA-C2.1 (itens 1, 5, 7): fail-closed por linha — QTD_CONTRATADA (B),
+    # CONS_QTD_TOTAL (O) e VU_ORIGINAL (C) precisam ser numericos, e o
+    # proprio CHECK do template (Q, ja existente: "DIVERGENCIA: CONSUMO
+    # MAIOR QUE CONTRATADO" quando O>B) precisa estar "OK" — caso
+    # contrario, V fica vazio (nunca mascara sobreconsumo/incompletude
+    # como saldo zero). Quando tudo valido, zero real (contrato 100%
+    # consumido) e um resultado numerico legitimo (MAX(...,0)=0), nao
+    # vazio.
     return (
-        f'=IF(A{linha}="","",ROUND(MAX(B{linha}-O{linha},0)*C{linha},2))'
+        f'=IF(A{linha}="","",'
+        f'IF(OR(NOT(ISNUMBER(B{linha})),NOT(ISNUMBER(O{linha})),'
+        f'NOT(ISNUMBER(C{linha})),Q{linha}<>"OK"),"",'
+        f'ROUND(MAX(B{linha}-O{linha},0)*C{linha},2)))'
     )
 
 

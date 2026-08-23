@@ -755,19 +755,32 @@ def _montar_memoria_por_ciclo(
     # diretamente. Ausencia (qtd None/"") nao gera evidencia; qtd=0 explicito
     # e evidencia valida (base=0, atualizado=0) — teste numerico explicito via
     # _f_none, nunca truthiness.
+    # VTA-C2.1 (item 3): uma QTD_CONS_Cn numerica informada exige valoracao
+    # suficiente (VU_original e, na ausencia de valor cacheado, fator do
+    # ciclo). Se faltar, NAO somar apenas as parcelas validas — sinaliza
+    # falha de completude que fecha (fail-closed) a conferencia inteira do
+    # metodo Consumido mais abaixo, em vez de produzir um VTA parcial
+    # silencioso.
+    consumidos_falha_completude = False
     for item in (leitura.get("itens_consumidos_v10") or {}).get("itens") or []:
+        if item.get("item") in (None, ""):
+            continue
         vu_original = _f_none(item.get("vu_original"))
         consumos = item.get("consumos") or {}
         for ciclo in ("C0", "C1", "C2", "C3", "C4"):
             consumo = consumos.get(ciclo) or {}
             qtd = _f_none(consumo.get("qtd"))
-            if qtd is None or vu_original is None:
+            if qtd is None:
+                continue
+            if vu_original is None:
+                consumidos_falha_completude = True
                 continue
             base = round(qtd * vu_original, 2)
             atualizado = _f_none(consumo.get("valor"))
             if atualizado is None:
                 fator = ciclos.get(ciclo, {}).get("fator_acumulado")
                 if fator is None:
+                    consumidos_falha_completude = True
                     continue
                 atualizado = round(base * fator, 2)
             acumular(ciclo, "consumidos", base, atualizado)
@@ -950,44 +963,77 @@ def _montar_memoria_por_ciclo(
     # MEMORIA_RESULTADOS!C33/D33 apos a correcao do XLS): quantidade
     # contratada menos quantidade total ja consumida, por item, valorada a
     # VU_original e escalada pelo fator acumulado do ciclo vigente.
-    remanescente_consumidos = None
+    # VTA-C2.1: tres desfechos possiveis para o remanescente do Consumido:
+    #   - None: nenhum item real do metodo Consumido (evidencias de
+    #     execucao tambem serao 0; a conferencia ja fica indisponivel por
+    #     falta de execucao, independente deste calculo).
+    #   - "FALHA": ha pelo menos um item real com dado obrigatorio ausente
+    #     (qtd_contratada/vu_original/qtd_total) OU sinalizado como
+    #     divergente pelo proprio CHECK do template (ex.: sobreconsumo,
+    #     itens_Consumidos!Q="DIVERGENCIA: CONSUMO MAIOR QUE CONTRATADO")
+    #     — fecha (fail-closed) o metodo inteiro; nunca soma so os itens
+    #     validos, o que mascararia o problema como saldo zero legitimo.
+    #   - (original, atualizado): todos os itens reais completos e sem
+    #     divergencia sinalizada — zero real (contrato 100% consumido) e
+    #     um resultado valido (MAX(diferenca,0) pode ser 0), nunca vira
+    #     None so por a soma dar zero.
+    remanescente_consumidos: tuple[float, float] | str | None = None
     fator_vigente_consumidos = (ciclos.get(vigente) or {}).get("fator_acumulado")
     if fator_vigente_consumidos is not None:
         original_consumidos = 0.0
-        encontrado_consumidos = False
+        tem_item_real = False
+        falha_remanescente = False
         for item in (leitura.get("itens_consumidos_v10") or {}).get("itens") or []:
+            if item.get("item") in (None, ""):
+                continue
+            tem_item_real = True
             qtd_contratada = _f_none(item.get("qtd_contratada"))
             vu_original = _f_none(item.get("vu_original"))
             qtd_total = _f_none(item.get("qtd_total"))
             if qtd_contratada is None or vu_original is None or qtd_total is None:
+                falha_remanescente = True
+                continue
+            check = str(item.get("check") or "").strip().upper()
+            if check and check != "OK":
+                falha_remanescente = True
                 continue
             diferenca = qtd_contratada - qtd_total
-            if diferenca > 0:
-                original_consumidos += diferenca * vu_original
-                encontrado_consumidos = True
-        if encontrado_consumidos:
+            original_consumidos += max(diferenca, 0.0) * vu_original
+        if falha_remanescente:
+            remanescente_consumidos = "FALHA"
+        elif tem_item_real:
             original_consumidos = round(original_consumidos, 2)
             remanescente_consumidos = (
                 original_consumidos,
                 round(original_consumidos * fator_vigente_consumidos, 2),
             )
+    falha_consumidos_geral = (
+        consumidos_falha_completude or remanescente_consumidos == "FALHA"
+    )
     conferencias = []
     for metodo in ("financeiro", "pc", "consumidos"):
         executado = round(sum(c["retroativo"][metodo]["valor_atualizado"] for c in ciclos.values()), 2)
         evidencias = sum(c["retroativo"][metodo]["evidencias"] for c in ciclos.values())
-        if metodo == "consumidos" and remanescente_consumidos is not None:
+        bloqueado_metodo = metodo == "consumidos" and falha_consumidos_geral
+        if metodo == "consumidos" and isinstance(remanescente_consumidos, tuple):
             potencial_metodo = remanescente_consumidos[1]
             potencial_disponivel_metodo = True
+        elif metodo == "consumidos":
+            potencial_metodo = None
+            potencial_disponivel_metodo = False
         else:
             potencial_metodo = potencial
             potencial_disponivel_metodo = potencial_disponivel
+        disponivel_metodo = evidencias > 0 and not bloqueado_metodo
         conferencias.append({
-            "metodo": metodo, "disponivel": evidencias > 0,
-            "executado_atualizado": executado if evidencias else None,
-            "potencial_restante_atualizado": potencial_metodo if potencial_disponivel_metodo else None,
+            "metodo": metodo, "disponivel": disponivel_metodo,
+            "executado_atualizado": executado if evidencias and not bloqueado_metodo else None,
+            "potencial_restante_atualizado": (
+                potencial_metodo if potencial_disponivel_metodo and not bloqueado_metodo else None
+            ),
             "valor_total_atualizado": (
                 round(executado + potencial_metodo, 2)
-                if evidencias and potencial_disponivel_metodo else None
+                if evidencias and potencial_disponivel_metodo and not bloqueado_metodo else None
             ),
             "natureza": "CONFERENCIA_METODOLOGICA",
             "prioridade": {"financeiro": 1, "pc": 2, "consumidos": 3}[metodo],
