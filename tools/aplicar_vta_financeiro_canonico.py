@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
-"""VTA-M2/VTA-M2.1 — VTA do metodo Financeiro alinhado a identidade canonica no XLS.
+"""VTA-M2/VTA-M2.1/VTA-M2.2 — VTA do metodo Financeiro alinhado a identidade
+canonica no XLS.
 
 Aplica, via Excel COM em copia temporaria (padrao zero-corrupcao ja usado por
 `aplicar_vta_posicoes_tabela1.py`):
@@ -36,22 +37,47 @@ Identidade para o metodo Financeiro (CONTROLE!B1 -> MEMORIA_RESULTADOS!B4 =
       B-E) mostra o rotulo "Nao aplicavel ao metodo selecionado" (nunca
       zero, nunca numero do Financeiro atribuido a PC/Consumido).
       Quando o metodo E Financeiro: desembolsado informado x execucao
-      teorica pelo quantitativo (VU do proprio ciclo, nunca VU_C0), por
-      ciclo, com status OK/REVISAR/NAO COMPARAVEL (comparacao exata, sem
-      tolerancia percentual arbitraria). "Execucao teorica" usa uma
-      CADEIA DE FALLBACK do checkpoint anterior (REM_BASE do ciclo n-1,
-      n-2, ... ate a quantidade contratada C0 em E) — necessaria porque
-      o caso real pode ter ciclos intermediarios nao coletados
-      (posicao_contratual!J/N em branco) sem que isso invalide a
-      comparacao do ciclo seguinte que TEM checkpoint (ex.: C3 com R
-      preenchido).
+      teorica pelo quantitativo, por ciclo, com status
+      OK/REVISAR/NAO COMPARAVEL/NAO APLICAVEL.
+
+VTA-M2.2 — regra temporal da conferencia (correcao sobre a M2.1):
+    A M2.1 usava uma cadeia de fallback do checkpoint anterior (REM_BASE
+    do ciclo n-1, n-2, ... ate E) para nao perder a comparacao de C3
+    quando ciclos intermediarios nao foram coletados. Essa cadeia foi
+    identificada como temporalmente invalida: podia comparar uma
+    execucao ACUMULADA de varios ciclos (ex.: C0->C3) contra o
+    Financeiro de apenas C3, produzindo uma diferenca numericamente
+    precisa mas conceitualmente errada.
+    A M2.2 elimina qualquer fallback/encadeamento. "Execucao teorica
+    pelo quantitativo" de cada ciclo passa a somar, entre os itens, as
+    colunas de execucao JA existentes em itens_Remanesc — calculadas
+    pelo proprio template com semantica estritamente adjacente (par
+    unico de checkpoints, nenhum encadeamento):
+        C0: itens_Remanesc!AC (VALOR_EXECUTADO_C0 = MAX(E-J,0)*VU_C0)
+        C1: itens_Remanesc!N  (VALOR_EXECUTADO_C1 = MAX(J+H-N,0)*VU_C1)
+        C2: itens_Remanesc!P  (VALOR_EXECUTADO_C2 = MAX(N+L-R,0)*VU_C2)
+        C3: itens_Remanesc!R  (VALOR_EXECUTADO_C3 = MAX(R+P-V,0)*VU_C3)
+    Cada uma dessas celulas ja e "" quando falta qualquer um dos DOIS
+    checkpoints adjacentes que ela exige (nenhum fallback embutido). Se
+    QUALQUER item real carecer do par, o ciclo inteiro fica NAO
+    COMPARAVEL (somar so os itens disponiveis produziria total parcial,
+    nao comparavel ao Financeiro que cobre todos os itens). C4 nao tem
+    par nesta versao do schema (nao existe REM_BASE_C5 que feche o
+    ciclo) — e sempre NAO COMPARAVEL, nunca por fallback, por ausencia
+    estrutural de checkpoint de fechamento.
+    Nao ha, nesta versao do schema, uma posicao quantitativa "vigente"
+    com a MESMA data de corte do Financeiro que permita comparacao
+    parcial do ciclo em curso — por isso essa comparacao parcial nao foi
+    implementada (fica fora de escopo, conforme instrucao explicita).
+    Comparacao de intervalos agregados (ex.: C0->C3 somado) tambem fica
+    fora de escopo desta correcao.
 
 Trava anti-regressao: T21/T22/T23/T25, o ramo PC dentro de B26 (a
 subexpressao literal do IF($B$4="PCs", ...)) e o ramo Itens/Consumido
 (a subexpressao literal do ELSE generico) precisam permanecer
 identicos antes/depois, verificado por assinatura de texto. A area de
 RESULTADOS linhas 68-77 e validada como vazia (ou ja no formato
-VTA-M2/M2.1 esperado) antes da escrita, para nao sobrescrever
+VTA-M2/M2.1/M2.2 esperado) antes da escrita, para nao sobrescrever
 silenciosamente conteudo futuro de outra frente.
 """
 from __future__ import annotations
@@ -304,64 +330,52 @@ def _formula_desembolsado_ciclo(ciclo: str) -> str:
     return _condicionar_financeiro(corpo)
 
 
-# Cadeia de fallback do checkpoint "anterior" por ciclo, do mais recente ao
-# mais antigo, terminando sempre na quantidade contratada C0 (E) — provado
-# contra os cabecalhos reais de posicao_contratual: REM_BASE_Cn (F/J/N/R/V)
-# e um snapshot bruto vindo de itens_Remanesc a cada rodada de coleta, por
-# isso pode faltar quando um ciclo intermediario nao foi coletado (caso real:
-# C1/C2 em branco, mas C3 com dado). A cadeia evita marcar NAO COMPARAVEL por
-# erro de formula quando existe base quantitativa anterior disponivel, ainda
-# que nao seja a do ciclo imediatamente anterior.
-_MAPA_ANTERIOR_CANDIDATOS = {
-    "C0": ["E"],
-    "C1": ["F", "E"],
-    "C2": ["J", "F", "E"],
-    "C3": ["N", "J", "F", "E"],
-    "C4": ["R", "N", "J", "F", "E"],
-}
-_MAPA_ATUAL = {"C0": "F", "C1": "J", "C2": "N", "C3": "R", "C4": "V"}
-# Colunas de historico_VU (VU_C0..VU_C4) — provado contra o cabecalho real.
-_MAPA_VU = {"C0": "C", "C1": "D", "C2": "E", "C3": "F", "C4": "G"}
+# VTA-M2.2: em vez de reconstruir a execucao por diferenca entre checkpoints
+# de posicao_contratual (que pode misturar ciclos nao adjacentes e violar a
+# homogeneidade temporal apontada na auditoria), reaproveita-se as colunas
+# de execucao JA existentes em itens_Remanesc, calculadas pelo proprio
+# template com semantica adjacente-apenas (nenhum fallback embutido):
+#   C0: AB=QTD_EXECUTADA_C0=MAX(posicao_contratual!E-posicao_contratual!J,0)
+#       AC=VALOR_EXECUTADO_C0=AB*historico_VU!C (VU_C0)
+#   C1: M=MAX(posicao_contratual!J+H-N,0); N=M*historico_VU!D (VU_C1)
+#   C2: O=MAX(posicao_contratual!N+L-R,0); P=O*historico_VU!E (VU_C2)
+#   C3: Q=MAX(posicao_contratual!R+P-V,0); R=Q*historico_VU!F (VU_C3)
+# Cada uma dessas formulas ja retorna "" (nao 0) quando falta qualquer um
+# dos DOIS checkpoints adjacentes que ela exige — nao ha encadeamento para
+# checkpoints mais antigos. C4 nao tem par nesta versao do schema (nao ha
+# "C5" que feche o ciclo C4), por isso e sempre NAO COMPARAVEL.
+_MAPA_EXECUCAO_VALOR = {"C0": "AC", "C1": "N", "C2": "P", "C3": "R"}
 
 
 def _col_range(nome_aba: str, coluna: str) -> str:
     return f"{nome_aba}!${coluna}$2:${coluna}$201"
 
 
-def _anterior_efetivo_expr(candidatos: list[str]) -> str:
-    *resto, base = candidatos
-    expr = f"N({_col_range('posicao_contratual', base)})"
-    for coluna in reversed(resto):
-        rng = _col_range("posicao_contratual", coluna)
-        expr = f"IF(ISNUMBER({rng}),N({rng}),{expr})"
-    return expr
-
-
 def _formula_execucao_teorica_ciclo(ciclo: str) -> str:
-    candidatos = _MAPA_ANTERIOR_CANDIDATOS[ciclo]
-    atual = _MAPA_ATUAL[ciclo]
-    vu_col = _MAPA_VU[ciclo]
-    atual_rng = _col_range("posicao_contratual", atual)
-    vu_rng = _col_range("historico_VU", vu_col)
-
-    # Sem fallback possivel para o checkpoint ATUAL do ciclo (ele define o
-    # fim do intervalo observado); se ausente, o ciclo nao foi coletado e a
-    # comparacao nao pode ser fabricada. O ANTERIOR tem fallback ate E, entao
-    # "sem base" so ocorre no caso teorico de TODOS os candidatos ausentes.
-    anterior_todos_ausentes = "*".join(
-        f"(1-ISNUMBER({_col_range('posicao_contratual', c)}))" for c in candidatos
-    )
+    val_col = _MAPA_EXECUCAO_VALOR.get(ciclo)
+    if val_col is None:
+        # C4: nao ha checkpoint de fechamento (nao existe REM_BASE_C5) nesta
+        # versao do schema — nenhuma base temporalmente valida e possivel.
+        return _condicionar_financeiro('"NAO COMPARAVEL"')
+    val_rng = _col_range("itens_Remanesc", val_col)
+    # Conservador (regra do item 7): se QUALQUER item real nao tiver o par
+    # adjacente necessario (a propria celula VALOR_EXECUTADO_Cn ja vem
+    # vazia nesse caso), o ciclo inteiro fica NAO COMPARAVEL — somar so os
+    # itens com dado disponivel produziria um total parcial nao comparavel
+    # ao Financeiro (que cobre todos os itens).
+    # O ">0" fica FORA do SUMPRODUCT (compara o escalar resultante), nunca
+    # dentro do argumento unico — testado empiricamente contra o caso real:
+    # SUMPRODUCT((A<>"")*(1-ISNUMBER(range))>0) nao soma corretamente um
+    # array logico derivado de uma multiplicacao anterior (retorna 0 mesmo
+    # quando ha itens ausentes); SUMPRODUCT((A<>"")*(1-ISNUMBER(range)))>0,
+    # com a comparacao aplicada ao total ja somado, e o padrao correto.
     falta_dados = (
-        'SUMPRODUCT((posicao_contratual!$A$2:$A$201<>"")*'
-        f'(((1-ISNUMBER({atual_rng}))+({anterior_todos_ausentes}))>0))'
+        'SUMPRODUCT((itens_Remanesc!$A$2:$A$201<>"")*'
+        f'(1-ISNUMBER({val_rng})))'
     )
-    anterior_expr = _anterior_efetivo_expr(candidatos)
     # N() neutraliza celulas "vazias por formula" (IF(...,"",...) devolve
-    # texto "", nao branco real) — sem isso, SUMPRODUCT quebra com #VALUE!
-    # ao subtrair texto de numero nas linhas alem dos itens reais.
-    calculo = (
-        f'ROUND(SUMPRODUCT(({anterior_expr}-N({atual_rng}))*N({vu_rng})),2)'
-    )
+    # texto "", nao branco real) nas linhas alem dos itens reais.
+    calculo = f'ROUND(SUM(N({val_rng})),2)'
     corpo = f'IF({falta_dados}>0,"NAO COMPARAVEL",{calculo})'
     return _condicionar_financeiro(corpo)
 

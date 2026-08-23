@@ -168,7 +168,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # MEMORIA_RESULTADOS!$B$4 (nao mostram Financeiro quando o metodo
 # selecionado e PCs/Itens), e o mapa quantitativo do ciclo ganha cadeia
 # de fallback (C1-C4 buscam o ultimo checkpoint disponivel ate E).
-SHA256_TEMPLATE_ESPERADO = "de512b392605511bb74f2ed181977e0a864ab22c7daeacce9d80ede7f937eb93"
+# VTA-M2.2: SHA atualizado de novo — a cadeia de fallback da M2.1 foi
+# identificada como temporalmente invalida (podia comparar execucao
+# acumulada de varios ciclos contra o Financeiro de um so) e removida;
+# "execucao teorica pelo quantitativo" passa a somar as colunas de
+# execucao ja existentes em itens_Remanesc (AC/N/P/R para C0-C3, semantica
+# de par de checkpoints adjacentes apenas, sem encadeamento); C4 e sempre
+# NAO COMPARAVEL (sem checkpoint de fechamento nesta versao do schema).
+SHA256_TEMPLATE_ESPERADO = "dbd925e60fc6f16794e1cf1410c22a825ec80856278cb47a4441a4f4726be70f"
 
 
 def _dados_calculadora() -> dict:

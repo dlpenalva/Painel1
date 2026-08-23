@@ -104,16 +104,65 @@ def test_g_ausencia_de_dado_nao_vira_zero(wb):
         assert not formula_c.rstrip().endswith(",0)")
 
 
-def test_g_mapa_quantitativo_tem_cadeia_de_fallback_ate_e(wb):
+def test_g_c3_nao_usa_checkpoint_nao_adjacente_como_fallback(wb):
+    """VTA-M2.2 item 13.A/B: C3 nao pode usar F/E (checkpoints de C0) nem
+    N/J (checkpoints de C1/C2) como fallback para produzir a linha C3 —
+    so pode usar itens_Remanesc!$R (VALOR_EXECUTADO_C3, par adjacente
+    R+P-V, ja resolvido internamente pelo proprio template)."""
     formula_c3 = str(wb["RESULTADOS"]["C76"].value)
-    # C3: cadeia N -> J -> F -> E (nao trava em "NAO COMPARAVEL" so por
-    # faltar o checkpoint imediatamente anterior, quando ha base mais
-    # antiga disponivel).
-    assert "posicao_contratual!$N$2:$N$201" in formula_c3
-    assert "posicao_contratual!$J$2:$J$201" in formula_c3
-    assert "posicao_contratual!$F$2:$F$201" in formula_c3
-    assert "posicao_contratual!$E$2:$E$201" in formula_c3
-    assert "historico_VU!$F$2:$F$201" in formula_c3  # VU_C3
+    assert "itens_Remanesc!$R$2:$R$201" in formula_c3
+    for coluna_proibida in ("$E$2:$E$201", "$F$2:$F$201", "$J$2:$J$201", "$N$2:$N$201"):
+        assert f"posicao_contratual!{coluna_proibida}" not in formula_c3
+        assert f"itens_Remanesc!{coluna_proibida}" not in formula_c3
+
+
+def test_g_c0_nao_usa_contratado_menos_abertura_diretamente(wb):
+    """VTA-M2.2 item 13.D: a formula de RESULTADOS para C0 nao pode
+    reconstruir "contratado - abertura C0" diretamente (posicao_contratual
+    E/F) — deve delegar ao par adjacente ja resolvido em
+    itens_Remanesc!$AC (MAX(E-J,0)*VU_C0, fechado por J = abertura de
+    C1, nao por F)."""
+    formula_c0 = str(wb["RESULTADOS"]["C73"].value)
+    assert "itens_Remanesc!$AC$2:$AC$201" in formula_c0
+    assert "posicao_contratual!$E$2:$E$201" not in formula_c0
+    assert "posicao_contratual!$F$2:$F$201" not in formula_c0
+
+
+def test_g_cada_ciclo_usa_apenas_sua_propria_coluna_de_execucao(wb):
+    """VTA-M2.2 item 13.B: nenhum ciclo pode misturar a coluna de execucao
+    de outro ciclo (nenhum encadeamento entre C0-C3)."""
+    mapa = {73: "AC", 74: "N", 75: "P", 76: "R"}
+    todas_as_colunas = set(mapa.values())
+    for linha, coluna_esperada in mapa.items():
+        formula = str(wb["RESULTADOS"][f"C{linha}"].value)
+        assert f"itens_Remanesc!${coluna_esperada}$2:${coluna_esperada}$201" in formula
+        for outra in todas_as_colunas - {coluna_esperada}:
+            assert f"itens_Remanesc!${outra}$2:${outra}$201" not in formula
+
+
+def test_g_c4_sempre_nao_comparavel_sem_checkpoint_de_fechamento(wb):
+    """VTA-M2.2: C4 nao tem par adjacente nesta versao do schema (nao
+    existe REM_BASE_C5 que feche o ciclo) — deve ser SEMPRE NAO
+    COMPARAVEL, por ausencia estrutural, nunca por fallback/calculo."""
+    formula_c4 = str(wb["RESULTADOS"]["C77"].value)
+    assert formula_c4 == (
+        '=IF(MEMORIA_RESULTADOS!$B$4<>"Financeiro",'
+        '"Nao aplicavel ao metodo selecionado","NAO COMPARAVEL")'
+    )
+
+
+def test_e_status_so_gera_revisar_quando_ambas_comparaveis(wb):
+    """VTA-M2.2 item 13.E: o status so pode ser REVISAR/OK quando a
+    execucao teorica (coluna C) nao for NAO COMPARAVEL nem vazia."""
+    res = wb["RESULTADOS"]
+    for linha in range(73, 78):
+        formula = str(res[f"E{linha}"].value)
+        assert f'C{linha}=""' in formula
+        assert f'C{linha}="NAO COMPARAVEL"' in formula
+        # a ramificacao REVISAR/OK so e alcancada depois desse guard-clause.
+        indice_guard = formula.index(f'C{linha}="NAO COMPARAVEL"')
+        indice_revisar = formula.index("REVISAR")
+        assert indice_guard < indice_revisar
 
 
 def test_h_nome_definido_vta_final_aponta_para_b26(wb):
