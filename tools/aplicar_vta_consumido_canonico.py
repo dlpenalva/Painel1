@@ -159,6 +159,20 @@ _D33_NOVO = (
     f'ROUND(C33*{_FATOR_VIGENTE_EXPR},2))'
 )
 
+# VTA-C2.2 (item 14): E26 (selo especifico do VTA_FINAL, lido por
+# _sumario_executivo._selo_vta_validado via status_resultados["vta"]) nunca
+# testava $B$4="Itens" - a formula original so conhece o ramo B23 (PC/
+# Financeiro/residual), entao para o metodo Itens ela sempre caia em
+# "INCOMPLETO - CALCULO MANUAL REQUERIDO" mesmo com B26 corretamente
+# calculado, forcando PREVIA documental mesmo sem qualquer divergencia real.
+# O novo ramo testa apenas se B26 (ja fail-closed via _RAMO_ITENS_B26) e
+# numerico; nao reavalia a formula do valor, so o selo. Ramo pre-existente
+# (PC/Financeiro/residual) preservado byte-a-byte apos o wrap.
+_SELO_ITENS_RAMO = (
+    'IF($B$4="Itens",IF(ISNUMBER($B$26),"CALCULADO - CONFERIR",'
+    '"INCOMPLETO - CALCULO MANUAL REQUERIDO"),{original})'
+)
+
 
 def _linha_v_consumidos(linha: int) -> str:
     # VTA-C2.1 (itens 1, 5, 7): fail-closed por linha — QTD_CONTRATADA (B),
@@ -221,7 +235,7 @@ def _validar_origem(wb) -> None:
     if ausentes:
         raise ValueError(f"Abas obrigatorias ausentes: {', '.join(ausentes)}")
     mem = wb.Worksheets(ABA_MEMORIA)
-    for endereco in ("B4", "B20", "B21", "B22", "B23", "B26", "B28", "C33", "D33", "T25"):
+    for endereco in ("B4", "B20", "B21", "B22", "B23", "B26", "B28", "C33", "D33", "T25", "E26"):
         if not str(mem.Range(endereco).Formula or ""):
             raise ValueError(f"MEMORIA_RESULTADOS!{endereco} ausente; layout inesperado.")
     atual_b26 = str(mem.Range("B26").Formula)
@@ -243,6 +257,9 @@ def _validar_origem(wb) -> None:
         raise ValueError("MEMORIA_RESULTADOS!E20 ja ocupada; escolher outra celula.")
     if mem.Range("F20").Value not in (None, ""):
         raise ValueError("MEMORIA_RESULTADOS!F20 ja ocupada; escolher outra celula.")
+    atual_e26 = str(mem.Range("E26").Formula)
+    if '$B$4="Itens"' in atual_e26:
+        raise ValueError("MEMORIA_RESULTADOS!E26 ja contem ramo Itens; ja aplicado.")
     consumidos = wb.Worksheets(ABA_CONSUMIDOS)
     if consumidos.Range("V1").Value not in (None, ""):
         raise ValueError("itens_Consumidos!V1 ja ocupada; escolher outra coluna.")
@@ -264,18 +281,22 @@ def _aplicar_itens_consumidos(wb) -> None:
         _restaurar_protecao(ws, estado, selecao)
 
 
-def _aplicar_memoria(wb) -> None:
+def _aplicar_memoria(wb) -> str:
     mem = wb.Worksheets(ABA_MEMORIA)
     estado, selecao = _capturar_protecao(mem)
     try:
+        original_e26 = str(mem.Range("E26").Formula)
+        corpo_original_e26 = original_e26[1:]  # remove o "=" inicial
         mem.Range("E20").Value = "Execucao Consumida Atualizada"
         mem.Range("F20").Formula = _F20_FORMULA
         mem.Range("B26").Formula = _B26_NOVO
         mem.Range("B28").Formula = _B28_NOVO
         mem.Range("C33").Formula = _C33_NOVO
         mem.Range("D33").Formula = _D33_NOVO
+        mem.Range("E26").Formula = "=" + _SELO_ITENS_RAMO.format(original=corpo_original_e26)
     finally:
         _restaurar_protecao(mem, estado, selecao)
+    return corpo_original_e26
 
 
 def aplicar(origem: Path, destino: Path) -> None:
@@ -307,7 +328,7 @@ def aplicar(origem: Path, destino: Path) -> None:
         travas_antes = _snapshot_travas(wb)
 
         _aplicar_itens_consumidos(wb)
-        _aplicar_memoria(wb)
+        corpo_original_e26 = _aplicar_memoria(wb)
 
         travas_depois = _snapshot_travas(wb)
         if travas_antes != travas_depois:
@@ -323,6 +344,9 @@ def aplicar(origem: Path, destino: Path) -> None:
             raise RuntimeError("TRAVA VIOLADA: ramo Financeiro ausente/alterado dentro de B26.")
         if _RAMO_RESIDUAL_B26 not in nova_b26:
             raise RuntimeError("TRAVA VIOLADA: ramo residual ausente/alterado dentro de B26.")
+        nova_e26 = str(wb.Worksheets(ABA_MEMORIA).Range("E26").Formula)
+        if corpo_original_e26 not in nova_e26:
+            raise RuntimeError("TRAVA VIOLADA: corpo original de E26 alterado pelo wrap do selo Itens.")
 
         excel.Calculation = XL_CALC_AUTOMATIC
         excel.CalculateFullRebuild()

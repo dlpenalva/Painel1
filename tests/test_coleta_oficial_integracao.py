@@ -182,7 +182,7 @@ ROOT = Path(__file__).resolve().parents[1]
 # (F20/coluna V/C33 fortalecidos contra zero-vira-None, item incompleto,
 # consumo sem valoracao e sobreconsumo). Contagem de formulas inalterada
 # (mesmas celulas, conteudo interno mais robusto).
-SHA256_TEMPLATE_ESPERADO = "9d9b10e28f10c3399c40ceda01fe5004e7ad3248703bd60c3637981b58df8ebf"
+SHA256_TEMPLATE_ESPERADO = "a3e40c9c5dda6a84cae97b054800f8b1a72c9a01fc22f0653ff0b2e160236bb3"
 
 
 def _dados_calculadora() -> dict:

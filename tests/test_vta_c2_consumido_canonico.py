@@ -438,3 +438,151 @@ def test_c33_fail_closed_qualquer_item_com_v_vazio(wb):
     c33 = str(wb["MEMORIA_RESULTADOS"]["C33"].value)
     assert 'COUNTIFS(itens_Consumidos!$A$2:$A$200,"<>",itens_Consumidos!$V$2:$V$200,"")' in c33
     assert "SUMPRODUCT" not in c33
+
+
+# ---------------------------------------------------------------------------
+# VTA-C2.2 — E26 (selo especifico do VTA) method-aware para o ramo Itens
+# ---------------------------------------------------------------------------
+
+def test_e26_selo_itens_nao_usa_ramo_b23_do_residual(wb):
+    e26 = str(wb["MEMORIA_RESULTADOS"]["E26"].value)
+    assert '$B$4="Itens"' in e26
+    assert 'ISNUMBER($B$26)' in e26
+    assert "CALCULADO - CONFERIR" in e26
+    # ramo pre-existente (PC/Financeiro/residual, baseado em B23) preservado
+    assert 'IF(B23="","INCOMPLETO' in e26
+
+
+# ---------------------------------------------------------------------------
+# VTA-C2.2 — resultado_consolidado method-aware (referencias_vta inaplicavel
+# ao metodo Consumido)
+# ---------------------------------------------------------------------------
+
+def _resultado_consumidos(*, vta_atual, forma2, posicao_atual_valida=False):
+    return {
+        "valor_atualizado_contrato": vta_atual,
+        "controle": {"modo": "d", "ciclo_vigente": "C1"},
+        "memoria_por_ciclo": {"vta": {"metodo": "consumidos"}},
+        "referencias_vta": {
+            "posicao_atual_disponivel": posicao_atual_valida,
+            "forma1_posicao_atual": None,
+            "forma2_ultima_abertura": forma2,
+        },
+        "composicao_vta": {"disponivel": False, "linhas": [], "alertas": []},
+        "politica_entrega_segura": {
+            "status": "PRONTO_PARA_VALIDACAO_FISCAL",
+            "pendencias": [],
+            "retroativo": {"metodo": "consumidos"},
+        },
+        "reconciliacao_xls_python": {"status_geral": "CONCILIADO"},
+    }
+
+
+def test_consumido_ignora_referencia_estrangeira_zero():
+    """Teste permanente (item 21): posicao_atual_disponivel=False +
+    forma2_ultima_abertura=0 nao pode rebaixar um VTA canonico ja calculado."""
+    from _resultado_consolidado import montar_resultado_consolidado
+
+    resultado = _resultado_consumidos(vta_atual=410.0, forma2=0.0)
+    consolidado = montar_resultado_consolidado(resultado)
+    assert consolidado["vta"] == 410.0
+    assert consolidado["vta_origem"] != "ultima_posicao_disponivel"
+    assert consolidado["vta_usa_ultima_posicao"] is False
+
+
+def test_pc_preserva_politica_de_ultima_posicao():
+    """Teste permanente (item 22): a regra PC/posicao_atual->ultima_posicao
+    nao pode ser alterada por esta tarefa."""
+    from _resultado_consolidado import montar_resultado_consolidado
+
+    resultado = {
+        "valor_atualizado_contrato": None,
+        "valor_represado_a_pagar": 10.0,
+        "controle": {"modo": "pc", "ciclo_vigente": "C2"},
+        "memoria_por_ciclo": {"vta": {"metodo": "pc"}},
+        "referencias_vta": {
+            "posicao_atual_disponivel": False,
+            "forma1_posicao_atual": None,
+            "forma2_ultima_abertura": 900.0,
+        },
+        "totais_canonicos_pc": {
+            "ate_o_corte": {
+                "retroativo": 10.0,
+                "valor_atualizado_em_analise": 5.0,
+                "delta_potencial": 2.0,
+            },
+            "posterior_ao_corte": {"quantidade": 0, "valor_pc": 0.0},
+        },
+        "composicao_vta": {"disponivel": True, "bloqueia_formalizacao": False, "linhas": [{"descricao": "x", "valor_atualizado": 1.0}], "alertas": []},
+        "politica_entrega_segura": {"status": "PRONTO_PARA_VALIDACAO_FISCAL", "pendencias": [], "retroativo": {"metodo": "pc"}},
+        "reconciliacao_xls_python": {"status_geral": "CONCILIADO"},
+    }
+    consolidado = montar_resultado_consolidado(resultado)
+    assert consolidado["vta"] == 900.0
+    assert consolidado["vta_origem"] == "ultima_posicao_disponivel"
+    assert consolidado["vta_usa_ultima_posicao"] is True
+
+
+def test_consumido_indisponivel_nao_usa_referencia_estrangeira():
+    """Teste permanente (item 23): sem VTA canonico do Consumido, a referencia
+    residual de outro eixo nao pode ser usada como substituto."""
+    from _resultado_consolidado import montar_resultado_consolidado
+
+    resultado = _resultado_consumidos(vta_atual=None, forma2=999.0)
+    consolidado = montar_resultado_consolidado(resultado)
+    assert consolidado["vta"] is None
+    assert consolidado["vta_origem"] == "indisponivel"
+    assert consolidado["vta_usa_ultima_posicao"] is False
+
+
+# ---------------------------------------------------------------------------
+# VTA-C2.2 — gate de posicao_contratual method-aware (nao bloquear Consumido)
+# ---------------------------------------------------------------------------
+
+def _leitura_politica_consumidos(*, cache_ausente):
+    return {
+        "ok": True,
+        "objeto_processo": {
+            "memoria_por_ciclo": {
+                "ciclos": [
+                    {
+                        "ciclo": "C1",
+                        "retroativo": {
+                            "financeiro": {"evidencias": 0},
+                            "pc": {"evidencias": 0},
+                            "consumidos": {"evidencias": 1, "base_original": 280.0, "valor_atualizado": 284.0, "retroativo": 4.0},
+                        },
+                        "residuais": {"itens": 1, "valor_atualizado": 126.0},
+                    },
+                ],
+                "vta": {"valor_total_atualizado": 410.0},
+            },
+            "pendencias": {},
+        },
+        "parametros_v10": {"por_ciclo": {"C1": {"computar_nesta_apuracao": "Sim", "percentual_reajuste": 0.05, "fator_acumulado": 1.05}}},
+        "reconciliacao": {},
+        "reconciliacao_evidencias_sombra": {},
+        "composicao_vta": {},
+        "posicao_contratual": {"cache_ausente": cache_ausente},
+        "reconciliacao_xls_python": {},
+    }
+
+
+def test_gate_posicao_contratual_nao_bloqueia_consumido():
+    from _politica_entrega_segura import avaliar_entrega_segura
+
+    politica = avaliar_entrega_segura(_leitura_politica_consumidos(cache_ausente=True))
+    assert not any("posicao_contratual" in b for b in politica["bloqueios"])
+
+
+def test_gate_posicao_contratual_continua_bloqueando_outros_metodos():
+    from _politica_entrega_segura import avaliar_entrega_segura
+
+    leitura = _leitura_politica_consumidos(cache_ausente=True)
+    leitura["objeto_processo"]["memoria_por_ciclo"]["ciclos"][0]["retroativo"] = {
+        "financeiro": {"evidencias": 1, "base_original": 100.0, "valor_atualizado": 105.0, "retroativo": 5.0},
+        "pc": {"evidencias": 0},
+        "consumidos": {"evidencias": 0},
+    }
+    politica = avaliar_entrega_segura(leitura)
+    assert any("posicao_contratual" in b for b in politica["bloqueios"])

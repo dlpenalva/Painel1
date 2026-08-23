@@ -222,7 +222,18 @@ def montar_resultado_consolidado(
     vta_atual = resultado.get("valor_atualizado_contrato")
     posicao_atual_valida = bool(referencias_vta.get("posicao_atual_disponivel"))
     vta_ultima_posicao = _numero(referencias_vta.get("forma2_ultima_abertura"))
-    if not referencias_informadas or posicao_atual_valida:
+    if metodo_consumidos:
+        # VTA-C2.2 (item 2-4/7): referencias_vta (posicao_atual/ultima_abertura)
+        # e derivada da posicao fisica de itens_Remanesc — mecanismo exclusivo
+        # de Financeiro/PC, nunca ligado ao metodo Consumido. Usar essa
+        # referencia aqui substituiria um VTA canonico ja calculado (B26 via
+        # F20/C33/D33) por um residuo estrangeiro de 0/None. O VTA do
+        # Consumido vem sempre de valor_atualizado_contrato (== B26 ==
+        # memoria_por_ciclo.vta.valor_total_atualizado), nunca de
+        # forma2_ultima_abertura; sem esse valor, fica fail-closed (None).
+        vta = vta_atual
+        vta_origem = "posicao_atual" if vta is not None else "indisponivel"
+    elif not referencias_informadas or posicao_atual_valida:
         vta = vta_atual
         vta_origem = "posicao_atual" if vta is not None else "indisponivel"
     elif vta_ultima_posicao is not None:
