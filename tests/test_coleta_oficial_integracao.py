@@ -163,7 +163,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # VTA-M2: SHA atualizado apos correcao do VTA Financeiro no template
 # (D20/B26/B28 no ramo Financeiro + bloco CONFERENCIA DA EXECUCAO em
 # RESULTADOS); PC e Consumido preservados byte-a-byte fora dessas celulas.
-SHA256_TEMPLATE_ESPERADO = "7d9b06f1b738270d48fcbb40c2b821d6caff8511c73bbba1fe5d938f02da723d"
+# VTA-M2.1: SHA atualizado de novo — metodologia/titulo do bloco 8 e as
+# celulas de dado da tabela passam a ser condicionais a
+# MEMORIA_RESULTADOS!$B$4 (nao mostram Financeiro quando o metodo
+# selecionado e PCs/Itens), e o mapa quantitativo do ciclo ganha cadeia
+# de fallback (C1-C4 buscam o ultimo checkpoint disponivel ate E).
+SHA256_TEMPLATE_ESPERADO = "de512b392605511bb74f2ed181977e0a864ab22c7daeacce9d80ede7f937eb93"
 
 
 def _dados_calculadora() -> dict:
