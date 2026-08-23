@@ -188,7 +188,13 @@ def extrair_contexto_valores(res):
     if not isinstance(res, dict):
         res = {}
     modo = res.get("modo_apuracao", "Completo")
-    if modo == "Reduzido por Itens/Estoque":
+    consolidado = res.get("resultado_consolidado")
+    if isinstance(consolidado, dict) and "retroativo_reconhecido" in consolidado:
+        # Fonte canonica ja consolidada pela apuracao (_resultado_consolidado):
+        # o reconhecido nao e recalculado nem trocado por campo de semantica
+        # diferente aqui (mesma regra ja aplicada ao potencial).
+        valor_represado = parse_moeda_br(consolidado.get("retroativo_reconhecido"))
+    elif modo == "Reduzido por Itens/Estoque":
         valor_represado = parse_moeda_br(res.get("valor_retroativo_estimado_itens_estoque", 0))
     else:
         valor_represado = parse_moeda_br(res.get("valor_represado_a_pagar", res.get("delta_total", 0)))
