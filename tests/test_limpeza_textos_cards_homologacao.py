@@ -130,7 +130,9 @@ def test_legenda_de_motivo_removida_dos_cards():
 
 def test_seis_cards_regra_de_altura_uniforme():
     # item 7: marcador emitido em cada card + regra de min-height uniforme + acao na base.
-    assert '<span class="upload-doc-card"></span>' in DOCUMENTOS
+    # UX-CARDS: o marcador ganhou um modificador de grupo (--documento / --acao)
+    # para separar as duas linhas; a classe base segue emitida em todos os cards.
+    assert '<span class="upload-doc-card upload-doc-card--{grupo}"></span>' in DOCUMENTOS
     assert "min-height:7rem" in DOCUMENTOS
     assert "margin-top:auto" in DOCUMENTOS
     assert ".upload-doc-card { display:none; }" in DOCUMENTOS

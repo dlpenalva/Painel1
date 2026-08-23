@@ -91,8 +91,11 @@ class TestEstruturaNaPagina(unittest.TestCase):
             PAGINA.index("def render_documentos_funcionais_upload"):
             PAGINA.index("def _invalidar_caso_antes_do_rerun_upload")
         ]
-        self.assertIn("col_a, col_b, col_c = st.columns(3)", assinatura)
-        self.assertIn("col_d, col_e, col_f = st.columns(3)", assinatura)
+        # UX-CARDS: as duas linhas de tres colunas passaram a ser geradas pelo
+        # laco sobre GRUPOS_CARDS_UPLOAD; o que este teste guarda continua sendo
+        # a grade 3+3 e a ausencia do bloco de validacao dentro dos cards.
+        self.assertIn("for grupo, chaves_do_grupo in GRUPOS_CARDS_UPLOAD:", assinatura)
+        self.assertIn("st.columns(3)", assinatura)
         self.assertNotIn("render_validacao_contratada", assinatura)
 
 

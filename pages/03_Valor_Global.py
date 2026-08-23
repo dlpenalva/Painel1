@@ -4737,24 +4737,65 @@ def render_metodologia_corte_operacional_v4(resultado, modo_apuracao_ui="Complet
 
 DOCUMENTOS_FUNCIONAIS_UPLOAD = SEIS_DOCUMENTOS_CANONICOS
 
+# Agrupamento visual dos seis cards canonicos. Nao e uma nova fonte de verdade:
+# chaves, titulos, acoes e condicoes de habilitacao continuam vindo de
+# SEIS_DOCUMENTOS_CANONICOS / _render_acao_documento_upload. Aqui se define
+# apenas a POSICAO de cada card na tela — linha 1 com os documentos gerados
+# (caixa de download), linha 2 com as ferramentas de navegacao.
+GRUPOS_CARDS_UPLOAD = (
+    ("documento", ("despacho_saneador", "termo_apostila", "sumario_executivo")),
+    ("acao", ("adequacao_orcamentaria", "garantia_contratual", "dou")),
+)
+
+# Paleta: os dois tons vem do tema declarado em .streamlit/config.toml
+# (secondaryBackgroundColor #F1F6F9, baseRadius 0.65rem). Nenhuma cor nova.
 _CSS_DOCS_GRID = """
 <style>
 /* Marcador invisivel: apenas ancora o :has() para uniformizar os 6 cards. */
 .upload-doc-card { display:none; }
-/* Altura minima uniforme + coluna flex em cada card documental. */
+/* A linha (stHorizontalBlock) ja estica as colunas (align-items:stretch). Cada
+   nivel entre a coluna e o card vira uma coluna flex que ocupa a altura
+   disponivel — sem altura fixa — para que os tres cards de cada linha comecem e
+   terminem na mesma base. Nao usar height:100% na coluna: percentual sobre pai
+   de altura automatica anula o stretch e o card mais curto encolhe. */
+div[data-testid="stColumn"]:has(.upload-doc-card),
+div[data-testid="stColumn"]:has(.upload-doc-card) > div,
+div[data-testid="stColumn"] div[data-testid="stLayoutWrapper"]:has(.upload-doc-card),
+div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-card),
 div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]:has(.upload-doc-card) {
     display:flex;
     flex-direction:column;
-    min-height:7rem;
+    flex:1 1 auto;
 }
-div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-card) {
-    display:flex;
-    flex-direction:column;
-    height:100%;
+/* Altura minima uniforme do card documental. */
+div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-card),
+div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]:has(.upload-doc-card) {
+    min-height:7rem;
 }
 /* Acao (ultimo elemento) alinhada a base — mesma posicao vertical nos 6 cards. */
 div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-card) > div:last-child {
     margin-top:auto;
+}
+/* Rotulo do page_link inteiro: o padrao do Streamlit trunca com reticencias
+   ("Abrir Adequação Orçamen…"). Com a altura ja uniformizada, o rotulo pode
+   quebrar em duas linhas sem desalinhar a linha. O texto nao muda. */
+div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-card) a[data-testid="stPageLink-NavLink"] span,
+div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-card) a[data-testid="stPageLink-NavLink"] p {
+    white-space:normal;
+    overflow:visible;
+    text-overflow:clip;
+}
+/* Familia A — documentos gerados: superficie fria do proprio tema. */
+div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]:has(.upload-doc-card--documento),
+div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-card--documento) {
+    background:#F1F6F9;
+    border-radius:0.65rem;
+}
+/* Familia B — acoes/paginas: superficie neutra, sem competir com a linha 1. */
+div[data-testid="stColumn"] div[data-testid="stVerticalBlockBorderWrapper"]:has(.upload-doc-card--acao),
+div[data-testid="stColumn"] div[data-testid="stVerticalBlock"]:has(.upload-doc-card--acao) {
+    background:#FFFFFF;
+    border-radius:0.65rem;
 }
 </style>
 """
@@ -5126,20 +5167,24 @@ def render_documentos_funcionais_upload(resultado):
     """
     st.markdown(_CSS_DOCS_GRID, unsafe_allow_html=True)
     documentos = (resultado.get("capacidades") or {}).get("documentos") or {}
-    col_a, col_b, col_c = st.columns(3)
-    col_d, col_e, col_f = st.columns(3)
-    colunas = [col_a, col_b, col_c, col_d, col_e, col_f]
+    titulos = dict(DOCUMENTOS_FUNCIONAIS_UPLOAD)
 
-    for indice, (chave, titulo) in enumerate(DOCUMENTOS_FUNCIONAIS_UPLOAD):
-        documento = documentos.get(chave) or {}
-        with colunas[indice]:
-            with st.container(border=True):
-                st.markdown('<span class="upload-doc-card"></span>', unsafe_allow_html=True)
-                st.markdown(f"#### {titulo}")
-                try:
-                    _render_acao_documento_upload(chave, documento, resultado)
-                except Exception as exc:
-                    st.error(f"Não foi possível preparar {titulo}: {exc}")
+    for grupo, chaves_do_grupo in GRUPOS_CARDS_UPLOAD:
+        linha = st.columns(3)
+        for coluna, chave in zip(linha, chaves_do_grupo):
+            titulo = titulos[chave]
+            documento = documentos.get(chave) or {}
+            with coluna:
+                with st.container(border=True):
+                    st.markdown(
+                        f'<span class="upload-doc-card upload-doc-card--{grupo}"></span>',
+                        unsafe_allow_html=True,
+                    )
+                    st.markdown(f"#### {titulo}")
+                    try:
+                        _render_acao_documento_upload(chave, documento, resultado)
+                    except Exception as exc:
+                        st.error(f"Não foi possível preparar {titulo}: {exc}")
 
 
 def _invalidar_caso_antes_do_rerun_upload() -> None:
