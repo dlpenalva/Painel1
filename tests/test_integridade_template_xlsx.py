@@ -48,7 +48,10 @@ FORMULAS_POR_ABA = {
     # de lotacao maxima em T201 (owner:
     # tools/aplicar_total_dinamico_itens_remanesc.py).
     "itens_Remanesc": 9793,
-    "itens_Consumidos": 1806,
+    # VTA-C2: +199 (V2:V200, coluna auxiliar "remanescente atualizado
+    # (base) do item" por linha — evita bug real de SUMPRODUCT com mascara
+    # booleana usado antes em C33/D33 do metodo Itens).
+    "itens_Consumidos": 2005,
     # Etapa 26G: grade escalada para a capacidade canonica (5.000 PCs
     # x 8 colunas de formula) + resumo lateral N2:T6.
     # 45042 = 40042 anteriores + 5000 da coluna U (VALOR_CONSIDERADO, U2:U5001).
@@ -94,7 +97,11 @@ FORMULAS_POR_ABA = {
     # VTA-M2: +1 (D20 = "Desembolsado (Financeiro)", SOMA de financeiro!C
     # informado, unica formula nova; B26/B28 reescritos apenas no ramo
     # Financeiro; T21-T25/PC e Consumido intactos).
-    "MEMORIA_RESULTADOS": 4409,
+    # VTA-C2: +1 (F20 = "Execucao Consumida Atualizada", soma de
+    # itens_Consumidos!VALOR_CONS_C0..C4 com gate de presenca; unica
+    # formula nova. B26/B28/C33/D33 sao reescritas no ramo Itens, nao
+    # acrescentadas. Financeiro/PC intactos).
+    "MEMORIA_RESULTADOS": 4410,
     # 57 do prototipo + 4 selos por tabela + 1 premissa da estimativa - 1
     # helper J4 removido (status global agora agrega os selos H8/H14/H24/H33).
     # 26G: +5 (linha executiva A23:E23 dos PCs sem efeito financeiro).

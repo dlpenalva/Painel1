@@ -749,14 +749,28 @@ def _montar_memoria_por_ciclo(
             round(valor_pago_pc * fator_pc, 2),
         )
 
+    # VTA-C2: item["consumos"] e multi-ciclo por item ({"C0": {"qtd","valor"},
+    # "C1": {...}, ...}) — nao existe (nem nunca existiu) item["ciclo"] unico
+    # no schema real de _ler_itens_consumidos_v10. Itera cada ciclo do item
+    # diretamente. Ausencia (qtd None/"") nao gera evidencia; qtd=0 explicito
+    # e evidencia valida (base=0, atualizado=0) — teste numerico explicito via
+    # _f_none, nunca truthiness.
     for item in (leitura.get("itens_consumidos_v10") or {}).get("itens") or []:
-        ciclo = str(item.get("ciclo_inferido") or item.get("ciclo") or "").upper()
-        fator = ciclos.get(ciclo, {}).get("fator_acumulado") or 1.0
-        base = item.get("valor_total")
-        atualizado = item.get("valor_total_atualizado")
-        if atualizado is None:
-            atualizado = round(_f(base) * fator, 2)
-        acumular(ciclo, "consumidos", base, atualizado)
+        vu_original = _f_none(item.get("vu_original"))
+        consumos = item.get("consumos") or {}
+        for ciclo in ("C0", "C1", "C2", "C3", "C4"):
+            consumo = consumos.get(ciclo) or {}
+            qtd = _f_none(consumo.get("qtd"))
+            if qtd is None or vu_original is None:
+                continue
+            base = round(qtd * vu_original, 2)
+            atualizado = _f_none(consumo.get("valor"))
+            if atualizado is None:
+                fator = ciclos.get(ciclo, {}).get("fator_acumulado")
+                if fator is None:
+                    continue
+                atualizado = round(base * fator, 2)
+            acumular(ciclo, "consumidos", base, atualizado)
 
     fotos_escolhidas: dict[tuple[str, str], dict[str, Any]] = {}
     for foto in (leitura.get("execucao_saldo") or {}).get("fotografias_ciclo") or []:
@@ -928,17 +942,52 @@ def _montar_memoria_por_ciclo(
             potencial_raw = residual_vigente.get("valor_atualizado")
             potencial_disponivel = potencial_raw is not None
     potencial = _f(potencial_raw)
+    # VTA-C2: potencial_futuro (leitura["potencial_futuro"]) depende de
+    # resumo["saldo_remanescente"], que NAO e alimentado pelo metodo
+    # Consumido (so por ENTRADA_XLS_REMANESCENTES/fiscal legado). O metodo
+    # Consumido tem fonte propria e independente para o remanescente futuro,
+    # calculada diretamente de itens_consumidos_v10 (mesma semantica do
+    # MEMORIA_RESULTADOS!C33/D33 apos a correcao do XLS): quantidade
+    # contratada menos quantidade total ja consumida, por item, valorada a
+    # VU_original e escalada pelo fator acumulado do ciclo vigente.
+    remanescente_consumidos = None
+    fator_vigente_consumidos = (ciclos.get(vigente) or {}).get("fator_acumulado")
+    if fator_vigente_consumidos is not None:
+        original_consumidos = 0.0
+        encontrado_consumidos = False
+        for item in (leitura.get("itens_consumidos_v10") or {}).get("itens") or []:
+            qtd_contratada = _f_none(item.get("qtd_contratada"))
+            vu_original = _f_none(item.get("vu_original"))
+            qtd_total = _f_none(item.get("qtd_total"))
+            if qtd_contratada is None or vu_original is None or qtd_total is None:
+                continue
+            diferenca = qtd_contratada - qtd_total
+            if diferenca > 0:
+                original_consumidos += diferenca * vu_original
+                encontrado_consumidos = True
+        if encontrado_consumidos:
+            original_consumidos = round(original_consumidos, 2)
+            remanescente_consumidos = (
+                original_consumidos,
+                round(original_consumidos * fator_vigente_consumidos, 2),
+            )
     conferencias = []
     for metodo in ("financeiro", "pc", "consumidos"):
         executado = round(sum(c["retroativo"][metodo]["valor_atualizado"] for c in ciclos.values()), 2)
         evidencias = sum(c["retroativo"][metodo]["evidencias"] for c in ciclos.values())
+        if metodo == "consumidos" and remanescente_consumidos is not None:
+            potencial_metodo = remanescente_consumidos[1]
+            potencial_disponivel_metodo = True
+        else:
+            potencial_metodo = potencial
+            potencial_disponivel_metodo = potencial_disponivel
         conferencias.append({
             "metodo": metodo, "disponivel": evidencias > 0,
             "executado_atualizado": executado if evidencias else None,
-            "potencial_restante_atualizado": potencial if potencial_disponivel else None,
+            "potencial_restante_atualizado": potencial_metodo if potencial_disponivel_metodo else None,
             "valor_total_atualizado": (
-                round(executado + potencial, 2)
-                if evidencias and potencial_disponivel else None
+                round(executado + potencial_metodo, 2)
+                if evidencias and potencial_disponivel_metodo else None
             ),
             "natureza": "CONFERENCIA_METODOLOGICA",
             "prioridade": {"financeiro": 1, "pc": 2, "consumidos": 3}[metodo],
@@ -947,18 +996,35 @@ def _montar_memoria_por_ciclo(
                 if metodo == "financeiro" else (
                     "somente PCs com pagamento definitivo e valor efetivamente pago"
                     if metodo == "pc" else
-                    "quantidades consumidas representam execucao paga"
+                    # VTA-C2: sem fonte independente de pagamento no metodo
+                    # Consumido — nao afirmar "execucao paga"/"retroativo
+                    # reconhecido" (item 12 da tarefa).
+                    "quantidade consumida x VU aplicavel ao ciclo, sem "
+                    "fonte independente de confirmacao de pagamento"
                 )
             ),
         })
     disponiveis = [c for c in conferencias if c["disponivel"]]
     # Regra de negocio: Financeiro e sempre a fonte primaria. PC e Consumidos
     # sao fallbacks excepcionais, nessa ordem, nunca alternativas concorrentes.
-    metodo_escolhido = next(
-        (metodo for metodo in ("financeiro", "pc", "consumidos")
-         if any(c["metodo"] == metodo and c["disponivel"] for c in conferencias)),
-        None,
+    # VTA-C2: excecao minima e explicita — quando o metodo configurado em
+    # CONTROLE!B1 e "Itens Consumidos" (leitura["controle"]["modo"]=="d") e
+    # ha evidencia Consumido valida, a prioridade historica (financeiro->pc)
+    # NAO pode vencer por dado residual em outra aba. Financeiro/PC mantêm a
+    # prioridade inalterada em qualquer outro cenario.
+    _metodo_configurado = {"principal": "financeiro", "pc": "pc", "d": "consumidos"}.get(
+        str((leitura.get("controle") or {}).get("modo") or "")
     )
+    if _metodo_configurado == "consumidos" and any(
+        c["metodo"] == "consumidos" and c["disponivel"] for c in conferencias
+    ):
+        metodo_escolhido = "consumidos"
+    else:
+        metodo_escolhido = next(
+            (metodo for metodo in ("financeiro", "pc", "consumidos")
+             if any(c["metodo"] == metodo and c["disponivel"] for c in conferencias)),
+            None,
+        )
     selecao_automatica_unica = len(disponiveis) == 1
     # Etapa 27B: a conferencia "pc" e pago-dependente (soma somente PCs
     # pagos) e nao pode fabricar o VTA do metodo PC. O VTA por PC vem

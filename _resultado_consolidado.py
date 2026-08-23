@@ -104,6 +104,7 @@ def montar_resultado_consolidado(
     )
     metodo_codigo = metodo_efetivo or metodo_controle or "indeterminado"
     metodo_pc = metodo_controle == "pc" or metodo_codigo == "pc"
+    metodo_consumidos = metodo_controle == "d" or metodo_codigo == "consumidos"
 
     status_resultados = (
         ((diagnostico.get("metadados") or {}).get("status_resultados") or {})
@@ -116,6 +117,14 @@ def montar_resultado_consolidado(
             status_resultados.get("retroativo_oficial"),
             resultado.get("valor_represado_a_pagar"),
         )
+    elif metodo_consumidos:
+        # VTA-C2 (item 12): no metodo Consumido nao ha fonte independente de
+        # pagamento — nem resultado["valor_represado_a_pagar"] (ja suprimido
+        # na origem) nem status_resultados["retroativo_oficial"] (mesmo
+        # numero de decomposicao do reajuste, cacheado do XLS) sustentam a
+        # rotulacao de "retroativo reconhecido". Fica indisponivel, nunca
+        # fabricado a partir dessa decomposicao.
+        retroativo_reconhecido = None
     else:
         retroativo_reconhecido = _primeiro_informado(
             resultado.get("valor_represado_a_pagar"),
