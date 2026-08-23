@@ -100,14 +100,26 @@ def montar_dados_sumario_executivo(
         objeto, resultados, memoria_ciclo, metodologia, financeiro_sec
     )
     _mascarar_sintese_por_divergencia(sintese, campos_nc)
-    # Etapa 26H (politica documental da PREVIA): existindo numero XLS oficial
-    # sem resultado definitivo, o VTA e exibido como "R$ x — PREVIA". Nunca
-    # declara VALIDADO e nao resolve a divergencia XLS x Python (residual 26C).
-    _aplicar_previa_vta(
-        sintese,
-        leitura.get("resultados_xls"),
-        leitura.get("status_resultados"),
-    )
+    # R2A: quando a apuracao ja produziu o resultado_consolidado (fonte
+    # canonica unica do VTA exibido no painel), os documentos leem esse MESMO
+    # valor diretamente — nunca recalculam nem substituem por PREVIA do XLS.
+    # A escolha posicao_atual/ultima_posicao/indisponivel ja foi feita pelo
+    # consolidado; aqui so se repete o numero, preservando None como ausencia.
+    # Chamadas legadas sem resultado_consolidado (ex.: geradores isolados nos
+    # testes) preservam a politica documental da PREVIA (Etapa 26H).
+    resultado_consolidado = leitura.get("resultado_consolidado")
+    if isinstance(resultado_consolidado, dict):
+        sintese["vta"] = resultado_consolidado.get("vta")
+    else:
+        # Etapa 26H (politica documental da PREVIA): existindo numero XLS
+        # oficial sem resultado definitivo, o VTA e exibido como
+        # "R$ x — PREVIA". Nunca declara VALIDADO e nao resolve a divergencia
+        # XLS x Python (residual 26C).
+        _aplicar_previa_vta(
+            sintese,
+            leitura.get("resultados_xls"),
+            leitura.get("status_resultados"),
+        )
 
     ciclos_sec = _montar_secao_ciclos(parametros, resultados, identificacao)
 
