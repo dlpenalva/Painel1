@@ -7,7 +7,6 @@ silenciosa do cálculo Python.
 
 from __future__ import annotations
 
-import logging
 import time
 import uuid
 from datetime import datetime
@@ -28,18 +27,15 @@ from _seguranca_xlsx import (
     garantir_xlsx_validado,
 )
 
-_logger = logging.getLogger(__name__)
 
+def _obs_evento(mensagem: str, *args: Any) -> None:
+    """Observabilidade tecnica best-effort via stdout (sem logging/config global).
 
-def _log_evento(mensagem: str, *args: Any) -> None:
-    """Log de observabilidade best-effort: nunca pode afetar o processamento.
-
-    Nivel WARNING por escolha deliberada: e o nivel naturalmente capturado
-    pelo lastResort handler do Python sem qualquer configuracao global de
-    logging (root/streamlit) e sem alterar comportamento do ambiente atual.
+    Uma falha aqui nunca pode afetar o processamento: captura somente
+    exceções da própria emissão, nunca a exceção funcional do chamador.
     """
     try:
-        _logger.warning(mensagem, *args)
+        print(mensagem % args if args else mensagem)
     except Exception:
         pass
 
@@ -555,99 +551,88 @@ def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], d
     """Entry point único usado pelo upload real e pelos testes de integração."""
     id_proc = uuid.uuid4().hex[:8]
     t_inicio_total = time.perf_counter()
-    etapa_atual = "validacao_xlsx"
-    _log_evento("PROCESSAMENTO_INICIO id=%s", id_proc)
+    _obs_evento("PROCESSAMENTO_INICIO id=%s", id_proc)
+
+    t0 = time.perf_counter()
+    conteudo = garantir_xlsx_validado(conteudo)
+    _obs_evento("ETAPA_CONCLUIDA id=%s etapa=validacao_xlsx duracao_s=%s", id_proc, round(time.perf_counter() - t0, 3))
+
+    t0 = time.perf_counter()
+    leitura = ler_masterfile_v10(conteudo, exigir_modelo_oficial=True)
+    if not leitura.get("ok"):
+        raise ValueError(leitura.get("erro") or "O Arquivo Coleta Oficial não pôde ser lido.")
+    _obs_evento("ETAPA_CONCLUIDA id=%s etapa=leitura_masterfile duracao_s=%s", id_proc, round(time.perf_counter() - t0, 3))
+
+    t0 = time.perf_counter()
+    diagnostico = ler_coleta_reajuste(conteudo)
+    if not diagnostico.get("valido"):
+        pendencias = diagnostico.get("pendencias") or diagnostico.get("bloqueios_estruturais") or []
+        raise ValueError("; ".join(str(item) for item in pendencias) or "A estrutura do Arquivo Coleta Oficial é inválida.")
+    _obs_evento("ETAPA_CONCLUIDA id=%s etapa=leitura_coleta duracao_s=%s", id_proc, round(time.perf_counter() - t0, 3))
+
+    t0 = time.perf_counter()
     try:
-        t0 = time.perf_counter()
-        conteudo = garantir_xlsx_validado(conteudo)
-        _log_evento("ETAPA_CONCLUIDA id=%s etapa=%s duracao_s=%s", id_proc, etapa_atual, round(time.perf_counter() - t0, 3))
-
-        etapa_atual = "leitura_masterfile"
-        t0 = time.perf_counter()
-        leitura = ler_masterfile_v10(conteudo, exigir_modelo_oficial=True)
-        if not leitura.get("ok"):
-            raise ValueError(leitura.get("erro") or "O Arquivo Coleta Oficial não pôde ser lido.")
-        _log_evento("ETAPA_CONCLUIDA id=%s etapa=%s duracao_s=%s", id_proc, etapa_atual, round(time.perf_counter() - t0, 3))
-
-        etapa_atual = "leitura_coleta"
-        t0 = time.perf_counter()
-        diagnostico = ler_coleta_reajuste(conteudo)
-        if not diagnostico.get("valido"):
-            pendencias = diagnostico.get("pendencias") or diagnostico.get("bloqueios_estruturais") or []
-            raise ValueError("; ".join(str(item) for item in pendencias) or "A estrutura do Arquivo Coleta Oficial é inválida.")
-        _log_evento("ETAPA_CONCLUIDA id=%s etapa=%s duracao_s=%s", id_proc, etapa_atual, round(time.perf_counter() - t0, 3))
-
-        etapa_atual = "adaptacao_documental"
-        t0 = time.perf_counter()
-        try:
-            resultado = adaptar_coleta_reajuste_para_documentos(
-                conteudo,
-                leitura=leitura,
-                diagnostico=diagnostico,
-            )
-        except ErroSegurancaXlsx:
-            raise
-        except Exception as exc:
-            raise XlsxInvalidoError(
-                "O arquivo enviado não é um XLSX válido ou está corrompido."
-            ) from exc
-        _log_evento("ETAPA_CONCLUIDA id=%s etapa=%s duracao_s=%s", id_proc, etapa_atual, round(time.perf_counter() - t0, 3))
-
-        reconciliacao = leitura.get("reconciliacao_xls_python") or {}
-
-        etapa_atual = "entrega_segura"
-        t0 = time.perf_counter()
-        politica = avaliar_entrega_segura(leitura)
-        _log_evento("ETAPA_CONCLUIDA id=%s etapa=%s duracao_s=%s", id_proc, etapa_atual, round(time.perf_counter() - t0, 3))
-        bloqueios = list(politica.get("bloqueios") or [])
-
-        # Etapa 5b: campos oficiais nao-confiaveis (divergentes + dependentes) que os
-        # 3 documentos liberados devem deixar em branco, sem adotar XLS nem Python.
-        campos_nao_confiaveis = sorted(campos_nao_confiaveis_para_documentos(reconciliacao))
-
-        diagnostico["reconciliacao_xls_python"] = reconciliacao
-        diagnostico["politica_entrega_segura"] = politica
-        diagnostico["campos_nao_confiaveis_documentos"] = campos_nao_confiaveis
-        diagnostico["avisos"] = list(diagnostico.get("avisos") or []) + list(leitura.get("avisos") or [])
-        diagnostico["bloqueios_criticos"] = list(diagnostico.get("bloqueios_criticos") or []) + bloqueios
-        if bloqueios:
-            diagnostico["pronto_para_consolidar"] = False
-
-        # Cobertura temporal (camada diagnostica/sombra). Fonte UNICA: o mesmo
-        # payload do leitor (sem reler o Excel). Fail-safe: erro do motor temporal
-        # NAO derruba o upload nem os demais resultados; vira indisponibilidade do
-        # eixo temporal. Nao altera o VTA e nao bloqueia documentos.
-        etapa_atual = "cobertura_temporal"
-        t0 = time.perf_counter()
-        try:
-            from _motor_cobertura_temporal import montar_cobertura_temporal
-            diagnostico["cobertura_temporal"] = montar_cobertura_temporal(leitura).to_dict()
-        except Exception as exc:  # diagnostico e sombra; nunca hard-reject estrutural
-            diagnostico["cobertura_temporal"] = {"ok": False, "erro": str(exc)}
-            _log_evento("ETAPA_FALHA_FAILSAFE id=%s etapa=%s tipo=%s", id_proc, etapa_atual, type(exc).__name__)
-        _log_evento("ETAPA_CONCLUIDA id=%s etapa=%s duracao_s=%s", id_proc, etapa_atual, round(time.perf_counter() - t0, 3))
-
-        capacidades = resultado.get("capacidades") or {}
-        aplicar_bloqueio_documental(capacidades, bloqueios)
-
-        resultado.update({
-            "capacidades": capacidades,
-            "diagnostico_coleta": diagnostico,
-            "reconciliacao_xls_python": reconciliacao,
-            "politica_entrega_segura": politica,
-            "campos_nao_confiaveis_documentos": campos_nao_confiaveis,
-            "formalizacao_bloqueada": bool(bloqueios),
-            "bloqueios_formalizacao": bloqueios,
-        })
-        etapa_atual = "resultado_consolidado"
-        t0 = time.perf_counter()
-        resultado["resultado_consolidado"] = montar_resultado_consolidado(
-            resultado, diagnostico
+        resultado = adaptar_coleta_reajuste_para_documentos(
+            conteudo,
+            leitura=leitura,
+            diagnostico=diagnostico,
         )
-        _log_evento("ETAPA_CONCLUIDA id=%s etapa=%s duracao_s=%s", id_proc, etapa_atual, round(time.perf_counter() - t0, 3))
-    except Exception as exc:
-        _log_evento("PROCESSAMENTO_ERRO id=%s etapa=%s tipo=%s", id_proc, etapa_atual, type(exc).__name__)
+    except ErroSegurancaXlsx:
         raise
+    except Exception as exc:
+        raise XlsxInvalidoError(
+            "O arquivo enviado não é um XLSX válido ou está corrompido."
+        ) from exc
+    _obs_evento("ETAPA_CONCLUIDA id=%s etapa=adaptacao_documental duracao_s=%s", id_proc, round(time.perf_counter() - t0, 3))
+    reconciliacao = leitura.get("reconciliacao_xls_python") or {}
 
-    _log_evento("PROCESSAMENTO_FIM id=%s duracao_s=%s", id_proc, round(time.perf_counter() - t_inicio_total, 3))
+    t0 = time.perf_counter()
+    politica = avaliar_entrega_segura(leitura)
+    _obs_evento("ETAPA_CONCLUIDA id=%s etapa=entrega_segura duracao_s=%s", id_proc, round(time.perf_counter() - t0, 3))
+    bloqueios = list(politica.get("bloqueios") or [])
+
+    # Etapa 5b: campos oficiais nao-confiaveis (divergentes + dependentes) que os
+    # 3 documentos liberados devem deixar em branco, sem adotar XLS nem Python.
+    campos_nao_confiaveis = sorted(campos_nao_confiaveis_para_documentos(reconciliacao))
+
+    diagnostico["reconciliacao_xls_python"] = reconciliacao
+    diagnostico["politica_entrega_segura"] = politica
+    diagnostico["campos_nao_confiaveis_documentos"] = campos_nao_confiaveis
+    diagnostico["avisos"] = list(diagnostico.get("avisos") or []) + list(leitura.get("avisos") or [])
+    diagnostico["bloqueios_criticos"] = list(diagnostico.get("bloqueios_criticos") or []) + bloqueios
+    if bloqueios:
+        diagnostico["pronto_para_consolidar"] = False
+
+    # Cobertura temporal (camada diagnostica/sombra). Fonte UNICA: o mesmo
+    # payload do leitor (sem reler o Excel). Fail-safe: erro do motor temporal
+    # NAO derruba o upload nem os demais resultados; vira indisponibilidade do
+    # eixo temporal. Nao altera o VTA e nao bloqueia documentos.
+    t0 = time.perf_counter()
+    try:
+        from _motor_cobertura_temporal import montar_cobertura_temporal
+        diagnostico["cobertura_temporal"] = montar_cobertura_temporal(leitura).to_dict()
+    except Exception as exc:  # diagnostico e sombra; nunca hard-reject estrutural
+        diagnostico["cobertura_temporal"] = {"ok": False, "erro": str(exc)}
+        _obs_evento("ETAPA_FALHA_FAILSAFE id=%s etapa=cobertura_temporal tipo=%s", id_proc, type(exc).__name__)
+    _obs_evento("ETAPA_CONCLUIDA id=%s etapa=cobertura_temporal duracao_s=%s", id_proc, round(time.perf_counter() - t0, 3))
+
+    capacidades = resultado.get("capacidades") or {}
+    aplicar_bloqueio_documental(capacidades, bloqueios)
+
+    resultado.update({
+        "capacidades": capacidades,
+        "diagnostico_coleta": diagnostico,
+        "reconciliacao_xls_python": reconciliacao,
+        "politica_entrega_segura": politica,
+        "campos_nao_confiaveis_documentos": campos_nao_confiaveis,
+        "formalizacao_bloqueada": bool(bloqueios),
+        "bloqueios_formalizacao": bloqueios,
+    })
+    t0 = time.perf_counter()
+    resultado["resultado_consolidado"] = montar_resultado_consolidado(
+        resultado, diagnostico
+    )
+    _obs_evento("ETAPA_CONCLUIDA id=%s etapa=resultado_consolidado duracao_s=%s", id_proc, round(time.perf_counter() - t0, 3))
+
+    _obs_evento("PROCESSAMENTO_FIM id=%s duracao_s=%s", id_proc, round(time.perf_counter() - t_inicio_total, 3))
     return resultado, diagnostico
