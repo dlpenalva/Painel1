@@ -91,7 +91,10 @@ FORMULAS_POR_ABA = {
     # historico pelo metodo oficial ate o vigente/abertura). W48/W50 sao
     # reescritas (passam a consumir W67/W66), nao acrescentadas. B26/T25
     # intactos.
-    "MEMORIA_RESULTADOS": 4408,
+    # VTA-M2: +1 (D20 = "Desembolsado (Financeiro)", SOMA de financeiro!C
+    # informado, unica formula nova; B26/B28 reescritos apenas no ramo
+    # Financeiro; T21-T25/PC e Consumido intactos).
+    "MEMORIA_RESULTADOS": 4409,
     # 57 do prototipo + 4 selos por tabela + 1 premissa da estimativa - 1
     # helper J4 removido (status global agora agrega os selos H8/H14/H24/H33).
     # 26G: +5 (linha executiva A23:E23 dos PCs sem efeito financeiro).
@@ -116,7 +119,14 @@ FORMULAS_POR_ABA = {
     # em D5, que passa a exibir '=$D$22' sob o rotulo do card) e J8 ganha a
     # ancora do ciclo ('=UPPER(CONTROLE!$B$2)', coluna J oculta). C3/C10/C11
     # sao reescritas (repontagem e textos method-aware), nao acrescentadas.
-    "RESULTADOS": 109,
+    # VTA-M2: +20 (bloco novo CONFERENCIA DA EXECUCAO, linhas 71-77:
+    # Desembolsado informado, Execucao teorica por ciclo, Diferenca e
+    # Status para C0-C4, mais texto de metodologia nas linhas 68-70).
+    # VTA-M2.1: +2 (A70 metodologia e A71 titulo do bloco 8 deixam de ser
+    # texto fixo e passam a FORMULA condicional a MEMORIA_RESULTADOS!$B$4,
+    # para RESULTADOS nao explicar o metodo Financeiro quando o metodo
+    # selecionado for PCs ou Itens/Consumido).
+    "RESULTADOS": 131,
 }
 
 

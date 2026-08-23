@@ -160,7 +160,22 @@ ROOT = Path(__file__).resolve().parents[1]
 # I11 quando I10="REVISE", senao "nao preenchido ou incompleto") e, no
 # ESTIMADO, acrescenta linha INFORMATIVA fora da lista de pendencias com as
 # datas da posicao fisica e da data de corte (DAY/MONTH/YEAR locale-safe).
-SHA256_TEMPLATE_ESPERADO = "30228a0b516963ebb0eb600a959075c98b03066649d0fb4615565f728757238f"
+# VTA-M2: SHA atualizado apos correcao do VTA Financeiro no template
+# (D20/B26/B28 no ramo Financeiro + bloco CONFERENCIA DA EXECUCAO em
+# RESULTADOS); PC e Consumido preservados byte-a-byte fora dessas celulas.
+# VTA-M2.1: SHA atualizado de novo — metodologia/titulo do bloco 8 e as
+# celulas de dado da tabela passam a ser condicionais a
+# MEMORIA_RESULTADOS!$B$4 (nao mostram Financeiro quando o metodo
+# selecionado e PCs/Itens), e o mapa quantitativo do ciclo ganha cadeia
+# de fallback (C1-C4 buscam o ultimo checkpoint disponivel ate E).
+# VTA-M2.2: SHA atualizado de novo — a cadeia de fallback da M2.1 foi
+# identificada como temporalmente invalida (podia comparar execucao
+# acumulada de varios ciclos contra o Financeiro de um so) e removida;
+# "execucao teorica pelo quantitativo" passa a somar as colunas de
+# execucao ja existentes em itens_Remanesc (AC/N/P/R para C0-C3, semantica
+# de par de checkpoints adjacentes apenas, sem encadeamento); C4 e sempre
+# NAO COMPARAVEL (sem checkpoint de fechamento nesta versao do schema).
+SHA256_TEMPLATE_ESPERADO = "dbd925e60fc6f16794e1cf1410c22a825ec80856278cb47a4441a4f4726be70f"
 
 
 def _dados_calculadora() -> dict:
