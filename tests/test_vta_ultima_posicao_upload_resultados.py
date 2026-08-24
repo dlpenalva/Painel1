@@ -56,7 +56,9 @@ def test_caso_a_posicao_atual_valida_tem_precedencia_exclusiva():
     assert consolidado["vta_usa_ultima_posicao"] is False
 
 
-def test_caso_b_sem_posicao_atual_usa_exatamente_o_vta_do_quadro_2():
+def test_caso_b_sem_posicao_atual_nao_adota_a_referencia_fisica():
+    """VTA-U2 achado A / CASO 3: sem VTA canonico, a referencia fisica da
+    ultima abertura NAO vira VTA — o resultado fica indisponivel."""
     resultado = _resultado(
         posicao_atual_valida=False,
         vta_atual=None,
@@ -65,16 +67,44 @@ def test_caso_b_sem_posicao_atual_usa_exatamente_o_vta_do_quadro_2():
     antes = deepcopy(resultado)
     consolidado = montar_resultado_consolidado(resultado)
 
-    assert consolidado["vta"] == resultado["referencias_vta"]["forma2_ultima_abertura"]
-    assert consolidado["vta_origem"] == "ultima_posicao_disponivel"
-    assert consolidado["vta_usa_ultima_posicao"] is True
+    assert consolidado["vta"] is None
+    assert consolidado["vta_origem"] == "indisponivel"
+    assert consolidado["vta_usa_ultima_posicao"] is False
     assert resultado == antes
     assert "#9A5B00" in PAGINA
     assert "resultado-valor-ultima-posicao" in PAGINA
     assert (
-        "Sem posição atual informada. Utilizado o VTA da última posição disponível."
-        in PAGINA
+        "As referências auditáveis não substituem o VTA." in PAGINA
     )
+
+
+def test_caso_b2_posicao_atual_ausente_mas_vta_canonico_presente():
+    """VTA-U2 achado A / CASO 2: com VTA canonico calculado, a ausencia da
+    posicao fisica atual nao desloca o VTA para a ultima abertura."""
+    consolidado = montar_resultado_consolidado(
+        _resultado(posicao_atual_valida=False, vta_atual=1_000.0, vta_ultima=900.0)
+    )
+
+    assert consolidado["vta"] == 1_000.0
+    assert consolidado["vta_origem"] == "posicao_atual"
+    assert consolidado["vta_usa_ultima_posicao"] is False
+
+
+def test_caso_b3_referencias_fisicas_seguem_expostas_como_referencia():
+    """VTA-U2 achado A / CASO 4: B10/B11 continuam disponiveis, rotuladas
+    como referencia auditavel, sem nunca serem chamadas de VTA."""
+    consolidado = montar_resultado_consolidado(
+        _resultado(posicao_atual_valida=False, vta_atual=None, vta_ultima=900.0)
+    )
+    ref = consolidado["referencias_auditaveis"]
+
+    assert ref["ultima_abertura_disponivel"] == 900.0
+    assert ref["rotulos"]["posicao_fisica_atual"].startswith("Referência auditável")
+    assert ref["rotulos"]["ultima_abertura_disponivel"].startswith(
+        "Referência auditável"
+    )
+    for rotulo in ref["rotulos"].values():
+        assert "VTA" not in rotulo
 
 
 def test_caso_c_sem_nenhuma_base_valida_mantem_vta_indisponivel():
@@ -107,7 +137,12 @@ def test_caso_e_invariancia_das_grandezas_e_da_fonte_canonica():
     consolidado_ultima = montar_resultado_consolidado(ultima)
 
     assert consolidado_atual["vta"] == atual["valor_atualizado_contrato"]
-    assert consolidado_ultima["vta"] == ultima["referencias_vta"]["forma2_ultima_abertura"]
+    # VTA-U2: sem VTA canonico o resultado e indisponivel, nunca a referencia.
+    assert consolidado_ultima["vta"] is None
+    assert (
+        consolidado_ultima["referencias_auditaveis"]["ultima_abertura_disponivel"]
+        == ultima["referencias_vta"]["forma2_ultima_abertura"]
+    )
     for consolidado in (consolidado_atual, consolidado_ultima):
         assert consolidado["retroativo_reconhecido"] == 125.0
         assert consolidado["retroativo_potencial"] == 25.0

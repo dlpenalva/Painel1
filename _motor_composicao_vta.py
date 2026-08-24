@@ -23,6 +23,16 @@ ROTULO_CENARIO_TEORICO = (
     "porque reprecifica execucao ja paga a precos antigos; nao usar como VTA."
 )
 
+# Ciclos reais de apuracao. Qualquer outro rotulo que apareca como "ciclo" numa
+# fonte (tipicamente a linha TOTAL das abas de entrada) e um AGREGADOR: consolida
+# as proprias parcelas e nunca pode ser somado junto delas.
+CICLOS_APURACAO = ("C0", "C1", "C2", "C3", "C4")
+
+
+def _e_ciclo_de_apuracao(ciclo: Any) -> bool:
+    """True somente para C0..C4. TOTAL (e afins) e agregador, nao ciclo."""
+    return str(ciclo or "").strip().upper() in CICLOS_APURACAO
+
 
 def _tofl(valor: Any, default: float = 0.0) -> float:
     try:
@@ -46,12 +56,20 @@ def _execucao_por_ciclo(
 ) -> list[dict[str, Any]]:
     registros = (leitura.get("reconciliacao") or {}).get("registros") or []
     linhas: list[dict[str, Any]] = []
+    agregadores: list[str] = []
     for reg in registros:
         if reg.get("metodo_apuracao") == "VINCULO_EXPLICITO":
             continue
         ciclo = str(reg.get("ciclo") or "").strip().upper()
         base = _tofl(reg.get("valor_computado"))
         if not ciclo or not base:
+            continue
+        if not _e_ciclo_de_apuracao(ciclo):
+            # Trava anti-dupla-contagem: registros agregadores (a linha TOTAL das
+            # abas de entrada, por exemplo) consolidam as parcelas dos proprios
+            # ciclos. Soma-los junto de C0..C4 contaria a mesma execucao duas
+            # vezes. Ficam de fora da composicao, sempre.
+            agregadores.append(ciclo)
             continue
         fator = _fator_do_ciclo(por_ciclo, ciclo)
         if fator is None:
@@ -75,6 +93,13 @@ def _execucao_por_ciclo(
             "status_reconciliacao": reg.get("status_reconciliacao"),
             "bloqueia_formalizacao": bool(reg.get("bloqueia_formalizacao")),
         })
+    if agregadores:
+        alertas.append(
+            "Composicao VTA: registro(s) agregador(es) "
+            + ", ".join(sorted(set(agregadores)))
+            + " ficaram fora da soma das parcelas (ja consolidam os ciclos "
+            "C0..C4; soma-los duplicaria a execucao)."
+        )
     return sorted(linhas, key=lambda l: l["ciclo"])
 
 
@@ -462,6 +487,192 @@ def _composicao_vta_pc(
     }
 
 
+def _remanescente_atualizado_vigente(
+    leitura: dict[str, Any],
+    por_ciclo: dict[str, Any],
+    vigente: str,
+) -> tuple[float | None, float | None, str]:
+    """Saldo futuro atualizado do ciclo vigente pela fonte canonica do metodo.
+
+    Mesma cadeia do potencial restante do objeto do processo: primeiro o
+    ``potencial_futuro`` consolidado; na falta dele, a fotografia itemizada de
+    ``posicao_contratual`` valorada pelo VU do ciclo vigente em ``historico_VU``
+    (espelho de ``MEMORIA_RESULTADOS!D35``). Nunca fabrica valor.
+    """
+    potencial = leitura.get("potencial_futuro") or {}
+    if potencial.get("disponivel"):
+        atualizado = _tofl(potencial.get("valor_atualizado_vigente"), default=0.0)
+        if atualizado:
+            return (
+                round(_tofl(potencial.get("saldo_remanescente_base")), 2),
+                round(atualizado, 2),
+                "potencial_futuro",
+            )
+
+    posicao = leitura.get("posicao_contratual") or {}
+    if not (posicao.get("ok") and not posicao.get("cache_ausente")):
+        return None, None, ""
+    if not _e_ciclo_de_apuracao(vigente):
+        return None, None, ""
+    vu_por_item = {
+        str(h.get("item") or "").strip().upper(): (h.get("vu_ciclos") or {})
+        for h in ((leitura.get("historico_vu") or {}).get("itens") or [])
+    }
+    base = 0.0
+    atualizado = 0.0
+    itens = 0
+    for reg in posicao.get("itens") or []:
+        chave = str(reg.get("ITEM") or "").strip().upper()
+        qtd = reg.get(f"QTD_REM_AJUSTADA_{vigente}")
+        if qtd in (None, ""):
+            qtd = _abertura(reg, int(vigente[1:]))
+        vu_original = reg.get("VU_ORIGINAL")
+        vu_vigente = (vu_por_item.get(chave) or {}).get(f"VU_{vigente}")
+        if qtd in (None, "") or vu_original in (None, "") or vu_vigente in (None, ""):
+            continue
+        base += round(_tofl(qtd) * _tofl(vu_original), 2)
+        atualizado += round(_tofl(qtd) * _tofl(vu_vigente), 2)
+        itens += 1
+    if not itens:
+        return None, None, ""
+    return round(base, 2), round(atualizado, 2), "posicao_contratual"
+
+
+def _parcelas_financeiro_por_ciclo(
+    leitura: dict[str, Any],
+) -> dict[str, dict[str, float]]:
+    """Agrega, por ciclo, o pago informado e o valor considerado do Financeiro.
+
+    Fonte canonica unica: as parcelas do financeiro em ``vta_sombra``. Parcelas
+    ``:delta:`` sao ignoradas — o retroativo da competencia ja esta dentro do
+    ``valor_atualizado`` da parcela-base correspondente; soma-las dobraria o
+    ajuste. Rotulos que nao sao ciclo de apuracao (a linha TOTAL da aba) sao
+    agregadores e ficam de fora.
+    """
+    agregado: dict[str, dict[str, float]] = {}
+    for parcela in (leitura.get("vta_sombra") or {}).get("parcelas_computadas") or []:
+        if parcela.get("fonte_parcela") not in {"Financeiro", "Historico financeiro"}:
+            continue
+        ident = str(parcela.get("identificador") or "")
+        if ident.startswith("financeiro:") and ":delta:" in ident:
+            continue
+        ciclo = str(parcela.get("ciclo") or "").strip().upper()
+        if not _e_ciclo_de_apuracao(ciclo):
+            continue
+        base = _tofl(parcela.get("valor"))
+        atualizado = parcela.get("valor_atualizado")
+        considerado = base if atualizado in (None, "") else _tofl(atualizado)
+        alvo = agregado.setdefault(ciclo, {"pago": 0.0, "considerado": 0.0})
+        alvo["pago"] = round(alvo["pago"] + base, 2)
+        alvo["considerado"] = round(alvo["considerado"] + considerado, 2)
+    return agregado
+
+
+def _composicao_vta_financeiro(
+    leitura: dict[str, Any],
+    por_ciclo: dict[str, Any],
+    alertas: list[str],
+) -> dict[str, Any]:
+    """Composicao economica do VTA pelo metodo Financeiro.
+
+    VTA = executado apurado (pago informado na aba financeiro)
+        + ajustes ainda devidos (reajuste reconhecido, ainda nao contido no pago)
+        + remanescente atualizado (saldo futuro pela fonte canonica do metodo)
+
+    Espelha, por calculo proprio, a identidade de ``MEMORIA_RESULTADOS!B26``
+    (``D20 + B21 + D35``) — sem ler B26 e sem copiar o XLS. O detalhamento por
+    ciclo segue como camada de auditoria e NAO produz um segundo total.
+    """
+    controle = leitura.get("controle") or {}
+    vigente = str(controle.get("ciclo_vigente") or "").strip().upper()
+    agregado = _parcelas_financeiro_por_ciclo(leitura)
+    if not agregado:
+        return {
+            "disponivel": False,
+            "motivo": (
+                "CALCULO MANUAL REQUERIDO: sem parcela financeira apurada por "
+                "ciclo para compor o VTA pelo metodo Financeiro."
+            ),
+        }
+
+    detalhamento: list[dict[str, Any]] = []
+    for ciclo in CICLOS_APURACAO:
+        reg = agregado.get(ciclo)
+        if not reg:
+            continue
+        detalhamento.append({
+            "ciclo": ciclo,
+            "descricao": f"{ciclo} — pago informado e valor considerado",
+            "valor_pago": reg["pago"],
+            "valor_considerado": reg["considerado"],
+            "ajuste_devido": round(reg["considerado"] - reg["pago"], 2),
+            "fator_acumulado": _fator_do_ciclo(por_ciclo, ciclo),
+            "fonte": "financeiro",
+        })
+
+    executado = round(sum(r["pago"] for r in agregado.values()), 2)
+    considerado = round(sum(r["considerado"] for r in agregado.values()), 2)
+    ajustes = round(considerado - executado, 2)
+    rem_base, rem_atualizado, origem_rem = _remanescente_atualizado_vigente(
+        leitura, por_ciclo, vigente
+    )
+    if rem_atualizado is None:
+        return {
+            "disponivel": False,
+            "motivo": (
+                "CALCULO MANUAL REQUERIDO: remanescente atualizado do ciclo "
+                "vigente indisponivel para compor o VTA pelo metodo Financeiro."
+            ),
+        }
+
+    execucao = [{
+        "ciclo": "",
+        "descricao": "Executado apurado",
+        "valor_base": executado,
+        "fator_acumulado": None,
+        "valor_atualizado": executado,
+        "fonte": "financeiro",
+        "explicacao": (
+            "Valores efetivamente pagos, conforme informados na aba Financeiro."
+        ),
+    }]
+    ajustes_linha = {
+        "ciclo": "",
+        "descricao": "Ajustes ainda devidos",
+        "valor_base": ajustes,
+        "fator_acumulado": None,
+        "valor_atualizado": ajustes,
+        "fonte": "retroativo",
+        "explicacao": (
+            "Reajuste ja reconhecido e ainda nao contido no valor pago."
+            if ajustes else "Nao ha reajuste reconhecido pendente de pagamento."
+        ),
+    }
+    saldo = {
+        "ciclo": vigente,
+        "descricao": "Remanescente atualizado",
+        "valor_base": rem_base,
+        "fator_acumulado": _fator_do_ciclo(por_ciclo, vigente),
+        "valor_atualizado": rem_atualizado,
+        "fonte": origem_rem or "remanescente",
+        "explicacao": "Saldo que ainda falta executar, ja atualizado.",
+    }
+    return {
+        "disponivel": True,
+        "motivo": "",
+        "metodo": "financeiro",
+        "execucao_por_ciclo": execucao,
+        "ajustes_devidos": ajustes_linha,
+        "saldo_remanescente": saldo,
+        "detalhamento_por_ciclo": detalhamento,
+        "total_execucao_atualizada": executado,
+        "total_execucao_base": executado,
+        "retroativo_implicito": ajustes,
+        "total_aditivos_atualizados": 0.0,
+        "vta_composicao": round(executado + ajustes + rem_atualizado, 2),
+    }
+
+
 def _cenario_teorico(
     leitura: dict[str, Any],
     por_ciclo: dict[str, Any],
@@ -549,6 +760,59 @@ def montar_composicao_vta(leitura: dict[str, Any]) -> dict[str, Any]:
             "linhas": [],
             "alertas": alertas,
         }
+
+    # Metodo Financeiro: composicao economica dedicada, em tres parcelas que
+    # reconciliam exatamente com o VTA oficial (executado apurado + ajustes
+    # ainda devidos + remanescente atualizado). O detalhamento por ciclo segue
+    # como camada de auditoria, sem gerar um segundo total concorrente.
+    # PC e Consumido nao passam por aqui.
+    if modo == "principal":
+        fin = _composicao_vta_financeiro(leitura, por_ciclo, alertas)
+        base_financeiro: dict[str, Any] = {
+            "disponivel": False,
+            "motivo": fin.get("motivo") or "CALCULO MANUAL REQUERIDO (Financeiro).",
+            "metodo": "financeiro",
+            "execucao_por_ciclo": [],
+            "ajustes_devidos": None,
+            "saldo_remanescente": None,
+            "detalhamento_por_ciclo": [],
+            "aditivos": [],
+            "aditivos_nao_computados": [],
+            "total_execucao_atualizada": 0.0,
+            "total_execucao_base": 0.0,
+            "retroativo_implicito": 0.0,
+            "total_aditivos_atualizados": 0.0,
+            "vta_composicao": None,
+            "cenario_teorico": _cenario_teorico(leitura, por_ciclo),
+            "bloqueia_formalizacao": False,
+            "linhas": [],
+            "alertas": alertas,
+        }
+        if not fin.get("disponivel"):
+            # Base insuficiente: nunca fabrica resultado nem cai no caminho
+            # generico (que somaria parcelas de semantica diferente).
+            return base_financeiro
+        linhas = [
+            dict(fin["execucao_por_ciclo"][0], tipo="execucao"),
+            dict(fin["ajustes_devidos"], tipo="ajustes_devidos"),
+            dict(fin["saldo_remanescente"], tipo="saldo_remanescente"),
+        ]
+        for idx, linha in enumerate(linhas):
+            linha["ref"] = chr(ord("A") + idx)
+        base_financeiro.update({
+            "disponivel": True,
+            "motivo": "",
+            "execucao_por_ciclo": fin["execucao_por_ciclo"],
+            "ajustes_devidos": fin["ajustes_devidos"],
+            "saldo_remanescente": fin["saldo_remanescente"],
+            "detalhamento_por_ciclo": fin["detalhamento_por_ciclo"],
+            "total_execucao_atualizada": fin["total_execucao_atualizada"],
+            "total_execucao_base": fin["total_execucao_base"],
+            "retroativo_implicito": fin["retroativo_implicito"],
+            "vta_composicao": fin["vta_composicao"],
+            "linhas": linhas,
+        })
+        return base_financeiro
 
     execucao = _execucao_por_ciclo(leitura, por_ciclo, alertas)
     saldo = _saldo_remanescente(leitura, alertas)

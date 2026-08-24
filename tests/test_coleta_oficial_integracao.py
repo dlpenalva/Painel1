@@ -182,7 +182,12 @@ ROOT = Path(__file__).resolve().parents[1]
 # (F20/coluna V/C33 fortalecidos contra zero-vira-None, item incompleto,
 # consumo sem valoracao e sobreconsumo). Contagem de formulas inalterada
 # (mesmas celulas, conteudo interno mais robusto).
-SHA256_TEMPLATE_ESPERADO = "a3e40c9c5dda6a84cae97b054800f8b1a72c9a01fc22f0653ff0b2e160236bb3"
+# VTA-U2: template regravado via Excel COM (tools/aplicar_vta_uniformizacao_u2.py)
+# — 45 celulas, todas em RESULTADOS (card C5/B63 repontados para VTA_FINAL,
+# rotulos B10/B11, bloco 8 didatico e bloco 9 novo). MEMORIA_RESULTADOS,
+# nomes definidos, abas, formatacao condicional (inclusive x14) e validacoes
+# ficaram identicos; reaberto no Excel sem reparo.
+SHA256_TEMPLATE_ESPERADO = "08efcddb63555db22c7dbc4e015fba92cdcf947c58546fd93a5f489115af93a7"
 
 
 def _dados_calculadora() -> dict:

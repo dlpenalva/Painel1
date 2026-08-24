@@ -1392,8 +1392,11 @@ def _bloco_referencias_vta_pdf(historia, dados, estilos) -> None:
          marc if f1 is None else _m(f1), "REFERÊNCIA AUDITÁVEL"],
         ["VTA pela última posição de abertura disponível",
          _m(ref.get("forma2_ultima_abertura")), "REFERÊNCIA AUDITÁVEL"],
-        ["Contrato original integralmente reajustado",
-         _m(ref.get("forma3_integral_reajustado")), "COMPARATIVO"],
+        # VTA-U2 (fase 9): a linha "Contrato original integralmente reajustado"
+        # e informacao interna de auditoria e nao entra na apresentacao externa
+        # do Sumario Executivo. O dado permanece no XLS (RESULTADOS!B12 /
+        # comparativo_VTA!B208) e em referencias_vta["forma3_integral_reajustado"]
+        # para conferencia e testes.
     ]
     historia.append(_tabela(
         linhas, [largura * 0.50, largura * 0.25, largura * 0.25],

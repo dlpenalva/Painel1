@@ -4957,15 +4957,19 @@ def render_resultado_consolidado(resultado, diagnostico):
         )
         col_vta, col_reconhecido, col_potencial = st.columns([1.45, 1, 1])
         with col_vta:
-            usa_ultima_posicao = bool(consolidado.get("vta_usa_ultima_posicao"))
+            # VTA-U2 (achado A): o VTA exibido e sempre o canonico do metodo.
+            # As referencias fisicas nunca o substituem; quando o calculo nao
+            # esta disponivel o card fica em branco (fail-closed) com a nota.
+            vta_indisponivel = consolidado.get("vta") is None
             _celula_resultado(
                 "Valor Total Atualizado — VTA",
                 _moeda_resultado(consolidado.get("vta")),
                 principal=True,
-                ultima_posicao=usa_ultima_posicao,
+                ultima_posicao=vta_indisponivel,
                 nota=(
-                    "Sem posição atual informada. Utilizado o VTA da última posição disponível."
-                    if usa_ultima_posicao else None
+                    "VTA indisponível: falta base para o cálculo pelo método "
+                    "selecionado. As referências auditáveis não substituem o VTA."
+                    if vta_indisponivel else None
                 ),
             )
         with col_reconhecido:

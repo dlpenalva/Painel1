@@ -67,13 +67,32 @@ def _unicos(valores: list[Any]) -> list[str]:
     return saida
 
 
+# VTA-U2 (fase 7): a camada visivel ao usuario nao fala em "fator acumulado
+# parametrizado" nem em nomes de registro interno. O diagnostico tecnico segue
+# intacto em composicao_vta["alertas"]; aqui so a traducao apresentada.
+def _traduzir_alerta_composicao(alerta: str) -> str:
+    texto = alerta.lower()
+    if "sem fator acumulado" in texto:
+        return (
+            "Os valores já pagos foram considerados conforme informados. Como "
+            "esse total não pertence a um único ciclo de reajuste, nenhum novo "
+            "fator foi aplicado sobre ele. Isso não impede o cálculo do VTA."
+        )
+    if "agregador" in texto:
+        return (
+            "A linha de total das abas de entrada não foi somada junto das "
+            "parcelas de cada ciclo, para não contar a mesma execução duas vezes."
+        )
+    return alerta
+
+
 def _alertas_materiais(alertas: list[Any]) -> list[str]:
     marcadores = (
         "diverg", "inconsist", "indetermin", "indispon",
         "sem fator", "calculo manual", "cálculo manual",
     )
     return [
-        str(alerta).strip()
+        _traduzir_alerta_composicao(str(alerta).strip())
         for alerta in alertas
         if str(alerta or "").strip()
         and any(marcador in str(alerta).lower() for marcador in marcadores)
@@ -93,7 +112,6 @@ def montar_resultado_consolidado(
     totais_pc = resultado.get("totais_canonicos_pc") or {}
     controle = resultado.get("controle") or {}
     memoria = resultado.get("memoria_por_ciclo") or {}
-    referencias_informadas = isinstance(resultado.get("referencias_vta"), dict)
     referencias_vta = resultado.get("referencias_vta") or {}
 
     metodo_controle = _normalizar_metodo(controle.get("modo"))
@@ -220,28 +238,33 @@ def montar_resultado_consolidado(
     status_politica = str(politica.get("status") or "").strip().upper()
     status_base = str(diagnostico.get("status_base") or "").strip().upper()
     vta_atual = resultado.get("valor_atualizado_contrato")
-    posicao_atual_valida = bool(referencias_vta.get("posicao_atual_disponivel"))
-    vta_ultima_posicao = _numero(referencias_vta.get("forma2_ultima_abertura"))
-    if metodo_consumidos:
-        # VTA-C2.2 (item 2-4/7): referencias_vta (posicao_atual/ultima_abertura)
-        # e derivada da posicao fisica de itens_Remanesc — mecanismo exclusivo
-        # de Financeiro/PC, nunca ligado ao metodo Consumido. Usar essa
-        # referencia aqui substituiria um VTA canonico ja calculado (B26 via
-        # F20/C33/D33) por um residuo estrangeiro de 0/None. O VTA do
-        # Consumido vem sempre de valor_atualizado_contrato (== B26 ==
-        # memoria_por_ciclo.vta.valor_total_atualizado), nunca de
-        # forma2_ultima_abertura; sem esse valor, fica fail-closed (None).
-        vta = vta_atual
-        vta_origem = "posicao_atual" if vta is not None else "indisponivel"
-    elif not referencias_informadas or posicao_atual_valida:
-        vta = vta_atual
-        vta_origem = "posicao_atual" if vta is not None else "indisponivel"
-    elif vta_ultima_posicao is not None:
-        vta = vta_ultima_posicao
-        vta_origem = "ultima_posicao_disponivel"
-    else:
-        vta = None
-        vta_origem = "indisponivel"
+    # Referencias fisicas do XLS, preservadas e rotuladas — nunca viram VTA.
+    referencias_auditaveis = {
+        "posicao_fisica_atual": _numero(referencias_vta.get("forma1_posicao_atual")),
+        "ultima_abertura_disponivel": _numero(
+            referencias_vta.get("forma2_ultima_abertura")
+        ),
+        "posicao_atual_disponivel": bool(
+            referencias_vta.get("posicao_atual_disponivel")
+        ),
+        "rotulos": {
+            "posicao_fisica_atual": (
+                "Referência auditável — posição física atual"
+            ),
+            "ultima_abertura_disponivel": (
+                "Referência auditável — última posição de abertura disponível"
+            ),
+        },
+    }
+    # VTA-U2 (achado A): o VTA entregue ao web e aos documentos e SEMPRE o VTA
+    # canonico do metodo selecionado (== MEMORIA_RESULTADOS!B26 ==
+    # memoria_por_ciclo.vta.valor_total_atualizado). As referencias fisicas de
+    # RESULTADOS!B10/B11 (posicao atual / ultima abertura) permanecem expostas
+    # em `referencias_vta` como REFERENCIA AUDITAVEL, mas nunca substituem,
+    # completam nem servem de fallback do VTA: sem VTA canonico o resultado fica
+    # indisponivel (fail-closed) e a politica existente degrada ou bloqueia.
+    vta = vta_atual
+    vta_origem = "posicao_atual" if vta is not None else "indisponivel"
     resultado_incompleto = bool(
         vta is None
         or retroativo_reconhecido is None
@@ -293,6 +316,7 @@ def montar_resultado_consolidado(
         "valor_atualizado_em_analise": valor_em_analise,
         "retroativo_potencial": retroativo_potencial,
         "medidas_pc_aplicaveis": metodo_pc,
+        "referencias_auditaveis": referencias_auditaveis,
         "fora_do_corte": fora_do_corte,
         "metodo": {
             "codigo": metodo_codigo,
