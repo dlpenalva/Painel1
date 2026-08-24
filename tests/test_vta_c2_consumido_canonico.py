@@ -21,6 +21,7 @@ Testes permanentes cobrindo:
 from __future__ import annotations
 
 import gc
+import os
 import sys
 from pathlib import Path
 
@@ -108,6 +109,10 @@ def test_t_template_abre_estruturalmente_via_openpyxl():
     assert "itens_Consumidos" in wb_local.sheetnames
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
 def test_t_excel_real_recalcula_e_reabre_sem_reparo():
     client = pytest.importorskip("win32com.client")
     pythoncom = pytest.importorskip("pythoncom")

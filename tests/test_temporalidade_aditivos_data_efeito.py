@@ -41,6 +41,7 @@ C1 = 01/02/2026..31/01/2027; vigente C1, portanto ABERTURA DO C1 = 01/02/2026):
 from __future__ import annotations
 
 import datetime as dt
+import os
 import shutil
 import tempfile
 import time
@@ -121,6 +122,8 @@ def _aplicar_com_retentativa(funcao, origem: Path, destino: Path) -> Path:
 @pytest.fixture(scope="session")
 def real_temporal(tmp_path_factory) -> Path:
     """Arquivo real com as duas mutacoes da etapa aplicadas (sem dados novos)."""
+    if os.environ.get("RUN_EXCEL_INTEGRATION") != "1":
+        pytest.skip("defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM")
     if not ARQUIVO_REAL.is_file():
         pytest.skip(f"arquivo real ausente: {ARQUIVO_REAL}")
     pytest.importorskip("win32com.client")

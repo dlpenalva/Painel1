@@ -20,6 +20,7 @@ Protege, por leitura estrutural de formula (nao apenas SHA/contagem), que:
 from __future__ import annotations
 
 import gc
+import os
 from pathlib import Path
 
 import pytest
@@ -182,6 +183,10 @@ def test_i_template_abre_estruturalmente_via_openpyxl():
     assert "RESULTADOS" in wb_local.sheetnames
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
 def test_j_excel_real_recalcula_e_reabre_sem_reparo():
     client = pytest.importorskip("win32com.client")
     pythoncom = pytest.importorskip("pythoncom")

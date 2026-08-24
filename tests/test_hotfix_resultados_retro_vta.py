@@ -18,6 +18,7 @@ Cenario Financeiro real reconstruido (valores do enunciado):
 """
 from __future__ import annotations
 
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -208,6 +209,10 @@ def _abrir(excel, caminho: Path):
     return book
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
 def test_cenario_real_financeiro_b10_b11_e_retroativo(excel, tmp_path):
     destino = _montar_cenario_financeiro(
         tmp_path / "fin_real.xlsx", com_posicao_fisica=True
@@ -241,6 +246,10 @@ def test_cenario_real_financeiro_b10_b11_e_retroativo(excel, tmp_path):
         book.Close(SaveChanges=False)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
 def test_fallback_sem_posicao_fisica_preservado(excel, tmp_path):
     """Sem CICLO_EM_EXECUCAO utilizavel: FORMA 1 vazia; FORMA 2 completa."""
     destino = _montar_cenario_financeiro(
