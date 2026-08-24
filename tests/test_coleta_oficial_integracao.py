@@ -182,7 +182,16 @@ ROOT = Path(__file__).resolve().parents[1]
 # (F20/coluna V/C33 fortalecidos contra zero-vira-None, item incompleto,
 # consumo sem valoracao e sobreconsumo). Contagem de formulas inalterada
 # (mesmas celulas, conteudo interno mais robusto).
-SHA256_TEMPLATE_ESPERADO = "a3e40c9c5dda6a84cae97b054800f8b1a72c9a01fc22f0653ff0b2e160236bb3"
+# VTA-U2: template regravado via Excel COM (tools/aplicar_vta_uniformizacao_u2.py)
+# — 45 celulas, todas em RESULTADOS (card C5/B63 repontados para VTA_FINAL,
+# rotulos B10/B11, bloco 8 didatico e bloco 9 novo). MEMORIA_RESULTADOS,
+# nomes definidos, abas, formatacao condicional (inclusive x14) e validacoes
+# ficaram identicos; reaberto no Excel sem reparo.
+# VTA-U2 (UX final): segunda passada via tools/aplicar_vta_u2_ux_final.py — o
+# subtitulo "Posição física atual" sai do card, as linhas 10-13 (referencias
+# fisicas + reconciliacao) ficam ocultas com formulas intactas, A9 enuncia a
+# identidade canonica e o bloco 8 fala em "quantitativo" no lugar de "fisico".
+SHA256_TEMPLATE_ESPERADO = "30431428fba03d39ae3b289520d227eeaf03a272ec44ab25d1b20d829a293f25"
 
 
 def _dados_calculadora() -> dict:

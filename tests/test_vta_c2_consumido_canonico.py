@@ -491,11 +491,11 @@ def test_consumido_ignora_referencia_estrangeira_zero():
     resultado = _resultado_consumidos(vta_atual=410.0, forma2=0.0)
     consolidado = montar_resultado_consolidado(resultado)
     assert consolidado["vta"] == 410.0
-    assert consolidado["vta_origem"] != "ultima_posicao_disponivel"
+    assert consolidado["vta_origem"] == "vta_canonico"
     assert consolidado["vta_usa_ultima_posicao"] is False
 
 
-def test_pc_preserva_politica_de_ultima_posicao():
+def test_pc_nao_usa_referencia_fisica_como_fallback_de_vta():
     """Teste permanente (item 22): a regra PC/posicao_atual->ultima_posicao
     nao pode ser alterada por esta tarefa."""
     from _resultado_consolidado import montar_resultado_consolidado
@@ -523,9 +523,14 @@ def test_pc_preserva_politica_de_ultima_posicao():
         "reconciliacao_xls_python": {"status_geral": "CONCILIADO"},
     }
     consolidado = montar_resultado_consolidado(resultado)
-    assert consolidado["vta"] == 900.0
-    assert consolidado["vta_origem"] == "ultima_posicao_disponivel"
-    assert consolidado["vta_usa_ultima_posicao"] is True
+    # VTA-U2 (achado A): a referencia fisica de RESULTADOS!B11 deixou de ser
+    # fallback do VTA. Sem VTA canonico do metodo, o resultado fica
+    # indisponivel (fail-closed) e a referencia segue exposta so como
+    # referencia auditavel.
+    assert consolidado["vta"] is None
+    assert consolidado["vta_origem"] == "indisponivel"
+    assert consolidado["vta_usa_ultima_posicao"] is False
+    assert consolidado["referencias_auditaveis"]["ultima_abertura_disponivel"] == 900.0
 
 
 def test_consumido_indisponivel_nao_usa_referencia_estrangeira():

@@ -134,7 +134,13 @@ FORMULAS_POR_ABA = {
     # texto fixo e passam a FORMULA condicional a MEMORIA_RESULTADOS!$B$4,
     # para RESULTADOS nao explicar o metodo Financeiro quando o metodo
     # selecionado for PCs ou Itens/Consumido).
-    "RESULTADOS": 131,
+    # VTA-U2: +8 (bloco novo "9. COMO E FORMADO O VTA?", linhas 79-87 —
+    # B83/C83 executado apurado, B84/C84 ajustes ainda devidos, B85
+    # remanescente atualizado, B86 VTA Oficial e B87/C87 a conferencia que
+    # prova a reconciliacao das parcelas com o VTA. C5 e B63 sao REPONTADAS
+    # para VTA_FINAL (ja eram formulas, nao somam), e o bloco 8 tem suas
+    # formulas reescritas com o novo rotulo de ausencia de base (nao somam).
+    "RESULTADOS": 139,
 }
 
 

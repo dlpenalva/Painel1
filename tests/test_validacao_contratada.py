@@ -111,7 +111,7 @@ class TestAppTestValidacaoContratada(unittest.TestCase):
 
         consolidado = {
             "vta": 500000.0,
-            "vta_origem": "posicao_atual",
+            "vta_origem": "vta_canonico",
             "vta_usa_ultima_posicao": False,
             "retroativo_reconhecido": 12345.67,
             "valor_atualizado_em_analise": 1000.0,
@@ -227,7 +227,7 @@ class TestAppTestValidacaoContratada(unittest.TestCase):
 
         consolidado = {
             "vta": 300000.0,
-            "vta_origem": "posicao_atual",
+            "vta_origem": "vta_canonico",
             "vta_usa_ultima_posicao": False,
             "retroativo_reconhecido": 4321.0,
             "valor_atualizado_em_analise": None,
