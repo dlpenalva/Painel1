@@ -28,6 +28,7 @@ from __future__ import annotations
 import argparse
 import shutil
 import tempfile
+import warnings
 from pathlib import Path
 
 import pythoncom
@@ -45,6 +46,15 @@ XL_CENTER = -4108
 ABA_MEMORIA = "MEMORIA_RESULTADOS"
 ABA_RESULTADOS = "RESULTADOS"
 ABA_ITENS_RC = "itens_RC"
+
+# Formula promovida pelo hotfix RESULTADOS posterior a esta migracao. Este
+# aplicador preserva sua semantica historica, mas nao pode ser reaplicado sobre
+# o template oficial atual porque sua etapa era proprietaria da formula antiga.
+W48_CANONICA_ATUAL = '=IF(OR($W$46="",$W$67=""),"",ROUND($W$67+$W$53+$W$54,2))'
+ERRO_W48_TEMPLATE_ATUAL = (
+    "Aplicador historico incompatível com o template oficial atual: "
+    "MEMORIA_RESULTADOS!W48 ja contem a formula canonica e foi preservada."
+)
 
 MOEDA_BR = "R$ #.##0,00"
 QTD_BR = "#.##0,00"
@@ -135,12 +145,29 @@ def _validar_origem(wb) -> None:
     if ausentes:
         raise ValueError(f"Abas obrigatorias ausentes: {', '.join(ausentes)}")
     mem = wb.Worksheets(ABA_MEMORIA)
+    if str(mem.Range("W48").Formula or "") == W48_CANONICA_ATUAL:
+        raise ValueError(ERRO_W48_TEMPLATE_ATUAL)
     # Travas: B26/T25 homologados devem existir e permanecer intactos.
     for endereco in ("B26", "T20", "T21", "T22", "T23", "T25", "Y2", "X2"):
         if not str(mem.Range(endereco).Formula or ""):
             raise ValueError(f"MEMORIA_RESULTADOS!{endereco} ausente; layout inesperado.")
     if "VTA_FINAL" not in _nomes_definidos(wb):
         raise ValueError("Nome definido VTA_FINAL ausente.")
+
+
+def _recusar_template_atual_w48(caminho: Path) -> None:
+    """Falha antes de criar copia mutavel ou iniciar o Excel COM."""
+    from openpyxl import load_workbook
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        wb = load_workbook(caminho, data_only=False, read_only=True, keep_links=False)
+    try:
+        formula = wb[ABA_MEMORIA]["W48"].value if ABA_MEMORIA in wb.sheetnames else None
+    finally:
+        wb.close()
+    if formula == W48_CANONICA_ATUAL:
+        raise ValueError(ERRO_W48_TEMPLATE_ATUAL)
 
 
 def _snapshot_travas(wb) -> dict[str, str]:
@@ -471,6 +498,7 @@ def aplicar(origem: Path, destino: Path) -> None:
         raise FileNotFoundError(origem)
     if origem == destino:
         raise ValueError("Origem e destino devem ser diferentes.")
+    _recusar_template_atual_w48(origem)
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="cl8us_vta_pos_"))
     tmp_xlsx = tmp_dir / origem.name

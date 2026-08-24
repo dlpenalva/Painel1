@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import shutil
 import tempfile
+import warnings
 from pathlib import Path
 
 import pythoncom
@@ -38,6 +39,15 @@ import win32com.client
 ABA_MEMORIA = "MEMORIA_RESULTADOS"
 ABA_RESULTADOS = "RESULTADOS"
 ABA_ITENS_PC = "itens_PC"
+
+# Formula promovida pelo hotfix RESULTADOS posterior a esta migracao. A
+# aplicacao completa deste script mantem a semantica historica e, portanto,
+# deve recusar o template atual antes de tentar substituir W48.
+W48_CANONICA_ATUAL = '=IF(OR($W$46="",$W$67=""),"",ROUND($W$67+$W$53+$W$54,2))'
+ERRO_W48_TEMPLATE_ATUAL = (
+    "Aplicador historico incompatível com o template oficial atual: "
+    "MEMORIA_RESULTADOS!W48 ja contem a formula canonica e foi preservada."
+)
 
 XL_CALC_MANUAL = -4135
 XL_CALC_AUTOMATIC = -4105
@@ -254,12 +264,14 @@ def _nomes_abas(wb) -> list[str]:
     return [ws.Name for ws in wb.Worksheets]
 
 
-def _validar_origem(wb) -> None:
+def _validar_origem(wb, *, escreve_w48: bool = True) -> None:
     abas = _nomes_abas(wb)
     for obrig in (ABA_MEMORIA, ABA_RESULTADOS, ABA_ITENS_PC):
         if obrig not in abas:
             raise RuntimeError(f"Aba {obrig} ausente na origem.")
     mem = wb.Worksheets(ABA_MEMORIA)
+    if escreve_w48 and str(mem.Range("W48").Formula or "") == W48_CANONICA_ATUAL:
+        raise RuntimeError(ERRO_W48_TEMPLATE_ATUAL)
     for endereco in ("T21", "T22", "T23", "T25", "W48", "W50"):
         if not str(mem.Range(endereco).Formula or ""):
             raise RuntimeError(
@@ -267,6 +279,21 @@ def _validar_origem(wb) -> None:
             )
     if str(wb.Worksheets(ABA_ITENS_PC).Range("O1").Value or "") != "VALOR_PC_TOTAL":
         raise RuntimeError("itens_PC!O1 nao e VALOR_PC_TOTAL; layout inesperado.")
+
+
+def _recusar_template_atual_w48(caminho: Path) -> None:
+    """Falha antes de criar copia mutavel ou iniciar o Excel COM."""
+    from openpyxl import load_workbook
+
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        wb = load_workbook(caminho, data_only=False, read_only=True, keep_links=False)
+    try:
+        formula = wb[ABA_MEMORIA]["W48"].value if ABA_MEMORIA in wb.sheetnames else None
+    finally:
+        wb.close()
+    if formula == W48_CANONICA_ATUAL:
+        raise RuntimeError(ERRO_W48_TEMPLATE_ATUAL)
 
 
 def _snapshot_travas(wb) -> dict[str, str]:
@@ -521,6 +548,8 @@ def aplicar(origem: Path, destino: Path, somente_estilo_u: bool = False) -> None
         raise FileNotFoundError(origem)
     if origem == destino:
         raise ValueError("Origem e destino devem ser diferentes.")
+    if not somente_estilo_u:
+        _recusar_template_atual_w48(origem)
 
     tmp_dir = Path(tempfile.mkdtemp(prefix="cl8us_valor_considerado_"))
     tmp_xlsx = tmp_dir / origem.name
@@ -539,7 +568,7 @@ def aplicar(origem: Path, destino: Path, somente_estilo_u: bool = False) -> None
         excel.ScreenUpdating = False
         excel.Calculation = XL_CALC_MANUAL
         aba_ativa = wb.ActiveSheet.Name
-        _validar_origem(wb)
+        _validar_origem(wb, escreve_w48=not somente_estilo_u)
         travas_antes = _snapshot_travas(wb)
 
         if somente_estilo_u:
