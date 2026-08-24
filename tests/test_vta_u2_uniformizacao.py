@@ -548,13 +548,16 @@ def test_i2_sumario_executivo_sem_o_comparativo_interno():
     """Item 11: o comparativo do contrato integralmente reajustado e
     informacao interna e nao sai no Sumario Executivo."""
     fonte = (RAIZ / "_sumario_executivo.py").read_text(encoding="utf-8")
-    bloco = fonte[fonte.index("def _bloco_referencias_vta_pdf"):]
-    bloco = bloco[:bloco.index("\ndef ")]
 
-    assert '["Contrato original integralmente reajustado"' not in bloco
-    assert '"COMPARATIVO"' not in bloco
-    # as referencias auditaveis continuam saindo.
-    assert "forma2_ultima_abertura" in bloco
+    # VTA-U2 (regra global): o quadro inteiro de referencias saiu do Sumario —
+    # com ele, o comparativo e os dois "VTA pela posicao ..." que podiam ser
+    # lidos como um segundo VTA.
+    assert "def _bloco_referencias_vta_pdf" not in fonte
+    assert "_bloco_referencias_vta_pdf(historia" not in fonte
+    assert "Contrato original integralmente reajustado" not in fonte
+    assert "COMPARATIVO" not in fonte
+    # o VTA oficial continua sendo apresentado pela sintese.
+    assert 'vta_txt = formatar_moeda(sintese.get("vta"))' in fonte
 
 
 def test_i3_o_dado_interno_continua_disponivel_para_auditoria():
