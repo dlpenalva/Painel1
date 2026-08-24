@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import copy
 import io
+import os
 import sys
 from datetime import date
 from pathlib import Path
@@ -205,6 +206,10 @@ def _abrir(excel, caminho: Path):
     return book
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
 def test_casos_a_b_c_e_sem_pcs(excel, tmp_path):
     """A/B/C/E — sem PC de C0, os itens temporais deixam de bloquear o VTA."""
     book = _abrir(excel, _montar_cenario(tmp_path / "c44_1.xlsx", False))
@@ -235,6 +240,10 @@ def test_casos_a_b_c_e_sem_pcs(excel, tmp_path):
         book.Close(SaveChanges=False)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
 def test_caso_d_nascimento_indeterminado_continua_fail_closed(excel, tmp_path):
     """D — item sem AL derivavel NAO recebe dispensa automatica."""
     book = _abrir(excel, _montar_cenario(tmp_path / "c44_1d.xlsx", True))

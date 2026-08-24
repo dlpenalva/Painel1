@@ -7,6 +7,7 @@ formulas/estilos e descaracterizacao da aba financeiro.
 from __future__ import annotations
 
 import gc
+import os
 import re
 import zipfile
 import xml.etree.ElementTree as ET
@@ -284,6 +285,10 @@ def test_aditivos_dropdown_tipo_alteracao_sem_decrescimo():
     assert not any("Decr" in i for i in itens)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
 def test_abertura_e_reabertura_sem_reparo_no_excel_real():
     client = pytest.importorskip("win32com.client")
     pythoncom = pytest.importorskip("pythoncom")

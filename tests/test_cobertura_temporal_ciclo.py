@@ -15,6 +15,7 @@ test_ciclo_em_execucao_itemizado_29c1 / _opcionalidade_29c2.
 from __future__ import annotations
 
 import datetime as _dt
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -99,21 +100,37 @@ def _b8_com(gerar_aba: bool, a9=None, d5=None):
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
 def test_cenario_aba_ausente_vazio():
     assert _b8_com(gerar_aba=False) in (None, "")
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
 def test_cenario_aba_vazia_vazio():
     # Aba gerada, sem data e sem itens (template vazio) => A9 "" => B8 "".
     assert _b8_com(gerar_aba=True) in (None, "")
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
 def test_cenario_data_preenchida_itens_incompletos_ou_invalidos_vazio():
     # D5 preenchida, porem posicao nao confirmada (A9 vazio: qualquer estado
     # incompleto/invalido) => B8 permanece vazio (nao adota data nao confirmada).
     assert _b8_com(gerar_aba=True, a9="", d5=_dt.datetime(2027, 6, 15)) in (None, "")
 
 
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
 def test_cenario_posicao_completa_e_valida_mostra_data():
     # Posicao confirmada (A9 numerico) + data => B8 = data de CICLO!D5.
     b8 = _b8_com(gerar_aba=True, a9=1000.0, d5=_dt.datetime(2027, 6, 15))

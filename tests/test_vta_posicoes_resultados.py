@@ -17,6 +17,7 @@ Estrategia:
 """
 from __future__ import annotations
 
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -48,6 +49,8 @@ def real_mutado(tmp_path_factory) -> Path:
     """
     import time
 
+    if os.environ.get("RUN_EXCEL_INTEGRATION") != "1":
+        pytest.skip("defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM")
     if not ARQUIVO_REAL.is_file():
         pytest.skip(f"arquivo real ausente: {ARQUIVO_REAL}")
     from tools.aplicar_vta_posicoes_tabela1 import aplicar

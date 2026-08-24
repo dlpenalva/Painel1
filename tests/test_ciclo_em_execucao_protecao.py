@@ -17,6 +17,7 @@ Requisitos verificados:
 from __future__ import annotations
 
 import datetime as _dt
+import os
 import shutil
 import tempfile
 from pathlib import Path
@@ -86,6 +87,10 @@ def test_validacoes_de_dados_permanecem(arquivo_com_aba):
 # --------------------------------------------------------------------------- #
 # Teste no Excel real: preencher, salvar, fechar, reabrir, conferir            #
 # --------------------------------------------------------------------------- #
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
 def test_edicao_real_excel_preserva_dados_e_bloqueia_formula(arquivo_com_aba):
     client = pytest.importorskip("win32com.client")
     pythoncom = pytest.importorskip("pythoncom")
