@@ -491,7 +491,7 @@ def test_consumido_ignora_referencia_estrangeira_zero():
     resultado = _resultado_consumidos(vta_atual=410.0, forma2=0.0)
     consolidado = montar_resultado_consolidado(resultado)
     assert consolidado["vta"] == 410.0
-    assert consolidado["vta_origem"] != "ultima_posicao_disponivel"
+    assert consolidado["vta_origem"] == "vta_canonico"
     assert consolidado["vta_usa_ultima_posicao"] is False
 
 

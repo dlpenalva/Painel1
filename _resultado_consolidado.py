@@ -16,6 +16,13 @@ STATUS_RESSALVAS = "CONFIÁVEL COM RESSALVAS"
 STATUS_PENDENTE = "PENDENTE DE CONFIRMAÇÃO"
 STATUS_BLOQUEADO = "BLOQUEADO"
 
+# VTA-U2.2: origens possiveis do VTA entregue ao web e aos documentos. Existe um
+# unico caminho valido — o calculo canonico da metodologia selecionada
+# (== MEMORIA_RESULTADOS!B26 == memoria_por_ciclo.vta.valor_total_atualizado).
+# Referencias fisicas (RESULTADOS!B10/B11) nunca sao origem de VTA.
+ORIGEM_VTA_CANONICA = "vta_canonico"
+ORIGEM_VTA_INDISPONIVEL = "indisponivel"
+
 _STATUS_POLITICA_INCOMPLETOS = {
     "INFORMACAO_INSUFICIENTE",
     "APURACAO_PARCIAL",
@@ -263,8 +270,11 @@ def montar_resultado_consolidado(
     # em `referencias_vta` como REFERENCIA AUDITAVEL, mas nunca substituem,
     # completam nem servem de fallback do VTA: sem VTA canonico o resultado fica
     # indisponivel (fail-closed) e a politica existente degrada ou bloqueia.
+    # VTA-U2.2: a origem passa a dizer o que o valor de fato e. Enquanto existia
+    # o fallback pela posicao fisica, "posicao_atual" distinguia os dois
+    # caminhos; sem ele, so ha um caminho — o calculo canonico da metodologia.
     vta = vta_atual
-    vta_origem = "posicao_atual" if vta is not None else "indisponivel"
+    vta_origem = ORIGEM_VTA_CANONICA if vta is not None else ORIGEM_VTA_INDISPONIVEL
     resultado_incompleto = bool(
         vta is None
         or retroativo_reconhecido is None
@@ -311,7 +321,10 @@ def montar_resultado_consolidado(
     return {
         "vta": vta,
         "vta_origem": vta_origem,
-        "vta_usa_ultima_posicao": vta_origem == "ultima_posicao_disponivel",
+        # Compatibilidade: o fallback pela ultima posicao de abertura deixou de
+        # existir (VTA-U2, achado A), entao esta chave e sempre False. Mantida
+        # porque integra o contrato publico ja consumido por testes.
+        "vta_usa_ultima_posicao": False,
         "retroativo_reconhecido": retroativo_reconhecido,
         "valor_atualizado_em_analise": valor_em_analise,
         "retroativo_potencial": retroativo_potencial,

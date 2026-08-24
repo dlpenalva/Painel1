@@ -52,7 +52,7 @@ def test_caso_a_posicao_atual_valida_tem_precedencia_exclusiva():
     consolidado = montar_resultado_consolidado(resultado)
 
     assert consolidado["vta"] == 1_000.0
-    assert consolidado["vta_origem"] == "posicao_atual"
+    assert consolidado["vta_origem"] == "vta_canonico"
     assert consolidado["vta_usa_ultima_posicao"] is False
 
 
@@ -86,7 +86,7 @@ def test_caso_b2_posicao_atual_ausente_mas_vta_canonico_presente():
     )
 
     assert consolidado["vta"] == 1_000.0
-    assert consolidado["vta_origem"] == "posicao_atual"
+    assert consolidado["vta_origem"] == "vta_canonico"
     assert consolidado["vta_usa_ultima_posicao"] is False
 
 

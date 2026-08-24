@@ -23,7 +23,11 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from _resultado_consolidado import montar_resultado_consolidado  # noqa: E402
+from _resultado_consolidado import (  # noqa: E402
+    ORIGEM_VTA_CANONICA,
+    ORIGEM_VTA_INDISPONIVEL,
+    montar_resultado_consolidado,
+)
 
 # Caso Financeiro real de referencia.
 EXECUTADO = 7_300_890.27
@@ -178,6 +182,45 @@ def test_c2_sem_vta_canonico_nenhuma_referencia_assume_o_lugar():
     assert consolidado["vta"] is None
     assert consolidado["vta_origem"] == "indisponivel"
     assert consolidado["vta_usa_ultima_posicao"] is False
+
+
+def test_c1b_origem_do_vta_e_o_calculo_canonico_em_todo_metodo():
+    """VTA-U2.2: `vta_origem` diz de onde o valor VEM. Removido o fallback pela
+    posicao fisica, so existe um caminho — o calculo canonico da metodologia.
+    Nenhum metodo pode reportar "posicao_atual" nem "ultima_posicao_disponivel".
+    """
+    for modo, metodo in (("principal", "financeiro"), ("pc", "pc"),
+                         ("d", "consumidos")):
+        resultado = _resultado(VTA)
+        resultado["controle"] = {"modo": modo, "ciclo_vigente": "C3"}
+        resultado["memoria_por_ciclo"] = {"vta": {"metodo": metodo}}
+        consolidado = montar_resultado_consolidado(resultado)
+
+        assert consolidado["vta"] == VTA, modo
+        assert consolidado["vta_origem"] == ORIGEM_VTA_CANONICA, modo
+        assert consolidado["vta_origem"] not in (
+            "posicao_atual", "ultima_posicao_disponivel"
+        ), modo
+        assert consolidado["vta_usa_ultima_posicao"] is False, modo
+
+
+def test_c2b_origem_indisponivel_quando_nao_ha_vta_canonico():
+    consolidado = montar_resultado_consolidado(
+        _resultado(None, forma1=None, forma2=POSICAO_FISICA)
+    )
+    assert consolidado["vta_origem"] == ORIGEM_VTA_INDISPONIVEL
+
+
+def test_c2c_o_codigo_nao_produz_mais_as_origens_antigas():
+    """A taxonomia antiga nao pode voltar por outro caminho."""
+    fonte = _sem_comentarios(
+        (RAIZ / "_resultado_consolidado.py").read_text(encoding="utf-8")
+    )
+    trecho = fonte[fonte.index("vta_atual = resultado.get"):]
+    trecho = trecho[:trecho.index("resultado_incompleto")]
+    assert '"posicao_atual"' not in trecho
+    assert '"ultima_posicao_disponivel"' not in trecho
+    assert "ORIGEM_VTA_CANONICA" in trecho
 
 
 def test_c3_composicao_visivel_soma_exatamente_o_vta():
