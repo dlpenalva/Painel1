@@ -11,8 +11,8 @@ Protege, por leitura estrutural de formula (nao apenas SHA/contagem), que:
      selecionado (nunca fixo mencionando "Financeiro" para outro metodo);
   F. o bloco CONFERENCIA DA EXECUCAO nao apresenta numeros/titulo do
      Financeiro como oficiais quando o metodo != Financeiro;
-  G. ausencia de dado nunca vira zero (aparece "Sem historico fisico
-     suficiente"/"Nao
+  G. ausencia de dado nunca vira zero (aparece "Sem historico
+     quantitativo suficiente"/"Nao
      aplicavel ao metodo selecionado", nao 0);
   H. o endereco/nome definido VTA_FINAL continua apontando para B26;
   I. o template abre estruturalmente via openpyxl;
@@ -102,7 +102,7 @@ def test_g_ausencia_de_dado_nao_vira_zero(wb):
     res = wb["RESULTADOS"]
     for linha in range(73, 78):
         formula_c = str(res[f"C{linha}"].value)
-        assert "Sem historico fisico suficiente" in formula_c
+        assert "Sem historico quantitativo suficiente" in formula_c
         assert "Nao aplicavel ao metodo selecionado" in formula_c
         # nao pode haver um "senao 0" generico substituindo a comparacao.
         assert not formula_c.rstrip().endswith(",0)")
@@ -151,7 +151,7 @@ def test_g_c4_sempre_nao_comparavel_sem_checkpoint_de_fechamento(wb):
     formula_c4 = str(wb["RESULTADOS"]["C77"].value)
     assert formula_c4 == (
         '=IF(MEMORIA_RESULTADOS!$B$4<>"Financeiro",'
-        '"Nao aplicavel ao metodo selecionado","Sem historico fisico suficiente")'
+        '"Nao aplicavel ao metodo selecionado","Sem historico quantitativo suficiente")'
     )
 
 

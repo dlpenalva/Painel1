@@ -175,15 +175,74 @@ def test_a3_card_vta_oficial_aponta_para_a_saida_canonica(wb):
         assert not any(ch.isdigit() for ch in formula.replace("VTA_FINAL", ""))
 
 
-def test_a4_referencias_fisicas_preservadas_e_nunca_chamadas_de_vta(wb):
+def test_a4_referencias_fisicas_preservadas_mas_nao_apresentadas(wb):
+    """UX final: B10-B13 continuam no arquivo, nos mesmos enderecos que o
+    leitor Python usa (`_ler_referencias_vta`), mas as linhas ficam OCULTAS —
+    nenhuma referencia fisica concorre visualmente com o VTA."""
     res = wb["RESULTADOS"]
-    # valores preservados nas mesmas celulas
+    # formulas tecnicas preservadas nas mesmas celulas
     assert "MEMORIA_RESULTADOS!$W$50" in str(res["B10"].value)
     assert "MEMORIA_RESULTADOS!$W$48" in str(res["B11"].value)
-    for celula in ("A10", "A11"):
-        rotulo = str(res[celula].value)
-        assert rotulo.startswith("Referência auditável")
-        assert "VTA OFICIAL" not in rotulo.upper()
+    assert "comparativo_VTA!$B$208" in str(res["B12"].value)
+    assert "MEMORIA_RESULTADOS!$W$51" in str(res["B13"].value)
+    # e a apresentacao retirada
+    for linha in range(10, 14):
+        assert res.row_dimensions[linha].hidden is True
+        assert str(res[f"A{linha}"].value).startswith("[AUDITORIA INTERNA]")
+
+
+def _textos_visiveis(res) -> list[str]:
+    ocultas = {n for n, d in res.row_dimensions.items() if d.hidden}
+    return [
+        str(celula.value)
+        for linha in res.iter_rows(min_row=1, max_row=90, max_col=9)
+        for celula in linha
+        if celula.value is not None
+        and celula.row not in ocultas
+        and isinstance(celula.value, str)
+    ]
+
+
+def test_a5_area_principal_nao_tem_vta_alternativo(wb):
+    """Aceite visual B/C: nada visivel nas linhas 1-14 chama posicao fisica de
+    VTA nem a apresenta como referencia concorrente ao lado do VTA."""
+    res = wb["RESULTADOS"]
+    ocultas = {n for n, d in res.row_dimensions.items() if d.hidden}
+    principal = [
+        str(celula.value)
+        for linha in res.iter_rows(min_row=1, max_row=14, max_col=9)
+        for celula in linha
+        if isinstance(celula.value, str) and celula.row not in ocultas
+    ]
+    assert principal
+    for texto in principal:
+        alto = texto.upper()
+        assert "VTA OFICIAL — POSIÇÃO FÍSICA" not in alto
+        assert "VTA OFICIAL - POSICAO FISICA" not in alto
+        assert "REFERÊNCIA AUDITÁVEL" not in alto
+        assert "POSIÇÃO FÍSICA ATUAL" not in alto
+    # o card principal fala de uma unica grandeza
+    assert str(res["A4"].value) == "VTA OFICIAL"
+    assert res["A6"].value in (None, "")
+
+
+def test_a6_card_principal_tem_titulo_valor_e_status_do_vta(wb):
+    """Aceite visual A: o valor em destaque e exclusivamente VTA_FINAL."""
+    res = wb["RESULTADOS"]
+    assert str(res["A4"].value) == "VTA OFICIAL"
+    assert "VTA_FINAL" in str(res["C5"].value)
+    assert str(res["C4"].value) == "=$H$8"          # status especifico do VTA
+    assert "VTA_FINAL" in str(res["H8"].value)
+
+
+def test_a7_titulo_da_secao_1_enuncia_a_identidade_canonica(wb):
+    titulo = str(wb["RESULTADOS"]["A9"].value)
+    assert "Executado apurado" in titulo
+    assert "Ajustes ainda devidos" in titulo
+    assert "Remanescente atualizado" in titulo
+    assert "VTA Oficial" in titulo
+    assert "POSIÇÃO FÍSICA" not in titulo.upper()
+    assert "POSICAO FISICA" not in titulo.upper()
 
 
 # ------------------------------------- B. bloco didatico "COMO E FORMADO O VTA"
@@ -248,7 +307,7 @@ def test_c2_sem_base_a_diferenca_fica_vazia_e_o_status_explica(wb):
         diferenca = str(res[f"D{linha}"].value)
         assert f"NOT(ISNUMBER(C{linha}))" in diferenca
         assert '),"",' in diferenca  # sem base -> vazio, nunca zero
-        assert "Sem historico fisico para comparar" in str(res[f"E{linha}"].value)
+        assert "Sem dados quantitativos para comparar" in str(res[f"E{linha}"].value)
 
 
 def test_c3_conferencia_nao_alimenta_o_vta_oficial(wb):
