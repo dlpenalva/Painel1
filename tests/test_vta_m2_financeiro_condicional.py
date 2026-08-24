@@ -4,7 +4,9 @@ Protege, por leitura estrutural de formula (nao apenas SHA/contagem), que:
   A. o ramo Financeiro de B26 existe e usa a fonte financeira (D20);
   B. o ramo PC dentro de B26 permanece literalmente preservado;
   C. o ramo Itens/Consumido dentro de B26 permanece literalmente preservado;
-  D. B28 no Financeiro mantem a formula antiga como referencia comparativa;
+  D. B28 no Financeiro mantem B23 como referencia comparativa (a formula
+     ganhou o metodo "Itens" no OR pela VTA-C2, sem alterar o resultado
+     para Financeiro: quando $B$4="Financeiro", ambas retornam $B$23);
   E. o texto de metodologia em RESULTADOS e condicional ao metodo
      selecionado (nunca fixo mencionando "Financeiro" para outro metodo);
   F. o bloco CONFERENCIA DA EXECUCAO nao apresenta numeros/titulo do
@@ -33,7 +35,7 @@ _RAMO_ITENS_B26 = (
     'IF(OR(B23="",AND(B24<>"",NOT(ISNUMBER(B24)))),"",'
     'ROUND(B23+IF(ISNUMBER(B24),B24,0)+IF(ISNUMBER($N$263),$N$263,0),2))'
 )
-_B28_ESPERADO = '=IF($B$4="Financeiro",$B$23,$B$26)'
+_B28_ESPERADO = '=IF(OR($B$4="Financeiro",$B$4="Itens"),$B$23,$B$26)'
 
 
 @pytest.fixture(scope="module")
