@@ -14,6 +14,8 @@ retroativo 60), nunca do objeto produzido pelo motor.
 """
 from __future__ import annotations
 
+import copy
+import functools
 import io
 import os
 from datetime import date
@@ -48,6 +50,7 @@ def _dados_corte_c2() -> dict:
     }
 
 
+@functools.lru_cache(maxsize=None)
 def _workbook_pc(pago, *, extra_pcs=(), sem_remanescente=False) -> bytes:
     base = gerar_coleta_oficial_preenchida(_dados_corte_c2())
     wb = load_workbook(io.BytesIO(base))
@@ -78,13 +81,48 @@ def _workbook_pc(pago, *, extra_pcs=(), sem_remanescente=False) -> bytes:
     return buf.getvalue()
 
 
-def _leituras_variantes():
+@functools.lru_cache(maxsize=None)
+def _leituras_variantes_cache():
+    """Leitura pesada (openpyxl + parser v10) das 3 variantes canonicas de G.
+
+    Memoizada porque `test_retroativo_classificado_pela_coluna_g` e
+    `test_computa_vta_estrutural_independente_de_g` chamam esta mesma
+    combinacao (sem argumentos) para reprocessar exatamente os mesmos 3
+    workbooks — ver TEST-P1/TEST-P2A.
+    """
     return {g: ler_masterfile_v10(_workbook_pc(g)) for g in VARIANTES_G}
+
+
+def _leituras_variantes():
+    # Copia profunda: cada teste recebe seu proprio dict, sem risco de um
+    # teste mutar a leitura compartilhada e vazar estado para outro teste.
+    return copy.deepcopy(_leituras_variantes_cache())
 
 
 def _pc_registro(leitura):
     itens = (leitura.get("itens_pc_v10") or {}).get("itens") or []
     return next(i for i in itens if i.get("numero_pc") == "PC-001")
+
+
+# ---- 0 (TEST-P2A). Cache de leitura pesada nao vaza estado entre testes ----
+
+def test_leituras_variantes_cache_nao_vaza_estado_entre_chamadas():
+    """`_leituras_variantes()` e memoizada (TEST-P2A); prova que mutar o
+    dict recebido por uma chamada nao contamina chamadas seguintes nem o
+    workbook cacheado por `_workbook_pc`."""
+    primeira = _leituras_variantes()
+    _pc_registro(primeira["Sim"])["retroativo_reconhecido_a_pagar"] = -999999.0
+    primeira["itens_pc_v10_extra_marcador"] = "mutado"
+
+    segunda = _leituras_variantes()
+    assert "itens_pc_v10_extra_marcador" not in segunda
+    assert _pc_registro(segunda["Sim"])["retroativo_reconhecido_a_pagar"] == \
+        pytest.approx(60.0, abs=0.01)
+
+    # bytes de _workbook_pc sao imutaveis por natureza (cache seguro por
+    # identidade), mas confirmamos aqui que o conteudo cacheado continua
+    # gerando a mesma leitura, reforcando que nada foi corrompido.
+    assert ler_masterfile_v10(_workbook_pc("Sim")) == segunda["Sim"]
 
 
 # ---- 13. Nucleo economico: VTA e execucao identicos nas tres variantes ----
