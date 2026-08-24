@@ -316,14 +316,32 @@ def adaptar_coleta_reajuste_para_documentos(
     vta_python = _numero((memoria.get("vta") or {}).get("valor_total_atualizado"), None)
 
     valor_original = _numero(resultados["B20"].value)
-    retroativo = retroativo_python if retroativo_python is not None else _numero(retro_capacidade.get("valor"))
+    # VTA-C2 (item 12): no metodo Consumido, o retroativo por ciclo e apenas a
+    # decomposicao do reajuste ja contida na execucao atualizada — nao ha
+    # fonte independente de pagamento que sustente chama-lo de "reconhecido"/
+    # "a pagar". Nao propagar para valor_represado_a_pagar/delta_total (que
+    # alimentam resultado_consolidado.retroativo_reconhecido). O valor
+    # continua auditavel em memoria_por_ciclo.ciclos[].retroativo.consumidos.
+    if metodo_python == "consumidos":
+        retroativo = None
+    else:
+        retroativo = retroativo_python if retroativo_python is not None else _numero(retro_capacidade.get("valor"))
     rem_original = _numero(resultados["C35"].value)
     if int(residual_vigente.get("itens") or 0) > 0:
         rem_original = _numero(residual_vigente.get("valor_original"))
         rem_atualizado = _numero(residual_vigente.get("valor_atualizado"))
     else:
         rem_atualizado = _numero(rem_capacidade.get("valor"))
-    valor_total = vta_python if vta_python is not None else _numero(vta_capacidade.get("valor"))
+    # VTA-C2 (fail-closed): quando o metodo explicitamente configurado e
+    # Consumido e a cadeia canonica (memoria_por_ciclo/vta_python) nao produz
+    # evidencia suficiente, NAO cair para o valor cacheado de
+    # MEMORIA_RESULTADOS!B26 como se fosse um calculo Python independente —
+    # isso mascarava divergencias reais (Python=XLS so porque Python copiou
+    # o XLS). Os demais metodos preservam o fallback existente.
+    if metodo_python == "consumidos" and vta_python is None:
+        valor_total = None
+    else:
+        valor_total = vta_python if vta_python is not None else _numero(vta_capacidade.get("valor"))
     pago_total = float(df_financeiro["Valor pago/faturado"].sum()) if not df_financeiro.empty else 0.0
     devido_total = float(df_financeiro["Valor atualizado"].sum()) if not df_financeiro.empty else 0.0
     total_aditivos = float(df_aditivos["Valor do aditivo reajustado"].sum()) if not df_aditivos.empty else 0.0
@@ -331,7 +349,12 @@ def adaptar_coleta_reajuste_para_documentos(
     # Fatores historicos permanecem no detalhamento, mas nao escolhem o valor
     # documental pelo maior numero.
     fator_final = fatores.get(ciclo_vigente)
-    execucao_atualizada = valor_total - rem_atualizado
+    # VTA-C2: valor_total pode ser None (fail-closed do Consumido sem
+    # evidencia) — nao fabricar numero subtraindo de None.
+    execucao_atualizada = (
+        valor_total - rem_atualizado
+        if valor_total is not None and rem_atualizado is not None else None
+    )
 
     df_rem = pd.DataFrame(
         [{
@@ -388,7 +411,10 @@ def adaptar_coleta_reajuste_para_documentos(
         "valor_original_contrato": valor_original,
         "contexto_contratual_anterior": {},
         "valor_formalizado_anterior": valor_original,
-        "impacto_analise_atual": valor_total - valor_original,
+        "impacto_analise_atual": (
+            valor_total - valor_original
+            if valor_total is not None and valor_original is not None else None
+        ),
         "valor_pago_efetivo": pago_total,
         "total_pago_faturado": pago_total,
         "valor_teorico_calculado": devido_total,
@@ -397,7 +423,7 @@ def adaptar_coleta_reajuste_para_documentos(
         "delta_acumulado": retroativo,
         "valor_represado_a_pagar": retroativo,
         "valor_retroativo_estimado_itens_estoque": retroativo,
-        "retroativo_estimado_itens_estoque_disponivel": bool(abs(retroativo) > 0.004),
+        "retroativo_estimado_itens_estoque_disponivel": bool(retroativo is not None and abs(retroativo) > 0.004),
         "quantidade_meses_sem_efeito_financeiro": len(df_sem_efeito),
         "valor_total_sem_efeito_financeiro": (
             float(df_sem_efeito["Valor pago/faturado"].sum())

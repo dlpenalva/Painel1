@@ -175,7 +175,14 @@ ROOT = Path(__file__).resolve().parents[1]
 # execucao ja existentes em itens_Remanesc (AC/N/P/R para C0-C3, semantica
 # de par de checkpoints adjacentes apenas, sem encadeamento); C4 e sempre
 # NAO COMPARAVEL (sem checkpoint de fechamento nesta versao do schema).
-SHA256_TEMPLATE_ESPERADO = "dbd925e60fc6f16794e1cf1410c22a825ec80856278cb47a4441a4f4726be70f"
+# VTA-C2: SHA atualizado apos correcao do VTA Consumido no template
+# (F20/B26/B28/C33/D33 no ramo Itens + coluna auxiliar itens_Consumidos!V);
+# Financeiro e PC preservados byte-a-byte fora dessas celulas.
+# VTA-C2.1: SHA atualizado apos saneamento fail-closed do Consumido
+# (F20/coluna V/C33 fortalecidos contra zero-vira-None, item incompleto,
+# consumo sem valoracao e sobreconsumo). Contagem de formulas inalterada
+# (mesmas celulas, conteudo interno mais robusto).
+SHA256_TEMPLATE_ESPERADO = "a3e40c9c5dda6a84cae97b054800f8b1a72c9a01fc22f0653ff0b2e160236bb3"
 
 
 def _dados_calculadora() -> dict:

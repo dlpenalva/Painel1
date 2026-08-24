@@ -145,7 +145,16 @@ def avaliar_entrega_segura(
     if composicao.get("bloqueia_formalizacao"):
         bloqueios.append("A composição do valor contratual possui diferença material pendente.")
     posicao = leitura.get("posicao_contratual") or {}
-    if posicao.get("cache_ausente"):
+    # VTA-C2.2 (item 8-10): posicao_contratual e derivada de itens_Remanesc,
+    # sheet exclusiva de Financeiro/PC. No metodo Consumido ela e legitimamente
+    # vazia (nenhum item la), e "" cacheado pelo Excel real vira None no
+    # openpyxl (data_only) — indistinguivel de "nunca recalculado" pelo
+    # heuristico desta funcao. Provado empiricamente: um arquivo Consumido
+    # recalculado de fato no Excel real (CalculateFullRebuild) ainda acusa
+    # cache_ausente=True. Como o VTA canonico do Consumido nunca le
+    # posicao_contratual (fórmulas F20/C33/D33/B26 só leem itens_Consumidos),
+    # essa aba e inaplicavel ao metodo e sua ausencia nao pode bloquear.
+    if posicao.get("cache_ausente") and metodo != "consumidos":
         bloqueios.append(
             "A aba posicao_contratual não tem valores calculados: o arquivo não foi "
             "recalculado pelo Excel. Abra o XLS no Excel, salve e reenvie antes de "
