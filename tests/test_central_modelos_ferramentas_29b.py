@@ -337,7 +337,7 @@ def test_pagina14_ferramentas_presentes():
 
 def test_pagina14_itens_retirados_etapa47():
     # Etapa 47: os quatro itens deixaram de ser apresentados nesta seção.
-    # As páginas continuam existindo no repositório e registradas no app.
+    # Os arquivos continuam no repositório, mas suas rotas não são registradas.
     for removido in [
         "pages/07_Checklist_Processual.py", "pages/09_Infos_Previas.py",
         "pages/11_Cl8us_Orienta.py", "pages/03_Valor_Global.py",
