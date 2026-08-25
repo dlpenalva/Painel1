@@ -2228,13 +2228,16 @@ if res:
             "iniciam na competência do pedido."
             if efeito_financeiro_retardado else ""
         )
+        # O sufixo de dois espacos e o hard break do Markdown, identico ao das
+        # demais linhas deste relatorio. Fica embutido na string para nao
+        # deixar espaco em branco no fim da linha do arquivo fonte.
         linha_pedido = (
             f"**{ciclo_label}:** Não houve pedido da contratada neste ciclo."
             if sem_pedido
             else f"**{ciclo_label}:** Pedido realizado em {dt_solic.strftime('%d/%m/%Y')}."
-        )
+        ) + "  "
         relatorio_simples = f"""
-        {linha_pedido}  
+        {linha_pedido}
         Período de apuração do índice: {janela_str}.  
         Janela de Admissibilidade (90 dias): {janela_adm_str}.  
         Resultado: {situacao_aplicada}.  
