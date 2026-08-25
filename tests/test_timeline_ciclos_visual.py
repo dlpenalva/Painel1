@@ -216,7 +216,7 @@ def test_efeitos_financeiros_em_linha_propria_quando_pedido_difere_do_inicio():
         for linha in df.value.to_dict("records")
         if "Ciclo" in linha and "Data do pedido" in linha
     }
-    assert resumo["C1"]["Início financeiro"] == "01/12/2023"
+    assert resumo["C1"]["Início financeiro"] == "12/2023"
 
 
 # ------------------------------------------------------ relacao pedido x ciclo
@@ -269,13 +269,13 @@ def test_data_base_de_referencia_nao_aparece_no_bloco_do_ciclo():
     ("pedido", "referencia_exata", "competencia", "situacao", "proxima"),
     (
         # A — pedido na elegibilidade: a regua mostra 05/05/2026, nao 01/05/2026
-        (date(2026, 5, 5),  "05/05/2026", "01/05/2026", "✅ TEMPESTIVO",  "05/05/2027"),
+        (date(2026, 5, 5),  "05/05/2026", "05/2026", "✅ TEMPESTIVO",  "05/05/2027"),
         # B — tempestivo posterior no mesmo mes: data exata do pedido
-        (date(2026, 5, 25), "25/05/2026", "01/05/2026", "✅ TEMPESTIVO",  "25/05/2027"),
+        (date(2026, 5, 25), "25/05/2026", "05/2026", "✅ TEMPESTIVO",  "25/05/2027"),
         # C — ADIANTADO: o efeito so nasce da elegibilidade, nao do pedido
-        (date(2026, 4, 20), "05/05/2026", "01/05/2026", "⚠️ ADIANTADO",  "05/05/2027"),
+        (date(2026, 4, 20), "05/05/2026", "05/2026", "⚠️ ADIANTADO",  "05/05/2027"),
         # D — TEMPESTIVO*: data exata 15/06/2026 com competencia 06/2026
-        (date(2026, 6, 15), "15/06/2026", "01/06/2026", "✅ TEMPESTIVO*", "15/06/2027"),
+        (date(2026, 6, 15), "15/06/2026", "06/2026", "✅ TEMPESTIVO*", "15/06/2027"),
     ),
 )
 def test_regua_mostra_referencia_exata_do_efeito_e_preserva_a_competencia(
@@ -301,7 +301,7 @@ def test_regua_mostra_referencia_exata_do_efeito_e_preserva_a_competencia(
         for linha in df.value.to_dict("records")
         if "Ciclo" in linha and "Data do pedido" in linha
     }
-    # (4) a competencia mensal do motor/XLS continua exatamente como antes
+    # (4) a competência do motor/XLS permanece; só a apresentação omite o dia
     assert resumo["C1"]["Início financeiro"] == competencia
     # (5) classificacao e proxima elegibilidade inalteradas
     assert resumo["C1"]["Situação preliminar"] == situacao
@@ -380,7 +380,7 @@ def test_marcador_do_pedido_nao_altera_o_que_o_motor_produziu():
     }
     assert resumo["C1"]["Situação preliminar"] == "⚠️ ADIANTADO"
     assert resumo["C1"]["Data do pedido"] == "10/05/2023"
-    assert resumo["C1"]["Início financeiro"] == "01/10/2023"
+    assert resumo["C1"]["Início financeiro"] == "10/2023"
     # a antecipacao nao antecipa a anualidade seguinte
     assert resumo["C1"]["Referência exata"] == "10/10/2023"
     assert resumo["C2"]["Referência exata"] == "10/10/2024"
@@ -467,7 +467,7 @@ def test_resultados_calculados_permanecem_intactos():
     assert linhas, "resumo pre-processamento nao encontrado"
     por_ciclo = {linha["Ciclo"]: linha for linha in linhas}
     assert por_ciclo["C1"]["Data do pedido"] == "10/10/2023"
-    assert por_ciclo["C1"]["Início financeiro"] == "01/10/2023"
+    assert por_ciclo["C1"]["Início financeiro"] == "10/2023"
     assert "TEMPESTIVO" in por_ciclo["C1"]["Situação preliminar"]
     assert por_ciclo["C2"]["Data do pedido"] == "10/10/2024"
-    assert por_ciclo["C2"]["Início financeiro"] == "01/10/2024"
+    assert por_ciclo["C2"]["Início financeiro"] == "10/2024"

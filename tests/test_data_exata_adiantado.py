@@ -115,9 +115,9 @@ def test_fluxo_real_multiciclo_exibe_e_propaga_as_referencias_exatas():
     ]
     assert resumo[1]["Situação preliminar"] == "⚠️ ADIANTADO"
     assert [linha["Início financeiro"] for linha in resumo] == [
-        "01/08/2024",
-        "01/08/2025",
-        "01/08/2026",
+        "08/2024",
+        "08/2025",
+        "08/2026",
     ]
 
 
@@ -234,15 +234,15 @@ def _rodar_dois_ciclos(data_lateral, pedido, chave_pedido, com_aptas=False):
         # Tempestivo: a data exata do pedido vira a data-base do ciclo seguinte,
         # enquanto o efeito financeiro fica na competencia (dia 1).
         (date(2022, 10, 10), date(2023, 10, 20), "p1_20231010",
-         "✅ TEMPESTIVO", "01/10/2023", "20/10/2023"),
+         "✅ TEMPESTIVO", "10/2023", "20/10/2023"),
         (date(2024, 8, 23), date(2025, 8, 30), "p1_20250823",
-         "✅ TEMPESTIVO", "01/08/2025", "30/08/2025"),
+         "✅ TEMPESTIVO", "08/2025", "30/08/2025"),
         # Tempestivo*: idem, sem contaminar o retardo dos efeitos financeiros.
         (date(2024, 8, 23), date(2025, 10, 15), "p1_20250823",
-         "✅ TEMPESTIVO*", "01/10/2025", "15/10/2025"),
+         "✅ TEMPESTIVO*", "10/2025", "15/10/2025"),
         # Adiantado: a cadeia exata NAO e antecipada — preserva a referencia.
         (date(2024, 8, 23), date(2025, 8, 1), "p1_20250823",
-         "⚠️ ADIANTADO", "01/08/2025", "23/08/2025"),
+         "⚠️ ADIANTADO", "08/2025", "23/08/2025"),
     ],
 )
 def test_data_base_do_ciclo_seguinte_vem_da_cadeia_exata(
@@ -256,7 +256,7 @@ def test_data_base_do_ciclo_seguinte_vem_da_cadeia_exata(
     assert resumo[0]["Início financeiro"] == inicio_financeiro
     # A data-base exata jamais e o primeiro dia da competencia financeira.
     if situacao != "⚠️ ADIANTADO":
-        assert blocos[1] != inicio_financeiro
+        assert blocos[1] != f"01/{inicio_financeiro}"
 
 
 def test_adiantado_nao_antecipa_a_referencia_apta_seguinte():
@@ -294,15 +294,15 @@ def _resumo_referencia_23_08_2025(pedido):
     [
         # Adiantado (mes anterior, mesmo mes e vespera): a antecipacao do
         # pedido nunca antecipa a referencia do ciclo seguinte.
-        (date(2025, 7, 15), "⚠️ ADIANTADO", "01/08/2025", "23/08/2026"),
-        (date(2025, 8, 1), "⚠️ ADIANTADO", "01/08/2025", "23/08/2026"),
-        (date(2025, 8, 22), "⚠️ ADIANTADO", "01/08/2025", "23/08/2026"),
+        (date(2025, 7, 15), "⚠️ ADIANTADO", "08/2025", "23/08/2026"),
+        (date(2025, 8, 1), "⚠️ ADIANTADO", "08/2025", "23/08/2026"),
+        (date(2025, 8, 22), "⚠️ ADIANTADO", "08/2025", "23/08/2026"),
         # Tempestivo: a data efetiva do pedido alimenta o ciclo seguinte.
-        (date(2025, 8, 23), "✅ TEMPESTIVO", "01/08/2025", "23/08/2026"),
-        (date(2025, 8, 30), "✅ TEMPESTIVO", "01/08/2025", "30/08/2026"),
+        (date(2025, 8, 23), "✅ TEMPESTIVO", "08/2025", "23/08/2026"),
+        (date(2025, 8, 30), "✅ TEMPESTIVO", "08/2025", "30/08/2026"),
         # Tempestivo*: idem, preservando o retardo dos efeitos financeiros.
-        (date(2025, 9, 1), "✅ TEMPESTIVO*", "01/09/2025", "01/09/2026"),
-        (date(2025, 10, 15), "✅ TEMPESTIVO*", "01/10/2025", "15/10/2026"),
+        (date(2025, 9, 1), "✅ TEMPESTIVO*", "09/2025", "01/09/2026"),
+        (date(2025, 10, 15), "✅ TEMPESTIVO*", "10/2025", "15/10/2026"),
     ],
 )
 def test_referencia_seguinte_so_e_alimentada_por_pedido_tempestivo(
@@ -344,7 +344,7 @@ def test_etapa45_b_adiantado_nao_antecipa_a_elegibilidade_do_c2():
     assert aptas[1] == "05/05/2027"
     assert resumo[1]["Referência exata"] == "05/05/2027"
     # o efeito financeiro permanece na competencia da elegibilidade
-    assert resumo[0]["Início financeiro"] == "01/05/2026"
+    assert resumo[0]["Início financeiro"] == "05/2026"
 
 
 def test_etapa45_b2_adiantado_no_mesmo_mes_continua_adiantado():
@@ -365,7 +365,7 @@ def test_etapa45_c_tempestivo_asterisco_separa_data_exata_e_competencia():
     # data juridica exata preservada como data-base do ciclo seguinte...
     assert bases[1] == "15/06/2026"
     # ...competencia financeira mensalizada em 06/2026...
-    assert resumo[0]["Início financeiro"] == "01/06/2026"
+    assert resumo[0]["Início financeiro"] == "06/2026"
     # ...e a proxima elegibilidade nasce 12 meses apos a data exata.
     assert aptas[1] == "15/06/2027"
     assert resumo[1]["Referência exata"] == "15/06/2027"
@@ -433,7 +433,7 @@ def test_etapa46_a_acordo_preserva_o_dia_pactuado_na_elegibilidade_seguinte():
     )
     assert resumo[0]["Situação preliminar"] == "❌ PRECLUSO"
     # cadeia financeira: mensalizada, exatamente como antes
-    assert resumo[0]["Início financeiro"] == "01/08/2023"
+    assert resumo[0]["Início financeiro"] == "08/2023"
     # cadeia exata: dia pactuado preservado no ciclo seguinte
     assert bases[1] == "18/08/2023"
     assert aptas[1] == "18/08/2024"
@@ -452,7 +452,7 @@ def test_etapa46_b_campo_nao_alterado_tambem_preserva_o_dia_exato():
         date(2022, 1, 1), date(2023, 4, 12), "p1_20230101"
     )
     assert resumo[0]["Situação preliminar"] == "❌ PRECLUSO"
-    assert resumo[0]["Início financeiro"] == "01/04/2023"
+    assert resumo[0]["Início financeiro"] == "04/2023"
     assert bases[1] == "12/04/2023"
     assert aptas[1] == "12/04/2024"
     assert resumo[1]["Referência exata"] == "12/04/2024"
@@ -489,7 +489,7 @@ def test_etapa46_acordo_nao_altera_classificacao_nem_competencia():
     for campo in campos_do_c1:
         assert com_acordo[0][campo] == sem_acordo[0][campo], campo
     # a competencia do C1 nasce da data pactuada e permanece mensalizada
-    assert com_acordo[0]["Início financeiro"] == "01/08/2023"
+    assert com_acordo[0]["Início financeiro"] == "08/2023"
 
 
 def test_etapa46_percentual_do_acordo_continua_vindo_do_campo_negocial():

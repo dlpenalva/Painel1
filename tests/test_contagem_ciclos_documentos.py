@@ -188,7 +188,7 @@ def documento_cenario_real():
 def test_cenario_real_declara_um_unico_ciclo(documento_cenario_real):
     linhas = _quadro_1(documento_cenario_real)
     assert [linha[0] for linha in linhas] == ["C1"]
-    assert linhas[0][4] == "A partir de 01/04/2026"
+    assert linhas[0][4] == "A partir de 04/2026"
     assert linhas[0][5] == "3,08%"
 
 

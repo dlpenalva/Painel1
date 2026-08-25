@@ -35,9 +35,10 @@ def test_parametros_coluna_i_integrada_ao_quadro(wb):
     assert i1.font.bold and i1.font.size == 10
     assert i1.font.color.rgb == "FFFFFFFF"
     assert i1.border.left.style == "thin" and i1.border.bottom.style == "thin"
-    # Corpo com o padrao do quadro (copiado de H2:H6, incluindo formato de data).
+    # Corpo com o padrao do quadro; H é competência e I preserva data exata.
     assert ws["I3"].fill.fgColor.rgb == "FFEDEDED"
-    assert ws["I3"].number_format == ws["H3"].number_format == "dd/mm/yyyy;@"
+    assert ws["H3"].number_format == "mm/yyyy;@"
+    assert ws["I3"].number_format == "dd/mm/yyyy;@"
     assert ws["I2"].border.left.style == "thin"
 
 

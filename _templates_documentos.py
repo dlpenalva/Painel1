@@ -18,6 +18,7 @@ Interface publica:
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from io import BytesIO
 from typing import Any
 
@@ -562,13 +563,26 @@ def _indice_doc(dados: dict) -> str | None:
     return _indice_amigavel_doc((dados.get("identificacao") or {}).get("indice"))
 
 
+def _formatar_competencia(valor: Any) -> str | None:
+    """Converte uma data já apurada para mm/aaaa, sem alterar o valor-fonte."""
+    texto = str(valor or "").strip()
+    if not texto or texto == NAO_INFORMADO:
+        return None
+    for formato, tamanho in (("%d/%m/%Y", 10), ("%Y-%m-%d", 10), ("%m/%Y", 7)):
+        try:
+            return datetime.strptime(texto[:tamanho], formato).strftime("%m/%Y")
+        except ValueError:
+            continue
+    return None
+
+
 def _efeito_financeiro_ciclo(c: dict) -> str:
     """Frase administrativa de efeitos financeiros de um ciclo."""
     situacao = remover_emojis_leve(c.get("situacao") or "").strip().lower()
-    inicio = str(c.get("inicio_efeito_financeiro") or "").strip()
+    inicio = _formatar_competencia(c.get("inicio_efeito_financeiro"))
     if "preclu" in situacao:
         return "Sem efeitos financeiros"
-    if inicio and inicio != NAO_INFORMADO and "/" in inicio:
+    if inicio:
         return f"A partir de {inicio}"
     return NAO_INFORMADO
 
@@ -625,8 +639,8 @@ def _frase_perda_efeitos(c: dict, *, nomear_ciclo: bool) -> str | None:
     competencias = _competencias_sem_efeito(c)
     if not competencias:
         return None
-    inicio = str(c.get("inicio_efeito_financeiro") or "").strip()
-    if not inicio or inicio == NAO_INFORMADO or "/" not in inicio:
+    inicio = _formatar_competencia(c.get("inicio_efeito_financeiro"))
+    if not inicio:
         return None
     ciclo = remover_emojis_leve(c.get("ciclo") or "").strip()
     referencia = f"do ciclo {ciclo}" if (nomear_ciclo and ciclo) else "deste ciclo"

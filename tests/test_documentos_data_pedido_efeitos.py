@@ -123,7 +123,7 @@ def test_quadro1_preserva_as_demais_colunas():
     ]
     linha = next(r for r in tabela.rows if r.cells[0].text == "C2")
     assert linha.cells[1].text == "01/05/2025"
-    assert linha.cells[4].text == "A partir de 01/08/2025"
+    assert linha.cells[4].text == "A partir de 08/2025"
 
 
 def test_gerador_grava_e_leitor_recupera_data_pedido():
@@ -170,7 +170,7 @@ def test_perda_de_duas_competencias_e_declarada_no_saneador():
     )
     assert (
         "Em razão da data do pedido, os efeitos financeiros do reajuste deste "
-        "ciclo iniciam-se em 01/04/2025, não alcançando as competências de "
+        "ciclo iniciam-se em 04/2025, não alcançando as competências de "
         "fevereiro e março de 2025." in texto
     )
 
@@ -203,7 +203,7 @@ def test_somente_o_ciclo_afetado_recebe_o_texto():
     )
     assert (
         "os efeitos financeiros do reajuste do ciclo C2 iniciam-se em "
-        "01/08/2025, não alcançando as competências de maio, junho e julho "
+        "08/2025, não alcançando as competências de maio, junho e julho "
         "de 2025." in texto
     )
     assert "do ciclo C1 iniciam-se" not in texto

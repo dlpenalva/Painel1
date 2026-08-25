@@ -1050,6 +1050,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         fmt_input_date = workbook.add_format({'num_format': 'dd/mm/yyyy', 'bg_color': '#FFF2CC', 'border': 1})
         fmt_date = workbook.add_format({'num_format': 'dd/mm/yyyy', 'border': 1})
         fmt_date_no_border = workbook.add_format({'num_format': 'dd/mm/yyyy'})
+        fmt_competencia_no_border = workbook.add_format({'num_format': 'mm/yyyy'})
         fmt_input_num = workbook.add_format({'num_format': '#,##0.00', 'bg_color': '#FFF2CC', 'border': 1})
         fmt_input_money = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#FFF2CC', 'border': 1})
         fmt_input_no_border = workbook.add_format({'bg_color': '#FFF2CC'})
@@ -1085,6 +1086,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         fmt_gap_text = workbook.add_format({'border': 1, 'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'align': 'center'})
         fmt_gap_text_wrap = workbook.add_format({'border': 1, 'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'text_wrap': True, 'valign': 'top'})
         fmt_gap_date_no_border = workbook.add_format({'num_format': 'dd/mm/yyyy', 'bg_color': '#F4CCCC', 'font_color': '#9C0006'})
+        fmt_gap_competencia_no_border = workbook.add_format({'num_format': 'mm/yyyy', 'bg_color': '#F4CCCC', 'font_color': '#9C0006'})
         fmt_gap_text_no_border = workbook.add_format({'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'align': 'center'})
         fmt_gap_text_wrap_no_border = workbook.add_format({'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'text_wrap': True, 'valign': 'top'})
         fmt_gap_input_money = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'border': 1})
@@ -1362,7 +1364,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             meses_sem_efeito = int(df_ciclos.iloc[row-1].get('Meses sem efeito financeiro', 0) or 0)
             inicio_financeiro_excel = pd.to_datetime(df_ciclos.iloc[row-1].get('Início financeiro', ''), dayfirst=True, errors='coerce')
             if pd.notna(inicio_financeiro_excel):
-                ws.write_datetime(row, 5, inicio_financeiro_excel.to_pydatetime(), fmt_gap_date_no_border if meses_sem_efeito > 0 else fmt_date_no_border)
+                ws.write_datetime(row, 5, inicio_financeiro_excel.to_pydatetime(), fmt_gap_competencia_no_border if meses_sem_efeito > 0 else fmt_competencia_no_border)
             elif meses_sem_efeito > 0:
                 ws.write(row, 5, df_ciclos.iloc[row-1].get('Início financeiro', ''), fmt_gap_text_no_border)
             if meses_sem_efeito > 0:
@@ -2514,7 +2516,7 @@ for dados_ciclo in input_ciclos:
         'Ciclo': f"C{numero_ciclo}",
         'Referência exata': data_base_ciclo.strftime('%d/%m/%Y') if hasattr(data_base_ciclo, 'strftime') else '',
         'Data do pedido': data_pedido_ciclo.strftime('%d/%m/%Y') if hasattr(data_pedido_ciclo, 'strftime') else '',
-        'Início financeiro': inicio_financeiro_ciclo.strftime('%d/%m/%Y') if hasattr(inicio_financeiro_ciclo, 'strftime') else 'Sem efeitos financeiros automáticos',
+        'Início financeiro': inicio_financeiro_ciclo.strftime('%m/%Y') if hasattr(inicio_financeiro_ciclo, 'strftime') else 'Sem efeitos financeiros automáticos',
         'Situação preliminar': dados_ciclo.get('sit_emoji', ''),
         'Objeto da análise atual': 'Sim',
     })
@@ -2721,7 +2723,7 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
                 "Pedido": dt_ped.strftime('%d/%m/%Y'),
                 "Janela": janela_ciclo,
                 "JanelaAdm": janela_adm,
-                    "Início financeiro": inicio_efeito_financeiro.strftime('%d/%m/%Y') if inicio_efeito_financeiro else "",
+                    "Início financeiro": inicio_efeito_financeiro.strftime('%m/%Y') if inicio_efeito_financeiro else "",
                     "Ciclo negativo": "Sim" if ciclo_negativo else "Não",
                 })
             else:

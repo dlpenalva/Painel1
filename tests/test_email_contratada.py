@@ -14,12 +14,38 @@ import pytest
 
 from _email_contratada import (
     ASSUNTO_EMAIL_CONTRATADA,
+    _competencia_mm_aaaa,
+    _situacao_efeito,
     gerar_rascunho_email_contratada,
     montar_txt_download,
 )
 from _sanitizacao_documental import contem_emoji
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+@pytest.mark.parametrize(
+    ("entrada", "esperado"),
+    [
+        ("2026-02-13", "02/2026"),
+        ("2026-02-13T00:00:00", "02/2026"),
+        ("13/02/2026", "02/2026"),
+        ("02/2026", "02/2026"),
+        ("31/02/2026", None),
+        ("2026-02-31", None),
+        ("99/02/2026", None),
+        ("13/99/2026", None),
+    ],
+)
+def test_competencia_valida_calendario_real(entrada, esperado):
+    assert _competencia_mm_aaaa(entrada) == esperado
+
+
+def test_data_invalida_mantem_efeitos_pendentes_de_definicao():
+    assert _situacao_efeito({
+        "situacao_aplicada": "Tempestivo",
+        "financeiro_inicio": "31/02/2026",
+    }) == "tempestivo, efeitos financeiros pendentes de definição"
 
 
 def _sem_valores_financeiros(corpo: str) -> None:
@@ -47,8 +73,9 @@ def test_um_ciclo_tempestivo_com_data():
     assert assunto == ASSUNTO_EMAIL_CONTRATADA
     assert "Contrato CT-99/2026" in corpo
     assert corpo.count("• Ciclo") == 1
-    assert "• Ciclo 1: 3,27% – tempestivo, com efeitos financeiros a partir de 13/02/2026." in corpo
-    assert re.search(r"\b13/02/2026\b", corpo)  # dd/mm/aaaa
+    assert "• Ciclo 1: 3,27% – tempestivo, com efeitos financeiros a partir de 02/2026." in corpo
+    assert re.search(r"\b02/2026\b", corpo)
+    assert "13/02/2026" not in corpo
     assert "ICTI (Ipeadata)" in corpo
     _sem_valores_financeiros(corpo)
     assert not contem_emoji(corpo)
@@ -72,7 +99,7 @@ def test_varios_ciclos_precluso_e_tempestivo():
     assert corpo.count("• Ciclo") == 3          # C0 ignorado
     assert "• Ciclo 1: 0,00% – precluso, sem efeitos financeiros;" in corpo
     assert "• Ciclo 2: 4,31% – precluso, sem efeitos financeiros;" in corpo
-    assert "• Ciclo 3: 3,27% – tempestivo, com efeitos financeiros a partir de 13/02/2026." in corpo
+    assert "• Ciclo 3: 3,27% – tempestivo, com efeitos financeiros a partir de 02/2026." in corpo
     assert "IPCA" in corpo
     assert "433" not in corpo
     _sem_valores_financeiros(corpo)
