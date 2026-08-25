@@ -47,15 +47,39 @@ NOME_DOWNLOAD_COLETA = "Coleta_Reajuste.xlsx"
 
 
 def nome_download_coleta(dados_admissibilidade=None):
-    """Nome user-facing do download com a data corrente em Brasilia.
+    """Nome user-facing com ciclos, indice e data corrente em Brasilia.
 
-    O argumento e mantido por compatibilidade com os chamadores existentes,
-    mas o nome independe dos ciclos, do indice e dos parametros da analise.
-    Esta funcao altera apenas o `file_name`: os bytes e o processamento do
-    XLSX nao dependem dela.
+    Preserva os ciclos e o indice canonico da analise e acrescenta a data ao
+    final: Coleta_Reajuste_C1_C2_IPCA_DD-MM-AAAA.xlsx. Sem ciclos recuperaveis,
+    retorna Coleta_Reajuste_DD-MM-AAAA.xlsx. Esta funcao altera apenas o
+    `file_name`: os bytes e o processamento do XLSX nao dependem dela.
     """
+    from _reajuste_utils import ciclos_da_analise
+
     data_brasilia = datetime.now(FUSO_BRASILIA).strftime("%d-%m-%Y")
-    return f"Coleta_Reajuste_{data_brasilia}.xlsx"
+    base, _, extensao = NOME_DOWNLOAD_COLETA.rpartition(".")
+    try:
+        ciclos = ciclos_da_analise(dados_admissibilidade)
+    except Exception:
+        ciclos = ()
+    if not ciclos:
+        return f"{base}_{data_brasilia}.{extensao}"
+
+    partes = [base, "_".join(f"C{numero}" for numero in ciclos)]
+    indice = str((dados_admissibilidade or {}).get("indice") or "").strip().upper()
+    indice_sem_hifen = indice.replace("-", "")
+    if indice.startswith("IST"):
+        partes.append("IST")
+    elif indice.startswith("ICTI"):
+        partes.append("ICTI")
+    elif indice.startswith("IPCA"):
+        partes.append("IPCA")
+    elif indice_sem_hifen.startswith("IGPM"):
+        partes.append("IGPM")
+    elif indice.startswith("INPC"):
+        partes.append("INPC")
+    partes.append(data_brasilia)
+    return f"{'_'.join(partes)}.{extensao}"
 
 # Ordem oficial das abas do novo modelo. CICLO_EM_EXECUCAO e acrescentada em
 # runtime (sem versionar outro binario XLSX) e as demais continuam tendo o
