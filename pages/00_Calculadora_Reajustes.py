@@ -3,7 +3,7 @@
 A HOME nao repete a navegacao do menu lateral: ela apresenta o fluxo de tres
 etapas, destaca o Arquivo Coleta Oficial e devolve o usuario ao menu. O unico
 controle interativo e o download da Coleta, que reutiliza exatamente a mesma
-origem ja usada antes (gerar_coleta_oficial_preenchida + NOME_DOWNLOAD_COLETA).
+origem ja usada antes (gerar_coleta_oficial_preenchida + nome_download_coleta).
 
 Todo HTML injetado e montado como UMA string sem indentacao e sem linha em
 branco: indentacao dentro de st.markdown faz o CommonMark do Streamlit fechar o
@@ -14,11 +14,11 @@ import streamlit as st
 
 from _coleta_oficial import (
     NOME_ARQUIVO_COLETA_OFICIAL,
-    NOME_DOWNLOAD_COLETA,
     TEMPLATE_COLETA_OFICIAL,
     assinatura_codigo_coleta,
     assinatura_template_coleta,
     gerar_coleta_oficial_preenchida,
+    nome_download_coleta,
 )
 from _ui_utils import _header_data_uri
 
@@ -244,7 +244,7 @@ with coluna_coleta:
         st.download_button(
             "Baixar Arquivo Coleta Oficial",
             data=_ler_modelo(assinatura_template_coleta(), assinatura_codigo_coleta()),
-            file_name=NOME_DOWNLOAD_COLETA,
+            file_name=nome_download_coleta(),
             mime=MIME_XLSX,
             type="primary",
             use_container_width=False,

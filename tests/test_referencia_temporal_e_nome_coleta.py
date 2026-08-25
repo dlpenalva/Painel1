@@ -6,8 +6,8 @@ Duas melhorias isoladas do fluxo da Calculadora:
    do PRIMEIRO ciclo abrangido pela analise, exibido apenas para
    C2 ou superior. NAO e o periodo de efeitos financeiros do ciclo anterior —
    o ciclo anterior pode ter sido pedido com atraso;
-2. nome do arquivo no download com os ciclos apurados e o indice canonico,
-   inclusive quando ha ciclo precluso.
+2. nome do arquivo no download com a data corrente no fuso de Brasilia,
+   independente dos ciclos, indice e demais parametros da analise.
 
 Nada aqui toca motor, admissibilidade, datas apuradas, indices, fatores,
 resultados ou o conteudo do XLSX.
@@ -19,7 +19,9 @@ import io
 import sys
 import unittest
 import zipfile
+from datetime import datetime
 from pathlib import Path
+from unittest.mock import patch
 
 from openpyxl import load_workbook
 
@@ -35,6 +37,7 @@ from _coleta_oficial import (  # noqa: E402
     nome_download_coleta,
 )
 from _reajuste_utils import (  # noqa: E402
+    FUSO_BRASILIA,
     ciclos_da_analise,
     numero_do_ciclo,
     referencia_temporal_anterior,
@@ -174,53 +177,35 @@ class TestNomeDownloadColeta(unittest.TestCase):
     def test_nome_base_preservado(self):
         self.assertEqual(NOME_DOWNLOAD_COLETA, "Coleta_Reajuste.xlsx")
 
-    def test_cenarios_manuais_de_nome(self):
-        self.assertEqual(nome_download_coleta(SO_C1), "Coleta_Reajuste_C1_IPCA.xlsx")
-        self.assertEqual(nome_download_coleta(SO_C2), "Coleta_Reajuste_C2_IPCA.xlsx")
-        self.assertEqual(nome_download_coleta(SO_C3), "Coleta_Reajuste_C3_IPCA.xlsx")
-        self.assertEqual(nome_download_coleta(C1_C2), "Coleta_Reajuste_C1_C2_IPCA.xlsx")
-        self.assertEqual(nome_download_coleta(C2_C3), "Coleta_Reajuste_C2_C3_IPCA.xlsx")
+    def test_formato_exato_e_fuso_de_brasilia(self):
+        with patch("_coleta_oficial.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 8, 25, 12, 0, tzinfo=FUSO_BRASILIA)
+            self.assertEqual(nome_download_coleta(), "Coleta_Reajuste_25-08-2026.xlsx")
+            datetime_mock.now.assert_called_once_with(FUSO_BRASILIA)
 
-    def test_sufixo_canonico_dos_cinco_indices(self):
-        casos = {
-            "IST (Anatel)": "IST",
-            "ICTI (Ipeadata)": "ICTI",
-            "IPCA (433)": "IPCA",
-            "IGP-M (189)": "IGPM",
-            "INPC (188)": "INPC",
-        }
-        for indice, sufixo in casos.items():
-            with self.subTest(indice=indice):
-                dados = {**C1_C2, "indice": indice}
-                self.assertEqual(
-                    nome_download_coleta(dados),
-                    f"Coleta_Reajuste_C1_C2_{sufixo}.xlsx",
-                )
+    def test_dia_e_mes_usam_zero_a_esquerda(self):
+        with patch("_coleta_oficial.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 2, 5, 12, 0, tzinfo=FUSO_BRASILIA)
+            self.assertEqual(nome_download_coleta(), "Coleta_Reajuste_05-02-2026.xlsx")
 
-    def test_igpm_sem_hifen_tambem_e_reconhecido(self):
-        dados = {**SO_C1, "indice": "IGPM (189)"}
-        self.assertEqual(nome_download_coleta(dados), "Coleta_Reajuste_C1_IGPM.xlsx")
-
-    def test_precluso_entra_no_nome_sem_marcar_situacao(self):
-        nome = nome_download_coleta(COM_PRECLUSO)
-        self.assertEqual(nome, "Coleta_Reajuste_C2_C3_IPCA.xlsx")
-        for proibido in ("precluso", "Precluso", "tempestivo", "Tempestivo"):
-            self.assertNotIn(proibido, nome)
-
-    def test_fallback_mantem_o_nome_atual(self):
-        for entrada in (None, {}, {"ciclos": []}, {"ciclos": [{"ciclo": "-"}]}, "lixo"):
-            self.assertEqual(nome_download_coleta(entrada), NOME_DOWNLOAD_COLETA, entrada)
-
-    def test_indice_ausente_ou_desconhecido_preserva_nome_anterior_com_ciclos(self):
-        for indice in (None, "", "Indice nao catalogado"):
-            with self.subTest(indice=indice):
-                dados = {**C2_C3, "indice": indice}
-                self.assertEqual(nome_download_coleta(dados), "Coleta_Reajuste_C2_C3.xlsx")
-
-    def test_sempre_xlsx_e_sem_ciclo_repetido(self):
-        dados = _dados(_ciclo("C4", "01/02/2027"), _ciclo("C4", "01/02/2027"),
-                       _ciclo("C2", "01/02/2025"))
-        self.assertEqual(nome_download_coleta(dados), "Coleta_Reajuste_C2_C4_IPCA.xlsx")
+    def test_nome_independe_de_ciclos_indice_metodo_e_parametros(self):
+        entradas = (
+            None,
+            {},
+            SO_C1,
+            C1_C2,
+            COM_PRECLUSO,
+            {**C2_C3, "indice": "IGP-M (189)", "metodo": "Financeiro"},
+            "lixo",
+        )
+        with patch("_coleta_oficial.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 8, 25, 12, 0, tzinfo=FUSO_BRASILIA)
+            for entrada in entradas:
+                with self.subTest(entrada=entrada):
+                    self.assertEqual(
+                        nome_download_coleta(entrada),
+                        "Coleta_Reajuste_25-08-2026.xlsx",
+                    )
 
     def test_nao_altera_os_dados_da_analise(self):
         antes = repr(C2_C3)
@@ -365,11 +350,9 @@ class TestXlsxIntacto(unittest.TestCase):
 
     def test_conteudo_da_coleta_independe_do_nome_do_arquivo(self):
         antes = gerar_coleta_oficial_preenchida(XLSX_C2_C3)
-        self.assertEqual(nome_download_coleta(XLSX_C2_C3), "Coleta_Reajuste_C2_C3_IPCA.xlsx")
+        nome_download_coleta(XLSX_C2_C3)
         self.assertIsNotNone(referencia_temporal_anterior(XLSX_C2_C3))
         depois = gerar_coleta_oficial_preenchida(XLSX_C2_C3)
-        # Bytes brutos nunca coincidem: o zip carimba a hora de cada membro.
-        # O que precisa ser identico e o conteudo (partes OOXML).
         self.assertEqual(_partes_xlsx(antes), _partes_xlsx(depois))
 
     def test_abas_preservadas_na_ordem_oficial(self):
@@ -382,19 +365,19 @@ class TestFiacaoNasPaginas(unittest.TestCase):
     MULTIPLO = (ROOT / "pages" / "02_Calculo_Represados.py").read_text(encoding="utf-8")
     UPLOAD = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
     INICIO = (ROOT / "pages" / "00_Calculadora_Reajustes.py").read_text(encoding="utf-8")
+    CENTRAL = (ROOT / "pages" / "14_Central_Modelos_Ferramentas.py").read_text(encoding="utf-8")
 
-    def test_paginas_de_download_usam_o_nome_com_ciclos(self):
-        for fonte in (self.SIMPLES, self.MULTIPLO, self.UPLOAD):
+    def test_quatro_downloads_usam_o_helper_canonico(self):
+        for fonte in (self.INICIO, self.SIMPLES, self.MULTIPLO, self.CENTRAL):
             self.assertIn("nome_download_coleta(", fonte)
             self.assertNotIn("file_name=NOME_DOWNLOAD_COLETA", fonte)
         # Simples calcula o nome em variavel (padrao de _bytes_coleta_estavel).
         self.assertIn("file_name=_nome_coleta_estavel", self.SIMPLES)
         self.assertIn("file_name=nome_download_coleta(", self.MULTIPLO)
-        self.assertIn("file_name=nome_download_coleta(", self.UPLOAD)
+        self.assertIn("file_name=nome_download_coleta(", self.CENTRAL)
 
-    def test_download_do_modelo_em_branco_mantem_o_nome_atual(self):
-        # Pagina inicial entrega o modelo sem analise: fallback preservado.
-        self.assertIn("file_name=NOME_DOWNLOAD_COLETA", self.INICIO)
+    def test_download_do_modelo_em_branco_usa_o_nome_datado(self):
+        self.assertIn("file_name=nome_download_coleta()", self.INICIO)
 
     def test_bloco_renderizado_apos_a_analise_e_antes_do_download(self):
         for fonte in (self.SIMPLES, self.MULTIPLO):
