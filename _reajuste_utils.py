@@ -183,8 +183,48 @@ def _formatar_data(valor):
         return str(valor)
 
 
+# --- Ciclo sem pedido da contratada -----------------------------------------
+# Ha ciclos em que a CONTRATADA simplesmente NAO apresentou pedido. Ate aqui a
+# unica forma de registrar isso era digitar uma data ficticia, o que produzia
+# documento falso ("a CONTRATADA apresentou pedido em ..."). O estado passa a
+# ser declarado no proprio rotulo de situacao, com parametros!DATA_PEDIDO (U)
+# vazia — sem coluna nova e sem data inventada.
+#
+# Triestado resultante na releitura do XLS:
+#   1. U preenchida .................. houve pedido, com data real;
+#   2. U vazia + marcador em G ....... nao houve pedido;
+#   3. U vazia sem marcador .......... nao informado / arquivo legado.
+# A deteccao privilegia o marcador em G: U vazia, sozinha, NUNCA significa
+# "nao houve pedido".
+# ATENCAO ao alterar o texto: _objeto_processo_reajuste._termo_neutro_objeto
+# neutraliza vocabulario sensivel em TODA string que chega aos documentos
+# (CONTRATADA -> BASE, FISCAL -> ENTRADA XLS, EMPRESA -> ORIGEM, ...). O
+# marcador NAO pode conter nenhuma dessas palavras, sob pena de chegar
+# adulterado ao Sumario, ao Saneador e ao Termo.
+MARCADOR_SEM_PEDIDO = "SEM PEDIDO NESTE CICLO"
+
+# Situacao persistida em parametros!G. Mantem PRECLUSO como PREFIXO (ha
+# consumidor documental que testa startswith("TEMPESTIVO")) e reutiliza o
+# separador " | " ja empregado no rotulo composto de ciclo negativo.
+SITUACAO_SEM_PEDIDO = f"❌ PRECLUSO | {MARCADOR_SEM_PEDIDO}"
+
+
+def tem_sem_pedido(situacao):
+    """True quando a situacao declara que nao houve pedido da contratada.
+
+    Normaliza acentuacao, caixa e espacos com o helper ja existente do modulo.
+    Emojis nao atrapalham: o marcador e texto puro e a busca e por substring.
+    """
+    return _texto_normalizado(MARCADOR_SEM_PEDIDO) in _texto_normalizado(situacao)
+
+
 def classificar_pedido_por_data_exata(data_pedido, data_referencia_exata, data_limite):
-    """Classifica o pedido pela referencia juridica exata, sem regra mensal."""
+    """Classifica o pedido pela referencia juridica exata, sem regra mensal.
+
+    Vocabulario fechado e inalterado: ADIANTADO | TEMPESTIVO | PRECLUSO.
+    NAO recebe data_pedido None — o ciclo sem pedido e desviado antes da
+    chamada e assume PRECLUSO diretamente (ver MARCADOR_SEM_PEDIDO).
+    """
     if data_pedido < data_referencia_exata:
         return "ADIANTADO"
     if data_pedido <= data_limite:

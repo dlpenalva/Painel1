@@ -28,11 +28,15 @@ from _objeto_processo_reajuste import (
     montar_objeto_processo_reajuste,
     obter_objeto_processo_reajuste,
 )
-from _reajuste_utils import gerado_em_brasilia
+from _reajuste_utils import gerado_em_brasilia, tem_sem_pedido
 from _reconciliacao_xls_python import campos_nao_confiaveis_para_documentos
 
 NAO_INFORMADO = "Não informado"
 NAO_APLICAVEL = "Não aplicável"
+# Ciclo em que a CONTRATADA nao apresentou pedido: e um FATO apurado, distinto
+# da ausencia de informacao. O rotulo abaixo nunca pode ser trocado por
+# "Nao informado", por marcador de preenchimento manual ou por data alguma.
+NAO_HOUVE_PEDIDO = "Não houve pedido"
 
 # Etapa 5b: quando ha divergencia relevante XLS x Python, o campo divergente e
 # seus dependentes diretos NAO sao exibidos (nem XLS nem Python sao adotados);
@@ -400,9 +404,16 @@ def _montar_secao_ciclos(
             # na falta dela, a data gravada em parametros!DATA_PEDIDO pelo
             # gerador. Sem nenhuma das duas, o campo sai vazio e cada documento
             # aplica a sua politica de ausencia.
-            "data_pedido": _fmt_data(
-                pedidos.get(nome) if pedidos.get(nome) is not None
-                else reg.get("data_pedido")
+            # Triestado da data do pedido: marcador em SITUACAO vence (o ciclo
+            # nao teve pedido); na sequencia, a identificacao explicita do
+            # chamador; depois parametros!DATA_PEDIDO. Ausencia sem marcador
+            # continua sendo ausencia — nunca vira "nao houve pedido".
+            "data_pedido": (
+                NAO_HOUVE_PEDIDO if tem_sem_pedido(reg.get("situacao"))
+                else _fmt_data(
+                    pedidos.get(nome) if pedidos.get(nome) is not None
+                    else reg.get("data_pedido")
+                )
             ),
             # Apresentacao documental: inicio real do efeito financeiro do ciclo
             # (INICIO_EFEITO_FINANCEIRO). Nunca cai para data_inicio por conveniencia.

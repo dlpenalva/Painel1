@@ -30,6 +30,7 @@ from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
 
 from _sumario_executivo import (
+    NAO_HOUVE_PEDIDO,
     NAO_INFORMADO,
     formatar_moeda,
     montar_dados_sumario_executivo,
@@ -40,6 +41,7 @@ from _reajuste_utils import (
     FRASE_SEM_CICLOS_COMPUTADOS,
     expressao_quantidade_ciclos,
     gerado_em_brasilia,
+    tem_sem_pedido,
 )
 from _sanitizacao_documental import remover_emojis_leve
 
@@ -576,6 +578,27 @@ def _formatar_competencia(valor: Any) -> str | None:
     return None
 
 
+def _sem_pedido_ciclo(c: dict) -> bool:
+    """Ciclo em que a CONTRATADA nao apresentou pedido.
+
+    Fonte unica: o marcador gravado na propria SITUACAO do ciclo. Data de
+    pedido ausente, sozinha, NAO caracteriza "nao houve pedido" — continua
+    sendo ausencia de informacao (legado), e a redacao de ausencia atual segue
+    valendo para esse caso.
+    """
+    return tem_sem_pedido(c.get("situacao"))
+
+
+def _data_pedido_documental(c: dict) -> str:
+    """Data do pedido para uso em texto corrido; vazia quando nao ha data real."""
+    if _sem_pedido_ciclo(c):
+        return ""
+    texto = str(c.get("data_pedido") or "").strip()
+    if texto in ("", NAO_INFORMADO, NAO_HOUVE_PEDIDO):
+        return ""
+    return texto
+
+
 def _efeito_financeiro_ciclo(c: dict) -> str:
     """Frase administrativa de efeitos financeiros de um ciclo."""
     situacao = remover_emojis_leve(c.get("situacao") or "").strip().lower()
@@ -932,30 +955,40 @@ def _ta_considerandos(doc: Document, dados: dict, cm: dict) -> None:
         tempestiva = bool(situacoes) and all(
             situacao.startswith("TEMPESTIVO") for situacao in situacoes
         )
-        datas = {
-            str(c.get("data_pedido") or "").strip()
-            for c in ciclos
-            if str(c.get("data_pedido") or "").strip()
-            not in ("", NAO_INFORMADO)
-        }
-        data_canonica = next(iter(datas)) if len(datas) == 1 else None
-        _adicionar_run(
-            p3,
-            "A solicitação tempestiva da CONTRATADA, de " if tempestiva
-            else "A solicitação da CONTRATADA, de ",
-        )
-        _texto_ou_marcador(
-            p3,
-            data_canonica or _campo(cm, "solicitacao_data"),
-            "Data da solicitacao da contratada",
-        )
-        _adicionar_run(p3, ", instruída em ")
-        _texto_ou_marcador(
-            p3,
-            _campo(cm, "solicitacao_ref"),
-            "Referencia documental da solicitacao da contratada",
-        )
-        _adicionar_run(p3, ";")
+        # Nenhum ciclo computado teve pedido: nao se pode afirmar solicitacao
+        # que nao existiu. Caso misto mantem a redacao ordinaria — a
+        # solicitacao existiu para parte dos ciclos, e o Quadro 1 discrimina.
+        if ciclos and all(_sem_pedido_ciclo(c) for c in ciclos):
+            _adicionar_run(
+                p3,
+                "A inexistência de pedido da CONTRATADA para os ciclos "
+                "analisados, que permanecem preclusos, sem efeitos "
+                "financeiros;",
+            )
+        else:
+            datas = {
+                _data_pedido_documental(c)
+                for c in ciclos
+                if _data_pedido_documental(c)
+            }
+            data_canonica = next(iter(datas)) if len(datas) == 1 else None
+            _adicionar_run(
+                p3,
+                "A solicitação tempestiva da CONTRATADA, de " if tempestiva
+                else "A solicitação da CONTRATADA, de ",
+            )
+            _texto_ou_marcador(
+                p3,
+                data_canonica or _campo(cm, "solicitacao_data"),
+                "Data da solicitacao da contratada",
+            )
+            _adicionar_run(p3, ", instruída em ")
+            _texto_ou_marcador(
+                p3,
+                _campo(cm, "solicitacao_ref"),
+                "Referencia documental da solicitacao da contratada",
+            )
+            _adicionar_run(p3, ";")
 
     p4 = item("4")
     _adicionar_run(p4,
@@ -1532,22 +1565,48 @@ def _ds_secao2_pedido_parametros(doc: Document, dados: dict, cm: dict) -> None:
             "Os parâmetros da análise deverão constar do Quadro 1.",
         )
     else:
-        _adicionar_run(p, "A CONTRATADA apresentou pedido de ")
-        _adicionar_run(p, tipo or "atualização contratual")
-        if len(ciclos) == 1:
-            _adicionar_run(p, " em ")
-            pedido = ciclos[0].get("data_pedido")
-            if pedido and pedido != NAO_INFORMADO:
-                _adicionar_run(p, pedido)
+        # Nenhum ciclo relevante teve pedido: o documento NAO pode afirmar
+        # pedido inexistente nem apontar referencia documental de um pleito
+        # que nao houve. Caso misto segue a redacao ordinaria, e o Quadro 1
+        # discrimina ciclo a ciclo.
+        sem_pedido_todos = bool(ciclos) and all(_sem_pedido_ciclo(c) for c in ciclos)
+        if sem_pedido_todos:
+            rotulos = [
+                remover_emojis_leve(c.get("ciclo") or "").strip()
+                for c in ciclos
+            ]
+            rotulos = [r for r in rotulos if r]
+            _adicionar_run(p, "Não houve pedido da CONTRATADA para ")
+            if len(ciclos) == 1:
+                _adicionar_run(
+                    p,
+                    f"o ciclo {rotulos[0]}" if rotulos else "o ciclo analisado",
+                )
+                _adicionar_run(p, ", que permanece precluso, sem efeitos financeiros")
             else:
-                _run_campo_manual(p, "Data do pedido")
-        elif ciclos:
-            _adicionar_run(p, " nas datas indicadas no Quadro 1")
+                _adicionar_run(
+                    p,
+                    f"os ciclos {', '.join(rotulos)}" if rotulos
+                    else "os ciclos analisados",
+                )
+                _adicionar_run(p, ", que permanecem preclusos, sem efeitos financeiros")
         else:
-            _adicionar_run(p, " em ")
-            _run_campo_manual(p, "Data do pedido")
-        _adicionar_run(p, ", conforme ")
-        _texto_ou_marcador(p, _campo(cm, "processo_pleito"), "Referencia do pedido")
+            _adicionar_run(p, "A CONTRATADA apresentou pedido de ")
+            _adicionar_run(p, tipo or "atualização contratual")
+            if len(ciclos) == 1:
+                _adicionar_run(p, " em ")
+                pedido = _data_pedido_documental(ciclos[0])
+                if pedido:
+                    _adicionar_run(p, pedido)
+                else:
+                    _run_campo_manual(p, "Data do pedido")
+            elif ciclos:
+                _adicionar_run(p, " nas datas indicadas no Quadro 1")
+            else:
+                _adicionar_run(p, " em ")
+                _run_campo_manual(p, "Data do pedido")
+            _adicionar_run(p, ", conforme ")
+            _texto_ou_marcador(p, _campo(cm, "processo_pleito"), "Referencia do pedido")
         if not ciclos:
             _adicionar_run(
                 p,
@@ -1565,7 +1624,11 @@ def _ds_secao2_pedido_parametros(doc: Document, dados: dict, cm: dict) -> None:
                 _adicionar_run(p, indice)
             else:
                 _run_campo_manual(p, "Indice ou referencia economica")
-            _adicionar_run(p, " e classificou o pedido como ")
+            _adicionar_run(
+                p,
+                " e classificou o ciclo como " if _sem_pedido_ciclo(ciclo)
+                else " e classificou o pedido como ",
+            )
             situacao = ciclo.get("situacao")
             if situacao and situacao != NAO_INFORMADO:
                 _adicionar_run(p, remover_emojis_leve(situacao))

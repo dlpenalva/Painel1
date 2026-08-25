@@ -52,6 +52,7 @@ from _reajuste_utils import (
     _formatar_moeda_br,
     _formatar_moeda_br_md,
     _parse_moeda_br,
+    SITUACAO_SEM_PEDIDO,
     classificar_pedido_por_data_exata,
 )
 from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, gerar_coleta_oficial_preenchida, nome_download_coleta
@@ -1944,14 +1945,37 @@ default_dt_base = datetime(2023, 8, 2)
 col1, col2 = st.columns(2)
 with col1:
     dt_base = st.date_input(f"Data-base/âncora do {ciclo_label}:", value=default_dt_base, format="DD/MM/YYYY")
-    dt_solic = st.date_input("Data do Pedido:", value=datetime(2024, 4, 9), format="DD/MM/YYYY")
+    # Ciclo sem pedido: o campo de data e desabilitado e a data efetiva usada
+    # no processamento passa a ser None. A leitura do estado vem do
+    # session_state para que o widget de data ja renderize desabilitado.
+    sem_pedido = bool(st.session_state.get("sem_pedido_contratada_simples", False))
+    dt_solic = st.date_input(
+        "Data do Pedido:",
+        value=datetime(2024, 4, 9),
+        format="DD/MM/YYYY",
+        disabled=sem_pedido,
+    )
+    sem_pedido = st.checkbox(
+        "Não houve pedido da contratada neste ciclo",
+        value=sem_pedido,
+        key="sem_pedido_contratada_simples",
+        help=(
+            "Marque quando a CONTRATADA nao apresentou pedido para este ciclo. "
+            "Nenhuma data e registrada: o ciclo fica precluso, sem efeitos "
+            "financeiros, e os documentos deixam de afirmar pedido inexistente."
+        ),
+    )
+    # Data EFETIVA do processamento. Marcado o checkbox, a data eventualmente
+    # deixada no widget nao governa nenhum calculo.
+    dt_pedido_efetiva = None if sem_pedido else dt_solic
 with col2:
     tipo_idx = render_indice_contrato_selectbox(key="indice_fluxo_unico")
 
 chave_analise_simples = (
     ciclo_label,
     dt_base.isoformat(),
-    dt_solic.isoformat(),
+    "" if dt_pedido_efetiva is None else dt_pedido_efetiva.isoformat(),
+    bool(sem_pedido),
     tipo_idx,
 )
 
@@ -1963,7 +1987,7 @@ if st.session_state.get("chave_analise_simples_processada") != chave_analise_sim
     st.stop()
 
 data_hoje = datetime.now(ZoneInfo("America/Sao_Paulo")).date()
-data_pedido_cmp = _data_para_date_segura(dt_solic)
+data_pedido_cmp = _data_para_date_segura(dt_pedido_efetiva)
 if data_pedido_cmp and data_pedido_cmp > data_hoje:
     st.error(f"Processamento inviável: a data do pedido informada no {ciclo_label} é futura em relação à data atual.")
     st.warning("A Calculadora processa apenas pedidos já apresentados. Revise a data do pedido antes de prosseguir.")
@@ -1976,7 +2000,12 @@ dt_limite = dt_aniv + relativedelta(days=90)
 
 # Regra de Admissibilidade (DATA EXATA do pedido x janela de 90 dias).
 # Antecipacao tem uma unica classificacao, inclusive dentro do mesmo mes.
-situacao_pedido = classificar_pedido_por_data_exata(dt_solic, dt_aniv, dt_limite)
+# Ciclo sem pedido nao passa pelo classificador (que exige data): assume
+# PRECLUSO diretamente, com o mesmo efeito juridico-financeiro ja consolidado.
+if sem_pedido:
+    situacao_pedido = "PRECLUSO"
+else:
+    situacao_pedido = classificar_pedido_por_data_exata(dt_solic, dt_aniv, dt_limite)
 if situacao_pedido == "ADIANTADO":
     status_ped = "⚠️ ADIANTADO"
 elif situacao_pedido == "TEMPESTIVO":
@@ -1989,7 +2018,8 @@ else:
 # pedido. Distinção de APRESENTAÇÃO: internamente o status jurídico segue
 # TEMPESTIVO (nenhum motor ou fórmula depende do asterisco).
 efeito_financeiro_retardado = bool(
-    status_ped == "✅ TEMPESTIVO"
+    not sem_pedido
+    and status_ped == "✅ TEMPESTIVO"
     and (dt_solic.year, dt_solic.month) > (dt_aniv.year, dt_aniv.month)
 )
 if efeito_financeiro_retardado:
@@ -2044,7 +2074,19 @@ if res:
         )
         situacao_aplicada = f"{status_ped} | 🔻 CICLO NEGATIVO (APLICADO 0,00%)"
 
-    if "PRECLUSO" in status_ped.upper():
+    if sem_pedido:
+        # Nao houve pedido: nao ha pedido precluso a ser admitido por acordo,
+        # logo o expander de superacao negocial NAO aparece. O efeito
+        # financeiro e o mesmo ja consolidado para o PRECLUSO sem acordo.
+        percentual_aplicado = 0.0
+        fator_ciclo_efetivo = 1.0
+        situacao_aplicada = SITUACAO_SEM_PEDIDO
+        st.warning(
+            "Registrado que não houve pedido da contratada neste ciclo. "
+            "O ciclo permanece precluso, sem efeitos financeiros, e nenhuma "
+            "data de pedido é gravada."
+        )
+    elif "PRECLUSO" in status_ped.upper():
         st.warning(
             "O ciclo foi classificado automaticamente como precluso. "
             "Caso exista decisão negocial fundamentada na cláusula contratual aplicável, "
@@ -2186,8 +2228,13 @@ if res:
             "iniciam na competência do pedido."
             if efeito_financeiro_retardado else ""
         )
+        linha_pedido = (
+            f"**{ciclo_label}:** Não houve pedido da contratada neste ciclo."
+            if sem_pedido
+            else f"**{ciclo_label}:** Pedido realizado em {dt_solic.strftime('%d/%m/%Y')}."
+        )
         relatorio_simples = f"""
-        **{ciclo_label}:** Pedido realizado em {dt_solic.strftime('%d/%m/%Y')}.  
+        {linha_pedido}  
         Período de apuração do índice: {janela_str}.  
         Janela de Admissibilidade (90 dias): {janela_adm_str}.  
         Resultado: {situacao_aplicada}.  
@@ -2222,7 +2269,8 @@ if res:
         'data_base': dt_base.strftime('%d/%m/%Y'),
         'intervalo_indice': janela_str,
         'janela_admissibilidade': janela_adm_str,
-        'data_pedido': dt_solic.strftime('%d/%m/%Y'),
+        'data_pedido': '' if sem_pedido else dt_solic.strftime('%d/%m/%Y'),
+        'sem_pedido_contratada': bool(sem_pedido),
         'situacao': situacao_aplicada,
         'situacao_automatica': situacao_automatica,
         'situacao_aplicada': situacao_aplicada,
