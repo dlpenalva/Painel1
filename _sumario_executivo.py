@@ -122,6 +122,9 @@ def montar_dados_sumario_executivo(
             objeto, metodologia, memoria_calculo, identificacao
         ),
         "sintese": sintese,
+        # Composicao canonica do VTA (motor de composicao), ja pronta para
+        # formatacao. O renderer nao conhece nenhuma formula do VTA.
+        "composicao_vta": _montar_composicao_vta(dados_op, sintese),
         "ciclos": ciclos_sec,
         "financeiro": financeiro_sec,
         "itens": _montar_secao_itens(memoria_ciclo, parametros),
@@ -373,6 +376,71 @@ def _montar_sintese(
         "situacao_processo": decisao.get("situacao_processo"),
         "resumo_executivo": decisao.get("resumo_executivo"),
         "justificativa_metodologia": metodologia.get("justificativa"),
+    }
+
+
+ROTULO_TOTAL_VTA = "Valor Total Atualizado — VTA"
+
+
+def _montar_composicao_vta(
+    dados_op: dict[str, Any], sintese: dict[str, Any]
+) -> dict[str, Any]:
+    """Composicao canonica do VTA pronta para apresentacao — nunca calculo.
+
+    Nao compoe, nao reconstroi e nao estima VTA: apenas EXPOE as linhas que o
+    motor de composicao (`_motor_composicao_vta.montar_composicao_vta`) ja
+    produziu e que viajam no objeto do processo em
+    `dados_operacionais.composicao_vta`. Cada metodo entra com a sua propria
+    semantica — Financeiro: "Executado apurado" + "Ajustes ainda devidos" +
+    "Remanescente atualizado"; PC e Consumido: execucao por ciclo + saldo (e
+    aditivos computaveis, quando houver). Nenhuma linha e criada, renomeada ou
+    somada para uniformizar visualmente os metodos.
+
+    Fail-closed. A tabela so fica exibivel quando:
+      * ha composicao disponivel e sem bloqueio de formalizacao;
+      * toda linha traz descricao e valor atualizado numericos;
+      * a soma das linhas fecha, ao centavo, com o MESMO VTA que o documento
+        ja apresenta (`sintese["vta"]`) e com o total do proprio motor.
+    Fora disso a secao nao aparece e o PDF segue exibindo somente o VTA total,
+    exatamente como antes.
+    """
+    comp = dados_op.get("composicao_vta") or {}
+    indisponivel = {
+        "exibivel": False,
+        "metodo": comp.get("metodo"),
+        "componentes": [],
+        "total": None,
+    }
+    vta = _num_ou_none(sintese.get("vta"))
+    if vta is None or not comp.get("disponivel"):
+        return indisponivel
+    if comp.get("bloqueia_formalizacao"):
+        return indisponivel
+
+    componentes: list[dict[str, Any]] = []
+    for linha in comp.get("linhas") or []:
+        if not isinstance(linha, dict):
+            return indisponivel
+        descricao = str(linha.get("descricao") or "").strip()
+        valor = _num_ou_none(linha.get("valor_atualizado"))
+        if not descricao or valor is None:
+            return indisponivel
+        componentes.append({"descricao": descricao, "valor": round(valor, 2)})
+    if not componentes:
+        return indisponivel
+
+    vta_arredondado = round(float(vta), 2)
+    if round(sum(c["valor"] for c in componentes), 2) != vta_arredondado:
+        return indisponivel
+    total_motor = _num_ou_none(comp.get("vta_composicao"))
+    if total_motor is None or round(total_motor, 2) != vta_arredondado:
+        return indisponivel
+
+    return {
+        "exibivel": True,
+        "metodo": comp.get("metodo"),
+        "componentes": componentes,
+        "total": vta_arredondado,
     }
 
 
@@ -880,6 +948,14 @@ def _estilos_pdf() -> dict[str, Any]:
         "normal": ParagraphStyle("normal", **base),
         "celula": ParagraphStyle("celula", **base),
         "celula_dir": ParagraphStyle("celula_dir", alignment=TA_RIGHT, **base),
+        "total": ParagraphStyle(
+            "total", fontName="Helvetica-Bold", fontSize=8.5, leading=11.5,
+            textColor=_COR_TEXTO,
+        ),
+        "total_dir": ParagraphStyle(
+            "total_dir", fontName="Helvetica-Bold", fontSize=8.5, leading=11.5,
+            textColor=_COR_TEXTO, alignment=TA_RIGHT,
+        ),
         "cabecalho_tabela": ParagraphStyle(
             "cabecalho_tabela", fontName="Helvetica-Bold", fontSize=8.5,
             leading=11, textColor="#FFFFFF", alignment=TA_LEFT,
@@ -937,12 +1013,18 @@ def _tabela(
     *,
     permitir_quebra: bool = True,
     alturas: list[float] | None = None,
+    linha_total: bool = False,
 ) -> Any:
-    """LongTable com cabecalho repetido nas quebras de pagina."""
+    """LongTable com cabecalho repetido nas quebras de pagina.
+
+    `linha_total` destaca a ultima linha (negrito e fundo suave) para quadros
+    cuja ultima linha e o total — destaque discreto, sem exagero grafico.
+    """
     from reportlab.lib import colors
     from reportlab.platypus import LongTable, Paragraph, Table, TableStyle
 
     direita = alinhamentos_direita or set()
+    ultima = len(linhas) - 1
     corpo: list[list[Any]] = []
     for i, linha in enumerate(linhas):
         conv: list[Any] = []
@@ -951,6 +1033,8 @@ def _tabela(
                 estilo = estilos[
                     "cabecalho_tabela_dir" if j in direita else "cabecalho_tabela"
                 ]
+            elif linha_total and i == ultima:
+                estilo = estilos["total_dir" if j in direita else "total"]
             else:
                 estilo = estilos["celula_dir" if j in direita else "celula"]
             conv.append(Paragraph(_escapar(celula), estilo))
@@ -975,6 +1059,13 @@ def _tabela(
         ("TOPPADDING", (0, 0), (-1, -1), 2.5),
         ("BOTTOMPADDING", (0, 0), (-1, -1), 2.5),
     ]))
+    if linha_total and ultima > 0:
+        tabela.setStyle(TableStyle([
+            ("BACKGROUND", (0, ultima), (-1, ultima),
+             colors.HexColor(_COR_FUNDO_ALT)),
+            ("LINEABOVE", (0, ultima), (-1, ultima), 0.9,
+             colors.HexColor(_COR_AZUL)),
+        ]))
     return tabela
 
 
@@ -1028,14 +1119,39 @@ def _bloco_sintese(historia, dados, estilos) -> None:
         variacao_txt += f" (referência {sintese.get('ciclo_referencia_acumulado')})"
     # Etapa 26H: as linhas de estado do retroativo e situacao do processo e a
     # conclusao (resumo executivo) foram retiradas do PDF por requisito.
+    composicao = dados.get("composicao_vta") or {}
+    detalhar_vta = bool(composicao.get("exibivel"))
     linhas = [
         ["Indicador", "Valor"],
         ["Método aplicável", _texto_ou_nao_informado(sintese.get("metodo_vta"))],
-        ["Valor total atualizado (VTA)", vta_txt],
+    ]
+    if not detalhar_vta:
+        # Sem composicao conciliada, o VTA continua sendo apresentado aqui,
+        # exatamente como antes.
+        linhas.append(["Valor total atualizado (VTA)", vta_txt])
+    linhas += [
         ["Variação acumulada", variacao_txt],
         ["Retroativo total", formatar_moeda(sintese.get("retroativo_total"))],
     ]
     historia.append(_tabela(linhas, [largura * 0.34, largura * 0.66], estilos))
+    if detalhar_vta:
+        # O VTA aparece UMA unica vez: como total do quadro que o compoe.
+        historia.append(_paragrafo(
+            "Composição do Valor Total Atualizado — VTA", estilos["subsecao"],
+        ))
+        linhas_composicao = [["Componente", "Valor"]]
+        for componente in composicao.get("componentes") or []:
+            linhas_composicao.append([
+                componente.get("descricao"),
+                formatar_moeda(componente.get("valor")),
+            ])
+        linhas_composicao.append([
+            ROTULO_TOTAL_VTA, formatar_moeda(composicao.get("total")),
+        ])
+        historia.append(_tabela(
+            linhas_composicao, [largura * 0.62, largura * 0.38], estilos,
+            alinhamentos_direita={1}, linha_total=True,
+        ))
 
 
 def _bloco_ciclos(historia, dados, estilos) -> None:

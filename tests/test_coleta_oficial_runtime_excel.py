@@ -459,7 +459,7 @@ def test_excel_com_efeito_c_override_persiste_vta_nominal_sem_duplicar_aviso(tmp
     assert persistido["financeiro"][f"F{row}"].value == pytest.approx(0.0, abs=0.01)
     persistido.close()
     resultado, diagnostico = processar_coleta_oficial_runtime(caminho.read_bytes())
-    avisos = [a for a in diagnostico["avisos"] if "ajustada manualmente" in a]
+    avisos = [a for a in diagnostico["avisos"] if "ajustado manualmente" in a]
     assert resultado["valor_represado_a_pagar"] == pytest.approx(0.0, abs=0.01)
     conferencia = next(
         item for item in resultado["memoria_por_ciclo"]["conferencias_metodologicas"]

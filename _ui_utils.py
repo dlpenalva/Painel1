@@ -14,7 +14,7 @@ MESES_PT_EXTENSO = {
     "set": "setembro", "out": "outubro", "nov": "novembro", "dez": "dezembro",
 }
 
-PREFIXO_AVISO_OVERRIDE_EFEITO_FINANCEIRO = "Marcacao de efeito financeiro ajustada manualmente:"
+PREFIXO_AVISO_OVERRIDE_EFEITO_FINANCEIRO = "Efeito financeiro ajustado manualmente:"
 
 
 def render_avisos_override_efeito_financeiro(diagnostico):
