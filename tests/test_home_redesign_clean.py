@@ -50,7 +50,7 @@ def test_download_da_coleta_permanece_a_mesma_origem():
     # Nenhuma geracao nova de XLSX: a HOME segue chamando a fonte unica.
     assert "gerar_coleta_oficial_preenchida" in INICIO
     assert "assinatura_template_coleta" in INICIO
-    assert "file_name=NOME_DOWNLOAD_COLETA" in INICIO
+    assert "file_name=nome_download_coleta()" in INICIO
     assert 'key="download_coleta_inicio"' in INICIO
     assert "TEMPLATE_COLETA_OFICIAL.exists()" in INICIO
 

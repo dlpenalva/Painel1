@@ -36,6 +36,7 @@ from openpyxl.utils import get_column_letter
 from dateutil.relativedelta import relativedelta
 
 from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
+from _reajuste_utils import FUSO_BRASILIA
 
 ROOT = Path(__file__).resolve().parent
 TEMPLATE_COLETA_OFICIAL = ROOT / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
@@ -46,46 +47,15 @@ NOME_DOWNLOAD_COLETA = "Coleta_Reajuste.xlsx"
 
 
 def nome_download_coleta(dados_admissibilidade=None):
-    """Nome user-facing do download, com ciclos e indice da analise.
+    """Nome user-facing do download com a data corrente em Brasilia.
 
-    Mantem o nome-base atual e acrescenta os ciclos ja apurados, ordenados e
-    sem repeticao, seguidos do indice canonico: Coleta_Reajuste_C1_C2_IPCA.xlsx.
-    Ciclo precluso tambem entra — o nome representa o ESCOPO da apuracao, nao
-    o resultado da admissibilidade.
-
-    Altera apenas o parametro `file_name` do download: conteudo, template,
-    abas e processamento do XLSX nao dependem desta funcao. Sem ciclos
-    recuperaveis com seguranca, devolve NOME_DOWNLOAD_COLETA. Sem indice
-    reconhecivel, preserva o nome anterior composto apenas pelos ciclos.
+    O argumento e mantido por compatibilidade com os chamadores existentes,
+    mas o nome independe dos ciclos, do indice e dos parametros da analise.
+    Esta funcao altera apenas o `file_name`: os bytes e o processamento do
+    XLSX nao dependem dela.
     """
-    from _reajuste_utils import ciclos_da_analise
-
-    try:
-        ciclos = ciclos_da_analise(dados_admissibilidade)
-    except Exception:
-        return NOME_DOWNLOAD_COLETA
-    if not ciclos:
-        return NOME_DOWNLOAD_COLETA
-
-    base, _, extensao = NOME_DOWNLOAD_COLETA.rpartition(".")
-    sufixo = "_".join(f"C{numero}" for numero in ciclos)
-    indice = str((dados_admissibilidade or {}).get("indice") or "").strip().upper()
-    indice_sem_hifen = indice.replace("-", "")
-    if indice.startswith("IST"):
-        sufixo_indice = "IST"
-    elif indice.startswith("ICTI"):
-        sufixo_indice = "ICTI"
-    elif indice.startswith("IPCA"):
-        sufixo_indice = "IPCA"
-    elif indice_sem_hifen.startswith("IGPM"):
-        sufixo_indice = "IGPM"
-    elif indice.startswith("INPC"):
-        sufixo_indice = "INPC"
-    else:
-        sufixo_indice = ""
-    if sufixo_indice:
-        sufixo = f"{sufixo}_{sufixo_indice}"
-    return f"{base}_{sufixo}.{extensao}"
+    data_brasilia = datetime.now(FUSO_BRASILIA).strftime("%d-%m-%Y")
+    return f"Coleta_Reajuste_{data_brasilia}.xlsx"
 
 # Ordem oficial das abas do novo modelo. CICLO_EM_EXECUCAO e acrescentada em
 # runtime (sem versionar outro binario XLSX) e as demais continuam tendo o
