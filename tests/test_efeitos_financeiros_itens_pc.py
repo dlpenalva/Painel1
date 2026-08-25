@@ -299,7 +299,7 @@ def test_gerador_persiste_mesma_data_em_parametros_e_metadado():
     # Regra petrea (etapa 30): H persiste a COMPETENCIA do inicio dos efeitos
     # (primeiro dia do mes); o dia exato do pedido fica na admissibilidade.
     assert wb["parametros"]["H3"].value.date() == date(2024, 4, 1)
-    assert wb["parametros"]["H3"].number_format == "dd/mm/yyyy"
+    assert wb["parametros"]["H3"].number_format == "mm/yyyy"
     assert "CL8US_INICIO_EFEITO:C1=2024-04-01" in wb.properties.keywords
 
 

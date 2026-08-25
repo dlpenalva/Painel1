@@ -569,7 +569,7 @@ def _registrar_inicio_efeitos_financeiros(wb, ciclos: dict[str, Any]) -> None:
                 f"H{linha}",
                 inicio if isinstance(inicio, date) else None,
             )
-            ws_parametros[f"H{linha}"].number_format = "dd/mm/yyyy"
+            ws_parametros[f"H{linha}"].number_format = "mm/yyyy"
         if isinstance(inicio, date):
             registros.append(f"{nome}={inicio.isoformat()}")
     anterior = str(wb.properties.keywords or "")

@@ -10,6 +10,7 @@ da apuracao financeira nem apostilamento pronto (regra documental do pacote).
 from __future__ import annotations
 
 import re
+from datetime import datetime
 from html import escape
 from typing import Any, Iterable, Mapping
 
@@ -73,7 +74,7 @@ def _situacao_efeito(ciclo: Mapping[str, Any]) -> str:
     """Monta o trecho '[SITUAÇÃO/EFEITO]' de um ciclo, sem inventar dados.
 
     - precluso -> 'precluso, sem efeitos financeiros'
-    - com data segura -> '<situacao>, com efeitos financeiros a partir de dd/mm/aaaa'
+    - com data segura -> '<situacao>, com efeitos financeiros a partir de mm/aaaa'
     - sem data segura -> '<situacao>, efeitos financeiros pendentes de definição'
     """
     situacao_bruta = str(
@@ -82,19 +83,15 @@ def _situacao_efeito(ciclo: Mapping[str, Any]) -> str:
     situacao = remover_emojis(situacao_bruta).strip(" -–—|").strip().lower()
     situacao_low = situacao
 
-    inicio = str(
-        ciclo.get("financeiro_inicio", ciclo.get("inicio_financeiro", "")) or ""
-    ).strip()
-    data_segura = "/" in inicio and any(ch.isdigit() for ch in inicio) and (
-        "sem efeito" not in inicio.lower()
-    )
+    inicio = ciclo.get("financeiro_inicio", ciclo.get("inicio_financeiro", ""))
+    competencia = _competencia_mm_aaaa(inicio)
 
     if "preclu" in situacao_low:
         rotulo = situacao if situacao else "precluso"
         return f"{rotulo}, sem efeitos financeiros".strip(", ")
-    if data_segura:
+    if competencia:
         rotulo = situacao if situacao else "tempestivo"
-        return f"{rotulo}, com efeitos financeiros a partir de {inicio}".strip(", ")
+        return f"{rotulo}, com efeitos financeiros a partir de {competencia}".strip(", ")
     rotulo = situacao if situacao else "situação em análise"
     return f"{rotulo}, efeitos financeiros pendentes de definição".strip(", ")
 
@@ -120,13 +117,15 @@ def _linhas_ciclos(ciclos: Iterable[Mapping[str, Any]] | None) -> list[str]:
     return linhas
 
 
-def _competencia_mm_aaaa(iso: Any) -> str | None:
-    """'2025-02-01' -> '02/2025'. Sem data valida, sem linha (nao inventa)."""
-    texto = str(iso or "").strip()
-    partes = texto.split("-")
-    if len(partes) < 2 or not (partes[0].isdigit() and partes[1].isdigit()):
-        return None
-    return f"{int(partes[1]):02d}/{partes[0]}"
+def _competencia_mm_aaaa(valor: Any) -> str | None:
+    """Formata data/competência conhecida como mm/aaaa, sem inventar valor."""
+    texto = str(valor or "").strip()
+    for formato in ("%Y-%m-%d", "%Y-%m-%dT%H:%M:%S", "%d/%m/%Y", "%m/%Y"):
+        try:
+            return datetime.strptime(texto, formato).strftime("%m/%Y")
+        except ValueError:
+            continue
+    return None
 
 
 def _fator_6_casas(valor: Any) -> str | None:

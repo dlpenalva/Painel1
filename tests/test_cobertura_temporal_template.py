@@ -82,6 +82,7 @@ def test_ultima_evidencia_nao_e_completo_ate():
     # linha TOTAL (A vazia) que gerava falsa evidencia Financeiro.
     assert "ISNUMBER(financeiro!$A$2:$A$200)" in ws["B12"].value
     assert "ISNUMBER(financeiro!$C$2:$C$200)" in ws["B12"].value
+    assert ws["B12"].number_format == "mm/yyyy"
 
 
 def test_ultimo_pc_considerado_ate_o_corte():

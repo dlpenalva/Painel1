@@ -53,7 +53,7 @@ def test_ciclo_unico_usa_o_novo_padrao():
     assert "Período de apuração do índice: {janela_str}." in SIMPLES
     assert "Variação apurada: {v_fmt}." in SIMPLES
     assert "Índice: {tipo_idx}." in SIMPLES
-    assert "Início dos efeitos financeiros: {inicio_efeito_financeiro.strftime('%d/%m/%Y')}." in SIMPLES
+    assert "Início dos efeitos financeiros: {inicio_efeito_financeiro.strftime('%m/%Y')}." in SIMPLES
 
 
 def test_ciclo_unico_ordinario_sem_redundancia_de_acumulado():

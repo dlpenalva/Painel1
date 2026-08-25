@@ -436,7 +436,7 @@ def test_saneador_inicio_financeiro_usa_efeito_real():
     tabela = Document(BytesIO(b)).tables[0]  # Quadro 1
     linha_c2 = next(r for r in tabela.rows if r.cells[0].text == "C2")
     assert linha_c2.cells[1].text == "01/05/2025"   # Data-base
-    assert linha_c2.cells[4].text == "A partir de 01/08/2025"
+    assert linha_c2.cells[4].text == "A partir de 08/2025"
 
 
 def test_saneador_sem_tabela_de_valores_unitarios():

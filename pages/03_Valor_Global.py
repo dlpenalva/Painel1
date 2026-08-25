@@ -4141,7 +4141,8 @@ def render_linha_tempo_contrato(resultado):
     for _, ev in df_eventos.iterrows():
         tipo = _limpar_marcadores_timeline(ev.get("Tipo", "Evento")) or "Evento"
         cor = _cor_tipo_timeline(tipo)
-        data_txt = pd.to_datetime(ev["Data"]).strftime("%d/%m/%Y")
+        formato_data = "%m/%Y" if tipo == "Efeito financeiro" else "%d/%m/%Y"
+        data_txt = pd.to_datetime(ev["Data"]).strftime(formato_data)
         valor_txt = ""
         if ev.get("Valor", None) is not None and abs(numero_seguro(ev.get("Valor"), 0.0)) > 0:
             valor_txt = f"<br><strong>Valor:</strong> {html.escape(moeda(ev.get('Valor')))}"

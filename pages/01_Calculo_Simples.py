@@ -1118,6 +1118,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         fmt_input_date = workbook.add_format({'num_format': 'dd/mm/yyyy', 'bg_color': '#FFF2CC', 'border': 1})
         fmt_date = workbook.add_format({'num_format': 'dd/mm/yyyy', 'border': 1})
         fmt_date_no_border = workbook.add_format({'num_format': 'dd/mm/yyyy'})
+        fmt_competencia_no_border = workbook.add_format({'num_format': 'mm/yyyy'})
         fmt_input_num = workbook.add_format({'num_format': '#,##0.00', 'bg_color': '#FFF2CC', 'border': 1})
         fmt_input_money = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#FFF2CC', 'border': 1})
         fmt_input_no_border = workbook.add_format({'bg_color': '#FFF2CC'})
@@ -1153,6 +1154,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
         fmt_gap_text = workbook.add_format({'border': 1, 'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'align': 'center'})
         fmt_gap_text_wrap = workbook.add_format({'border': 1, 'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'text_wrap': True, 'valign': 'top'})
         fmt_gap_date_no_border = workbook.add_format({'num_format': 'dd/mm/yyyy', 'bg_color': '#F4CCCC', 'font_color': '#9C0006'})
+        fmt_gap_competencia_no_border = workbook.add_format({'num_format': 'mm/yyyy', 'bg_color': '#F4CCCC', 'font_color': '#9C0006'})
         fmt_gap_text_no_border = workbook.add_format({'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'align': 'center'})
         fmt_gap_text_wrap_no_border = workbook.add_format({'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'text_wrap': True, 'valign': 'top'})
         fmt_gap_input_money = workbook.add_format({'num_format': 'R$ #,##0.00', 'bg_color': '#F4CCCC', 'font_color': '#9C0006', 'border': 1})
@@ -1415,7 +1417,7 @@ def gerar_arquivo_coleta_excel(dados_admissibilidade):
             meses_sem_efeito = int(df_ciclos.iloc[row-1].get('Meses sem efeito financeiro', 0) or 0)
             inicio_financeiro_excel = pd.to_datetime(df_ciclos.iloc[row-1].get('Início financeiro', ''), dayfirst=True, errors='coerce')
             if pd.notna(inicio_financeiro_excel):
-                ws.write_datetime(row, 5, inicio_financeiro_excel.to_pydatetime(), fmt_gap_date_no_border if meses_sem_efeito > 0 else fmt_date_no_border)
+                ws.write_datetime(row, 5, inicio_financeiro_excel.to_pydatetime(), fmt_gap_competencia_no_border if meses_sem_efeito > 0 else fmt_competencia_no_border)
             elif meses_sem_efeito > 0:
                 ws.write(row, 5, df_ciclos.iloc[row-1].get('Início financeiro', ''), fmt_gap_text_no_border)
             if meses_sem_efeito > 0:
@@ -2150,7 +2152,7 @@ if res:
     #   Percentual aplicado (SOMENTE se divergir) > Indice > efeitos.
     # (preclusao_sem_efeito ja definido acima, antes do calculo dos efeitos)
     if superacao_negocial:
-        inicio_negocial_txt = inicio_efeito_financeiro.strftime('%d/%m/%Y')
+        inicio_negocial_txt = inicio_efeito_financeiro.strftime('%m/%Y')
         relatorio_simples = f"""
         **{ciclo_label}:** Pedido realizado em {dt_solic.strftime('%d/%m/%Y')}.  
         Período de apuração do índice: {janela_str}.  
@@ -2176,7 +2178,7 @@ if res:
         linha_efeitos = (
             "Efeitos financeiros: não aplicáveis."
             if preclusao_sem_efeito
-            else f"Início dos efeitos financeiros: {inicio_efeito_financeiro.strftime('%d/%m/%Y')}."
+            else f"Início dos efeitos financeiros: {inicio_efeito_financeiro.strftime('%m/%Y')}."
         )
         linha_legenda_retardo = (
             "\n\n        \\* Pedido realizado dentro da janela de admissibilidade, "
