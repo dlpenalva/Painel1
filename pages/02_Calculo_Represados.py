@@ -57,6 +57,7 @@ from _reajuste_utils import (
     _formatar_moeda_br_md,
     _parse_moeda_br,
     _percentual_formatado,
+    SITUACAO_SEM_PEDIDO,
     classificar_pedido_por_data_exata,
     referencia_exata_pedido_subsequente,
 )
@@ -2228,12 +2229,32 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         # por negociação entre as partes e arrastar a data-base para frente, o campo do
         # pedido do ciclo seguinte também é recalculado a partir da nova âncora.
         chave_pedido = f"p{i}_{d_aniv.strftime('%Y%m%d')}"
+        # Ciclo sem pedido: mesma disciplina de chave do campo de data, para
+        # que a marcacao de um ciclo NUNCA contamine os demais. O estado e
+        # lido antes para que o campo de data ja renderize desabilitado.
+        chave_sem_pedido = f"sem_pedido_{chave_pedido}"
+        sem_pedido = bool(st.session_state.get(chave_sem_pedido, False))
         dt_ped = st.date_input(
             f"Data do pedido da Contratada — C{i}",
             value=d_aniv,
             key=chave_pedido,
             format="DD/MM/YYYY",
+            disabled=sem_pedido,
         )
+        sem_pedido = st.checkbox(
+            f"Não houve pedido da contratada neste ciclo — C{i}",
+            value=sem_pedido,
+            key=chave_sem_pedido,
+            help=(
+                "Marque quando a CONTRATADA nao apresentou pedido para este "
+                "ciclo. Nenhuma data e registrada: o ciclo fica precluso, sem "
+                "efeitos financeiros."
+            ),
+        )
+        # Data EFETIVA do ciclo. Marcado o checkbox, a data eventualmente
+        # deixada no widget nao governa nenhum calculo deste ciclo.
+        if sem_pedido:
+            dt_ped = None
 
     # Todo ciclo selecionado nesta tela integra a análise atual. O ciclo
     # histórico informado na lateral serve apenas como contexto do XLS.
@@ -2241,7 +2262,12 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
 
     # Admissibilidade pela DATA EXATA. Antecipacao tem uma unica classificacao,
     # inclusive quando o pedido ocorre no mesmo mes antes do dia de referencia.
-    situacao_limpa = classificar_pedido_por_data_exata(dt_ped, d_aniv, d_lim)
+    # Ciclo sem pedido nao passa pelo classificador (que exige data): assume
+    # PRECLUSO diretamente, com o mesmo efeito ja consolidado para o precluso.
+    if sem_pedido:
+        situacao_limpa = "PRECLUSO"
+    else:
+        situacao_limpa = classificar_pedido_por_data_exata(dt_ped, d_aniv, d_lim)
     if situacao_limpa == "ADIANTADO":
         sit_emoji = "⚠️ ADIANTADO"
     elif situacao_limpa == "TEMPESTIVO":
@@ -2254,7 +2280,9 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
     # traduz em palavra a comparacao que o classificador ja fez (ADIANTADO e
     # anterior; coincidencia com a elegibilidade e "junto"; o restante, que
     # abrange TEMPESTIVO tardio e PRECLUSO, e posterior).
-    if situacao_limpa == "ADIANTADO":
+    if sem_pedido:
+        posicao_pedido = ""
+    elif situacao_limpa == "ADIANTADO":
         posicao_pedido = "antes"
     elif dt_ped == d_aniv:
         posicao_pedido = "junto"
@@ -2295,13 +2323,17 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         (_TIMELINE_CICLOS_CSS if posicao_ciclo == 1 else "")
         + '<div class="cl8us-ciclo-nota{classe}">'
         '<span class="cl8us-ciclo-ordem">{ordem}º ciclo da análise</span>'
-        'Pedido de {pedido} refere-se ao ciclo C{numero}, apto em {apto}.'
+        '{corpo}'
         '</div>'.format(
             classe=" ativo" if posicao_ciclo == 1 else "",
             ordem=posicao_ciclo,
-            pedido=dt_ped.strftime('%d/%m/%Y'),
-            numero=i,
-            apto=d_aniv.strftime('%d/%m/%Y'),
+            corpo=(
+                f'Não houve pedido da contratada para o ciclo C{i}, '
+                f'apto em {d_aniv.strftime("%d/%m/%Y")}.'
+                if sem_pedido
+                else f'Pedido de {dt_ped.strftime("%d/%m/%Y")} refere-se ao '
+                     f'ciclo C{i}, apto em {d_aniv.strftime("%d/%m/%Y")}.'
+            ),
         ),
         unsafe_allow_html=True,
     )
@@ -2332,7 +2364,7 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
     justificativa_negocial = ""
     referencia_documental = ""
     data_inicio_efeito_negocial = None
-    if situacao_limpa == "PRECLUSO":
+    if situacao_limpa == "PRECLUSO" and not sem_pedido:
         with st.expander(f"Acordo negocial de admissão de reajuste - C{i}", expanded=False):
             st.caption(
                 "Use apenas quando houver decisão negocial fundamentada para conceder o ciclo, "
@@ -2419,6 +2451,7 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         'data_semente_exata': data_semente_exata,
         'data_referencia_exata': d_aniv,
         'dt_ped': dt_ped,
+        'sem_pedido': bool(sem_pedido),
         'posicao_pedido': posicao_pedido,
         'sit_emoji': sit_emoji,
         'situacao_limpa': situacao_limpa,
@@ -2494,7 +2527,11 @@ chave_analise_multiplos = (
     str(contexto_contratual.get("data_base_ultimo_ciclo", "")),
     int(qtd_ciclos),
     idx_sel,
-    tuple(c['dt_ped'].isoformat() for c in input_ciclos),
+    tuple(
+        "" if c['dt_ped'] is None else c['dt_ped'].isoformat()
+        for c in input_ciclos
+    ),
+    tuple(str(c.get('sem_pedido', False)) for c in input_ciclos),
     tuple(str(c.get('superacao_negocial', False)) for c in input_ciclos),
     tuple(str(c.get('percentual_negocial', 0.0)) for c in input_ciclos),
     tuple(str(c.get('justificativa_negocial', '')) for c in input_ciclos),
@@ -2571,6 +2608,7 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
     d_aniv = dados_ciclo['d_aniv']
     d_lim = dados_ciclo['d_lim']
     dt_ped = dados_ciclo['dt_ped']
+    sem_pedido = bool(dados_ciclo.get('sem_pedido', False))
     sit_emoji = dados_ciclo['sit_emoji']
     situacao_limpa = dados_ciclo['situacao_limpa']
     inicio_efeito_financeiro = dados_ciclo['inicio_efeito_financeiro']
@@ -2651,6 +2689,11 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
                 situacao_aplicada = f"{sit_emoji} | 🔻 CICLO NEGATIVO (APLICADO 0,00%)"
             else:
                 fator_ciclo = fator_indice
+            # Somente a situacao APLICADA/persistida recebe o marcador; a
+            # situacao pura (situacao_limpa/sit_emoji) segue intacta e continua
+            # governando efeitos, fator, percentual e propagacao.
+            if sem_pedido:
+                situacao_aplicada = SITUACAO_SEM_PEDIDO
             fator_acum *= fator_ciclo
             v_fmt = f"{res_c['var'] * 100:,.2f}%".replace('.', ',')
             v_aplicado_fmt = f"{percentual_aplicado * 100:,.2f}%".replace('.', ',')
@@ -2675,6 +2718,12 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
                     </div>
                     """,
                     unsafe_allow_html=True,
+                )
+            elif situacao_limpa == "PRECLUSO" and sem_pedido:
+                st.caption(
+                    "Não houve pedido da contratada neste ciclo: variação "
+                    "apurada apenas para registro, sem composição no acumulado "
+                    "final e sem efeitos financeiros."
                 )
             elif situacao_limpa == "PRECLUSO":
                 st.caption("Variação apurada apenas para registro, sem composição no acumulado final.")
@@ -2720,7 +2769,7 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
                 "Situação": situacao_aplicada,
                 "Situação automática": sit_emoji,
                 "Acordo negocial": bool(superacao_negocial),
-                "Pedido": dt_ped.strftime('%d/%m/%Y'),
+                "Pedido": "" if dt_ped is None else dt_ped.strftime('%d/%m/%Y'),
                 "Janela": janela_ciclo,
                 "JanelaAdm": janela_adm,
                     "Início financeiro": inicio_efeito_financeiro.strftime('%m/%Y') if inicio_efeito_financeiro else "",
@@ -2736,7 +2785,7 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             percentual_aplicado = 0.0
             ciclo_negativo = False
             tratamento_negativo = ""
-            situacao_aplicada = sit_emoji
+            situacao_aplicada = SITUACAO_SEM_PEDIDO if sem_pedido else sit_emoji
             st.warning(
                 "Não há dados disponíveis para o índice selecionado no intervalo de apuração deste ciclo. "
                 "O ciclo foi exibido para controle, mas não foi incluído no cálculo acumulado."
@@ -2747,7 +2796,8 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             'data_base': data_atual.strftime('%d/%m/%Y'),
             'intervalo_indice': janela_ciclo,
             'janela_admissibilidade': janela_adm,
-            'data_pedido': dt_ped.strftime('%d/%m/%Y'),
+            'data_pedido': '' if dt_ped is None else dt_ped.strftime('%d/%m/%Y'),
+            'sem_pedido_contratada': bool(sem_pedido),
             # ETAPA 48 — transporte puro da fotografia fisica exata do ciclo:
             # referencia_exata_efeito ja foi decidida acima (pedido apto no
             # TEMPESTIVO/TEMPESTIVO*, d_aniv no ADIANTADO, data pactuada no
