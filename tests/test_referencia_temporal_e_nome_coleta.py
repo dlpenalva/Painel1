@@ -15,7 +15,6 @@ resultados ou o conteudo do XLSX.
 from __future__ import annotations
 
 import contextlib
-import hashlib
 import io
 import sys
 import unittest
@@ -350,15 +349,11 @@ class TestXlsxIntacto(unittest.TestCase):
     """O conteudo do XLSX nao depende do nome do download nem do bloco novo."""
 
     def test_conteudo_da_coleta_independe_do_nome_do_arquivo(self):
-        conteudo = gerar_coleta_oficial_preenchida(XLSX_C2_C3)
-        tamanho_antes = len(conteudo)
-        sha256_antes = hashlib.sha256(conteudo).hexdigest()
+        antes = gerar_coleta_oficial_preenchida(XLSX_C2_C3)
         nome_download_coleta(XLSX_C2_C3)
         self.assertIsNotNone(referencia_temporal_anterior(XLSX_C2_C3))
-        tamanho_depois = len(conteudo)
-        sha256_depois = hashlib.sha256(conteudo).hexdigest()
-        self.assertEqual(tamanho_antes, tamanho_depois)
-        self.assertEqual(sha256_antes, sha256_depois)
+        depois = gerar_coleta_oficial_preenchida(XLSX_C2_C3)
+        self.assertEqual(_partes_xlsx(antes), _partes_xlsx(depois))
 
     def test_abas_preservadas_na_ordem_oficial(self):
         wb = load_workbook(io.BytesIO(gerar_coleta_oficial_preenchida(XLSX_C2_C3)))
