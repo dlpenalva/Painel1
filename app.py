@@ -2,8 +2,8 @@
 
 O XLS continua sendo o produto principal. A web concentra apenas quatro
 movimentos: início, cálculo de um ciclo, cálculo multiciclo e retorno do XLS.
-Os módulos legados 07/09/10/11 permanecem fisicamente no repositório,
-mas não são registrados na navegação do aplicativo.
+Os módulos legados 07/09/10/11 foram removidos fisicamente do repositório
+e continuam fora da navegação do aplicativo.
 """
 
 from pathlib import Path
@@ -396,8 +396,8 @@ _render_css()
 render_cl8us_light_theme()
 _render_sidebar()
 
-# As páginas funcionais permanecem registradas. As rotas legadas 07/09/10/11
-# foram retiradas da navegação, embora seus arquivos permaneçam no repositório.
+# As páginas funcionais permanecem registradas. As rotas e os arquivos legados
+# 07/09/10/11 foram removidos; a navegação atual permanece inalterada.
 # position="hidden" mantém o menu automático oculto e deixa a navegação própria
 # acima como a interface operacional principal.
 pagina_atual = st.navigation(

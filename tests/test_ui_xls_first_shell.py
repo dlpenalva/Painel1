@@ -13,7 +13,6 @@ UI_CAPACIDADES = (ROOT / "_ui_capacidades.py").read_text(encoding="utf-8")
 CAPACIDADES = (ROOT / "_capacidades_apuracao.py").read_text(encoding="utf-8")
 CENTRAL = (ROOT / "pages" / "06_Central_Arquivos.py").read_text(encoding="utf-8")
 GARANTIA = (ROOT / "pages" / "05_Garantia.py").read_text(encoding="utf-8")
-SANEADOR = (ROOT / "pages" / "10_Saneador.py").read_text(encoding="utf-8")
 PREVISAO = (ROOT / "pages" / "12_Adequacao_Orcamentaria.py").read_text(encoding="utf-8")
 
 
@@ -220,8 +219,6 @@ class TestCascaXlsFirst(unittest.TestCase):
         # somente a planilha de validacao (XLSX), sem o memorando DOCX antigo.
         self.assertIn("gerar_xlsx_projecao(", PREVISAO)
         self.assertIn('"Baixar XLSX"', PREVISAO)
-        self.assertIn('st.session_state["arquivo_saneador_docx"] = docx_bytes', SANEADOR)
-        self.assertIn("[campo a preencher]", SANEADOR)
 
 
 if __name__ == "__main__":

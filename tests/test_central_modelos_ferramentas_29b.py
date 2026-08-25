@@ -336,14 +336,15 @@ def test_pagina14_ferramentas_presentes():
 
 
 def test_pagina14_itens_retirados_etapa47():
-    # Etapa 47: os quatro itens deixaram de ser apresentados nesta seção.
-    # Os arquivos continuam no repositório, mas suas rotas não são registradas.
+    # Os quatro itens permanecem fora da seção e seus arquivos foram removidos.
     for removido in [
         "pages/07_Checklist_Processual.py", "pages/09_Infos_Previas.py",
-        "pages/11_Cl8us_Orienta.py", "pages/03_Valor_Global.py",
+        "pages/10_Saneador.py", "pages/11_Cl8us_Orienta.py",
     ]:
         assert removido not in PAGE14
-        assert (ROOT / removido).exists()
+        assert not (ROOT / removido).exists()
+    assert "pages/03_Valor_Global.py" not in PAGE14
+    assert (ROOT / "pages/03_Valor_Global.py").exists()
 
 
 def test_pagina14_nao_expoe_dou_adequacao_saneador():

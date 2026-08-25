@@ -9,8 +9,8 @@
 
 Etapa 47: Checklist Processual, Informações Prévias, Cl8us Orienta e o
 direcionamento "Gerar documentos com dados da apuração" deixaram de ser
-apresentados nesta seção. As páginas e os módulos correspondentes permanecem
-íntegros no repositório, mas suas rotas não são registradas na navegação do app.
+apresentados nesta seção. Os módulos correspondentes foram removidos fisicamente
+do repositório e suas rotas continuam fora da navegação do app.
 
 Nenhum modelo em branco usa as chaves dos documentos automáticos
 (``arquivo_despacho_saneador_docx`` / ``arquivo_termo_apostila_docx``): os
