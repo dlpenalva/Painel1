@@ -30,7 +30,8 @@ ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
 
 FORMULA_ESTADO_VAZIO_E6 = (
-    '=IF($D$22<>"","Ciclos apurados",'
+    '=IF($D$22<>"",'
+    'IF($J$11="","Ciclos apurados","Ciclos apurados — "&$J$11),'
     'IF($J$6=0,"SELECIONE O MÉTODO NA ABA CONTROLE",'
     '"INFORME A BASE DO MÉTODO"))'
 )
@@ -232,7 +233,7 @@ def test_com_51a_retroativo_calculado_igual_ao_card(tmp_path):
         assert float(res.Range("D22").Value) == retro
         assert float(res.Range("D5").Value) == retro
         assert "#" not in res.Range("D5").Text
-        assert res.Range("E6").Text == "Ciclos apurados"
+        assert res.Range("E6").Text == "Ciclos apurados — C2"
 
         # 4) PCs com base: retroativo reconhecido por PC pago.
         fin.Range("C14").ClearContents()
@@ -248,7 +249,7 @@ def test_com_51a_retroativo_calculado_igual_ao_card(tmp_path):
         assert retro_pc == pytest.approx(123.45)
         assert float(res.Range("D22").Value) == retro_pc
         assert float(res.Range("D5").Value) == retro_pc
-        assert res.Range("E6").Text == "Ciclos apurados"
+        assert res.Range("E6").Text == "Ciclos apurados — C2"
         assert "#" not in res.Range("G3").Text
 
         wb.Close(False)

@@ -152,7 +152,7 @@ def test_alteracao_manual_e_respeitada_e_gera_aviso_sem_bloqueio():
     wb["financeiro"][f"G{row}"] = "Nao"
     wb["financeiro"][f"C{row}"] = 100.0
     diagnostico = ler_coleta_reajuste(_bytes(wb))
-    assert any("C1 - 04/2024" in aviso for aviso in diagnostico["avisos"])
+    assert any("C1 — 04/2024" in aviso for aviso in diagnostico["avisos"])
     assert not any("efeito financeiro nao informado" in b.lower() for b in diagnostico["bloqueios_criticos"])
 
 
@@ -237,7 +237,7 @@ def test_legado_sem_metadado_nao_emite_override(ciclo_ano_mes, efeito):
     row = _linha_competencia(wb["financeiro"], ano, mes)
     wb["financeiro"][f"G{row}"] = efeito
     diagnostico = ler_coleta_reajuste(_bytes(wb))
-    assert not any("ajustada manualmente" in aviso for aviso in diagnostico["avisos"])
+    assert not any("ajustado manualmente" in aviso for aviso in diagnostico["avisos"])
 
 
 def test_legado_ciclo_nao_computado_nao_emite_override():
@@ -247,7 +247,7 @@ def test_legado_ciclo_nao_computado_nao_emite_override():
     row = _linha_competencia(wb["financeiro"], 2024, 4)
     wb["financeiro"][f"G{row}"] = "Sim"
     diagnostico = ler_coleta_reajuste(_bytes(wb))
-    assert not any("ajustada manualmente" in aviso for aviso in diagnostico["avisos"])
+    assert not any("ajustado manualmente" in aviso for aviso in diagnostico["avisos"])
 
 
 def test_legado_respeita_g_no_calculo_sem_aviso():
@@ -258,7 +258,7 @@ def test_legado_respeita_g_no_calculo_sem_aviso():
     diagnostico = ler_coleta_reajuste(_bytes(wb))
     assert len(parcelas) == 1
     assert parcelas[0]["valor_atualizado"] == 100.0
-    assert not any("ajustada manualmente" in aviso for aviso in diagnostico["avisos"])
+    assert not any("ajustado manualmente" in aviso for aviso in diagnostico["avisos"])
 
 
 def test_runtime_propaga_cada_override_uma_unica_vez():
@@ -267,11 +267,11 @@ def test_runtime_propaga_cada_override_uma_unica_vez():
         row = _linha_competencia(wb["financeiro"], 2024, mes)
         wb["financeiro"][f"G{row}"] = "Nao"
     _, diagnostico = processar_coleta_oficial_runtime(_bytes(wb))
-    avisos = [a for a in diagnostico["avisos"] if "ajustada manualmente" in a]
+    avisos = [a for a in diagnostico["avisos"] if "ajustado manualmente" in a]
     assert len(avisos) == 2
     assert len(set(avisos)) == 2
-    assert any("C1 - 04/2024" in aviso for aviso in avisos)
-    assert any("C1 - 05/2024" in aviso for aviso in avisos)
+    assert any("C1 — 04/2024" in aviso for aviso in avisos)
+    assert any("C1 — 05/2024" in aviso for aviso in avisos)
 
 
 def test_competencia_malformada_nao_causa_crash_e_bloqueia():
@@ -347,7 +347,7 @@ def test_objeto_documental_legado_sem_metadado_respeita_g():
     resultado = adaptar_coleta_reajuste_para_documentos(payload, diagnostico=diagnostico)
     assert resultado["quantidade_meses_sem_efeito_financeiro"] == 1
     assert resultado["valor_total_sem_efeito_financeiro"] == 100.0
-    assert not any("ajustada manualmente" in aviso for aviso in diagnostico["avisos"])
+    assert not any("ajustado manualmente" in aviso for aviso in diagnostico["avisos"])
 
 
 def test_ciclo_nao_computado_preserva_nominal_fator_historico_e_vta():

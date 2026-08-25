@@ -8,7 +8,7 @@ from _ui_utils import render_avisos_override_efeito_financeiro
 
 ROOT = Path(__file__).resolve().parents[1]
 PAGINA = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
-PREFIXO = "Marcacao de efeito financeiro ajustada manualmente:"
+PREFIXO = "Efeito financeiro ajustado manualmente:"
 
 
 def _diagnostico(*avisos):
@@ -16,7 +16,7 @@ def _diagnostico(*avisos):
 
 
 def test_um_override_aparece_uma_vez_e_nao_interrompe_o_fluxo():
-    aviso = f"{PREFIXO} C1 - 04/2024."
+    aviso = f"{PREFIXO} C1 — 04/2024."
     with patch("_ui_utils.st.warning") as warning, patch("_ui_utils.st.stop") as stop:
         exibidos = render_avisos_override_efeito_financeiro(_diagnostico(aviso))
 
@@ -26,8 +26,8 @@ def test_um_override_aparece_uma_vez_e_nao_interrompe_o_fluxo():
 
 
 def test_dois_overrides_distintos_aparecem_sem_duplicacao():
-    primeiro = f"{PREFIXO} C1 - 04/2024."
-    segundo = f"{PREFIXO} C2 - 04/2025."
+    primeiro = f"{PREFIXO} C1 — 04/2024."
+    segundo = f"{PREFIXO} C2 — 04/2025."
     with patch("_ui_utils.st.warning") as warning:
         exibidos = render_avisos_override_efeito_financeiro(
             _diagnostico(primeiro, primeiro, segundo)
@@ -89,7 +89,7 @@ def test_aviso_e_renderizado_antes_dos_cards_e_do_bloqueio_independente():
 
 
 def test_aviso_nao_altera_resultado_valido_nem_gate_documental():
-    aviso = f"{PREFIXO} C1 - 04/2024."
+    aviso = f"{PREFIXO} C1 — 04/2024."
     resultado = {
         "retroativo_total": 125.50,
         "vta": 1500.00,

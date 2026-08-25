@@ -163,6 +163,44 @@ def _ciclo_por_competencia_financeira(
     return ""
 
 
+def _marco_grade_financeira(wb) -> datetime | None:
+    """Primeira competencia da grade da aba financeiro (ancora cronologica).
+
+    A grade e escrita pelo gerador como competencias mensais consecutivas a
+    partir do marco (inicio cronologico de C0), e o CICLO de cada competencia e
+    o bloco fixo de 12 meses contado desse marco. Ler a ancora do proprio
+    arquivo mantem a identificacao de ciclo colada a execucao financeira.
+    """
+    ws = wb["financeiro"]
+    for row in range(2, 74):
+        data = _data(ws[f"A{row}"].value)
+        if data is not None:
+            return data
+    return None
+
+
+def _ciclo_cronologico_financeiro(marco: datetime | None, competencia: Any) -> str:
+    """CICLO da competencia pela cronologia FISICA da execucao financeira.
+
+    Mesma identificacao usada por `_gerador_masterfile._preencher_financeiro`
+    para escrever `financeiro!G` (bloco fixo de 12 competencias contado do
+    marco). NUNCA reconstroi o ciclo pela janela juridica `parametros!C:D`:
+    ela se desloca depois de TEMPESTIVO*/ADIANTADO e passa a atribuir a
+    competencia de fronteira a um ciclo diferente daquele que decidiu o efeito
+    — origem dos avisos falsos de ajuste manual. `financeiro!B` tambem nao
+    serve a este diagnostico: a formula do template resolve o ciclo pela mesma
+    janela deslocavel de `parametros!C:D`.
+    """
+    data_comp = _data(competencia)
+    if marco is None or data_comp is None:
+        return ""
+    meses = (data_comp.year - marco.year) * 12 + (data_comp.month - marco.month)
+    if meses < 0:
+        return ""
+    indice = meses // 12
+    return f"C{indice}" if indice <= 4 else ""
+
+
 def _percentual_ciclo(ciclo: dict[str, Any]) -> float | None:
     for chave in ("percentual_aplicado", "percentual_indice", "variacao"):
         valor = _numero(ciclo.get(chave))
@@ -736,11 +774,14 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
     financeiro = wb["financeiro"]
     divergencias_manuais: list[str] = []
     comparar_ajustes_manuais = _tem_metadado_inicio_efeito(wb)
+    # O ciclo desta aba e o da CRONOLOGIA FISICA da execucao (bloco fixo de 12
+    # competencias a partir do marco), a mesma que escreveu financeiro!G.
+    marco_financeiro = _marco_grade_financeira(wb)
     for row in range(2, 74):
         competencia = financeiro[f"A{row}"].value
         valor = _numero(financeiro[f"C{row}"].value)
         efeito = str(financeiro[f"G{row}"].value or "")
-        ciclo = _ciclo_por_competencia_financeira(wb, competencia, tabela_ciclos_fin)
+        ciclo = _ciclo_cronologico_financeiro(marco_financeiro, competencia)
         data_comp = _data(competencia)
         referencia = (
             f"ciclo {ciclo or 'nao identificado'}, competencia "
@@ -782,13 +823,14 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
             )
         if efeito != esperado:
             divergencias_manuais.append(
-                "Marcacao de efeito financeiro ajustada manualmente: "
-                f"{ciclo} - {data_comp.strftime('%m/%Y')}."
+                "Efeito financeiro ajustado manualmente: "
+                f"{ciclo} — {data_comp.strftime('%m/%Y')}."
             )
     avisos.extend(divergencias_manuais[:12])
     if len(divergencias_manuais) > 12:
         avisos.append(
-            f"Ha mais {len(divergencias_manuais) - 12} marcacoes manuais de efeito financeiro."
+            f"Há mais {len(divergencias_manuais) - 12} efeitos financeiros "
+            "ajustados manualmente."
         )
 
     contagens = {

@@ -5218,6 +5218,65 @@ def _percentual_ou_traco(valor):
     return "—" if valor is None else percentual(valor, 2)
 
 
+def _acumulado_canonico(resultado):
+    """(variacao, fator) acumulados canonicos desta apuracao, ou (None, None).
+
+    Fonte unica: `resultado["fator_acumulado"]` — o FATOR_ACUMULADO do ciclo
+    vigente (parametros!F), o mesmo numero que alimenta o card "Percentual
+    acumulado" desta pagina. A variacao e DERIVADA desse fator (fator - 1),
+    jamais somada a partir dos percentuais individuais dos ciclos. Sem fator
+    canonico, nada e declarado (fail-closed).
+    """
+    fator = resultado.get("fator_acumulado")
+    if isinstance(fator, bool) or not isinstance(fator, (int, float)):
+        return None, None
+    return float(fator) - 1.0, float(fator)
+
+
+def _frase_variacao_acumulada(resultado):
+    """Frase da variacao acumulada; None quando o fator canonico nao existe."""
+    variacao, fator = _acumulado_canonico(resultado)
+    if fator is None:
+        return None
+    return (
+        "Considerados os reajustes aplicáveis aos ciclos acima, a variação "
+        f"acumulada do contrato corresponde a {percentual(variacao, 2)}, "
+        f"equivalente ao fator acumulado de {fator_fmt(fator)}."
+    )
+
+
+def _competencias_compactadas(competencias):
+    """Compacta competencias mm/aaaa contiguas em intervalos "mm/aaaa a mm/aaaa".
+
+    Apresentacao pura: a lista de entrada ja e a lista canonica de competencias
+    sem efeito financeiro; nada e incluido, excluido nem reordenado por regra
+    nova — apenas sequencias mensais consecutivas viram um intervalo.
+    """
+    periodos = [
+        normalizar_competencia_periodo(item) for item in (competencias or [])
+    ]
+    if not periodos or any(p is None for p in periodos):
+        # Formato inesperado: devolve a lista original, sem perder informacao.
+        return [str(c) for c in (competencias or [])]
+
+    ordenados = sorted(set(periodos))
+    blocos = []
+    inicio = anterior = ordenados[0]
+    for periodo in ordenados[1:]:
+        if (periodo - anterior).n == 1:
+            anterior = periodo
+            continue
+        blocos.append((inicio, anterior))
+        inicio = anterior = periodo
+    blocos.append((inicio, anterior))
+    return [
+        periodo_para_label_br(ini)
+        if ini == fim
+        else f"{periodo_para_label_br(ini)} a {periodo_para_label_br(fim)}"
+        for ini, fim in blocos
+    ]
+
+
 def _contrato_contratada_automaticos(resultado):
     """Mesmo padrao defensivo usado na aba 5 (Texto SIGA) da Adequacao
     Orcamentaria: contrato/contratada nao sao gravados por nenhum fluxo hoje,
@@ -5388,6 +5447,13 @@ def gerar_texto_validacao_contratada(resultado, diagnostico):
             f"{c['ciclo']} | {c['periodo']} | {indice} | {_percentual_ou_traco(c['variacao'])} | {inicio_ef}"
         )
 
+    # Variacao acumulada logo apos a tabela dos ciclos: um unico numero
+    # canonico (fator acumulado do ciclo vigente), nunca a soma dos
+    # percentuais das linhas acima.
+    frase_acumulada = _frase_variacao_acumulada(resultado)
+    if frase_acumulada:
+        linhas += ["", frase_acumulada]
+
     linhas += [
         "",
         "3. Em razão das datas dos pedidos e das regras de efeito financeiro aplicáveis, foram "
@@ -5488,6 +5554,121 @@ def render_validacao_contratada(resultado, diagnostico):
             key="baixar_validacao_contratada_txt",
         )
 # <<< VALIDACAO_CONTRATADA_POS_COLETA_V1
+
+
+# >>> COMUNICADO_INTERNO_CONFERENCIA_V1
+# Bloco aditivo (comunicado interno para conferencia da apuracao pela
+# fiscalizacao/gestao antes da formalizacao). Consome EXATAMENTE as mesmas
+# fontes canonicas do comunicado a contratada — resultado_consolidado, ciclos
+# em analise, parametros_v10/df_financeiro_mensal e totais por ciclo — sem
+# segunda leitura do XLS e sem recalcular nenhuma grandeza.
+
+TITULO_COMUNICADO_INTERNO = "COMUNICADO INTERNO"
+SUBTITULO_COMUNICADO_INTERNO = "CONFERÊNCIA DA APURAÇÃO DO REAJUSTE"
+
+
+def gerar_texto_comunicado_interno(resultado, diagnostico):
+    """Monta o comunicado interno de conferencia da apuracao.
+
+    Mesma apuracao, mesma origem de dados e mesmos numeros do comunicado a
+    contratada; muda o destinatario (fiscalizacao/gestao), o tom e o pedido
+    final. Nenhuma grandeza financeira e recalculada nesta funcao.
+    """
+    consolidado = resultado.get("resultado_consolidado") or montar_resultado_consolidado(resultado, diagnostico)
+    contrato, _contratada = _contrato_contratada_automaticos(resultado)
+    ciclos = _ciclos_para_validacao_contratada(resultado, diagnostico)
+    financeiro_ciclo = _financeiro_por_ciclo_para_validacao_contratada(resultado, consolidado)
+    retro_ciclo = _retroativo_por_ciclo_para_validacao_contratada(resultado, consolidado)
+
+    linhas = [
+        TITULO_COMUNICADO_INTERNO,
+        SUBTITULO_COMUNICADO_INTERNO,
+        "",
+        "Olá,",
+        "",
+        f"Foi concluída a apuração do reajuste do Contrato {contrato}, com base nas "
+        "informações contratuais e nos dados de execução encaminhados pela "
+        "fiscalização/gestão.",
+        "",
+        "Foram considerados os seguintes ciclos:",
+        "",
+        "CICLO | PERÍODO | VARIAÇÃO | EFEITO FINANCEIRO",
+    ]
+    for c in ciclos:
+        inicio_efeito = financeiro_ciclo.get(c["ciclo"], {}).get("inicio_efeito")
+        inicio_ef = f"A partir de {inicio_efeito}" if inicio_efeito else "—"
+        linhas.append(
+            f"{c['ciclo']} | {c['periodo']} | {_percentual_ou_traco(c['variacao'])} | {inicio_ef}"
+        )
+
+    variacao, fator = _acumulado_canonico(resultado)
+    if fator is not None:
+        linhas += [
+            "",
+            f"A variação acumulada apurada é de {percentual(variacao, 2)}, "
+            f"correspondente ao fator acumulado de {fator_fmt(fator)}.",
+        ]
+
+    linhas += [
+        "",
+        "O retroativo reconhecido ficou assim:",
+        "",
+        "CICLO | RETROATIVO RECONHECIDO",
+    ]
+    for c in ciclos:
+        valor_reconhecido = retro_ciclo.get(c["ciclo"], {}).get("retroativo_reconhecido")
+        linhas.append(f"{c['ciclo']} | {_moeda_ou_traco(valor_reconhecido)}")
+
+    linhas += [
+        "",
+        f"TOTAL RETROATIVO RECONHECIDO: {_moeda_ou_traco(consolidado.get('retroativo_reconhecido'))}",
+        "",
+        "Competências sem efeito financeiro:",
+        "",
+    ]
+    ciclos_com_perda = [
+        (c["ciclo"], financeiro_ciclo.get(c["ciclo"], {}))
+        for c in ciclos
+        if financeiro_ciclo.get(c["ciclo"], {}).get("competencias_sem_efeito")
+    ]
+    if ciclos_com_perda:
+        linhas.append("CICLO | COMPETÊNCIAS SEM EFEITO")
+        for ciclo, info in ciclos_com_perda:
+            compactadas = _competencias_compactadas(info["competencias_sem_efeito"])
+            linhas.append(f"{ciclo} | {', '.join(compactadas)}")
+    else:
+        linhas.append("Não há competências sem efeito financeiro nesta apuração.")
+
+    linhas += [
+        "",
+        "Peço uma conferência dos dados utilizados na apuração, principalmente quanto "
+        "aos valores de execução, competências consideradas, aceites/processamentos e "
+        "eventual informação que precise ser corrigida ou complementada.",
+        "",
+        "Se identificar algum ajuste, basta me sinalizar objetivamente o dado ou valor "
+        "a ser revisto. Não havendo ajustes, seguimos com a formalização do reajuste.",
+    ]
+    return "\n".join(linhas)
+
+
+def render_comunicado_interno(resultado, diagnostico):
+    """Bloco aditivo pos-Coleta, ao lado do comunicado a contratada: texto para
+    conferencia interna da apuracao pela fiscalizacao/gestao. Mesmo padrao de
+    entrega (expander + TXT); nao altera nenhum card, calculo ou documento."""
+    with st.container(border=True):
+        st.markdown("### Comunicado interno")
+        st.caption("Conferência da apuração pela fiscalização/gestão antes da formalização.")
+        texto_interno = gerar_texto_comunicado_interno(resultado, diagnostico)
+        with st.expander("Visualizar comunicado interno"):
+            st.code(texto_interno, language=None)
+        st.download_button(
+            "Baixar TXT (interno)",
+            data=texto_interno.encode("utf-8"),
+            file_name="Comunicado_Interno_Conferencia.txt",
+            mime="text/plain",
+            key="baixar_comunicado_interno_txt",
+        )
+# <<< COMUNICADO_INTERNO_CONFERENCIA_V1
 
 
 # ============================================================
@@ -5600,6 +5781,7 @@ if resultado:
     # em diagnostico_coleta["cobertura_temporal"] (camada sombra intacta).
     render_documentos_funcionais_upload(resultado)
     render_validacao_contratada(resultado, diagnostico_coleta)
+    render_comunicado_interno(resultado, diagnostico_coleta)
     st.stop()
 
 if diagnostico_coleta:
