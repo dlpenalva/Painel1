@@ -6,8 +6,8 @@ Duas melhorias isoladas do fluxo da Calculadora:
    do PRIMEIRO ciclo abrangido pela analise, exibido apenas para
    C2 ou superior. NAO e o periodo de efeitos financeiros do ciclo anterior —
    o ciclo anterior pode ter sido pedido com atraso;
-2. nome do arquivo no download com a data corrente no fuso de Brasilia,
-   independente dos ciclos, indice e demais parametros da analise.
+2. nome do arquivo no download com ciclos e indice da analise, seguido da
+   data corrente no fuso de Brasilia.
 
 Nada aqui toca motor, admissibilidade, datas apuradas, indices, fatores,
 resultados ou o conteudo do XLSX.
@@ -188,16 +188,56 @@ class TestNomeDownloadColeta(unittest.TestCase):
             datetime_mock.now.return_value = datetime(2026, 2, 5, 12, 0, tzinfo=FUSO_BRASILIA)
             self.assertEqual(nome_download_coleta(), "Coleta_Reajuste_05-02-2026.xlsx")
 
-    def test_nome_independe_de_ciclos_indice_metodo_e_parametros(self):
-        entradas = (
-            None,
-            {},
-            SO_C1,
-            C1_C2,
-            COM_PRECLUSO,
-            {**C2_C3, "indice": "IGP-M (189)", "metodo": "Financeiro"},
-            "lixo",
-        )
+    def test_preserva_ciclos_e_indice_antes_da_data(self):
+        with patch("_coleta_oficial.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 8, 25, 12, 0, tzinfo=FUSO_BRASILIA)
+            self.assertEqual(
+                nome_download_coleta(SO_C1),
+                "Coleta_Reajuste_C1_IPCA_25-08-2026.xlsx",
+            )
+            self.assertEqual(
+                nome_download_coleta(C1_C2),
+                "Coleta_Reajuste_C1_C2_IPCA_25-08-2026.xlsx",
+            )
+
+    def test_sufixo_canonico_dos_cinco_indices(self):
+        casos = {
+            "IST (Anatel)": "IST",
+            "ICTI (Ipeadata)": "ICTI",
+            "IPCA (433)": "IPCA",
+            "IGP-M (189)": "IGPM",
+            "INPC (188)": "INPC",
+        }
+        with patch("_coleta_oficial.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 8, 25, 12, 0, tzinfo=FUSO_BRASILIA)
+            for indice, sufixo in casos.items():
+                with self.subTest(indice=indice):
+                    dados = {**C1_C2, "indice": indice}
+                    self.assertEqual(
+                        nome_download_coleta(dados),
+                        f"Coleta_Reajuste_C1_C2_{sufixo}_25-08-2026.xlsx",
+                    )
+
+    def test_igpm_sem_hifen_tambem_e_reconhecido(self):
+        dados = {**SO_C1, "indice": "IGPM (189)"}
+        with patch("_coleta_oficial.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 8, 25, 12, 0, tzinfo=FUSO_BRASILIA)
+            self.assertEqual(
+                nome_download_coleta(dados),
+                "Coleta_Reajuste_C1_IGPM_25-08-2026.xlsx",
+            )
+
+    def test_sem_indice_preserva_ciclos_e_data(self):
+        dados = {**C2_C3, "indice": "Indice nao catalogado"}
+        with patch("_coleta_oficial.datetime") as datetime_mock:
+            datetime_mock.now.return_value = datetime(2026, 8, 25, 12, 0, tzinfo=FUSO_BRASILIA)
+            self.assertEqual(
+                nome_download_coleta(dados),
+                "Coleta_Reajuste_C2_C3_25-08-2026.xlsx",
+            )
+
+    def test_entrada_sem_ciclos_usa_nome_e_data(self):
+        entradas = (None, {}, {"ciclos": []}, {"ciclos": [{"ciclo": "-"}]}, "lixo")
         with patch("_coleta_oficial.datetime") as datetime_mock:
             datetime_mock.now.return_value = datetime(2026, 8, 25, 12, 0, tzinfo=FUSO_BRASILIA)
             for entrada in entradas:
