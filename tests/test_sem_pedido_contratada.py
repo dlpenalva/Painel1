@@ -524,3 +524,63 @@ def test_documentos_nao_produzem_data_alguma_para_ciclo_sem_pedido():
 
     assert not re.search(r"\d{2}/\d{2}/\d{4}", celula_pedido)
     assert celula_pedido == NAO_HOUVE_PEDIDO
+
+
+# ---------------------------------------------------------------------------
+# 21  regressao: Relatorio de Apuracao do multiciclo (POS-processamento)
+# ---------------------------------------------------------------------------
+
+def _relatorio_multiciclo_processado(at) -> str:
+    """Texto renderizado em "Relatorio de Apuracao" DEPOIS de processar.
+
+    Le a saida pos-processamento — nao o "Resumo antes de processar", nao o
+    XLS, nao o payload e nao o codigo-fonte. Foi exatamente essa superficie
+    que chegou a producao emitindo "Pedido realizado em ." para ciclo sem
+    pedido, justamente porque nenhuma das outras a cobria.
+    """
+    for botao in at.button:
+        if "Processar Análise" in str(botao.label):
+            botao.click()
+            break
+    at.run()
+    assert not at.exception
+    for bloco in at.info:
+        if "C1:" in bloco.value and "Resultado:" in bloco.value:
+            return bloco.value
+    pytest.skip("relatorio indisponivel (indice sem cobertura no periodo)")
+
+
+def test_relatorio_multiciclo_nao_afirma_pedido_inexistente():
+    """C1 sem pedido + C2 com pedido real: cada ciclo com a sua redacao."""
+    at = _preparar_multiplos(
+        _abrir_pagina(PAGINA_MULTIPLA, timeout=600), date(2022, 10, 10)
+    )
+    at.checkbox(key="sem_pedido_p1_20231010").set_value(True).run()
+    assert not at.exception
+
+    relatorio = _relatorio_multiciclo_processado(at)
+
+    # C1 — sem pedido: declara a ausencia, nunca afirma pedido inexistente
+    assert "**C1:** Não houve pedido da contratada neste ciclo." in relatorio
+    assert "Resultado: " + SITUACAO_SEM_PEDIDO + "." in relatorio
+    assert "Efeitos financeiros: não aplicáveis." in relatorio
+
+    # C2 — pedido real permanece intacto
+    assert "**C2:** Pedido realizado em 10/10/2024." in relatorio
+    assert "Início dos efeitos financeiros: 10/2024." in relatorio
+
+    # o defeito exato que chegou a producao
+    assert "Pedido realizado em ." not in relatorio
+
+
+def test_relatorio_multiciclo_preserva_ciclos_com_pedido_real():
+    """Sem nenhum ciclo marcado, a redacao ordinaria permanece integral."""
+    at = _preparar_multiplos(
+        _abrir_pagina(PAGINA_MULTIPLA, timeout=600), date(2022, 10, 10)
+    )
+    relatorio = _relatorio_multiciclo_processado(at)
+
+    assert "**C1:** Pedido realizado em 10/10/2023." in relatorio
+    assert "**C2:** Pedido realizado em 10/10/2024." in relatorio
+    assert MARCADOR_SEM_PEDIDO not in relatorio
+    assert "Pedido realizado em ." not in relatorio

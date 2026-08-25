@@ -2909,8 +2909,18 @@ if historico:
                 linha_efeitos = (
                     f"Início dos efeitos financeiros: {h['Início financeiro']}."
                 )
+            # Ciclo sem pedido: h['Pedido'] chega vazio e a frase NAO pode
+            # afirmar pedido inexistente ("Pedido realizado em ."). Mesma
+            # redacao ja adotada na calculadora de ciclo unico. O sufixo de
+            # dois espacos e o hard break do Markdown, embutido na string para
+            # nao deixar espaco em branco no fim da linha do arquivo fonte.
+            linha_pedido = (
+                f"**C{h['Ciclo']}:** Pedido realizado em {h['Pedido']}."
+                if str(h.get('Pedido') or '').strip()
+                else f"**C{h['Ciclo']}:** Não houve pedido da contratada neste ciclo."
+            ) + "  "
             corpo_relatorio += f"""
-            **C{h['Ciclo']}:** Pedido realizado em {h['Pedido']}.  
+            {linha_pedido}
             Período de apuração do índice: {h['Janela']}.  
             Janela de Admissibilidade (90 dias): {h['JanelaAdm']}.  
             Resultado: {h['Situação']}.  
