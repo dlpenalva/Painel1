@@ -33,11 +33,25 @@ class TestCascaXlsFirst(unittest.TestCase):
         self.assertIn('font-weight: 760;', APP)
         self.assertIn('margin-block: -.6rem;', APP)
 
-    def test_modulos_legados_permanecem_registrados_mas_fora_do_menu(self):
+    def test_rotas_atuais_permanecem_e_legadas_ficam_fora_do_runtime(self):
         self.assertNotIn('st.expander("Ferramentas complementares", expanded=False)', APP)
         self.assertNotIn('for pagina in PAGINAS_AUXILIARES:', APP)
-        self.assertIn('("04_Relatorio_Global.py", "Relatórios")', APP)
-        self.assertIn('("13_DOU.py", "DOU")', APP)
+        for entrada_atual in (
+            '("04_Relatorio_Global.py", "Relatórios")',
+            '("06_Central_Arquivos.py", "Central de arquivos")',
+            '("05_Garantia.py", "Gestão da garantia")',
+            '("12_Adequacao_Orcamentaria.py", "Adequação orçamentária")',
+            '("08_Avaliacao_Aditivos.py", "Aditivos: 25%")',
+            '("13_DOU.py", "DOU")',
+        ):
+            self.assertIn(entrada_atual, APP)
+        for entrada_legada in (
+            '("07_Checklist_Processual.py", "Checklist processual")',
+            '("09_Infos_Previas.py", "Informações prévias")',
+            '("10_Saneador.py", "Saneador")',
+            '("11_Cl8us_Orienta.py", "Cl8us Orienta")',
+        ):
+            self.assertNotIn(entrada_legada, APP)
 
     def test_area_principal_usa_fundo_neutro_e_sidebar_mantem_azul(self):
         self.assertIn('--cl8us-sidebar: #C6D9E8;', APP)

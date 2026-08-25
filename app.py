@@ -2,7 +2,8 @@
 
 O XLS continua sendo o produto principal. A web concentra apenas quatro
 movimentos: início, cálculo de um ciclo, cálculo multiciclo e retorno do XLS.
-Os módulos legados permanecem registrados, porém fora do menu principal.
+Os módulos legados 07/09/10/11 permanecem fisicamente no repositório,
+mas não são registrados na navegação do aplicativo.
 """
 
 from pathlib import Path
@@ -46,14 +47,10 @@ PAGINAS_PRINCIPAIS = (
 _AUXILIARES = (
     ("04_Relatorio_Global.py", "Relatórios"),
     ("06_Central_Arquivos.py", "Central de arquivos"),
-    ("07_Checklist_Processual.py", "Checklist processual"),
     ("05_Garantia.py", "Gestão da garantia"),
     ("12_Adequacao_Orcamentaria.py", "Adequação orçamentária"),
     ("08_Avaliacao_Aditivos.py", "Aditivos: 25%"),
     ("13_DOU.py", "DOU"),
-    ("09_Infos_Previas.py", "Informações prévias"),
-    ("10_Saneador.py", "Saneador"),
-    ("11_Cl8us_Orienta.py", "Cl8us Orienta"),
 )
 PAGINAS_AUXILIARES = tuple(
     _page(caminho, titulo)
@@ -399,8 +396,9 @@ _render_css()
 render_cl8us_light_theme()
 _render_sidebar()
 
-# Todas as páginas continuam registradas para manter links e funcionalidades.
-# position="hidden" retira apenas o menu automático e deixa a navegação própria
+# As páginas funcionais permanecem registradas. As rotas legadas 07/09/10/11
+# foram retiradas da navegação, embora seus arquivos permaneçam no repositório.
+# position="hidden" mantém o menu automático oculto e deixa a navegação própria
 # acima como a interface operacional principal.
 pagina_atual = st.navigation(
     [*PAGINAS_PRINCIPAIS, PAGINA_MODELOS_FERRAMENTAS, *PAGINAS_AUXILIARES],
