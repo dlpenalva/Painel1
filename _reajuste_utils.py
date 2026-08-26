@@ -232,6 +232,23 @@ def classificar_pedido_por_data_exata(data_pedido, data_referencia_exata, data_l
     return "PRECLUSO"
 
 
+def dias_de_preclusao(situacao, data_pedido, data_limite):
+    """Dias corridos depois do mesmo limite usado pelo classificador.
+
+    E um dado explicativo de runtime: nao classifica, nao persiste e nao cria
+    prazo. Ausencia de pedido (ou qualquer situacao diferente de PRECLUSO)
+    nao produz indicador.
+    """
+    if _texto_normalizado(situacao).upper() != "PRECLUSO":
+        return None
+    pedido = _data_para_datetime(data_pedido)
+    limite = _data_para_datetime(data_limite)
+    if pedido is None or limite is None:
+        return None
+    atraso = (pedido.date() - limite.date()).days
+    return atraso if atraso > 0 else None
+
+
 def referencia_exata_pedido_subsequente(data_pedido):
     """Preserva o dia do pedido computavel ao avancar 12 meses-calendario."""
     from dateutil.relativedelta import relativedelta

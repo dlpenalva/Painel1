@@ -58,6 +58,7 @@ from _reajuste_utils import (
 from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, gerar_coleta_oficial_preenchida, nome_download_coleta
 from _memoria_calculo import normalizar_memoria_calculo
 from _email_contratada import gerar_rascunho_email_contratada, render_email_contratada
+from _ui_preclusao import render_indicador_preclusao
 # Imports dos blocos auxiliares de orientação/coleta fiscal
 # ICTI/IPEADATA_LOCAL_FALLBACK_V1
 ICTI_SERCODIGO_LOCAL = "DIMAC_ICTI2"
@@ -2052,6 +2053,11 @@ if res:
     st.write(f"- **Período de apuração do índice:** {janela_str}")
     st.write(f"- **Janela de Admissibilidade (90 dias):** {janela_adm_str}")
     st.write(f"- **Situação:** {status_ped}")
+    render_indicador_preclusao(
+        situacao_pedido,
+        dt_solic if not sem_pedido else None,
+        dt_limite,
+    )
 
     # Acordo negocial: preserva o diagnóstico automático, mas permite aplicar percentual manual.
     superacao_negocial = False
