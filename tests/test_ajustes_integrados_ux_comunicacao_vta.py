@@ -6,8 +6,8 @@ Cobre as seis frentes da tarefa, na ordem dos testes exigidos:
 
   A. RESULTADOS: "Ciclos apurados — C1, C2 e C3" (somente os computados);
   B. RESULTADOS: "Posição em DD/MM/AAAA" no lugar do saldo do ciclo;
-  C. falso positivo de fronteira do aviso de ajuste manual;
-  D. override manual REAL continua avisando, uma unica vez;
+  C. fronteira juridica x fisica: nenhum aviso de ajuste manual (EF-G1);
+  D. EF-G1: a marcacao de `financeiro!G` e respeitada em silencio;
   E. Comunicacao a Contratada com variacao/fator acumulados canonicos;
   F. Comunicado Interno de conferencia;
   G-K. composicao canonica do VTA no PDF (Financeiro, PC, Consumido, metodo
@@ -40,8 +40,6 @@ from _coleta_oficial import gerar_coleta_oficial_preenchida  # noqa: E402
 from _coleta_reajuste import (  # noqa: E402
     _ciclo_cronologico_financeiro,
     _ciclo_por_competencia_financeira,
-    _data,
-    _inicio_efeito_definido,
     _marco_grade_financeira,
     _tabela_ciclos_financeiros,
     ler_coleta_reajuste,
@@ -53,7 +51,6 @@ from _sumario_executivo import (  # noqa: E402
     formatar_moeda,
     gerar_sumario_executivo_pdf,
 )
-from _ui_utils import PREFIXO_AVISO_OVERRIDE_EFEITO_FINANCEIRO  # noqa: E402
 
 TEMPLATE = RAIZ / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
 PAGINA = (RAIZ / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
@@ -291,9 +288,14 @@ def _linha_da_competencia(ws, ano: int, mes: int) -> int:
 
 
 def _avisos_de_override(diagnostico) -> list[str]:
+    """EF-G1: qualquer texto do diagnostico que insinue autoria da marcacao."""
+    textos: list[str] = []
+    for chave in ("avisos", "pendencias", "bloqueios_criticos",
+                  "inconsistencias", "bloqueios_estruturais", "lacunas_apuracao"):
+        textos.extend(str(item) for item in (diagnostico.get(chave) or ()))
     return [
-        aviso for aviso in diagnostico["avisos"]
-        if aviso.startswith(PREFIXO_AVISO_OVERRIDE_EFEITO_FINANCEIRO)
+        texto for texto in textos
+        if "ajustado manualmente" in texto or "ajustada manualmente" in texto
     ]
 
 
@@ -339,44 +341,21 @@ def test_c3_as_duas_competencias_de_fronteira_nao_geram_aviso(coleta_fronteira):
     assert "02/2026" not in texto
 
 
-def test_c4_o_detector_antigo_produzia_exatamente_esses_dois_falsos(coleta_fronteira):
-    """Prova da causa raiz: reconstruir o ciclo por parametros!C:D acusava
-    C2 — 02/2025 e C3 — 02/2026 no MESMO arquivo intocado."""
-    wb = openpyxl.load_workbook(io.BytesIO(coleta_fronteira), data_only=False)
-    fin = wb["financeiro"]
-    tabela = _tabela_ciclos_financeiros(wb)
-    marco = _marco_grade_financeira(wb)
-    antigos: list[str] = []
-    novos: list[str] = []
-    for row in range(2, 74):
-        competencia = fin[f"A{row}"].value
-        efeito = str(fin[f"G{row}"].value or "")
-        data_comp = _data(competencia)
-        if not efeito or data_comp is None:
-            continue
-        for ciclo, saida in (
-            (_ciclo_por_competencia_financeira(wb, competencia, tabela), antigos),
-            (_ciclo_cronologico_financeiro(marco, competencia), novos),
-        ):
-            if not ciclo:
-                continue
-            inicio = _inicio_efeito_definido(wb, ciclo)
-            esperado = "Nao"
-            if inicio and ciclo in {"C1", "C2", "C3", "C4"}:
-                esperado = (
-                    "Sim"
-                    if (data_comp.year, data_comp.month) >= (inicio.year, inicio.month)
-                    else "Nao"
-                )
-            if efeito != esperado:
-                saida.append(f"{ciclo} — {data_comp:%m/%Y}")
+def test_c4_a_reconstrucao_da_marcacao_esperada_foi_removida():
+    """EF-G1: nao existe mais logica que reconstrua o valor "esperado" de G.
 
-    assert antigos == ["C2 — 02/2025", "C3 — 02/2026"]
-    assert novos == []
+    A causa raiz dos falsos positivos era comparar `financeiro!G` com uma
+    marcacao reconstruida por metadado/janela. Essa comparacao foi eliminada:
+    os dois helpers que a sustentavam nao existem mais no leitor.
+    """
+    fonte = (RAIZ / "_coleta_reajuste.py").read_text(encoding="utf-8")
+    assert "_inicio_efeito_definido" not in fonte
+    assert "_tem_metadado_inicio_efeito" not in fonte
+    assert "divergencias_manuais" not in fonte
 
 
-def test_d1_override_real_avisa_uma_unica_vez_com_o_texto_novo(coleta_fronteira):
-    """O fiscal troca Sim->Nao em uma competencia: um aviso, redacao nova."""
+def test_d1_override_real_sim_para_nao_nao_gera_aviso(coleta_fronteira):
+    """O fiscal troca Sim->Nao: decisao respeitada, em silencio."""
     wb = openpyxl.load_workbook(io.BytesIO(coleta_fronteira), data_only=False)
     fin = wb["financeiro"]
     linha = _linha_da_competencia(fin, 2024, 6)   # bloco fisico de C2
@@ -386,14 +365,13 @@ def test_d1_override_real_avisa_uma_unica_vez_com_o_texto_novo(coleta_fronteira)
     wb.save(saida)
 
     diagnostico = ler_coleta_reajuste(saida.getvalue())
-    avisos = _avisos_de_override(diagnostico)
-    assert avisos == ["Efeito financeiro ajustado manualmente: C2 — 06/2024."]
+    assert _avisos_de_override(diagnostico) == []
     # a alteracao e respeitada e nao vira bloqueio.
     assert diagnostico["bloqueios_criticos"] == []
     assert diagnostico.get("valido") is not False
 
 
-def test_d2_override_em_ciclos_diferentes_gera_um_aviso_por_competencia(
+def test_d2_override_em_ciclos_diferentes_segue_sem_qualquer_aviso(
     coleta_fronteira,
 ):
     wb = openpyxl.load_workbook(io.BytesIO(coleta_fronteira), data_only=False)
@@ -403,20 +381,20 @@ def test_d2_override_em_ciclos_diferentes_gera_um_aviso_por_competencia(
     saida = io.BytesIO()
     wb.save(saida)
 
-    avisos = _avisos_de_override(ler_coleta_reajuste(saida.getvalue()))
-    assert avisos == [
-        "Efeito financeiro ajustado manualmente: C1 — 06/2023.",
-        "Efeito financeiro ajustado manualmente: C3 — 06/2025.",
-    ]
+    diagnostico = ler_coleta_reajuste(saida.getvalue())
+    assert _avisos_de_override(diagnostico) == []
+    assert diagnostico["bloqueios_criticos"] == []
 
 
-def test_d3_o_texto_antigo_nao_sobrevive_em_lugar_nenhum():
-    for modulo in ("_coleta_reajuste.py", "_ui_utils.py"):
+def test_d3_o_aviso_de_ajuste_manual_nao_sobrevive_no_fluxo():
+    alvos = ["_coleta_reajuste.py", "_ui_utils.py", "pages/03_Valor_Global.py"]
+    for modulo in alvos:
         fonte = (RAIZ / modulo).read_text(encoding="utf-8")
         assert "Marcacao de efeito financeiro ajustada manualmente" not in fonte
-    assert PREFIXO_AVISO_OVERRIDE_EFEITO_FINANCEIRO == (
-        "Efeito financeiro ajustado manualmente:"
-    )
+        assert "Efeito financeiro ajustado manualmente" not in fonte
+    ui = (RAIZ / "_ui_utils.py").read_text(encoding="utf-8")
+    assert "render_avisos_override_efeito_financeiro" not in ui
+    assert "PREFIXO_AVISO_OVERRIDE_EFEITO_FINANCEIRO" not in ui
 
 
 # ===========================================================================

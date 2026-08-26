@@ -122,19 +122,18 @@ def _numero(valor: Any) -> float | None:
         return None
 
 
-def _inicio_efeito_definido(wb, ciclo: str) -> date | None:
-    texto = str(wb.properties.keywords or "")
-    match = re.search(rf"(?:^|[:,;]){re.escape(ciclo)}=(\d{{4}}-\d{{2}}-\d{{2}})", texto)
-    if not match:
-        return None
-    try:
-        return date.fromisoformat(match.group(1))
-    except ValueError:
-        return None
+def _lista_compacta_competencias(referencias: list[str], limite: int = 12) -> str:
+    """Lista compacta de competencias afetadas para UMA unica mensagem.
 
-
-def _tem_metadado_inicio_efeito(wb) -> bool:
-    return "CL8US_INICIO_EFEITO:" in str(wb.properties.keywords or "")
+    EF-G1: inconsistencias de `financeiro!G` sao agrupadas — nunca uma caixa
+    por competencia. Acima do limite, o excedente vira contagem.
+    """
+    exibidas = referencias[:limite]
+    texto = "; ".join(exibidas)
+    restantes = len(referencias) - len(exibidas)
+    if restantes > 0:
+        texto += f"; e mais {restantes} competência(s)"
+    return texto + "."
 
 
 def _tabela_ciclos_financeiros(wb) -> list[tuple[str, date | None, date | None]]:
@@ -772,11 +771,16 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         # de XLSX; a fonte visivel em parametros e suficiente e canonica.
 
     financeiro = wb["financeiro"]
-    divergencias_manuais: list[str] = []
-    comparar_ajustes_manuais = _tem_metadado_inicio_efeito(wb)
-    # O ciclo desta aba e o da CRONOLOGIA FISICA da execucao (bloco fixo de 12
-    # competencias a partir do marco), a mesma que escreveu financeiro!G.
+    # EF-G1 — REGRA PETREA: `financeiro!G` e a decisao canonica do efeito
+    # financeiro da competencia. "Sim" e "Nao" sao aceitos em silencio: o leitor
+    # NAO reconstroi a marcacao "esperada" por parametros/metadados/cronologia e
+    # NAO infere se a marcacao foi automatica ou manual. Restam inconsistencias
+    # reais de preenchimento (vazio e valor invalido), agrupadas numa unica
+    # mensagem por classe. G nao decide a existencia da competencia no VTA:
+    # decide apenas se ela recebe o efeito financeiro do reajuste.
     marco_financeiro = _marco_grade_financeira(wb)
+    efeitos_invalidos: list[str] = []
+    efeitos_nao_informados: list[str] = []
     for row in range(2, 74):
         competencia = financeiro[f"A{row}"].value
         valor = _numero(financeiro[f"C{row}"].value)
@@ -784,8 +788,8 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         ciclo = _ciclo_cronologico_financeiro(marco_financeiro, competencia)
         data_comp = _data(competencia)
         referencia = (
-            f"ciclo {ciclo or 'nao identificado'}, competencia "
-            f"{data_comp.strftime('%m/%Y') if data_comp else 'nao informada'}"
+            f"{ciclo or 'ciclo nao identificado'} — "
+            + (data_comp.strftime("%m/%Y") if data_comp else f"linha {row}")
         )
         if valor is not None and competencia not in (None, "") and data_comp is None:
             bloqueios_criticos.append(
@@ -794,43 +798,22 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
             )
             continue
         if efeito not in ("", "Sim", "Nao"):
-            bloqueios_criticos.append(
-                f"Efeito financeiro invalido na aba financeiro: {referencia}. "
-                "Use o dropdown e selecione exatamente Sim ou Nao."
-            )
+            efeitos_invalidos.append(referencia)
             continue
         if valor is not None and not efeito:
-            bloqueios_criticos.append(
-                f"Efeito financeiro nao informado na aba financeiro: {referencia}."
-            )
+            efeitos_nao_informados.append(referencia)
             continue
-        if (
-            not comparar_ajustes_manuais
-            or not efeito
-            or not ciclo
-            or data_comp is None
-        ):
-            continue
-        esperado = "Nao"
-        inicio_efeito = _inicio_efeito_definido(wb, ciclo)
-        ciclo_ativo = ciclo in {f"C{numero}" for numero in ativos}
-        if ciclo_ativo and inicio_efeito:
-            comp = data_comp.date()
-            esperado = (
-                "Sim"
-                if (comp.year, comp.month) >= (inicio_efeito.year, inicio_efeito.month)
-                else "Nao"
-            )
-        if efeito != esperado:
-            divergencias_manuais.append(
-                "Efeito financeiro ajustado manualmente: "
-                f"{ciclo} — {data_comp.strftime('%m/%Y')}."
-            )
-    avisos.extend(divergencias_manuais[:12])
-    if len(divergencias_manuais) > 12:
-        avisos.append(
-            f"Há mais {len(divergencias_manuais) - 12} efeitos financeiros "
-            "ajustados manualmente."
+    if efeitos_nao_informados:
+        bloqueios_criticos.append(
+            "Há competências com o campo 'Efeito financeiro' não preenchido na "
+            "aba financeiro. Corrija a coluna G antes de prosseguir: "
+            + _lista_compacta_competencias(efeitos_nao_informados)
+        )
+    if efeitos_invalidos:
+        bloqueios_criticos.append(
+            "Há competências com valor inválido no campo 'Efeito financeiro' da "
+            "aba financeiro. Use o dropdown da coluna G e selecione exatamente "
+            "Sim ou Nao: " + _lista_compacta_competencias(efeitos_invalidos)
         )
 
     contagens = {

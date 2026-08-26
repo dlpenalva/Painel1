@@ -145,15 +145,17 @@ def test_exemplo_fevereiro_abril_xls_python_100_100_110():
     assert sum(p["valor"] for p in deltas) == 10.0
 
 
-def test_alteracao_manual_e_respeitada_e_gera_aviso_sem_bloqueio():
+def test_alteracao_manual_e_respeitada_em_silencio():
+    """EF-G1: trocar Sim->Nao e decisao do XLS — respeitada, sem aviso algum."""
     wb = _wb()
     row = _linha_competencia(wb["financeiro"], 2024, 4)
     assert wb["financeiro"][f"G{row}"].value == "Sim"
     wb["financeiro"][f"G{row}"] = "Nao"
     wb["financeiro"][f"C{row}"] = 100.0
     diagnostico = ler_coleta_reajuste(_bytes(wb))
-    assert any("C1 — 04/2024" in aviso for aviso in diagnostico["avisos"])
-    assert not any("efeito financeiro nao informado" in b.lower() for b in diagnostico["bloqueios_criticos"])
+    assert not any("ajustado manualmente" in aviso for aviso in diagnostico["avisos"])
+    assert not any("não preenchido" in b.lower() for b in diagnostico["bloqueios_criticos"])
+    assert diagnostico["bloqueios_criticos"] == []
 
 
 def test_linha_ativa_sem_decisao_bloqueia_e_identifica_competencia():
@@ -162,7 +164,10 @@ def test_linha_ativa_sem_decisao_bloqueia_e_identifica_competencia():
     wb["financeiro"][f"C{row}"] = 100.0
     wb["financeiro"][f"G{row}"] = None
     diagnostico = ler_coleta_reajuste(_bytes(wb))
-    assert any("04/2024" in item and "nao informado" in item.lower() for item in diagnostico["bloqueios_criticos"])
+    assert any(
+        "04/2024" in item and "não preenchido" in item
+        for item in diagnostico["bloqueios_criticos"]
+    )
 
 
 def test_linha_nao_utilizada_vazia_nao_bloqueia():
@@ -179,7 +184,10 @@ def test_valor_invalido_bloqueia():
     row = _linha_competencia(wb["financeiro"], 2024, 4)
     wb["financeiro"][f"G{row}"] = "Talvez"
     diagnostico = ler_coleta_reajuste(_bytes(wb))
-    assert any("efeito financeiro invalido" in item.lower() for item in diagnostico["bloqueios_criticos"])
+    assert any(
+        "valor inválido" in item and "Efeito financeiro" in item
+        for item in diagnostico["bloqueios_criticos"]
+    )
 
 
 def test_dropdown_e_formatacao_condicional_sao_dinamicos():
@@ -261,17 +269,22 @@ def test_legado_respeita_g_no_calculo_sem_aviso():
     assert not any("ajustado manualmente" in aviso for aviso in diagnostico["avisos"])
 
 
-def test_runtime_propaga_cada_override_uma_unica_vez():
+def test_runtime_nao_emite_nenhum_aviso_de_autoria_da_marcacao():
+    """EF-G1: trocar G nao produz aviso de "ajuste manual" em lugar nenhum."""
     wb = _wb()
     for mes in (4, 5):
         row = _linha_competencia(wb["financeiro"], 2024, mes)
         wb["financeiro"][f"G{row}"] = "Nao"
     _, diagnostico = processar_coleta_oficial_runtime(_bytes(wb))
-    avisos = [a for a in diagnostico["avisos"] if "ajustado manualmente" in a]
-    assert len(avisos) == 2
-    assert len(set(avisos)) == 2
-    assert any("C1 — 04/2024" in aviso for aviso in avisos)
-    assert any("C1 — 05/2024" in aviso for aviso in avisos)
+    textos = [
+        str(item)
+        for chave in ("avisos", "pendencias", "bloqueios_criticos", "inconsistencias")
+        for item in (diagnostico.get(chave) or ())
+    ]
+    assert not any(
+        "ajustado manualmente" in texto or "ajustada manualmente" in texto
+        for texto in textos
+    )
 
 
 def test_competencia_malformada_nao_causa_crash_e_bloqueia():

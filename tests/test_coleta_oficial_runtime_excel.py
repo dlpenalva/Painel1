@@ -438,7 +438,7 @@ def test_excel_com_efeito_b_sim_aplica_fator_sem_vermelho(tmp_path: Path) -> Non
     assert cor not in (_cor_excel("FFC7CE"), _cor_excel("FCE4D6"))
 
 
-def test_excel_com_efeito_c_override_persiste_vta_nominal_sem_duplicar_aviso(tmp_path: Path) -> None:
+def test_excel_com_efeito_c_override_persiste_vta_nominal_sem_aviso(tmp_path: Path) -> None:
     caminho, row = _arquivo_efeitos(tmp_path, "efeito_c_override.xlsx")
 
     def editar(wb):
@@ -459,6 +459,7 @@ def test_excel_com_efeito_c_override_persiste_vta_nominal_sem_duplicar_aviso(tmp
     assert persistido["financeiro"][f"F{row}"].value == pytest.approx(0.0, abs=0.01)
     persistido.close()
     resultado, diagnostico = processar_coleta_oficial_runtime(caminho.read_bytes())
+    # EF-G1: a marcacao do XLS e respeitada em silencio, sem aviso de autoria.
     avisos = [a for a in diagnostico["avisos"] if "ajustado manualmente" in a]
     assert resultado["valor_represado_a_pagar"] == pytest.approx(0.0, abs=0.01)
     conferencia = next(
@@ -466,7 +467,7 @@ def test_excel_com_efeito_c_override_persiste_vta_nominal_sem_duplicar_aviso(tmp
         if item["metodo"] == "financeiro"
     )
     assert conferencia["executado_atualizado"] == pytest.approx(100.0, abs=0.01)
-    assert len(avisos) == 1
+    assert avisos == []
 
 
 def test_excel_com_efeito_d_vazio_bloqueia_e_f_e_documentos(tmp_path: Path) -> None:
@@ -498,7 +499,8 @@ def test_excel_com_efeito_d_vazio_bloqueia_e_f_e_documentos(tmp_path: Path) -> N
         str(x) for x in
         (diagnostico.get("inconsistencias") or [])
         + (diagnostico.get("bloqueios_criticos") or []))
-    assert "Efeito financeiro nao informado" in mensagens
+    # EF-G1: UMA unica mensagem agrupada, com a competencia identificavel.
+    assert "'Efeito financeiro' não preenchido" in mensagens
     assert "04/2024" in mensagens
 
 
