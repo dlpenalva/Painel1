@@ -4965,10 +4965,15 @@ def render_resultado_consolidado(resultado, diagnostico):
     status_exibicao = (
         "PENDENTE DE CONFERÊNCIA" if status_em_conferencia else status
     )
+    # P0-ROBUSTEZ-VALORES-1: a ressalva sobre Pedidos de Compra so descreve um
+    # caso apurado POR PC. Em Financeiro/Consumidos ela seria um diagnostico
+    # falso, entao vale a mensagem real do consolidado (que traz o motivo
+    # efetivo do bloqueio). A politica de bloqueio nao muda: quem decide o selo
+    # continua sendo `status_em_conferencia`.
     mensagem_status_exibicao = (
         "Pode haver divergência entre a planilha e a apuração do retroativo "
         "por Pedidos de Compra."
-        if status_em_conferencia
+        if status_em_conferencia and consolidado.get("medidas_pc_aplicaveis")
         else consolidado.get("mensagem_status") or ""
     )
     classe_status = {
