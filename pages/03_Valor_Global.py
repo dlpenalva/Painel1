@@ -79,7 +79,6 @@ def aplicar_css_aditivos25_compacto():
     )
 # <<< UX_ADITIVOS_25_COMPACTO
 from _ui_utils import (
-    render_avisos_override_efeito_financeiro,
     render_cabecalho_pagina,
 )
 
@@ -205,6 +204,21 @@ def localizar_coluna(df, opcoes):
             if alvo and alvo in col_norm:
                 return col_original
     return None
+
+
+def normalizar_efeito_financeiro(valor):
+    """Normaliza `financeiro!G` para a decisao canonica "Sim"/"Nao".
+
+    EF-G1: somente os dois rotulos do dropdown da coluna G sao decisao. Vazio
+    ou qualquer outro texto devolve "" — indeterminado, tratado como ausencia
+    da coluna canonica (o leitor da Coleta ja barra o arquivo nesse caso).
+    """
+    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+        return ""
+    texto = str(valor).strip()
+    if texto in ("Sim", "Nao", "Não"):
+        return "Sim" if texto == "Sim" else "Nao"
+    return ""
 
 
 def normalizar_ciclo(valor):
@@ -689,6 +703,7 @@ def ler_financeiro(bytes_arquivo, xls, ciclos):
     col_ciclo = localizar_coluna(df, ["Ciclo"])
     col_comp = localizar_coluna(df, ["Competência", "Competencia"])
     col_valor = localizar_coluna(df, ["Valor bruto medido/aprovado por competência", "Valor bruto medido", "Valor medido/aprovado", "Valor pago/faturado", "Valor bruto faturado", "Valor faturado", "Valor pago", "Valor medido", "Valor"])
+    col_efeito = localizar_coluna(df, ["EFEITO_FINANCEIRO", "Efeito financeiro", "Efeito financeiro?"])
 
     if col_valor is None:
         raise ValueError("Não foi encontrada coluna de valor bruto medido/aprovado na aba BASE_EXECUCAO_MENSAL/FINANCEIRO_MENSAL.")
@@ -697,6 +712,11 @@ def ler_financeiro(bytes_arquivo, xls, ciclos):
     resultado["Ciclo"] = df[col_ciclo].apply(normalizar_ciclo) if col_ciclo else ""
     resultado["Competência"] = df[col_comp] if col_comp else ""
     resultado["Valor pago/faturado"] = df[col_valor].apply(numero_br)
+    # EF-G1: `financeiro!G` (EFEITO_FINANCEIRO) e a decisao canonica do efeito
+    # financeiro da competencia e viaja junto da base mensal.
+    resultado["Efeito financeiro"] = (
+        df[col_efeito].apply(normalizar_efeito_financeiro) if col_efeito else ""
+    )
 
     if (resultado["Ciclo"] == "").all() and col_comp and not ciclos.empty:
         resultado["Ciclo"] = atribuir_ciclo_por_competencia(resultado["Competência"], ciclos)
@@ -1014,9 +1034,20 @@ def financeiro_com_efeito_financeiro(df_financeiro, ciclos):
         info = fatores.get(ciclo, {})
         fator_retroativo = float(info.get("fator_retroativo", 1.0) or 1.0)
         inicio_fin = inicios_fin.get(ciclo)
-        sem_efeito = False
-        if periodo is not None and inicio_fin is not None and periodo < inicio_fin:
+        # EF-G1 — fonte determinante: `financeiro!G`. "Sim" recebe o reajuste,
+        # "Nao" nao gera diferenca. G NUNCA exclui a competencia: o valor-base
+        # da execucao permanece integralmente na apuracao (e no VTA) nos dois
+        # casos. Base legada sem a coluna canonica ("") mantem a reconstrucao
+        # historica pelo inicio financeiro do ciclo — sem regressao.
+        efeito = normalizar_efeito_financeiro(row.get("Efeito financeiro", ""))
+        if efeito == "Sim":
+            sem_efeito = False
+        elif efeito == "Nao":
             sem_efeito = True
+        else:
+            sem_efeito = bool(
+                periodo is not None and inicio_fin is not None and periodo < inicio_fin
+            )
         valor_teorico = valor if sem_efeito else valor * fator_retroativo
         delta_computavel = 0.0 if sem_efeito else (valor_teorico - valor)
         delta_sem_efeito = (valor * fator_retroativo - valor) if sem_efeito else 0.0
@@ -5747,8 +5778,6 @@ if st.session_state.get("assinatura_processada_upload_docs") != assinatura_uploa
 diagnostico_coleta = st.session_state.get("diagnostico_coleta_v2") or {}
 
 resultado = st.session_state.get("resultado_valor_global")
-
-render_avisos_override_efeito_financeiro(diagnostico_coleta)
 
 if resultado:
     metadados = diagnostico_coleta.get("metadados", {})
