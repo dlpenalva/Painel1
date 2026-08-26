@@ -35,6 +35,18 @@ def _numero(valor: Any, padrao: float = 0.0) -> float:
         return padrao
 
 
+def _numero_opcional(valor: Any) -> float | None:
+    """Le um numero preservando a diferenca entre ausencia e zero.
+
+    Campos economicos em que "nao ha valor apurado" e uma resposta legitima
+    NAO podem cair no zero historico de ``_numero``: um zero fabricado fica
+    indistinguivel de um zero real e chega a interface como "R$ 0,00", onde a
+    ausencia deveria aparecer como "INDISPONIVEL" (fail-closed). Zero
+    explicitamente apurado continua sendo 0.0.
+    """
+    return _numero(valor, None)  # type: ignore[arg-type]
+
+
 def _data_br(valor: Any) -> str:
     if isinstance(valor, datetime):
         return valor.strftime("%d/%m/%Y")
@@ -325,7 +337,23 @@ def adaptar_coleta_reajuste_para_documentos(
     if metodo_python == "consumidos":
         retroativo = None
     else:
-        retroativo = retroativo_python if retroativo_python is not None else _numero(retro_capacidade.get("valor"))
+        # P0-ROBUSTEZ-VALORES-1: sem retroativo canonico e sem valor apurado nas
+        # capacidades, o resultado e AUSENTE — nunca zero fabricado.
+        retroativo = (
+            retroativo_python if retroativo_python is not None
+            else _numero_opcional(retro_capacidade.get("valor"))
+        )
+        if retroativo is None:
+            # Ultimo discriminante antes de declarar ausencia: quando CONTROLE!B1
+            # nao esta preenchido, `retroativo_python` nem chega a ser calculado,
+            # mas a cadeia canonica ja apurou o retroativo pelo metodo que ela
+            # propria selecionou. `_retroativo_python` devolve o total quando ha
+            # evidencia (inclusive 0.0 legitimo — caso EF-G1 com toda competencia
+            # em G="Nao") e None quando nao ha evidencia alguma. Consumido segue
+            # fora por VTA-C2: la o retroativo nao e "reconhecido".
+            metodo_canonico = str((memoria.get("vta") or {}).get("metodo") or "")
+            if metodo_canonico and metodo_canonico != "consumidos":
+                retroativo = _retroativo_python(memoria, metodo_canonico)
     rem_original = _numero(resultados["C35"].value)
     if int(residual_vigente.get("itens") or 0) > 0:
         rem_original = _numero(residual_vigente.get("valor_original"))
@@ -341,7 +369,12 @@ def adaptar_coleta_reajuste_para_documentos(
     if metodo_python == "consumidos" and vta_python is None:
         valor_total = None
     else:
-        valor_total = vta_python if vta_python is not None else _numero(vta_capacidade.get("valor"))
+        # P0-ROBUSTEZ-VALORES-1: idem para o VTA — ausencia de calculo canonico
+        # e de valor apurado mantem o VTA indisponivel (fail-closed VTA-U2).
+        valor_total = (
+            vta_python if vta_python is not None
+            else _numero_opcional(vta_capacidade.get("valor"))
+        )
     pago_total = float(df_financeiro["Valor pago/faturado"].sum()) if not df_financeiro.empty else 0.0
     devido_total = float(df_financeiro["Valor atualizado"].sum()) if not df_financeiro.empty else 0.0
     total_aditivos = float(df_aditivos["Valor do aditivo reajustado"].sum()) if not df_aditivos.empty else 0.0
