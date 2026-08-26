@@ -64,6 +64,7 @@ from _reajuste_utils import (
 from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, gerar_coleta_oficial_preenchida, nome_download_coleta
 from _memoria_calculo import normalizar_memoria_calculo
 from _email_contratada import render_email_contratada
+from _ui_preclusao import render_indicador_preclusao
 
 # ICTI/IPEADATA_LOCAL_FALLBACK_V1
 ICTI_SERCODIGO_LOCAL = "DIMAC_ICTI2"
@@ -2336,6 +2337,12 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
             ),
         ),
         unsafe_allow_html=True,
+    )
+    render_indicador_preclusao(
+        situacao_limpa,
+        dt_ped,
+        d_lim,
+        ciclo=f"C{i}",
     )
 
     # Próximo interregno: competência do início dos efeitos + 12 meses (a
