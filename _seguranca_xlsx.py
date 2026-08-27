@@ -17,6 +17,43 @@ TAMANHO_MAXIMO_MEMBRO = 50 * 1024 * 1024
 QUANTIDADE_MAXIMA_MEMBROS = 250
 RAZAO_MAXIMA_COMPRESSAO_MEMBRO = 100
 
+# Orçamento de geometria do workbook. A dimensão de uma aba é declarada pelo
+# arquivo, não pela aplicação: uma única célula remota infla o retângulo sem
+# inflar o pacote, e qualquer varredura posterior materializa esse retângulo
+# inteiro. Os tetos vêm do corpus legítimo medido (máximos observados:
+# 5.001 linhas, 61 colunas, 145.029 células na maior aba, 204.278 no workbook
+# e 16 abas), com margem de 1,6x a 2,5x.
+MAX_LINHAS_POR_ABA = 10_000
+MAX_COLUNAS_POR_ABA = 100
+MAX_AREA_POR_ABA = 300_000
+MAX_AREA_TOTAL_WORKBOOK = 500_000
+MAX_ABAS_WORKBOOK = 16
+
+# Allowlist por NOME, deliberadamente indiferente ao estado da aba: no corpus
+# real, financeiro, itens_Consumidos, itens_PC e aditivos aparecem ora visible,
+# ora hidden. Este gate rejeita apenas nome não permitido; a obrigatoriedade
+# das abas continua sendo tratada pela lógica de negócio existente.
+ABAS_PERMITIDAS = frozenset(
+    {
+        "CONTROLE",
+        "parametros",
+        "financeiro",
+        "itens_Remanesc",
+        "itens_Consumidos",
+        "itens_PC",
+        "aditivos",
+        "posicao_contratual",
+        "itens_RC",
+        "historico_VU",
+        "RESULTADOS",
+        "comparativo_VTA",
+        "posicao_referencia",
+        "cobertura_temporal",
+        "MEMORIA_RESULTADOS",
+        "CICLO_EM_EXECUCAO",
+    }
+)
+
 MENSAGEM_XLSX_INVALIDO = "O arquivo enviado não é um XLSX válido ou está corrompido."
 MENSAGEM_LIMITE_XLSX = "O arquivo excede os limites de segurança permitidos."
 MENSAGEM_ESTRUTURA_XLSX = "O arquivo XLSX possui uma estrutura interna não permitida."
@@ -120,6 +157,42 @@ def validar_xlsx_antes_do_parser(conteudo: bytes) -> bytes:
 def garantir_xlsx_validado(conteudo: bytes) -> bytes:
     """Valida chamadas isoladas e vira operação sem custo após a fronteira."""
     return validar_xlsx_antes_do_parser(conteudo)
+
+
+def validar_geometria_workbook(wb) -> None:
+    """Aprova o orçamento de varredura do workbook logo após o ``load_workbook``.
+
+    Chamado ANTES de qualquer percurso de células, para que as varreduras
+    existentes (``_formulas`` e afins) operem sempre dentro de um retângulo já
+    aprovado. Lê apenas ``sheetnames``, ``max_row`` e ``max_column`` — nunca
+    ``iter_rows``, ``iter_cols``, ``values``, ``rows`` ou ``columns``, que
+    materializariam justamente o retângulo sob suspeita.
+
+    A ordem é a mais barata primeiro: contagem de abas, depois nomes, depois a
+    geometria de cada aba e, por último, a área acumulada.
+    """
+    abas = wb.sheetnames
+    if len(abas) > MAX_ABAS_WORKBOOK:
+        raise XlsxLimiteError(MENSAGEM_LIMITE_XLSX)
+
+    nao_permitidas = [aba for aba in abas if aba not in ABAS_PERMITIDAS]
+    if nao_permitidas:
+        raise XlsxEstruturaError(MENSAGEM_ESTRUTURA_XLSX)
+
+    area_total = 0
+    for ws in wb.worksheets:
+        linhas = ws.max_row or 0
+        colunas = ws.max_column or 0
+        if linhas > MAX_LINHAS_POR_ABA or colunas > MAX_COLUNAS_POR_ABA:
+            raise XlsxLimiteError(MENSAGEM_LIMITE_XLSX)
+
+        area = linhas * colunas
+        if area > MAX_AREA_POR_ABA:
+            raise XlsxLimiteError(MENSAGEM_LIMITE_XLSX)
+
+        area_total += area
+        if area_total > MAX_AREA_TOTAL_WORKBOOK:
+            raise XlsxLimiteError(MENSAGEM_LIMITE_XLSX)
 
 
 def opcoes_excel_writer_seguro() -> dict[str, dict[str, bool]]:

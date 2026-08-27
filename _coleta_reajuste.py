@@ -20,7 +20,7 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 from openpyxl.styles import Font, PatternFill
 
-from _seguranca_xlsx import garantir_xlsx_validado
+from _seguranca_xlsx import garantir_xlsx_validado, validar_geometria_workbook
 
 from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
 from _capacidades_apuracao import avaliar_capacidades_apuracao
@@ -517,6 +517,11 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
         wb = load_workbook(BytesIO(conteudo), data_only=False, read_only=False)
     except Exception as exc:
         raise ValueError("O arquivo não é um XLSX válido.") from exc
+
+    # Fronteira de geometria: aprova o orçamento de varredura antes que qualquer
+    # percurso de células aconteça, de modo que _formulas() e as demais leituras
+    # trabalhem sempre dentro de um retângulo já validado.
+    validar_geometria_workbook(wb)
 
     faltantes = [aba for aba in ABAS_OBRIGATORIAS_LEGADO if aba not in wb.sheetnames]
     proibidas = [aba for aba in ABAS_PROIBIDAS if aba in wb.sheetnames]
