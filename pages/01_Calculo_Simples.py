@@ -58,6 +58,7 @@ from _reajuste_utils import (
 from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, gerar_coleta_oficial_preenchida, nome_download_coleta
 from _memoria_calculo import normalizar_memoria_calculo
 from _email_contratada import gerar_rascunho_email_contratada, render_email_contratada
+from _solicitacao_fiscal import render_solicitacao_fiscal_coleta
 from _ui_preclusao import render_indicador_preclusao
 # Imports dos blocos auxiliares de orientação/coleta fiscal
 # ICTI/IPEADATA_LOCAL_FALLBACK_V1
@@ -2368,3 +2369,7 @@ if res:
             "Não foi possível gerar a Comunicação à Contratada: "
             f"{_e_email_contratada}"
         )
+
+    render_solicitacao_fiscal_coleta(
+        ("simples", st.session_state.get("chave_analise_simples_processada"))
+    )
