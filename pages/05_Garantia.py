@@ -93,6 +93,58 @@ def css():
         table.garantia-tabela td { border: 1px solid #E5EAF0; padding: 8px 10px; vertical-align: top; white-space: normal; overflow-wrap: anywhere; word-break: normal; line-height: 1.35; }
         table.garantia-tabela td.valor { white-space: nowrap; overflow-wrap: normal; text-align: right; }
         table.garantia-tabela tr.garantia-linha-marco td { background: #FBFCFD; color: #475569; font-style: italic; }
+        .garantia-resumo {
+            background: #FFFFFF;
+            border: 1px solid #E1E6EB;
+            border-radius: 16px;
+            padding: 6px 18px;
+            margin: 6px 0 18px 0;
+        }
+        .garantia-resumo-linha {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: baseline;
+            justify-content: space-between;
+            gap: 6px 20px;
+            padding: 15px 14px;
+            border-radius: 12px;
+            border-bottom: 1px solid #EEF2F6;
+        }
+        .garantia-resumo-linha:last-child { border-bottom: none; }
+        .garantia-resumo-linha.destaque {
+            background: #F1F8F3;
+            border: 1px solid #CFE6D7;
+            box-shadow: inset 4px 0 0 0 #2F7D51;
+            margin: 8px 0;
+        }
+        .garantia-resumo-texto { flex: 1 1 260px; min-width: 0; }
+        .garantia-resumo-rotulo { color: #475569; font-size: 0.93rem; font-weight: 600; line-height: 1.3; }
+        .garantia-resumo-linha.destaque .garantia-resumo-rotulo { color: #2C5B43; }
+        .garantia-resumo-nota { color: #7A8798; font-size: 0.82rem; margin-top: 5px; line-height: 1.4; }
+        .garantia-resumo-valor {
+            flex: 0 0 auto;
+            margin-left: auto;
+            color: #1F2937;
+            font-size: 1.45rem;
+            font-weight: 700;
+            line-height: 1.2;
+            white-space: nowrap;
+        }
+        .garantia-resumo-linha.destaque .garantia-resumo-valor { color: #14532D; font-size: 1.62rem; font-weight: 800; }
+        .garantia-status {
+            background: #F1F8F3;
+            border: 1px solid #CFE6D7;
+            border-radius: 10px;
+            padding: 12px 14px;
+            margin: 4px 0 12px 0;
+            color: #24402F;
+            font-size: 0.92rem;
+            line-height: 1.45;
+        }
+        .garantia-status strong { color: #14532D; }
+        .garantia-status-forte { background: #E9F4EE; border: 1px solid #B9DCC6; font-size: 0.98rem; }
+        .garantia-status-ambar { background: #FDF6E8; border: 1px solid #EBDCB4; color: #4A3B1A; }
+        .garantia-status-ambar strong { color: #7A5A12; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -174,6 +226,104 @@ def render_evolucao_contrato(situacao):
     )
 
 
+def status_box(titulo, detalhe="", forte=False, ambar=False):
+    """Box informativo próprio, em verde claro suave ou âmbar muito suave.
+
+    Muda a linguagem visual, nunca o diagnóstico: o título continua sendo a
+    constante apurada pelo motor e o detalhe, a mesma frase de antes. O verde é
+    próprio, e não o verde forte de ``st.success``.
+
+    Os boxes intermediários (situação financeira e situação da validade) são
+    sempre verdes — ali a cor apenas acomoda a leitura. Só a CONCLUSÃO
+    (``forte``) carrega semântica de cor: verde para situação regular, âmbar
+    para necessidade de ação, e o vermelho de ``st.error`` para as duas
+    dimensões pendentes ao mesmo tempo.
+    """
+    classe = "garantia-status"
+    if forte:
+        classe += " garantia-status-forte"
+    if ambar:
+        classe += " garantia-status-ambar"
+    detalhe_html = f" — {escape(detalhe)}" if detalhe else ""
+    st.markdown(
+        f'<div class="{classe}"><strong>{escape(titulo)}</strong>{detalhe_html}</div>',
+        unsafe_allow_html=True,
+    )
+
+
+def linha_resumo(rotulo, valor, nota=None, destaque=False):
+    """Uma leitura do painel-resumo: rótulo (+ nota) à esquerda, valor à direita.
+
+    O ``flex-wrap`` faz o valor descer para a própria linha em larguras menores —
+    nunca corta o número nem cria rolagem horizontal.
+    """
+    classe = "garantia-resumo-linha destaque" if destaque else "garantia-resumo-linha"
+    nota_html = f'<div class="garantia-resumo-nota">{escape(nota)}</div>' if nota else ""
+    return (
+        f'<div class="{classe}">'
+        f'<div class="garantia-resumo-texto">'
+        f'<div class="garantia-resumo-rotulo">{escape(rotulo)}</div>'
+        f"{nota_html}"
+        f"</div>"
+        f'<div class="garantia-resumo-valor">{escape(valor)}</div>'
+        f"</div>"
+    )
+
+
+def render_resumo_situacao_atual(situacao, analise):
+    """Painel único: a conclusão executiva da análise em cinco leituras.
+
+    Não há cálculo aqui — cada linha apenas FORMATA um valor que o motor já
+    apurou em ``situacao``/``analise``. Os três resultados práticos (garantia
+    exigida, complemento e validade mínima) recebem o destaque verde suave; o
+    valor do contrato e a última garantia apresentada ficam como contexto.
+    """
+    tem_garantia = analise["tem_garantia"]
+    complemento = analise["complemento"]
+    linhas = [
+        linha_resumo(
+            "Valor atualizado total do contrato",
+            formatar_brl(situacao["valor_atual"]),
+            formatar_variacao(situacao["variacao_acumulada"]) + " frente ao valor original.",
+        ),
+        linha_resumo(
+            "Valor atualizado total da garantia exigida",
+            formatar_brl(situacao["garantia_exigida"]),
+            f"{formatar_percentual(situacao['percentual'])}% do valor atualizado total do contrato.",
+            destaque=True,
+        ),
+        linha_resumo(
+            "Valor da última garantia apresentada",
+            # Ausência não é zero: sem garantia informada a linha diz "Não
+            # informada", jamais R$ 0,00.
+            formatar_brl(analise["garantia_apresentada"]) if tem_garantia else "Não informada",
+            "Última fotografia da garantia na linha do tempo."
+            if tem_garantia
+            else "Nenhuma garantia apresentada foi informada na linha do tempo.",
+        ),
+        linha_resumo(
+            "Valor do complemento necessário da garantia",
+            formatar_brl(complemento),
+            "Não há complemento financeiro necessário."
+            if complemento == 0
+            else "Diferença entre a garantia exigida e a última garantia apresentada.",
+            destaque=True,
+        ),
+        linha_resumo(
+            "Validade mínima exigida da garantia",
+            formatar_data_br(analise["validade_minima"]),
+            f"{DIAS_VALIDADE_MINIMA} dias corridos após o término da vigência "
+            f"({formatar_data_br(situacao['vigencia_atual'])}). Validade da garantia "
+            f"apresentada: {formatar_data_br(analise['validade_apresentada'])}.",
+            destaque=True,
+        ),
+    ]
+    st.markdown(
+        f'<div class="garantia-resumo">{"".join(linhas)}</div>',
+        unsafe_allow_html=True,
+    )
+
+
 # ============================================================
 # Interface
 # ============================================================
@@ -203,7 +353,6 @@ if st.button("← Voltar para Central", key="voltar_central_garantia"):
 # 1) Situação original do contrato — o marco da assinatura
 # ------------------------------------------------------------
 st.subheader("Situação original do contrato")
-st.caption("Informe os dados do contrato na assinatura. A garantia é opcional.")
 col_o1, col_o2, col_o3 = st.columns(3)
 with col_o1:
     valor_original_txt = st.text_input(
@@ -378,25 +527,6 @@ if pendencias_eventos:
 # 3) Situação atual — 100% derivada da linha do tempo
 # ------------------------------------------------------------
 st.subheader("Situação atual do contrato")
-col_a1, col_a2, col_a3 = st.columns(3)
-with col_a1:
-    card(
-        "Valor atual do contrato",
-        formatar_brl(situacao["valor_atual"]),
-        formatar_variacao(situacao["variacao_acumulada"]) + " frente ao valor original.",
-    )
-with col_a2:
-    card(
-        "Garantia exigida",
-        formatar_brl(situacao["garantia_exigida"]),
-        f"{formatar_percentual(situacao['percentual'])}% do valor atual.",
-    )
-with col_a3:
-    card(
-        "Validade mínima da garantia",
-        formatar_data_br(situacao["validade_minima"]),
-        f"Vigência até {formatar_data_br(situacao['vigencia_atual'])}.",
-    )
 
 analise = analisar_garantia(
     valor_total_contrato=situacao["valor_atual"],
@@ -406,74 +536,68 @@ analise = analisar_garantia(
     validade_apresentada=situacao["validade_apresentada"],
 )
 
-# ------------------------------------------------------------
-# 4) Resultado — exigida x última fotografia, nas duas dimensões
-# ------------------------------------------------------------
-st.subheader("Resultado da análise")
-col_r1, col_r2, col_r3 = st.columns(3)
-with col_r1:
-    card(
-        "Garantia apresentada",
-        formatar_brl_opcional(analise["garantia_apresentada"]),
-        "Última situação informada na linha do tempo."
-        if analise["tem_garantia"]
-        else "Nenhuma garantia informada.",
-    )
-with col_r2:
-    card(
-        "Validade apresentada",
-        formatar_data_br(analise["validade_apresentada"]),
-        f"Mínima necessária: {formatar_data_br(analise['validade_minima'])}.",
-    )
-with col_r3:
-    card(
-        "Complemento financeiro necessário",
-        formatar_brl(analise["complemento"]),
-        "Não há complemento financeiro a exigir."
-        if analise["valor_suficiente"]
-        else "Diferença frente à garantia exigida.",
-        destaque=not analise["valor_suficiente"],
-    )
+# Painel único, na ordem em que a pergunta se faz: quanto vale hoje o contrato,
+# quanto passa a ser exigido de garantia, o que já foi apresentado, o que falta
+# complementar e até quando a garantia precisa valer.
+render_resumo_situacao_atual(situacao, analise)
 
+# ------------------------------------------------------------
+# 4) Resultado — a qualificação das duas dimensões independentes
+# ------------------------------------------------------------
+# Os números já estão no painel acima; aqui fica o que ele não diz: como a
+# garantia se qualifica no dinheiro e no prazo, e o diagnóstico final.
+st.subheader("Resultado da análise")
 col_s1, col_s2 = st.columns(2)
 with col_s1:
     st.markdown("**Situação financeira**")
     if analise["situacao_financeira"] == FINANCEIRO_COMPLEMENTAR:
-        st.warning(
-            f"{FINANCEIRO_COMPLEMENTAR} — complemento de {formatar_brl(analise['complemento'])}."
+        status_box(
+            FINANCEIRO_COMPLEMENTAR,
+            f"complemento de {formatar_brl(analise['complemento'])}.",
         )
     elif analise["situacao_financeira"] == FINANCEIRO_SUFICIENTE:
-        st.success(f"{FINANCEIRO_SUFICIENTE}.")
+        status_box(FINANCEIRO_SUFICIENTE)
     else:
-        st.success(
-            f"{analise['situacao_financeira']} — não há complemento financeiro a exigir. "
-            "Eventual adequação depende da análise contratual."
+        status_box(
+            analise["situacao_financeira"],
+            "não há complemento financeiro a exigir. Eventual adequação depende da "
+            "análise contratual.",
         )
 with col_s2:
     st.markdown("**Situação da validade**")
     if analise["situacao_temporal"] == TEMPORAL_SUFICIENTE:
-        st.success(f"{TEMPORAL_SUFICIENTE}.")
+        status_box(TEMPORAL_SUFICIENTE)
     elif analise["situacao_temporal"] == TEMPORAL_NAO_INFORMADA:
-        st.warning(
-            f"{TEMPORAL_NAO_INFORMADA} — o prazo não pôde ser verificado com os dados apresentados."
+        status_box(
+            TEMPORAL_NAO_INFORMADA,
+            "o prazo não pôde ser verificado com os dados apresentados.",
         )
     else:
-        st.warning(
-            f"{analise['situacao_temporal']} — a validade deve alcançar, no mínimo, "
-            f"{formatar_data_br(analise['validade_minima'])}."
+        status_box(
+            analise["situacao_temporal"],
+            f"a validade deve alcançar, no mínimo, {formatar_data_br(analise['validade_minima'])}.",
         )
 
 diagnostico = analise["diagnostico"]
 if diagnostico == DIAGNOSTICO_REGULAR:
-    st.success(f"{DIAGNOSTICO_REGULAR} — valor suficiente e validade suficiente.")
+    status_box(DIAGNOSTICO_REGULAR, "valor suficiente e validade suficiente.", forte=True)
 elif diagnostico == DIAGNOSTICO_VALOR:
-    st.warning(f"{DIAGNOSTICO_VALOR} — complemento de {formatar_brl(analise['complemento'])}.")
+    status_box(
+        DIAGNOSTICO_VALOR,
+        f"complemento de {formatar_brl(analise['complemento'])}.",
+        forte=True,
+        ambar=True,
+    )
 elif diagnostico == DIAGNOSTICO_VALIDADE:
-    st.warning(
-        f"{DIAGNOSTICO_VALIDADE} — o valor garantido é suficiente, mas a validade deve alcançar "
-        f"{formatar_data_br(analise['validade_minima'])}."
+    status_box(
+        DIAGNOSTICO_VALIDADE,
+        "o valor garantido é suficiente, mas a validade deve alcançar "
+        f"{formatar_data_br(analise['validade_minima'])}.",
+        forte=True,
+        ambar=True,
     )
 else:
+    # Pendência nas DUAS dimensões segue em vermelho: bloqueio real já previsto.
     st.error(
         f"{DIAGNOSTICO_VALOR_E_VALIDADE} — complemento de {formatar_brl(analise['complemento'])} "
         f"e validade mínima até {formatar_data_br(analise['validade_minima'])}."
@@ -491,9 +615,10 @@ texto_comunicacao = gerar_texto_comunicacao(analise)
 if st.session_state.get("garantia_texto_comunicacao") != texto_comunicacao:
     st.session_state["garantia_texto_comunicacao"] = texto_comunicacao
 st.text_area(
-    "Copie e cole no e-mail à contratada",
+    "Texto para a contratada",
     height=340,
     key="garantia_texto_comunicacao",
+    label_visibility="collapsed",
 )
 
 # ------------------------------------------------------------

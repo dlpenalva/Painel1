@@ -11,6 +11,7 @@ dias, os textos de comunicação, o fail-closed de linha incompleta, a ausência
 qualquer campo de identificação, o isolamento absoluto de dados externos em
 session_state e o card da Central como Calculadora.
 """
+import re
 import unittest
 from datetime import date
 from decimal import Decimal
@@ -1115,6 +1116,361 @@ class CardCentralTests(unittest.TestCase):
         ):
             self.assertIn(chave, CENTRAL)
         self.assertEqual(CENTRAL.count('"ferramenta": True'), 1)
+
+
+# ============================================================
+# GAR-UX2 — painel-resumo único da situação atual
+# ============================================================
+
+# Os cinco rótulos são conceituais e explícitos: nenhum "Valor atual",
+# "Garantia", "Endosso" ou "Validade" solto.
+ROTULOS_RESUMO = (
+    "Valor atualizado total do contrato",
+    "Valor atualizado total da garantia exigida",
+    "Valor da última garantia apresentada",
+    "Valor do complemento necessário da garantia",
+    "Validade mínima exigida da garantia",
+)
+
+_PARES_DO_PAINEL = re.compile(
+    r'<div class="garantia-resumo-rotulo">(.*?)</div>.*?'
+    r'<div class="garantia-resumo-valor">(.*?)</div>',
+    re.S,
+)
+
+
+def _painel_html(at):
+    for elemento in at.markdown:
+        if 'class="garantia-resumo"' in elemento.value:
+            return elemento.value
+    raise AssertionError("painel-resumo da situação atual não foi renderizado")
+
+
+def _painel_resumo(at):
+    """Rótulo -> valor exibido no painel-resumo da página em execução."""
+    return dict(_PARES_DO_PAINEL.findall(_painel_html(at)))
+
+
+def _boxes_de_status(at):
+    # O filtro é por class="…" e não pelo nome solto da classe: o próprio bloco
+    # <style> da página é um markdown e cita todas as classes.
+    return [e.value for e in at.markdown if 'class="garantia-status' in e.value]
+
+
+def _diagnostico_final(at):
+    """HTML do box da conclusão — é o único que carrega ``garantia-status-forte``."""
+    finais = [b for b in _boxes_de_status(at) if "garantia-status-forte" in b]
+    if not finais:
+        return None
+    assert len(finais) == 1, "há mais de um box de conclusão na tela"
+    return finais[0]
+
+
+def _linha_evento(tipo=None, valor=None, vigencia=None, garantia=None, validade=None):
+    return {
+        COLUNA_EVENTO_TIPO: tipo,
+        COLUNA_EVENTO_DATA: None,
+        COLUNA_EVENTO_VALOR: valor,
+        COLUNA_EVENTO_VIGENCIA: None if vigencia is None else vigencia.isoformat(),
+        COLUNA_EVENTO_GARANTIA: garantia,
+        COLUNA_EVENTO_VALIDADE: None if validade is None else validade.isoformat(),
+    }
+
+
+def _rodar_garantia(eventos=(), garantia="", validade=None):
+    from streamlit.testing.v1 import AppTest
+
+    at = AppTest.from_file(str(ROOT / "pages" / "05_Garantia.py"), default_timeout=90)
+    at.run()
+    at.text_input(key="garantia_valor_original").set_value("1.000.000,00").run()
+    at.date_input(key="garantia_fim_vigencia").set_value(FIM_VIGENCIA).run()
+    if garantia:
+        at.text_input(key="garantia_apresentada_original").set_value(garantia).run()
+    if validade is not None:
+        at.date_input(key="garantia_validade_original").set_value(validade).run()
+    if eventos:
+        at.session_state["garantia_eventos_contrato"] = {
+            "edited_rows": {}, "added_rows": list(eventos), "deleted_rows": [0, 1, 2],
+        }
+    at.run()
+    return at
+
+
+class ResumoSituacaoAtualEstruturaTests(unittest.TestCase):
+    """O código do painel: rótulos, origem dos valores e ausência de recálculo."""
+
+    def _funcao_resumo(self):
+        inicio = GARANTIA.index("def render_resumo_situacao_atual(")
+        fim = GARANTIA.index("# ============================================================\n# Interface")
+        return GARANTIA[inicio:fim]
+
+    def _bloco_situacao_atual(self):
+        return GARANTIA[GARANTIA.index('st.subheader("Situação atual do contrato")'):]
+
+    def test_os_cinco_rotulos_conceituais_existem(self):
+        for rotulo in ROTULOS_RESUMO:
+            self.assertIn(rotulo, self._funcao_resumo(), f"rótulo ausente: {rotulo}")
+
+    def test_um_unico_painel_e_nenhum_card_solto_na_situacao_atual(self):
+        self.assertEqual(GARANTIA.count('class="garantia-resumo"'), 1)
+        self.assertIn("render_resumo_situacao_atual(situacao, analise)", GARANTIA)
+        # Os cards independentes da situação atual e do resultado deixaram de
+        # existir: a leitura toda passa pelo painel único.
+        self.assertNotIn("    card(", self._bloco_situacao_atual())
+
+    def test_rotulos_e_cards_redundantes_nao_sobrevivem(self):
+        for antigo in (
+            '"Valor atual do contrato"',
+            '"Validade mínima da garantia"',
+            '"Complemento financeiro necessário"',
+            '"Validade apresentada"',
+        ):
+            self.assertNotIn(antigo, GARANTIA, f"leitura redundante remanescente: {antigo}")
+
+    def test_cada_leitura_vem_da_estrutura_apurada_pelo_motor(self):
+        bloco = self._funcao_resumo()
+        for origem in (
+            'formatar_brl(situacao["valor_atual"])',
+            'formatar_brl(situacao["garantia_exigida"])',
+            'formatar_brl(analise["garantia_apresentada"])',
+            'complemento = analise["complemento"]',
+            "formatar_brl(complemento)",
+            'formatar_data_br(analise["validade_minima"])',
+        ):
+            self.assertIn(origem, bloco, f"leitura não vem do motor: {origem}")
+
+    def test_a_ui_nao_duplica_nem_refaz_calculo(self):
+        for aritmetica in ("Decimal", "quantize(", "ROUND_HALF_UP", "timedelta"):
+            self.assertNotIn(aritmetica, CORPO_GARANTIA, f"cálculo duplicado na UI: {aritmetica}")
+
+    def test_caption_da_situacao_original_foi_excluida(self):
+        self.assertNotIn(
+            "Informe os dados do contrato na assinatura. A garantia é opcional.", GARANTIA
+        )
+        self.assertNotIn("A garantia é opcional", GARANTIA)
+
+    def test_label_do_texto_a_contratada_foi_excluido(self):
+        self.assertNotIn("Copie e cole no e-mail à contratada", GARANTIA)
+        bloco = GARANTIA[GARANTIA.index('st.subheader("Texto para a contratada")'):]
+        self.assertIn('label_visibility="collapsed"', bloco)
+        self.assertIn('key="garantia_texto_comunicacao"', bloco)
+        self.assertIn("height=340", bloco)
+
+    def test_boxes_de_status_usam_o_verde_suave_proprio(self):
+        bloco = self._bloco_situacao_atual()
+        # Nenhum amarelo/verde nativo do Streamlit remanescente na área.
+        self.assertNotIn("st.warning(", bloco)
+        self.assertNotIn("st.success(", bloco)
+        # O vermelho do bloqueio real (as DUAS dimensões pendentes) permanece.
+        self.assertIn("st.error(", bloco)
+        self.assertIn(".garantia-status {", GARANTIA)
+        self.assertIn("background: #F1F8F3;", GARANTIA)
+
+    def test_os_boxes_intermediarios_nunca_recebem_ambar(self):
+        # Situação financeira e Situação da validade são sempre verdes: ali a
+        # cor não diagnostica nada, apenas acomoda a leitura.
+        inicio = GARANTIA.index('st.markdown("**Situação financeira**")')
+        fim = GARANTIA.index("diagnostico = analise[")
+        intermediarios = GARANTIA[inicio:fim]
+        self.assertNotIn("ambar", intermediarios)
+        self.assertNotIn("forte", intermediarios)
+
+    def test_a_conclusao_carrega_a_semantica_de_cor(self):
+        bloco = GARANTIA[GARANTIA.index("diagnostico = analise["):]
+        # Regular -> verde; pendência de uma dimensão -> âmbar; as duas -> vermelho.
+        self.assertIn(
+            'status_box(DIAGNOSTICO_REGULAR, "valor suficiente e validade suficiente.", forte=True)',
+            bloco,
+        )
+        for pendencia in ("DIAGNOSTICO_VALOR,", "DIAGNOSTICO_VALIDADE,"):
+            trecho = bloco[bloco.index(pendencia):]
+            trecho = trecho[: trecho.index(")\n")]
+            self.assertIn("forte=True", trecho, f"{pendencia} deveria ser conclusão")
+            self.assertIn("ambar=True", trecho, f"{pendencia} deveria ser âmbar")
+        self.assertNotIn("ambar", bloco[bloco.index("DIAGNOSTICO_REGULAR"):bloco.index("DIAGNOSTICO_VALOR,")])
+        self.assertIn("st.error(", bloco)
+        self.assertIn(".garantia-status-ambar { background: #FDF6E8;", GARANTIA)
+
+    def test_o_texto_a_contratada_continua_vindo_do_motor_intacto(self):
+        self.assertIn("texto_comunicacao = gerar_texto_comunicacao(analise)", GARANTIA)
+        self.assertEqual(GARANTIA.count("gerar_texto_comunicacao("), 1)
+
+    def test_nenhum_campo_de_identificacao_foi_introduzido(self):
+        self.assertEqual(GARANTIA.count("st.text_input("), 2)
+        self.assertEqual(GARANTIA.count("st.date_input("), 2)
+        self.assertEqual(GARANTIA.count("st.number_input("), 1)
+        for proibido in ("Apólice", "Ref.:", "Número do contrato", "numero_contrato", "Endosso nº"):
+            self.assertNotIn(proibido, GARANTIA, f"campo de identificação introduzido: {proibido}")
+
+    def test_o_painel_e_responsivo_e_nao_depende_de_cinco_colunas(self):
+        css = GARANTIA[GARANTIA.index(".garantia-resumo {"):GARANTIA.index("</style>")]
+        self.assertIn("flex-wrap: wrap;", css)
+        self.assertIn("flex: 1 1 260px;", css)
+        # O painel é um contêiner só: nenhuma st.columns na situação atual.
+        self.assertNotIn("st.columns(3)", self._bloco_situacao_atual())
+
+
+class ResumoSituacaoAtualRenderTests(unittest.TestCase):
+    """A página em execução, nos três cenários de garantia."""
+
+    def test_cenario_a_garantia_insuficiente_mostra_o_complemento(self):
+        at = _rodar_garantia(
+            garantia="50.000,00", validade=VALIDADE_MINIMA,
+            eventos=[_linha_evento(TIPO_REAJUSTE, "1.100.000,00")],
+        )
+        self.assertFalse(at.exception)
+        painel = _painel_resumo(at)
+        resultado = at.session_state["resultado_garantia"]
+
+        self.assertEqual(list(painel), list(ROTULOS_RESUMO))
+        self.assertEqual(painel["Valor atualizado total do contrato"], "R$ 1.100.000,00")
+        self.assertEqual(painel["Valor atualizado total da garantia exigida"], "R$ 55.000,00")
+        self.assertEqual(painel["Valor da última garantia apresentada"], "R$ 50.000,00")
+        self.assertEqual(painel["Valor do complemento necessário da garantia"], "R$ 5.000,00")
+        self.assertEqual(painel["Validade mínima exigida da garantia"], "31/03/2027")
+
+        # Cada leitura é exatamente o que o motor apurou — nada recalculado.
+        self.assertEqual(
+            painel["Valor atualizado total do contrato"],
+            formatar_brl(resultado["valor_total_contrato"]),
+        )
+        self.assertEqual(
+            painel["Valor atualizado total da garantia exigida"],
+            formatar_brl(resultado["garantia_necessaria"]),
+        )
+        self.assertEqual(
+            painel["Valor da última garantia apresentada"],
+            formatar_brl(resultado["garantia_apresentada"]),
+        )
+        self.assertEqual(
+            painel["Valor do complemento necessário da garantia"],
+            formatar_brl(resultado["complemento"]),
+        )
+        self.assertEqual(
+            painel["Validade mínima exigida da garantia"],
+            formatar_data_br(resultado["validade_minima"]),
+        )
+        self.assertNotIn("Não há complemento financeiro necessário.", _painel_html(at))
+
+    def test_cenario_b_garantia_suficiente_nao_gera_falsa_exigencia(self):
+        at = _rodar_garantia(garantia="50.000,00", validade=VALIDADE_MINIMA)
+        self.assertFalse(at.exception)
+        painel = _painel_resumo(at)
+        self.assertEqual(painel["Valor do complemento necessário da garantia"], "R$ 0,00")
+        self.assertEqual(at.session_state["resultado_garantia"]["complemento"], Decimal("0.00"))
+        html = _painel_html(at)
+        self.assertIn("Não há complemento financeiro necessário.", html)
+        self.assertNotIn("Diferença entre a garantia exigida", html)
+
+    def test_cenario_c_ausencia_de_garantia_nao_vira_zero(self):
+        at = _rodar_garantia()
+        self.assertFalse(at.exception)
+        painel = _painel_resumo(at)
+        self.assertFalse(at.session_state["resultado_garantia"]["tem_garantia"])
+        self.assertEqual(painel["Valor da última garantia apresentada"], "Não informada")
+        self.assertIn(
+            "Nenhuma garantia apresentada foi informada na linha do tempo.", _painel_html(at)
+        )
+        # A garantia ausente não pode ser confundida com o complemento devido.
+        self.assertEqual(painel["Valor do complemento necessário da garantia"], "R$ 50.000,00")
+
+    def test_os_diagnosticos_financeiros_permanecem_semanticamente_iguais(self):
+        insuficiente = _boxes_de_status(
+            _rodar_garantia(garantia="50.000,00", validade=VALIDADE_MINIMA,
+                            eventos=[_linha_evento(TIPO_REAJUSTE, "1.100.000,00")])
+        )
+        self.assertTrue(any(FINANCEIRO_COMPLEMENTAR in b for b in insuficiente))
+        self.assertTrue(any("complemento de R$ 5.000,00." in b for b in insuficiente))
+        self.assertTrue(any(DIAGNOSTICO_VALOR in b for b in insuficiente))
+
+        suficiente = _boxes_de_status(_rodar_garantia(garantia="50.000,00", validade=VALIDADE_MINIMA))
+        self.assertTrue(any(FINANCEIRO_SUFICIENTE in b for b in suficiente))
+        self.assertTrue(any(DIAGNOSTICO_REGULAR in b for b in suficiente))
+
+        superior = _boxes_de_status(_rodar_garantia(garantia="90.000,00", validade=VALIDADE_MINIMA))
+        self.assertTrue(any(FINANCEIRO_SUPERIOR in b for b in superior))
+        self.assertTrue(any("não há complemento financeiro a exigir" in b for b in superior))
+
+    def test_os_diagnosticos_temporais_permanecem_semanticamente_iguais(self):
+        suficiente = _boxes_de_status(_rodar_garantia(garantia="50.000,00", validade=VALIDADE_MINIMA))
+        self.assertTrue(any(TEMPORAL_SUFICIENTE in b for b in suficiente))
+
+        boxes = _boxes_de_status(_rodar_garantia(garantia="50.000,00", validade=date(2027, 1, 31)))
+        self.assertTrue(any(TEMPORAL_INSUFICIENTE in b for b in boxes))
+        self.assertTrue(any("a validade deve alcançar, no mínimo, 31/03/2027." in b for b in boxes))
+        self.assertTrue(any(DIAGNOSTICO_VALIDADE in b for b in boxes))
+
+        sem_garantia = _boxes_de_status(_rodar_garantia())
+        self.assertTrue(any(TEMPORAL_NAO_INFORMADA in b for b in sem_garantia))
+        self.assertTrue(
+            any("o prazo não pôde ser verificado com os dados apresentados." in b
+                for b in sem_garantia)
+        )
+
+    def test_os_quatro_diagnosticos_tem_a_cor_certa(self):
+        # GARANTIA REGULAR -> verde suave.
+        regular = _diagnostico_final(_rodar_garantia(garantia="50.000,00", validade=VALIDADE_MINIMA))
+        self.assertIn(DIAGNOSTICO_REGULAR, regular)
+        self.assertNotIn("garantia-status-ambar", regular)
+
+        # ATUALIZAR VALOR -> âmbar muito suave.
+        so_valor = _diagnostico_final(
+            _rodar_garantia(garantia="50.000,00", validade=VALIDADE_MINIMA,
+                            eventos=[_linha_evento(TIPO_REAJUSTE, "1.100.000,00")])
+        )
+        self.assertIn(DIAGNOSTICO_VALOR, so_valor)
+        self.assertIn("garantia-status-ambar", so_valor)
+
+        # ATUALIZAR VALIDADE -> âmbar muito suave.
+        so_validade = _diagnostico_final(
+            _rodar_garantia(garantia="50.000,00", validade=date(2027, 1, 31))
+        )
+        self.assertIn(DIAGNOSTICO_VALIDADE, so_validade)
+        self.assertIn("garantia-status-ambar", so_validade)
+
+        # ATUALIZAR VALOR E VALIDADE -> vermelho do st.error, sem box próprio.
+        at = _rodar_garantia(garantia="50.000,00", validade=date(2027, 1, 31),
+                             eventos=[_linha_evento(TIPO_REAJUSTE, "1.100.000,00")])
+        self.assertIsNone(_diagnostico_final(at))
+        self.assertTrue(any(DIAGNOSTICO_VALOR_E_VALIDADE in e.value for e in at.error))
+
+    def test_os_boxes_intermediarios_ficam_verdes_mesmo_com_pendencia(self):
+        # Decisão já homologada: a cor dos intermediários não diagnostica.
+        at = _rodar_garantia(
+            garantia="50.000,00", validade=VALIDADE_MINIMA,
+            eventos=[_linha_evento(TIPO_REAJUSTE, "1.100.000,00")],
+        )
+        intermediarios = [b for b in _boxes_de_status(at) if "garantia-status-forte" not in b]
+        self.assertEqual(len(intermediarios), 2)
+        self.assertTrue(any(FINANCEIRO_COMPLEMENTAR in b for b in intermediarios))
+        for box in intermediarios:
+            self.assertNotIn("garantia-status-ambar", box)
+
+    def test_a_area_do_resultado_nao_usa_mais_o_box_amarelo(self):
+        at = _rodar_garantia(
+            garantia="50.000,00", validade=VALIDADE_MINIMA,
+            eventos=[_linha_evento(TIPO_REAJUSTE, "1.100.000,00")],
+        )
+        # Diagnóstico de pendência, e ainda assim nenhum st.warning na tela.
+        self.assertEqual(at.session_state["resultado_garantia"]["diagnostico"], DIAGNOSTICO_VALOR)
+        self.assertEqual([e.value for e in at.warning], [])
+        self.assertEqual([e.value for e in at.success], [])
+
+    def test_o_bloqueio_real_das_duas_dimensoes_continua_em_vermelho(self):
+        at = _rodar_garantia(
+            garantia="50.000,00", validade=date(2027, 1, 31),
+            eventos=[_linha_evento(TIPO_REAJUSTE, "1.100.000,00")],
+        )
+        self.assertEqual(
+            at.session_state["resultado_garantia"]["diagnostico"], DIAGNOSTICO_VALOR_E_VALIDADE
+        )
+        self.assertTrue(any(DIAGNOSTICO_VALOR_E_VALIDADE in e.value for e in at.error))
+
+    def test_o_texto_a_contratada_continua_disponivel_sem_o_label(self):
+        at = _rodar_garantia(garantia="50.000,00", validade=VALIDADE_MINIMA)
+        area = at.text_area(key="garantia_texto_comunicacao")
+        self.assertEqual(area.value, at.session_state["resultado_garantia"]["texto_comunicacao"])
+        self.assertNotIn("Copie e cole", area.label)
 
 
 if __name__ == "__main__":
