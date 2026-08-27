@@ -1,20 +1,22 @@
-"""Garantia Contratual — linha do tempo contratual, 100% manual.
+"""Garantia Contratual — uma única linha do tempo, 100% manual.
 
-A página conta a evolução do contrato em ordem cronológica e só então a confronta
-com o que a contratada apresentou:
+A página conta a evolução do contrato em ordem cronológica, e a garantia caminha
+junto com ela:
 
-    SITUAÇÃO ORIGINAL -> ALTERAÇÕES POSTERIORES -> SITUAÇÃO ATUAL
-        -> GARANTIA ATUALMENTE APRESENTADA -> RESULTADO -> TEXTO À CONTRATADA
+    SITUAÇÃO ORIGINAL -> ALTERAÇÕES POSTERIORES + GARANTIA APÓS CADA EVENTO
+        -> SITUAÇÃO ATUAL -> RESULTADO -> TEXTO À CONTRATADA
 
-Dois conceitos que não se misturam: reajuste, repactuação, aditivo e prorrogação
-são EVENTOS DO CONTRATO (definem a garantia exigida); apólice e endosso são
-GARANTIA APRESENTADA (definem a cobertura existente).
+Não há quadro de garantias separado: cada linha de alteração registra o que
+aconteceu com o contrato E qual passou a ser a garantia depois daquele evento.
+A garantia de cada linha é a FOTOGRAFIA vigente após o evento — nunca uma
+parcela a somar às anteriores.
 
 Ferramenta 100% MANUAL: todos os dados são digitados aqui. A página não lê o
 VTA, o Valor Global, a Coleta, os RESULTADOS, o XLS nem qualquer outra chave de
 sessão de outra página — mesmo que esses dados existam na sessão, são ignorados.
-O único uso de ``st.session_state`` é o estado da própria página: as duas grades,
-a navegação de retorno e o resultado próprio publicado ao final.
+Também não pede identificação de contrato, contratada ou apólice. O único uso de
+``st.session_state`` é o estado da própria página: a grade, a navegação de
+retorno e o resultado próprio publicado ao final.
 
 Toda a matemática vive no motor puro ``_garantia_calculo`` (Decimal +
 ROUND_HALF_UP), permitindo testes focais.
@@ -27,13 +29,11 @@ import streamlit as st
 from _ui_utils import render_cabecalho_pagina
 from _garantia_calculo import (
     COLUNA_EVENTO_DATA,
-    COLUNA_EVENTO_OBSERVACAO,
+    COLUNA_EVENTO_GARANTIA,
     COLUNA_EVENTO_TIPO,
+    COLUNA_EVENTO_VALIDADE,
     COLUNA_EVENTO_VALOR,
     COLUNA_EVENTO_VIGENCIA,
-    COLUNA_REFERENCIA,
-    COLUNA_VALIDADE,
-    COLUNA_VALOR,
     DIAGNOSTICO_REGULAR,
     DIAGNOSTICO_VALIDADE,
     DIAGNOSTICO_VALOR,
@@ -51,12 +51,12 @@ from _garantia_calculo import (
     calcular_situacao_atual,
     calcular_validade_minima,
     formatar_brl,
+    formatar_brl_opcional,
     formatar_data_br,
     formatar_percentual,
     formatar_variacao,
     gerar_texto_comunicacao,
     normalizar_eventos,
-    normalizar_garantias,
     parse_moeda_br,
 )
 
@@ -93,8 +93,6 @@ def css():
         table.garantia-tabela td { border: 1px solid #E5EAF0; padding: 8px 10px; vertical-align: top; white-space: normal; overflow-wrap: anywhere; word-break: normal; line-height: 1.35; }
         table.garantia-tabela td.valor { white-space: nowrap; overflow-wrap: normal; text-align: right; }
         table.garantia-tabela tr.garantia-linha-marco td { background: #FBFCFD; color: #475569; font-style: italic; }
-        table.garantia-tabela td.suficiente { color: #1E6B45; font-weight: 700; }
-        table.garantia-tabela td.insuficiente { color: #A2432B; font-weight: 700; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -117,102 +115,62 @@ def card(label, valor, nota=None, destaque=False):
     )
 
 
-def render_tabela(cabecalhos, linhas_html, larguras=None):
-    """Tabela de leitura, não editável, no padrão visual da página."""
-    colgroup = ""
-    if larguras:
-        colunas = "".join(f'<col style="width: {largura};">' for largura in larguras)
-        colgroup = f"<colgroup>{colunas}</colgroup>"
-    cabecalho = "".join(f"<th>{escape(titulo)}</th>" for titulo in cabecalhos)
-    corpo = "".join(linhas_html)
-    st.markdown(
-        f"""
-        <div class="garantia-tabela-wrap">
-          <table class="garantia-tabela">
-            {colgroup}
-            <thead><tr>{cabecalho}</tr></thead>
-            <tbody>{corpo}</tbody>
-          </table>
-        </div>
-        """,
-        unsafe_allow_html=True,
-    )
-
-
 def _celula(texto, classe=""):
     atributo = f" class='{classe}'" if classe else ""
     return f"<td{atributo}>{escape(texto)}</td>"
 
 
 def render_evolucao_contrato(situacao):
-    """Memória objetiva da evolução: o marco original e cada evento posterior."""
+    """Memória cronológica: o marco original e o que ficou após cada evento.
+
+    A coluna da garantia mostra a FOTOGRAFIA vigente após a linha — os valores
+    das linhas nunca se somam.
+    """
     linhas = [
         "<tr class='garantia-linha-marco'>"
         + _celula("0")
-        + _celula("Assinatura (situação original)")
+        + _celula("Assinatura")
         + _celula(TRACO, "valor")
         + _celula(formatar_brl(situacao["valor_original"]), "valor")
         + _celula(TRACO, "valor")
         + _celula(formatar_brl(situacao["garantia_original"]), "valor")
         + _celula(formatar_data_br(situacao["vigencia_original"]), "valor")
-        + _celula(formatar_data_br(situacao["validade_minima_original"]), "valor")
+        + _celula(formatar_brl_opcional(situacao["garantia_apresentada_original"]), "valor")
+        + _celula(formatar_data_br(situacao["validade_apresentada_original"]), "valor")
         + "</tr>"
     ]
     for etapa in situacao["linha_do_tempo"]:
-        evento = etapa["tipo"]
-        if etapa["observacao"]:
-            evento = f"{evento} — {etapa['observacao']}"
         linhas.append(
             "<tr>"
             + _celula(str(etapa["numero"]))
-            + _celula(evento)
+            + _celula(etapa["tipo"])
             + _celula(formatar_data_br(etapa["data"]), "valor")
             + _celula(formatar_brl(etapa["valor"]), "valor")
             + _celula(formatar_variacao(etapa["variacao"]), "valor")
             + _celula(formatar_brl(etapa["garantia_exigida"]), "valor")
             + _celula(formatar_data_br(etapa["vigencia"]), "valor")
-            + _celula(formatar_data_br(etapa["validade_minima"]), "valor")
+            + _celula(formatar_brl_opcional(etapa["garantia_apresentada"]), "valor")
+            + _celula(formatar_data_br(etapa["validade_apresentada"]), "valor")
             + "</tr>"
         )
-    render_tabela(
-        [
-            "Nº",
-            "Evento",
-            "Data",
-            "Valor do contrato",
-            "Variação",
-            "Garantia exigida",
-            "Término da vigência",
-            "Validade mínima",
-        ],
-        linhas,
-        ["4%", "24%", "10%", "14%", "13%", "13%", "11%", "11%"],
-    )
-
-
-def render_tabela_validades(garantias, validade_minima):
-    """Validade de cada garantia apresentada frente à validade mínima exigida."""
-    linhas = []
-    for indice, garantia in enumerate(garantias, start=1):
-        referencia = garantia["referencia"] or f"Garantia {indice}"
-        if garantia["validade_suficiente"]:
-            situacao, classe = "Validade suficiente", "suficiente"
-        elif garantia["validade"] is None:
-            situacao, classe = "Validade não informada", "insuficiente"
-        else:
-            situacao, classe = f"Vence antes de {formatar_data_br(validade_minima)}", "insuficiente"
-        linhas.append(
-            "<tr>"
-            + _celula(referencia)
-            + _celula(formatar_brl(garantia["valor"]), "valor")
-            + _celula(formatar_data_br(garantia["validade"]), "valor")
-            + _celula(situacao, classe)
-            + "</tr>"
-        )
-    render_tabela(
-        ["Garantia apresentada", "Valor garantido", "Validade", "Situação da validade"],
-        linhas,
-        ["34%", "22%", "18%", "26%"],
+    cabecalhos = [
+        "Nº", "Evento", "Data", "Valor do contrato", "Variação",
+        "Garantia exigida", "Término da vigência", "Garantia apresentada", "Validade",
+    ]
+    larguras = ["4%", "13%", "9%", "13%", "12%", "12%", "11%", "13%", "13%"]
+    colunas = "".join(f'<col style="width: {largura};">' for largura in larguras)
+    cabecalho = "".join(f"<th>{escape(titulo)}</th>" for titulo in cabecalhos)
+    st.markdown(
+        f"""
+        <div class="garantia-tabela-wrap">
+          <table class="garantia-tabela">
+            <colgroup>{colunas}</colgroup>
+            <thead><tr>{cabecalho}</tr></thead>
+            <tbody>{"".join(linhas)}</tbody>
+          </table>
+        </div>
+        """,
+        unsafe_allow_html=True,
     )
 
 
@@ -242,39 +200,16 @@ if st.button("← Voltar para Central", key="voltar_central_garantia"):
     st.switch_page(_destino_voltar_garantia)
 
 # ------------------------------------------------------------
-# 1) Identificação — apenas o que a comunicação à contratada usa
-# ------------------------------------------------------------
-st.subheader("Identificação")
-col_i1, col_i2 = st.columns(2)
-with col_i1:
-    numero_contrato = st.text_input(
-        "Número do contrato",
-        value="",
-        placeholder="Ex.: 123/2024",
-        help="Opcional. Aparece na referência do texto à contratada.",
-        key="garantia_numero_contrato",
-    ).strip()
-with col_i2:
-    contratada = st.text_input(
-        "Contratada",
-        value="",
-        placeholder="Ex.: Empresa Exemplo Ltda.",
-        help="Opcional. Aparece na referência do texto à contratada.",
-        key="garantia_contratada",
-    ).strip()
-
-# ------------------------------------------------------------
-# 2) Situação original do contrato — o marco da assinatura
+# 1) Situação original do contrato — o marco da assinatura
 # ------------------------------------------------------------
 st.subheader("Situação original do contrato")
-st.caption("Informe os dados do contrato na assinatura.")
+st.caption("Informe os dados do contrato na assinatura. A garantia é opcional.")
 col_o1, col_o2, col_o3 = st.columns(3)
 with col_o1:
     valor_original_txt = st.text_input(
         "Valor original do contrato",
         value="",
         placeholder="Ex.: 1.000.000,00",
-        help="Valor total do contrato na assinatura. Ex.: 1000000, 1.000.000,00 ou R$ 1.000.000,00",
         key="garantia_valor_original",
     ).strip()
 with col_o2:
@@ -285,7 +220,6 @@ with col_o2:
         value=float(PERCENTUAL_GARANTIA_PADRAO),
         step=0.25,
         format="%.2f",
-        help="Percentual previsto no contrato. O padrão é 5,00% e pode ser alterado.",
         key="garantia_percentual",
     )
 with col_o3:
@@ -293,11 +227,27 @@ with col_o3:
         "Término da vigência original",
         value=None,
         format="DD/MM/YYYY",
-        help="Data final da vigência prevista na assinatura.",
         key="garantia_fim_vigencia",
     )
 
+col_o4, col_o5 = st.columns(2)
+with col_o4:
+    garantia_original_txt = st.text_input(
+        "Garantia apresentada na assinatura",
+        value="",
+        placeholder="Opcional. Ex.: 50.000,00",
+        key="garantia_apresentada_original",
+    ).strip()
+with col_o5:
+    validade_original = st.date_input(
+        "Validade da garantia",
+        value=None,
+        format="DD/MM/YYYY",
+        key="garantia_validade_original",
+    )
+
 valor_original = parse_moeda_br(valor_original_txt) if valor_original_txt else None
+garantia_original = parse_moeda_br(garantia_original_txt) if garantia_original_txt else None
 _original_valido = valor_original is not None and valor_original > 0
 
 col_m1, col_m2, col_m3 = st.columns(3)
@@ -330,6 +280,11 @@ elif valor_original <= 0:
     pendencias.append("corrija o **valor original do contrato**")
 if vigencia_original is None:
     pendencias.append("informe o **término da vigência original**")
+if garantia_original_txt and garantia_original is None:
+    st.warning(
+        f'A garantia "{garantia_original_txt}" não pôde ser interpretada. Use o formato R$ 50.000,00.'
+    )
+    pendencias.append("corrija a **garantia apresentada na assinatura**")
 
 if pendencias:
     # A conclusão anterior não pode sobreviver a uma entrada que deixou de
@@ -340,13 +295,13 @@ if pendencias:
     st.stop()
 
 # ------------------------------------------------------------
-# 3) Alterações posteriores à assinatura — eventos do contrato
+# 2) Alterações posteriores — contrato e garantia na mesma linha
 # ------------------------------------------------------------
 st.subheader("Alterações posteriores à assinatura")
 st.caption(
-    "Informe, em ordem cronológica, os eventos ocorridos após a assinatura que alteraram o valor ou "
-    "a vigência do contrato. Os primeiros registros devem representar os eventos mais antigos. "
-    "Informe sempre o valor TOTAL do contrato após o evento: a variação é calculada automaticamente."
+    "Informe, em ordem cronológica, o que aconteceu depois da assinatura e como ficou a garantia "
+    "após cada evento. O valor do contrato e a garantia são sempre os TOTAIS vigentes após o "
+    "evento: as linhas não se somam. Sem garantia informada, a anterior permanece vigente."
 )
 eventos_padrao = pd.DataFrame(
     {
@@ -354,7 +309,8 @@ eventos_padrao = pd.DataFrame(
         COLUNA_EVENTO_DATA: pd.Series([pd.NaT, pd.NaT, pd.NaT], dtype="datetime64[ns]"),
         COLUNA_EVENTO_VALOR: pd.Series(["", "", ""], dtype="object"),
         COLUNA_EVENTO_VIGENCIA: pd.Series([pd.NaT, pd.NaT, pd.NaT], dtype="datetime64[ns]"),
-        COLUNA_EVENTO_OBSERVACAO: pd.Series(["", "", ""], dtype="object"),
+        COLUNA_EVENTO_GARANTIA: pd.Series(["", "", ""], dtype="object"),
+        COLUNA_EVENTO_VALIDADE: pd.Series([pd.NaT, pd.NaT, pd.NaT], dtype="datetime64[ns]"),
     }
 )
 eventos_editados = st.data_editor(
@@ -365,32 +321,18 @@ eventos_editados = st.data_editor(
     key="garantia_eventos_contrato",
     column_config={
         COLUNA_EVENTO_TIPO: st.column_config.SelectboxColumn(
-            COLUNA_EVENTO_TIPO,
-            options=list(TIPOS_EVENTO),
-            help="O que aconteceu com o contrato. A numeração é automática, pela ordem das linhas.",
-            width="medium",
+            COLUNA_EVENTO_TIPO, options=list(TIPOS_EVENTO), width="medium"
         ),
         COLUNA_EVENTO_DATA: st.column_config.DateColumn(
-            COLUNA_EVENTO_DATA,
-            help="Opcional. Serve à memória do processo e não bloqueia o cálculo.",
-            format="DD/MM/YYYY",
-            width="small",
+            COLUNA_EVENTO_DATA, format="DD/MM/YYYY", width="small"
         ),
-        COLUNA_EVENTO_VALOR: st.column_config.TextColumn(
-            COLUNA_EVENTO_VALOR,
-            help="Valor total do contrato depois do evento — não o acréscimo. Ex.: 1.100.000,00",
-            width="medium",
-        ),
+        COLUNA_EVENTO_VALOR: st.column_config.TextColumn(COLUNA_EVENTO_VALOR, width="medium"),
         COLUNA_EVENTO_VIGENCIA: st.column_config.DateColumn(
-            COLUNA_EVENTO_VIGENCIA,
-            help="Obrigatório na prorrogação; opcional nos demais eventos.",
-            format="DD/MM/YYYY",
-            width="small",
+            COLUNA_EVENTO_VIGENCIA, format="DD/MM/YYYY", width="small"
         ),
-        COLUNA_EVENTO_OBSERVACAO: st.column_config.TextColumn(
-            COLUNA_EVENTO_OBSERVACAO,
-            help="Opcional. Ex.: 1º Termo Aditivo, apostilamento IPCA.",
-            width="medium",
+        COLUNA_EVENTO_GARANTIA: st.column_config.TextColumn(COLUNA_EVENTO_GARANTIA, width="medium"),
+        COLUNA_EVENTO_VALIDADE: st.column_config.DateColumn(
+            COLUNA_EVENTO_VALIDADE, format="DD/MM/YYYY", width="small"
         ),
     },
 )
@@ -404,152 +346,73 @@ situacao = calcular_situacao_atual(
     percentual=percentual_pct,
     fim_vigencia_original=vigencia_original,
     eventos=eventos,
+    garantia_original=garantia_original,
+    validade_garantia_original=validade_original,
 )
 
-st.markdown("**Evolução do contrato**")
+st.markdown("**Evolução do contrato e da garantia**")
 render_evolucao_contrato(situacao)
 
+# Fail-closed: entrada materialmente incompleta ≠ dado inexistente. Uma linha
+# preenchida que não pôde ser considerada deixa a história sabidamente
+# incompleta; concluir mesmo assim afirmaria um resultado ignorando um evento
+# que o usuário declarou existir. O aviso da própria linha já está na tela —
+# nenhum alerta global é acrescentado. Linha totalmente vazia não gera pendência.
+if pendencias_eventos:
+    st.session_state.pop("resultado_garantia", None)
+    st.stop()
+
 # ------------------------------------------------------------
-# 4) Situação atual do contrato — 100% derivada dos blocos acima
+# 3) Situação atual — 100% derivada da linha do tempo
 # ------------------------------------------------------------
 st.subheader("Situação atual do contrato")
-if pendencias_eventos:
-    st.caption(
-        "Resultado da situação original com as alterações posteriores **já completas**. "
-        "Há alteração contratual com dados pendentes, ainda não considerada abaixo."
-    )
-else:
-    st.caption(
-        "Resultado da situação original com as alterações posteriores informadas acima. "
-        "Nada aqui é redigitado."
-    )
 col_a1, col_a2, col_a3 = st.columns(3)
 with col_a1:
     card(
         "Valor atual do contrato",
         formatar_brl(situacao["valor_atual"]),
-        f"{situacao['quantidade_eventos']} alteração(ões) considerada(s)."
-        if situacao["quantidade_eventos"]
-        else "Nenhuma alteração posterior informada.",
+        formatar_variacao(situacao["variacao_acumulada"]) + " frente ao valor original.",
     )
 with col_a2:
     card(
-        "Variação acumulada",
-        formatar_variacao(situacao["variacao_acumulada"]),
-        "Frente ao valor original.",
+        "Garantia exigida",
+        formatar_brl(situacao["garantia_exigida"]),
+        f"{formatar_percentual(situacao['percentual'])}% do valor atual.",
     )
 with col_a3:
     card(
-        "Garantia total exigida",
-        formatar_brl(situacao["garantia_exigida"]),
-        f"{formatar_percentual(situacao['percentual'])}% do valor atual do contrato.",
-    )
-
-col_a4, col_a5 = st.columns(2)
-with col_a4:
-    card("Término da vigência atual", formatar_data_br(situacao["vigencia_atual"]))
-with col_a5:
-    card(
         "Validade mínima da garantia",
         formatar_data_br(situacao["validade_minima"]),
-        f"{DIAS_VALIDADE_MINIMA} dias corridos após o término da vigência atual.",
+        f"Vigência até {formatar_data_br(situacao['vigencia_atual'])}.",
     )
-
-# ------------------------------------------------------------
-# 5) Garantia atualmente apresentada — o que a contratada entregou
-# ------------------------------------------------------------
-st.subheader("Garantia atualmente apresentada")
-st.caption(
-    "Informe a garantia que está atualmente vigente/apresentada pela contratada para comparação com "
-    "a situação atual do contrato. Uma linha por garantia independente, sempre com o valor TOTAL "
-    "vigente após o último endosso: endossos da mesma garantia atualizam a linha, não criam outra."
-)
-garantias_padrao = pd.DataFrame(
-    {
-        COLUNA_REFERENCIA: pd.Series(["", ""], dtype="object"),
-        COLUNA_VALOR: pd.Series(["", ""], dtype="object"),
-        COLUNA_VALIDADE: pd.Series([pd.NaT, pd.NaT], dtype="datetime64[ns]"),
-    }
-)
-garantias_editadas = st.data_editor(
-    garantias_padrao,
-    hide_index=True,
-    use_container_width=True,
-    num_rows="dynamic",
-    key="garantia_vigente_linhas",
-    column_config={
-        COLUNA_REFERENCIA: st.column_config.TextColumn(
-            COLUNA_REFERENCIA,
-            help="Opcional. Ex.: Apólice 123, Endosso 2, Carta de fiança Banco X, Caução.",
-            width="medium",
-        ),
-        COLUNA_VALOR: st.column_config.TextColumn(
-            COLUNA_VALOR,
-            help="Valor total vigente da garantia após o último endosso. Ex.: 40.000,00 ou R$ 40.000,00",
-            width="medium",
-        ),
-        COLUNA_VALIDADE: st.column_config.DateColumn(
-            COLUNA_VALIDADE,
-            help="Opcional para o cálculo financeiro. Sem ela, o prazo fica como não informado.",
-            format="DD/MM/YYYY",
-            width="small",
-        ),
-    },
-)
-registros_garantias = garantias_editadas.to_dict("records") if isinstance(garantias_editadas, pd.DataFrame) else []
-linhas_garantias, avisos_garantias, pendencias_garantias = normalizar_garantias(registros_garantias)
-for aviso in avisos_garantias:
-    st.warning(aviso)
-
-# ------------------------------------------------------------
-# Gate fail-closed: entrada materialmente incompleta ≠ dado inexistente.
-# Uma linha preenchida que não pôde ser considerada deixa a história do
-# contrato (ou a cobertura) sabidamente incompleta; concluir mesmo assim
-# afirmaria "GARANTIA REGULAR" ignorando um reajuste ou uma apólice que o
-# usuário declarou existir. Os editores e os dados digitados permanecem na
-# tela — só a conclusão e o texto à contratada ficam suspensos.
-# Linha totalmente vazia não gera pendência e segue ignorada normalmente.
-# ------------------------------------------------------------
-if pendencias_eventos or pendencias_garantias:
-    partes = []
-    if pendencias_eventos:
-        partes.append("Há alteração contratual com dados pendentes.")
-    if pendencias_garantias:
-        partes.append("Há garantia apresentada com dados pendentes.")
-    # Retira também a conclusão publicada num rerun anterior: session_state
-    # persiste, e um resultado antigo passaria a valer para uma história
-    # contratual que a tela já não sustenta.
-    st.session_state.pop("resultado_garantia", None)
-    st.info(
-        " ".join(partes)
-        + " Complete ou remova a linha para concluir a análise da garantia."
-    )
-    st.stop()
 
 analise = analisar_garantia(
     valor_total_contrato=situacao["valor_atual"],
     percentual=situacao["percentual"],
     data_fim_vigencia=situacao["vigencia_atual"],
-    garantias=linhas_garantias,
+    garantia_apresentada=situacao["garantia_apresentada"],
+    validade_apresentada=situacao["validade_apresentada"],
 )
-for aviso in analise["avisos_consolidacao"]:
-    st.warning(aviso)
 
 # ------------------------------------------------------------
-# 6) Resultado — dinheiro e prazo analisados separadamente
+# 4) Resultado — exigida x última fotografia, nas duas dimensões
 # ------------------------------------------------------------
 st.subheader("Resultado da análise")
 col_r1, col_r2, col_r3 = st.columns(3)
 with col_r1:
-    card("Garantia exigida atualmente", formatar_brl(analise["garantia_necessaria"]))
+    card(
+        "Garantia apresentada",
+        formatar_brl_opcional(analise["garantia_apresentada"]),
+        "Última situação informada na linha do tempo."
+        if analise["tem_garantia"]
+        else "Nenhuma garantia informada.",
+    )
 with col_r2:
-    if analise["quantidade_garantias"] == 0:
-        nota_cobertura = "Nenhuma garantia apresentada."
-    elif analise["quantidade_garantias"] == 1:
-        nota_cobertura = "Valor total vigente da garantia apresentada."
-    else:
-        nota_cobertura = f"Soma de {analise['quantidade_garantias']} garantias independentes."
-    card("Garantia apresentada considerada", formatar_brl(analise["cobertura_atual"]), nota_cobertura)
+    card(
+        "Validade apresentada",
+        formatar_data_br(analise["validade_apresentada"]),
+        f"Mínima necessária: {formatar_data_br(analise['validade_minima'])}.",
+    )
 with col_r3:
     card(
         "Complemento financeiro necessário",
@@ -559,29 +422,6 @@ with col_r3:
         else "Diferença frente à garantia exigida.",
         destaque=not analise["valor_suficiente"],
     )
-
-validades_apresentadas = [g["validade"] for g in analise["garantias"] if g["validade"] is not None]
-if analise["quantidade_garantias"] == 0:
-    validade_apresentada, nota_validade = TRACO, "Nenhuma garantia apresentada."
-elif len(validades_apresentadas) < analise["quantidade_garantias"]:
-    validade_apresentada, nota_validade = TRACO, "Há garantia sem validade informada."
-else:
-    validade_apresentada = formatar_data_br(min(validades_apresentadas))
-    nota_validade = (
-        "Menor validade entre as garantias apresentadas."
-        if len(validades_apresentadas) > 1
-        else "Validade da garantia apresentada."
-    )
-
-col_r4, col_r5 = st.columns(2)
-with col_r4:
-    card(
-        "Validade mínima necessária",
-        formatar_data_br(analise["validade_minima"]),
-        f"{DIAS_VALIDADE_MINIMA} dias corridos após o término da vigência atual.",
-    )
-with col_r5:
-    card("Validade apresentada", validade_apresentada, nota_validade)
 
 col_s1, col_s2 = st.columns(2)
 with col_s1:
@@ -611,12 +451,6 @@ with col_s2:
             f"{formatar_data_br(analise['validade_minima'])}."
         )
 
-st.markdown("**Validade de cada garantia apresentada**")
-if analise["garantias"]:
-    render_tabela_validades(analise["garantias"], analise["validade_minima"])
-else:
-    st.caption("Nenhuma garantia apresentada informada.")
-
 diagnostico = analise["diagnostico"]
 if diagnostico == DIAGNOSTICO_REGULAR:
     st.success(f"{DIAGNOSTICO_REGULAR} — valor suficiente e validade suficiente.")
@@ -634,14 +468,10 @@ else:
     )
 
 # ------------------------------------------------------------
-# 7) Texto para a contratada
+# 5) Texto para a contratada
 # ------------------------------------------------------------
 st.subheader("Texto para a contratada")
-texto_comunicacao = gerar_texto_comunicacao(
-    analise,
-    numero_contrato=numero_contrato,
-    contratada=contratada,
-)
+texto_comunicacao = gerar_texto_comunicacao(analise)
 # ARMADILHA: st.text_area com key fixa só honra ``value=`` no PRIMEIRO render;
 # depois o valor guardado em session_state prevalece e o texto congela na
 # primeira apuração. O texto é reescrito sempre que a apuração muda — mesmo
@@ -659,8 +489,6 @@ st.text_area(
 # disponibilidade pelo Saneador; nunca realimenta os campos acima).
 # ------------------------------------------------------------
 st.session_state["resultado_garantia"] = {
-    "numero_contrato": numero_contrato,
-    "contratada": contratada,
     "valor_original": situacao["valor_original"],
     "vigencia_original": situacao["vigencia_original"],
     "variacao_acumulada": situacao["variacao_acumulada"],
@@ -669,23 +497,17 @@ st.session_state["resultado_garantia"] = {
     "valor_total_contrato": analise["valor_total_contrato"],
     "percentual_garantia": analise["percentual"],
     "garantia_necessaria": analise["garantia_necessaria"],
+    "garantia_apresentada": analise["garantia_apresentada"],
+    "tem_garantia": analise["tem_garantia"],
     "cobertura_atual": analise["cobertura_atual"],
     "complemento": analise["complemento"],
     "data_fim_vigencia": analise["data_fim_vigencia"],
     "validade_minima": analise["validade_minima"],
+    "validade_apresentada": analise["validade_apresentada"],
     "valor_suficiente": analise["valor_suficiente"],
     "validade_suficiente": analise["validade_suficiente"],
     "situacao_financeira": analise["situacao_financeira"],
     "situacao_temporal": analise["situacao_temporal"],
     "diagnostico": analise["diagnostico"],
-    "garantias": [
-        {
-            "referencia": garantia["referencia"],
-            "valor": garantia["valor"],
-            "validade": garantia["validade"],
-            "validade_suficiente": garantia["validade_suficiente"],
-        }
-        for garantia in analise["garantias"]
-    ],
     "texto_comunicacao": texto_comunicacao,
 }

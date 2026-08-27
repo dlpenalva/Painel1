@@ -1,41 +1,43 @@
-"""Motor da Calculadora de Garantia Contratual — linha do tempo contratual manual.
+"""Motor da Calculadora de Garantia Contratual — uma única linha do tempo.
 
-A ferramenta conta, de cima para baixo, a história do contrato e só então a
-confronta com o que a contratada efetivamente apresentou:
+A ferramenta conta a história do contrato em ordem cronológica, e a garantia
+caminha junto com ela:
 
     SITUAÇÃO ORIGINAL
-        -> ALTERAÇÕES POSTERIORES DO CONTRATO
-        -> SITUAÇÃO ATUAL DO CONTRATO
-        -> GARANTIA ATUALMENTE APRESENTADA
+        -> ALTERAÇÕES POSTERIORES + GARANTIA APÓS CADA EVENTO
+        -> SITUAÇÃO ATUAL
         -> RESULTADO
 
-Dois conceitos que NUNCA se misturam:
+Não há quadro de garantias separado. Cada linha de alteração registra o que
+aconteceu com o contrato E qual passou a ser a situação da garantia depois
+daquele evento.
 
-* HISTÓRIA DO CONTRATO — reajuste/apostila, repactuação, aditivo, prorrogação.
-  Altera o valor, a vigência ou ambos, e portanto define a garantia EXIGIDA.
-* GARANTIA APRESENTADA — apólice, endosso ou outra garantia admitida. Define a
-  cobertura EXISTENTE. Um reajuste jamais entra nessa soma.
+    GARANTIA EXIGIDA = ARREDONDAR(VALOR TOTAL DO CONTRATO x PERCENTUAL; 2)
+    VALIDADE MÍNIMA  = TÉRMINO DA VIGÊNCIA + 90 DIAS CORRIDOS
+    COMPLEMENTO      = max(GARANTIA EXIGIDA - GARANTIA APRESENTADA; 0)
 
-    GARANTIA EXIGIDA    = ARREDONDAR(VALOR TOTAL DO CONTRATO x PERCENTUAL; 2)
-    COBERTURA ATUAL     = soma do valor total vigente das garantias INDEPENDENTES
-    COMPLEMENTO         = max(GARANTIA EXIGIDA - COBERTURA ATUAL; 0)
-    VALIDADE MÍNIMA     = TÉRMINO DA VIGÊNCIA + 90 DIAS CORRIDOS
+FOTOGRAFIA, NÃO SOMA. A garantia informada numa linha é a fotografia da
+garantia VIGENTE após aquele evento — nunca uma parcela a somar às anteriores.
+Assinatura 50.000, depois 55.000, depois 55.000 significa garantia vigente de
+55.000, jamais 160.000. Esta ferramenta não trabalha com cadeia de
+apólice/endosso por identificação.
+
+HERANÇA. Evento sem garantia e sem validade informadas significa "nenhuma nova
+situação de garantia neste evento": a fotografia anterior permanece vigente.
+Informar um novo valor de garantia cria uma nova fotografia, com a validade que
+vier junto — e apenas ela; a validade anterior nunca é herdada por uma garantia
+nova explicitamente informada.
 
 Cada evento informa o VALOR TOTAL DO CONTRATO APÓS O EVENTO — nunca o acréscimo
 isolado — e o motor deriva a variação contra a situação anterior. A prorrogação
 pode não alterar o valor: sem valor informado, herda o valor contratual vigente.
 
-Endossos sucessivos da MESMA garantia nunca se somam: o que compõe a cobertura é
-o valor total vigente da garantia após o último endosso. Duas linhas com a mesma
-referência descrevem a mesma cadeia e são consolidadas na última informada (ver
-``consolidar_garantias``). Garantias independentes — referências distintas, ou
-linhas sem referência — somam-se normalmente.
-
 A suficiência financeira e a suficiência temporal são verificações INDEPENDENTES:
 uma garantia pode ter valor bastante e prazo curto, e vice-versa.
 
 Nenhuma função deste módulo lê o VTA, a Coleta, os RESULTADOS ou qualquer outra
-fonte do sistema: todos os dados chegam por parâmetro, informados à mão.
+fonte do sistema: todos os dados chegam por parâmetro, informados à mão. A
+ferramenta também não pede identificação de contrato, contratada ou apólice.
 
 Arredondamento financeiro: Decimal + ROUND_HALF_UP, duas casas. O float nunca é a
 base do cálculo monetário — apenas a entrada digitada e a formatação final.
@@ -61,21 +63,17 @@ TRACO = "—"
 
 CLAUSULA_GARANTIA = "Cláusula 10 – Garantia Contratual"
 
-# Nomes das colunas da grade da garantia atualmente apresentada (a página e o
-# motor compartilham estas constantes para não divergirem).
-COLUNA_REFERENCIA = "Apólice / endosso / referência"
-COLUNA_VALOR = "Valor garantido"
-COLUNA_VALIDADE = "Validade"
-
-# Nomes das colunas do quadro de alterações posteriores à assinatura.
+# Colunas da grade única de alterações posteriores à assinatura. O contrato e a
+# garantia andam lado a lado na mesma linha.
 COLUNA_EVENTO_TIPO = "Tipo"
-COLUNA_EVENTO_DATA = "Data do instrumento/evento"
-COLUNA_EVENTO_VALOR = "Valor total do contrato após o evento"
+COLUNA_EVENTO_DATA = "Data"
+COLUNA_EVENTO_VALOR = "Valor do contrato após o evento"
 COLUNA_EVENTO_VIGENCIA = "Novo término da vigência"
-COLUNA_EVENTO_OBSERVACAO = "Observação"
+COLUNA_EVENTO_GARANTIA = "Garantia após o evento"
+COLUNA_EVENTO_VALIDADE = "Validade da garantia"
 
-# Tipos de evento contratual. Nenhum deles é uma garantia apresentada.
-TIPO_REAJUSTE = "Reajuste / Apostila"
+# Tipos de evento contratual.
+TIPO_REAJUSTE = "Reajuste"
 TIPO_REPACTUACAO = "Repactuação"
 TIPO_ADITIVO = "Aditivo"
 TIPO_PRORROGACAO = "Prorrogação"
@@ -138,7 +136,7 @@ def parse_moeda_br(valor):
         texto.replace("R$", "")
         .replace("r$", "")
         .replace(" ", "")
-        .replace(" ", "")   # espaço não separável (copiar/colar de Excel e web)
+        .replace(" ", "")   # espaço não separável (copiar/colar de Excel e web)
     )
     if not texto:
         return None
@@ -184,8 +182,8 @@ def formatar_brl(valor):
 def formatar_brl_opcional(valor):
     """Como ``formatar_brl``, mas a AUSÊNCIA continua ausência (travessão).
 
-    Ausência não é zero: um evento sem valor informado não pode ser exibido como
-    R$ 0,00.
+    Ausência não é zero: um evento sem garantia informada não pode ser exibido
+    como R$ 0,00.
     """
     if valor is None:
         return TRACO
@@ -300,34 +298,42 @@ def calcular_validade_minima(data_fim_vigencia):
 
 
 # ============================================================
-# Alterações posteriores à assinatura (história do contrato)
+# Alterações posteriores à assinatura (contrato + garantia)
 # ============================================================
 
+_VAZIOS = {"", "nan", "none", "<na>", "nat"}
+
+
+def _texto_preenchido(bruto):
+    """A célula está materialmente preenchida? Devolve ``(tem, texto)``."""
+    texto = "" if bruto is None else str(bruto).strip()
+    return (texto.lower() not in _VAZIOS), texto
+
+
 def normalizar_eventos(registros):
-    """Normaliza as linhas do quadro de alterações posteriores à assinatura.
+    """Normaliza as linhas da grade única de alterações posteriores.
 
     ``registros``: iterável de dicts com ``COLUNA_EVENTO_TIPO``,
-    ``COLUNA_EVENTO_DATA``, ``COLUNA_EVENTO_VALOR``, ``COLUNA_EVENTO_VIGENCIA``
-    e ``COLUNA_EVENTO_OBSERVACAO``.
+    ``COLUNA_EVENTO_DATA``, ``COLUNA_EVENTO_VALOR``, ``COLUNA_EVENTO_VIGENCIA``,
+    ``COLUNA_EVENTO_GARANTIA`` e ``COLUNA_EVENTO_VALIDADE``.
 
     Retorna ``(eventos, avisos, pendencias)``. Cada evento é
-    ``{"numero", "tipo", "data", "valor", "vigencia", "observacao"}``, com a
-    numeração automática 1, 2, 3... na ORDEM DE INSERÇÃO — nunca reordenada pela
-    data. Linhas totalmente vazias são ignoradas em silêncio; linhas incompletas
-    geram aviso localizado e não entram na linha do tempo.
+    ``{"numero", "tipo", "data", "valor", "vigencia", "garantia",
+    "validade_garantia", "garantia_informada"}``, com a numeração automática
+    1, 2, 3... na ORDEM DE INSERÇÃO — nunca reordenada pela data.
 
-    ``pendencias`` são os avisos de linha DESCARTADA — entrada materialmente
-    preenchida que não pôde ser considerada. Entrada incompleta não é o mesmo
-    que dado inexistente: enquanto houver pendência a história do contrato está
-    sabidamente incompleta e a página não conclui a análise (fail-closed).
+    Linhas totalmente vazias são ignoradas em silêncio. ``pendencias`` são os
+    avisos de linha DESCARTADA — entrada materialmente preenchida que não pôde
+    ser considerada. Entrada incompleta não é o mesmo que dado inexistente:
+    enquanto houver pendência a história está sabidamente incompleta e a página
+    não conclui a análise (fail-closed).
 
-    ``valor`` ausente é ``None`` (ausência não é zero): só a prorrogação e o
-    evento "Outro" podem seguir sem valor, herdando o valor contratual vigente.
+    ``garantia`` ausente é ``None`` (ausência não é zero): a fotografia anterior
+    da garantia permanece vigente — ver ``montar_linha_do_tempo``.
     """
     eventos = []
     avisos = []
     pendencias = []
-    vazios = {"", "nan", "none", "<na>", "nat"}
 
     def descartar(mensagem):
         """Linha materialmente preenchida que não entra na linha do tempo."""
@@ -335,24 +341,21 @@ def normalizar_eventos(registros):
         pendencias.append(mensagem)
 
     for posicao, registro in enumerate(registros, start=1):
-        tipo_bruto = registro.get(COLUNA_EVENTO_TIPO)
-        tipo = "" if tipo_bruto is None else str(tipo_bruto).strip()
-        if tipo.lower() in vazios:
+        tem_tipo, tipo = _texto_preenchido(registro.get(COLUNA_EVENTO_TIPO))
+        if not tem_tipo:
             tipo = ""
 
-        valor_bruto = registro.get(COLUNA_EVENTO_VALOR)
-        texto_valor = "" if valor_bruto is None else str(valor_bruto).strip()
-        tem_texto_valor = texto_valor.lower() not in vazios
+        tem_valor, texto_valor = _texto_preenchido(registro.get(COLUNA_EVENTO_VALOR))
+        tem_garantia, texto_garantia = _texto_preenchido(registro.get(COLUNA_EVENTO_GARANTIA))
 
         data = parse_data_br(registro.get(COLUNA_EVENTO_DATA))
         vigencia = parse_data_br(registro.get(COLUNA_EVENTO_VIGENCIA))
+        validade = parse_data_br(registro.get(COLUNA_EVENTO_VALIDADE))
 
-        observacao_bruta = registro.get(COLUNA_EVENTO_OBSERVACAO)
-        observacao = "" if observacao_bruta is None else str(observacao_bruta).strip()
-        if observacao.lower() in vazios:
-            observacao = ""
-
-        if not tipo and not tem_texto_valor and data is None and vigencia is None and not observacao:
+        if (
+            not tipo and not tem_valor and not tem_garantia
+            and data is None and vigencia is None and validade is None
+        ):
             continue  # linha vazia
 
         rotulo = f"Linha {posicao} das alterações"
@@ -368,8 +371,8 @@ def normalizar_eventos(registros):
             continue
 
         valor = None
-        if tem_texto_valor:
-            valor = parse_moeda_br(valor_bruto)
+        if tem_valor:
+            valor = parse_moeda_br(registro.get(COLUNA_EVENTO_VALOR))
             if valor is None:
                 descartar(
                     f'{rotulo} ({tipo}): o valor "{texto_valor}" não pôde ser interpretado. '
@@ -377,22 +380,43 @@ def normalizar_eventos(registros):
                 )
                 continue
             if valor < 0:
-                descartar(f"{rotulo} ({tipo}): o valor total do contrato não pode ser negativo.")
+                descartar(f"{rotulo} ({tipo}): o valor do contrato não pode ser negativo.")
                 continue
             valor = arredondar_financeiro(valor)
 
+        garantia = None
+        if tem_garantia:
+            garantia = parse_moeda_br(registro.get(COLUNA_EVENTO_GARANTIA))
+            if garantia is None:
+                descartar(
+                    f'{rotulo} ({tipo}): a garantia "{texto_garantia}" não pôde ser interpretada. '
+                    "Use o formato R$ 55.000,00."
+                )
+                continue
+            if garantia < 0:
+                descartar(f"{rotulo} ({tipo}): a garantia não pode ser negativa.")
+                continue
+            garantia = arredondar_financeiro(garantia)
+
         if tipo in TIPOS_COM_VALOR_OBRIGATORIO and valor is None:
-            descartar(f"{rotulo} ({tipo}): informe o valor total do contrato após este evento.")
+            descartar(f"{rotulo} ({tipo}): informe o valor do contrato após este evento.")
             continue
         if tipo == TIPO_PRORROGACAO and vigencia is None:
             descartar(
                 f"{rotulo} ({tipo}): informe o novo término da vigência para registrar a prorrogação."
             )
             continue
-        if tipo == TIPO_OUTRO and valor is None and vigencia is None and not observacao:
+        if tipo == TIPO_OUTRO and valor is None and vigencia is None and garantia is None:
             descartar(
-                f"{rotulo} ({tipo}): informe o valor total do contrato, o novo término da vigência "
-                "ou uma observação."
+                f"{rotulo} ({tipo}): informe o valor do contrato, o novo término da vigência "
+                "ou a garantia após o evento."
+            )
+            continue
+        if validade is not None and garantia is None:
+            # Validade sozinha não descreve uma fotografia: não dá para saber a
+            # que garantia esse prazo pertence.
+            descartar(
+                f"{rotulo} ({tipo}): informe também o valor da garantia vigente após este evento."
             )
             continue
 
@@ -403,29 +427,38 @@ def normalizar_eventos(registros):
                 "data": data,
                 "valor": valor,
                 "vigencia": vigencia,
-                "observacao": observacao,
+                "garantia": garantia,
+                "validade_garantia": validade,
+                "garantia_informada": garantia is not None,
             }
         )
 
     return eventos, avisos, pendencias
 
 
-def montar_linha_do_tempo(valor_original, percentual, fim_vigencia_original, eventos):
+def montar_linha_do_tempo(valor_original, percentual, fim_vigencia_original, eventos,
+                          garantia_original=None, validade_garantia_original=None):
     """Encadeia os eventos sobre o marco original e devolve a evolução completa.
 
     Para cada evento, na ordem de inserção:
 
         VALOR ANTERIOR -> VALOR APÓS O EVENTO -> VARIAÇÃO
-        -> GARANTIA EXIGIDA APÓS O EVENTO -> VIGÊNCIA APÓS O EVENTO
-        -> VALIDADE MÍNIMA DA GARANTIA
+        -> GARANTIA EXIGIDA APÓS O EVENTO -> VIGÊNCIA -> VALIDADE MÍNIMA
+        -> FOTOGRAFIA DA GARANTIA APRESENTADA APÓS O EVENTO
 
-    Evento sem valor informado (prorrogação pura, ou "Outro" meramente
-    informativo) herda o valor contratual vigente; evento sem nova vigência
-    herda a vigência vigente. O percentual é sempre o informado na situação
-    original — esta ferramenta não trata percentual variável no meio da vigência.
+    Evento sem valor informado (prorrogação pura, ou "Outro" meramente temporal)
+    herda o valor contratual vigente; evento sem nova vigência herda a vigência
+    vigente.
 
-    A cadeia é recalculada por inteiro a cada chamada: editar ou excluir um
-    evento anterior reflete automaticamente em todos os posteriores.
+    A garantia apresentada segue a regra da FOTOGRAFIA: sem garantia informada, a
+    fotografia anterior permanece vigente; com garantia informada, ela substitui
+    a anterior, acompanhada apenas da validade informada na própria linha. Nada
+    se soma.
+
+    Devolve ``(etapas, garantia_apresentada, validade_apresentada)`` — a última
+    fotografia é a que vale hoje. O percentual é sempre o informado na situação
+    original. A cadeia é recalculada por inteiro a cada chamada: editar ou
+    excluir um evento anterior reflete automaticamente em todos os posteriores.
     """
     pct = parse_percentual(percentual)
     if pct is None:
@@ -434,13 +467,19 @@ def montar_linha_do_tempo(valor_original, percentual, fim_vigencia_original, eve
     base = parse_moeda_br(valor_original)
     valor_corrente = arredondar_financeiro(Decimal("0") if base is None else base)
     vigencia_corrente = parse_data_br(fim_vigencia_original)
-    garantia_corrente = calcular_garantia_necessaria(valor_corrente, pct)
+    exigida_corrente = calcular_garantia_necessaria(valor_corrente, pct)
+
+    apresentada = parse_moeda_br(garantia_original)
+    apresentada = None if apresentada is None else arredondar_financeiro(apresentada)
+    # Sem garantia não há validade a carregar.
+    validade_apresentada = parse_data_br(validade_garantia_original) if apresentada is not None else None
 
     etapas = []
     for evento in eventos:
         valor_anterior = valor_corrente
-        garantia_anterior = garantia_corrente
+        exigida_anterior = exigida_corrente
         vigencia_anterior = vigencia_corrente
+        apresentada_anterior = apresentada
 
         valor_evento = evento.get("valor")
         valor_corrente = valor_anterior if valor_evento is None else arredondar_financeiro(valor_evento)
@@ -448,33 +487,43 @@ def montar_linha_do_tempo(valor_original, percentual, fim_vigencia_original, eve
         vigencia_evento = parse_data_br(evento.get("vigencia"))
         vigencia_corrente = vigencia_anterior if vigencia_evento is None else vigencia_evento
 
-        garantia_corrente = calcular_garantia_necessaria(valor_corrente, pct)
+        exigida_corrente = calcular_garantia_necessaria(valor_corrente, pct)
+
+        garantia_evento = evento.get("garantia")
+        if garantia_evento is not None:
+            # Nova fotografia: substitui a anterior e leva só a validade da
+            # própria linha. Validade antiga JAMAIS é herdada por garantia nova.
+            apresentada = arredondar_financeiro(garantia_evento)
+            validade_apresentada = parse_data_br(evento.get("validade_garantia"))
 
         etapas.append(
             {
                 "numero": evento.get("numero", len(etapas) + 1),
                 "tipo": evento.get("tipo", ""),
                 "data": parse_data_br(evento.get("data")),
-                "observacao": evento.get("observacao", ""),
                 "valor_anterior": valor_anterior,
                 "valor": valor_corrente,
                 "variacao": arredondar_financeiro(valor_corrente - valor_anterior),
-                "garantia_anterior": garantia_anterior,
-                "garantia_exigida": garantia_corrente,
-                "variacao_garantia": arredondar_financeiro(garantia_corrente - garantia_anterior),
+                "garantia_exigida_anterior": exigida_anterior,
+                "garantia_exigida": exigida_corrente,
                 "vigencia_anterior": vigencia_anterior,
                 "vigencia": vigencia_corrente,
                 "validade_minima": calcular_validade_minima(vigencia_corrente),
+                "garantia_apresentada_anterior": apresentada_anterior,
+                "garantia_apresentada": apresentada,
+                "validade_apresentada": validade_apresentada,
+                "garantia_informada": garantia_evento is not None,
                 "valor_informado": valor_evento is not None,
                 "vigencia_informada": vigencia_evento is not None,
             }
         )
 
-    return etapas
+    return etapas, apresentada, validade_apresentada
 
 
-def calcular_situacao_atual(valor_original, percentual, fim_vigencia_original, eventos=()):
-    """Deriva a situação atual do contrato do marco original + eventos posteriores.
+def calcular_situacao_atual(valor_original, percentual, fim_vigencia_original, eventos=(),
+                            garantia_original=None, validade_garantia_original=None):
+    """Deriva a situação atual do contrato E da garantia a partir da linha do tempo.
 
     O usuário nunca redigita a situação atual: ela é o resultado da história
     informada nesta própria página. Nenhum VTA, Valor Global ou upload participa.
@@ -490,7 +539,13 @@ def calcular_situacao_atual(valor_original, percentual, fim_vigencia_original, e
         raise ValueError("Informe o término da vigência original do contrato.")
 
     valor_base = arredondar_financeiro(valor_base)
-    linha_do_tempo = montar_linha_do_tempo(valor_base, pct, vigencia_original, list(eventos))
+    garantia_base = parse_moeda_br(garantia_original)
+    garantia_base = None if garantia_base is None else arredondar_financeiro(garantia_base)
+    validade_base = parse_data_br(validade_garantia_original) if garantia_base is not None else None
+
+    linha_do_tempo, apresentada, validade_apresentada = montar_linha_do_tempo(
+        valor_base, pct, vigencia_original, list(eventos), garantia_base, validade_base
+    )
 
     if linha_do_tempo:
         valor_atual = linha_do_tempo[-1]["valor"]
@@ -503,6 +558,8 @@ def calcular_situacao_atual(valor_original, percentual, fim_vigencia_original, e
         "valor_original": valor_base,
         "percentual": pct,
         "garantia_original": calcular_garantia_necessaria(valor_base, pct),
+        "garantia_apresentada_original": garantia_base,
+        "validade_apresentada_original": validade_base,
         "vigencia_original": vigencia_original,
         "validade_minima_original": calcular_validade_minima(vigencia_original),
         "linha_do_tempo": linha_do_tempo,
@@ -512,124 +569,9 @@ def calcular_situacao_atual(valor_original, percentual, fim_vigencia_original, e
         "garantia_exigida": calcular_garantia_necessaria(valor_atual, pct),
         "vigencia_atual": vigencia_atual,
         "validade_minima": calcular_validade_minima(vigencia_atual),
+        "garantia_apresentada": apresentada,
+        "validade_apresentada": validade_apresentada,
     }
-
-
-# ============================================================
-# Garantia atualmente apresentada (entrada manual)
-# ============================================================
-
-def normalizar_garantias(registros):
-    """Normaliza as linhas da grade da garantia atualmente apresentada.
-
-    ``registros``: iterável de dicts com ``COLUNA_REFERENCIA`` (opcional),
-    ``COLUNA_VALOR`` e ``COLUNA_VALIDADE``. Retorna
-    ``(linhas, avisos, pendencias)``, onde cada linha é
-    ``{"referencia": str, "valor": Decimal, "validade": date|None}``.
-
-    Linhas totalmente vazias são ignoradas em silêncio. A validade ausente não
-    descarta a linha nem interrompe o cálculo financeiro (o valor continua
-    compondo a cobertura), mas é tratada como prazo NÃO comprovado na avaliação
-    temporal — fail-closed; por isso ela avisa mas NÃO gera pendência.
-
-    ``pendencias`` são os avisos de linha DESCARTADA — garantia materialmente
-    preenchida cujo valor não pôde ser considerado. Entrada incompleta não é o
-    mesmo que dado inexistente: a conclusão não pode fingir que a linha nunca
-    existiu.
-    """
-    linhas = []
-    avisos = []
-    pendencias = []
-    vazios = {"", "nan", "none", "<na>", "nat"}
-
-    def descartar(mensagem):
-        """Linha materialmente preenchida que não compõe a cobertura."""
-        avisos.append(mensagem)
-        pendencias.append(mensagem)
-    for idx, reg in enumerate(registros, start=1):
-        referencia_bruta = reg.get(COLUNA_REFERENCIA)
-        referencia = "" if referencia_bruta is None else str(referencia_bruta).strip()
-        if referencia.lower() in vazios:
-            referencia = ""
-
-        valor_bruto = reg.get(COLUNA_VALOR)
-        texto_valor = "" if valor_bruto is None else str(valor_bruto).strip()
-        tem_texto_valor = texto_valor.lower() not in vazios
-        validade = parse_data_br(reg.get(COLUNA_VALIDADE))
-
-        if not referencia and not tem_texto_valor and validade is None:
-            continue  # linha vazia
-
-        rotulo = referencia or f"Garantia da linha {idx}"
-
-        if not tem_texto_valor:
-            descartar(f"{rotulo}: informe o valor garantido.")
-            continue
-
-        valor = parse_moeda_br(valor_bruto)
-        if valor is None:
-            descartar(
-                f'{rotulo}: o valor "{texto_valor}" não pôde ser interpretado. '
-                "Use o formato R$ 50.000,00."
-            )
-            continue
-        if valor < 0:
-            descartar(f"{rotulo}: o valor garantido não pode ser negativo.")
-            continue
-
-        if validade is None:
-            avisos.append(f"{rotulo}: validade não informada — o prazo não pôde ser verificado.")
-
-        linhas.append(
-            {
-                "referencia": referencia,
-                "valor": arredondar_financeiro(valor),
-                "validade": validade,
-            }
-        )
-
-    return linhas, avisos, pendencias
-
-
-def consolidar_garantias(linhas):
-    """Aplica a regra do endosso: cada cadeia de garantia entra uma única vez.
-
-    Linhas que compartilham a MESMA referência (comparação sem diferenciar
-    maiúsculas/minúsculas nem espaços nas pontas) descrevem a mesma garantia em
-    momentos diferentes — original e endossos sucessivos. Prevalece a ÚLTIMA
-    linha informada, que traz o valor total vigente após o último endosso; as
-    anteriores são descartadas para não duplicar a cobertura.
-
-    Linhas sem referência são sempre tratadas como garantias independentes.
-    Retorna ``(consolidadas, avisos)`` preservando a ordem de entrada.
-    """
-    consolidadas = []
-    avisos = []
-    posicao_por_chave = {}
-    for linha in linhas:
-        chave = linha["referencia"].strip().casefold()
-        if chave and chave in posicao_por_chave:
-            posicao = posicao_por_chave[chave]
-            anterior = consolidadas[posicao]
-            avisos.append(
-                f"{linha['referencia']}: informada mais de uma vez. Considerado apenas o valor "
-                f"total vigente mais recente ({formatar_brl(linha['valor'])}); "
-                f"{formatar_brl(anterior['valor'])} foi desconsiderado para não duplicar a cobertura."
-            )
-            consolidadas[posicao] = linha
-            continue
-        if chave:
-            posicao_por_chave[chave] = len(consolidadas)
-        consolidadas.append(linha)
-    return consolidadas, avisos
-
-
-def calcular_cobertura_atual(garantias):
-    """Soma o valor total vigente das garantias independentes."""
-    total = Decimal("0")
-    for garantia in garantias:
-        total += garantia["valor"]
-    return arredondar_financeiro(total)
 
 
 # ============================================================
@@ -671,22 +613,6 @@ def classificar_financeiro(cobertura_atual, garantia_necessaria):
     return FINANCEIRO_SUPERIOR
 
 
-def classificar_temporal(garantias_detalhadas):
-    """Três estados temporais, independentes do resultado financeiro.
-
-    Sem garantia apresentada não há validade a comprovar: o prazo é reportado
-    como NÃO INFORMADO (fail-closed), e a pendência de dinheiro fica a cargo da
-    dimensão financeira.
-    """
-    if not garantias_detalhadas:
-        return TEMPORAL_NAO_INFORMADA
-    if any(parse_data_br(item.get("validade")) is None for item in garantias_detalhadas):
-        return TEMPORAL_NAO_INFORMADA
-    if all(item["validade_suficiente"] for item in garantias_detalhadas):
-        return TEMPORAL_SUFICIENTE
-    return TEMPORAL_INSUFICIENTE
-
-
 def diagnosticar(valor_suficiente, validade_suficiente):
     """Combina as duas verificações independentes nos quatro resultados possíveis."""
     if valor_suficiente and validade_suficiente:
@@ -698,22 +624,20 @@ def diagnosticar(valor_suficiente, validade_suficiente):
     return DIAGNOSTICO_VALOR_E_VALIDADE
 
 
-def analisar_garantia(valor_total_contrato, percentual, data_fim_vigencia, garantias):
-    """Confronta a SITUAÇÃO ATUAL apurada com a GARANTIA ATUALMENTE APRESENTADA.
+def analisar_garantia(valor_total_contrato, percentual, data_fim_vigencia,
+                      garantia_apresentada=None, validade_apresentada=None):
+    """Confronta a SITUAÇÃO ATUAL apurada com a ÚLTIMA FOTOGRAFIA da garantia.
 
-    ``valor_total_contrato`` e ``data_fim_vigencia`` são os derivados da linha do
-    tempo (ver ``calcular_situacao_atual``), nunca redigitados. ``garantias`` são
-    as linhas já normalizadas por ``normalizar_garantias``; a consolidação dos
-    endossos é aplicada aqui.
+    Todos os argumentos são derivados da linha do tempo (ver
+    ``calcular_situacao_atual``) — nada é redigitado.
 
-    A avaliação temporal considera insuficiente qualquer garantia que componha a
-    cobertura e vença antes da validade mínima (ou cuja validade não tenha sido
-    informada). Sem nenhuma garantia cadastrada não há prazo a regularizar: a
+    ``garantia_apresentada`` ausente (``None``) significa nenhuma garantia
+    apresentada, e não R$ 0,00: sem garantia não há prazo a regularizar, e a
     pendência é apenas de valor.
 
-    A validade de cada linha é reconvertida por ``parse_data_br`` imediatamente
-    antes da comparação: é essa normalização — e não um ``is not None`` — que
-    garante que nenhum ``NaT`` vindo do editor chegue a um operador relacional.
+    A validade é reconvertida por ``parse_data_br`` imediatamente antes da
+    comparação: é essa normalização — e não um ``is not None`` — que garante que
+    nenhum ``NaT`` vindo do editor chegue a um operador relacional.
     """
     valor_total = parse_moeda_br(valor_total_contrato)
     if valor_total is None or valor_total <= 0:
@@ -726,35 +650,46 @@ def analisar_garantia(valor_total_contrato, percentual, data_fim_vigencia, garan
         raise ValueError("Informe o término da vigência contratual.")
 
     valor_total = arredondar_financeiro(valor_total)
-    consolidadas, avisos = consolidar_garantias(list(garantias))
+    apresentada = parse_moeda_br(garantia_apresentada)
+    tem_garantia = apresentada is not None
+    apresentada = arredondar_financeiro(apresentada) if tem_garantia else None
+    cobertura_atual = apresentada if tem_garantia else Decimal("0.00")
+    validade = parse_data_br(validade_apresentada) if tem_garantia else None
 
     garantia_necessaria = calcular_garantia_necessaria(valor_total, pct)
-    cobertura_atual = calcular_cobertura_atual(consolidadas)
     complemento = calcular_complemento(garantia_necessaria, cobertura_atual)
     valor_suficiente = cobertura_atual >= garantia_necessaria
 
-    detalhadas = []
-    for garantia in consolidadas:
-        validade = parse_data_br(garantia.get("validade"))
-        suficiente = validade is not None and validade >= validade_minima
-        detalhadas.append({**garantia, "validade": validade, "validade_suficiente": suficiente})
-    validade_suficiente = all(item["validade_suficiente"] for item in detalhadas)
+    if not tem_garantia:
+        # Sem garantia apresentada não há prazo a regularizar: a pendência é só
+        # de valor, e o prazo é reportado como não informado (fail-closed).
+        validade_suficiente = True
+        situacao_temporal = TEMPORAL_NAO_INFORMADA
+    elif validade is None:
+        validade_suficiente = False
+        situacao_temporal = TEMPORAL_NAO_INFORMADA
+    elif validade >= validade_minima:
+        validade_suficiente = True
+        situacao_temporal = TEMPORAL_SUFICIENTE
+    else:
+        validade_suficiente = False
+        situacao_temporal = TEMPORAL_INSUFICIENTE
 
     return {
         "valor_total_contrato": valor_total,
         "percentual": pct,
         "garantia_necessaria": garantia_necessaria,
+        "garantia_apresentada": apresentada,
+        "tem_garantia": tem_garantia,
         "cobertura_atual": cobertura_atual,
         "complemento": complemento,
         "valor_suficiente": valor_suficiente,
         "situacao_financeira": classificar_financeiro(cobertura_atual, garantia_necessaria),
         "data_fim_vigencia": parse_data_br(data_fim_vigencia),
         "validade_minima": validade_minima,
+        "validade_apresentada": validade,
         "validade_suficiente": validade_suficiente,
-        "situacao_temporal": classificar_temporal(detalhadas),
-        "garantias": detalhadas,
-        "quantidade_garantias": len(detalhadas),
-        "avisos_consolidacao": avisos,
+        "situacao_temporal": situacao_temporal,
         "diagnostico": diagnosticar(valor_suficiente, validade_suficiente),
     }
 
@@ -763,42 +698,21 @@ def analisar_garantia(valor_total_contrato, percentual, data_fim_vigencia, garan
 # Texto para comunicação à contratada
 # ============================================================
 
-def _linha_referencia(numero_contrato="", contratada=""):
-    """Cabeçalho "Ref.:" com o que tiver sido informado; vazio se nada houver."""
-    partes = []
-    numero = str(numero_contrato or "").strip()
-    nome = str(contratada or "").strip()
-    if numero:
-        partes.append(f"Contrato nº {numero}")
-    if nome:
-        partes.append(nome)
-    if not partes:
-        return []
-    return ["Ref.: " + " — ".join(partes), ""]
-
-
 def _paragrafo_cobertura(analise):
-    """Parágrafo da cobertura atual, com a concordância adequada."""
-    quantidade = analise["quantidade_garantias"]
+    """Parágrafo da garantia atualmente apresentada."""
     complemento = moeda(analise["complemento"])
-    if quantidade == 0:
+    if not analise["tem_garantia"]:
         return (
             "Não há garantia contratual atualmente apresentada, sendo necessária, portanto, a "
             f"apresentação de garantia no valor de {complemento}."
         )
-    cobertura = moeda(analise["cobertura_atual"])
-    if quantidade > 1:
-        return (
-            f"As garantias atualmente apresentadas totalizam {cobertura}, sendo necessária, "
-            f"portanto, a complementação no valor de {complemento}."
-        )
     return (
-        f"A garantia atualmente apresentada é de {cobertura}, sendo necessária, portanto, a "
-        f"complementação no valor de {complemento}."
+        f"A garantia atualmente apresentada é de {moeda(analise['cobertura_atual'])}, sendo "
+        f"necessária, portanto, a complementação no valor de {complemento}."
     )
 
 
-def gerar_texto_comunicacao(analise, numero_contrato="", contratada=""):
+def gerar_texto_comunicacao(analise):
     """Texto pronto para copiar e colar em e-mail, conforme o diagnóstico.
 
     Quatro situações: sem garantia apresentada, garantia financeiramente
@@ -808,13 +722,11 @@ def gerar_texto_comunicacao(analise, numero_contrato="", contratada=""):
     exigida, nada é solicitado e nenhuma devolução é determinada.
 
     O percentual é sempre o efetivamente informado pelo usuário — jamais um
-    "5%" fixo.
+    "5%" fixo. O texto não carrega identificação de contrato ou de contratada.
     """
     diagnostico = analise["diagnostico"]
-    referencia = _linha_referencia(numero_contrato, contratada)
-
     if diagnostico == DIAGNOSTICO_REGULAR:
-        return "\n".join([*referencia, SEM_NECESSIDADE_DE_ATUALIZACAO])
+        return SEM_NECESSIDADE_DE_ATUALIZACAO
 
     data_minima = formatar_data_br(analise["validade_minima"])
     fim_vigencia = formatar_data_br(analise["data_fim_vigencia"])
@@ -827,7 +739,6 @@ def gerar_texto_comunicacao(analise, numero_contrato="", contratada=""):
     if diagnostico == DIAGNOSTICO_VALIDADE:
         return "\n".join(
             [
-                *referencia,
                 "Prezados,",
                 "",
                 f"Considerando a vigência atual do contrato, com término em {fim_vigencia}, "
@@ -863,7 +774,6 @@ def gerar_texto_comunicacao(analise, numero_contrato="", contratada=""):
 
     return "\n".join(
         [
-            *referencia,
             "Prezados,",
             "",
             abertura,
