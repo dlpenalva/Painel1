@@ -280,11 +280,18 @@ elif valor_original <= 0:
     pendencias.append("corrija o **valor original do contrato**")
 if vigencia_original is None:
     pendencias.append("informe o **término da vigência original**")
+validade_sem_garantia = False
 if garantia_original_txt and garantia_original is None:
     st.warning(
         f'A garantia "{garantia_original_txt}" não pôde ser interpretada. Use o formato R$ 50.000,00.'
     )
     pendencias.append("corrija a **garantia apresentada na assinatura**")
+elif garantia_original is None and validade_original is not None:
+    # Validade sozinha não descreve uma garantia: mesma regra das alterações
+    # posteriores. Garantia e validade ambas vazias seguem válidas — significam
+    # que não havia garantia apresentada na assinatura.
+    st.warning("Informe também o valor da garantia apresentada na assinatura.")
+    validade_sem_garantia = True
 
 if pendencias:
     # A conclusão anterior não pode sobreviver a uma entrada que deixou de
@@ -292,6 +299,11 @@ if pendencias:
     # resultado que a tela já não sustenta.
     st.session_state.pop("resultado_garantia", None)
     st.info("Para montar a evolução do contrato: " + "; ".join(pendencias) + ".")
+    st.stop()
+
+if validade_sem_garantia:
+    # Fail-closed com o aviso específico já exibido acima; nenhum alerta global.
+    st.session_state.pop("resultado_garantia", None)
     st.stop()
 
 # ------------------------------------------------------------

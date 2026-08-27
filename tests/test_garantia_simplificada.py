@@ -1002,6 +1002,43 @@ class PaginaFluxoTests(unittest.TestCase):
         self.assertFalse(at.exception)
         self.assertNotIn("resultado_garantia", at.session_state)
 
+    def test_a_garantia_e_validade_vazias_na_assinatura_sao_permitidas(self):
+        # Ambas vazias significam simplesmente que não havia garantia na
+        # assinatura: a análise conclui normalmente.
+        at = self._rodar()
+        resultado = at.session_state["resultado_garantia"]
+        self.assertFalse(resultado["tem_garantia"])
+        self.assertIsNone(resultado["garantia_apresentada"])
+        self.assertEqual(resultado["situacao_temporal"], TEMPORAL_NAO_INFORMADA)
+        self.assertEqual([e.value for e in at.warning if "assinatura" in e.value], [])
+
+    def test_b_garantia_sem_validade_na_assinatura_e_permitida(self):
+        at = self._rodar(garantia="50.000,00")
+        resultado = at.session_state["resultado_garantia"]
+        self.assertEqual(resultado["garantia_apresentada"], Decimal("50000.00"))
+        self.assertTrue(resultado["valor_suficiente"])          # dinheiro considerado
+        self.assertIsNone(resultado["validade_apresentada"])
+        self.assertEqual(resultado["situacao_temporal"], TEMPORAL_NAO_INFORMADA)
+        self.assertEqual(resultado["diagnostico"], DIAGNOSTICO_VALIDADE)
+
+    def test_c_validade_sem_garantia_na_assinatura_e_fail_closed(self):
+        at = self._rodar(validade=VALIDADE_MINIMA)
+        avisos = [e.value for e in at.warning]
+        self.assertIn("Informe também o valor da garantia apresentada na assinatura.", avisos)
+        # Só o aviso específico: nenhum alerta global acrescentado.
+        self.assertEqual([e.value for e in at.info], [])
+        self.assertNotIn("resultado_garantia", at.session_state)
+        # Os campos preenchidos permanecem na tela.
+        self.assertEqual(at.date_input(key="garantia_validade_original").value, VALIDADE_MINIMA)
+        self.assertEqual(at.text_input(key="garantia_valor_original").value, "1.000.000,00")
+
+    def test_c_conclusao_anterior_nao_sobrevive_a_validade_orfa(self):
+        at = self._rodar(garantia="50.000,00", validade=VALIDADE_MINIMA)
+        self.assertIn("resultado_garantia", at.session_state)
+        at.text_input(key="garantia_apresentada_original").set_value("").run()
+        self.assertFalse(at.exception)
+        self.assertNotIn("resultado_garantia", at.session_state)
+
     def test_linha_vazia_continua_ignorada_e_nao_bloqueia(self):
         at = self._rodar(eventos=[self._linha()])
         self.assertEqual([e.value for e in at.warning if e.value.startswith("Linha ")], [])
