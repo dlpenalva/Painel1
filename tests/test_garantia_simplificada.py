@@ -38,6 +38,29 @@ from _garantia_calculo import (
     parse_data_br,
     parse_moeda_br,
 )
+from _garantia_calculo import (
+    COLUNA_EVENTO_DATA,
+    COLUNA_EVENTO_OBSERVACAO,
+    COLUNA_EVENTO_TIPO,
+    COLUNA_EVENTO_VALOR,
+    COLUNA_EVENTO_VIGENCIA,
+    COLUNA_REFERENCIA,
+    COLUNA_VALIDADE,
+    COLUNA_VALOR,
+    FINANCEIRO_COMPLEMENTAR,
+    FINANCEIRO_SUFICIENTE,
+    FINANCEIRO_SUPERIOR,
+    TEMPORAL_INSUFICIENTE,
+    TEMPORAL_NAO_INFORMADA,
+    TEMPORAL_SUFICIENTE,
+    TIPO_ADITIVO,
+    TIPO_PRORROGACAO,
+    TIPO_REAJUSTE,
+    calcular_situacao_atual,
+    data_ausente,
+    montar_linha_do_tempo,
+    normalizar_eventos,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 GARANTIA = (ROOT / "pages" / "05_Garantia.py").read_text(encoding="utf-8")
@@ -50,10 +73,10 @@ FIM_VIGENCIA = date(2026, 12, 31)
 VALIDADE_MINIMA = date(2027, 3, 31)   # 31/12/2026 + 90 dias corridos
 
 
-def _garantia(valor, validade, identificacao=""):
+def _garantia(valor, validade, referencia=""):
     """Linha já normalizada, como a devolvida por ``normalizar_garantias``."""
     return {
-        "identificacao": identificacao,
+        "referencia": referencia,
         "valor": arredondar_financeiro(parse_moeda_br(valor)),
         "validade": validade,
     }
@@ -305,7 +328,7 @@ class GarantiasIndependentesTests(unittest.TestCase):
 class NormalizacaoGarantiasTests(unittest.TestCase):
     def test_linha_vazia_ignorada_em_silencio(self):
         linhas, avisos = normalizar_garantias(
-            [{"Identificação da garantia": "", "Valor total atualmente garantido": "", "Validade": None}]
+            [{"Apólice / endosso / referência": "", "Valor garantido": "", "Validade": None}]
         )
         self.assertEqual(linhas, [])
         self.assertEqual(avisos, [])
@@ -314,23 +337,23 @@ class NormalizacaoGarantiasTests(unittest.TestCase):
         linhas, avisos = normalizar_garantias(
             [
                 {
-                    "Identificação da garantia": " Apolice 123 ",
-                    "Valor total atualmente garantido": "R$ 40.000,00",
+                    "Apólice / endosso / referência": " Apolice 123 ",
+                    "Valor garantido": "R$ 40.000,00",
                     "Validade": "31/03/2027",
                 }
             ]
         )
         self.assertEqual(avisos, [])
-        self.assertEqual(linhas[0]["identificacao"], "Apolice 123")
+        self.assertEqual(linhas[0]["referencia"], "Apolice 123")
         self.assertEqual(linhas[0]["valor"], Decimal("40000.00"))
         self.assertEqual(linhas[0]["validade"], date(2027, 3, 31))
 
     def test_valor_ausente_ou_invalido_gera_aviso_e_descarta(self):
         linhas, avisos = normalizar_garantias(
             [
-                {"Identificação da garantia": "A", "Valor total atualmente garantido": "", "Validade": None},
-                {"Identificação da garantia": "B", "Valor total atualmente garantido": "abc", "Validade": None},
-                {"Identificação da garantia": "C", "Valor total atualmente garantido": "-10", "Validade": None},
+                {"Apólice / endosso / referência": "A", "Valor garantido": "", "Validade": None},
+                {"Apólice / endosso / referência": "B", "Valor garantido": "abc", "Validade": None},
+                {"Apólice / endosso / referência": "C", "Valor garantido": "-10", "Validade": None},
             ]
         )
         self.assertEqual(linhas, [])
@@ -338,7 +361,7 @@ class NormalizacaoGarantiasTests(unittest.TestCase):
 
     def test_validade_ausente_mantem_a_linha_e_avisa(self):
         linhas, avisos = normalizar_garantias(
-            [{"Identificação da garantia": "A", "Valor total atualmente garantido": "10.000,00", "Validade": None}]
+            [{"Apólice / endosso / referência": "A", "Valor garantido": "10.000,00", "Validade": None}]
         )
         self.assertEqual(len(linhas), 1)
         self.assertIsNone(linhas[0]["validade"])
@@ -412,27 +435,43 @@ class TextoComunicacaoTests(unittest.TestCase):
 # ============================================================
 
 class PaginaFluxoUnicoTests(unittest.TestCase):
-    def test_quatro_blocos_na_ordem_do_enunciado(self):
+    def test_sete_blocos_na_ordem_cronologica(self):
         posicoes = [
-            GARANTIA.index('st.subheader("Garantia vigente")'),
+            GARANTIA.index('st.subheader("Identificação")'),
+            GARANTIA.index('st.subheader("Situação original do contrato")'),
+            GARANTIA.index('st.subheader("Alterações posteriores à assinatura")'),
             GARANTIA.index('st.subheader("Situação atual do contrato")'),
-            GARANTIA.index('st.subheader("Resultado")'),
-            GARANTIA.index('st.subheader("Texto para comunicação à contratada")'),
+            GARANTIA.index('st.subheader("Garantia atualmente apresentada")'),
+            GARANTIA.index('st.subheader("Resultado da análise")'),
+            GARANTIA.index('st.subheader("Texto para a contratada")'),
         ]
         self.assertEqual(posicoes, sorted(posicoes))
 
-    def test_nao_existe_escolha_de_modo_nem_historico_de_instrumentos(self):
+    def test_nao_existe_escolha_de_modo_nem_pagina_com_abas(self):
         for residuo in (
             "st.radio",
+            "st.tabs",
             "Valores totais",
             "Acréscimos ou reduções",
-            "linha_do_tempo",
             "Memória de cálculo",
             "garantia_historico_valores_totais",
             "garantia_historico_alteracoes",
-            "Instrumento",
+            "Identificação da garantia",
+            "Garantia atualmente constituída",
+            "Garantia vigente",
         ):
             self.assertNotIn(residuo, GARANTIA, f"resíduo do modelo antigo: {residuo}")
+
+    def test_alteracoes_do_contrato_nao_sao_garantias_apresentadas(self):
+        # Um único editor para os eventos e um único editor para a garantia
+        # apresentada: nenhuma fonte visual concorrente para a mesma informação.
+        self.assertEqual(GARANTIA.count("st.data_editor("), 2)
+        self.assertIn("garantia_eventos_contrato", GARANTIA)
+        self.assertIn("garantia_vigente_linhas", GARANTIA)
+        # A situação atual é derivada, nunca redigitada.
+        self.assertIn("calcular_situacao_atual(", GARANTIA)
+        self.assertIn('valor_total_contrato=situacao["valor_atual"]', GARANTIA)
+        self.assertIn('data_fim_vigencia=situacao["vigencia_atual"]', GARANTIA)
 
     def test_pagina_nao_gera_pdf_txt_nem_download(self):
         for residuo in (
@@ -454,17 +493,42 @@ class PaginaFluxoUnicoTests(unittest.TestCase):
             self.assertFalse(hasattr(motor, removido), f"{removido} deveria ter sido removido do motor")
 
     def test_campos_manuais_presentes(self):
-        from _garantia_calculo import COLUNA_IDENTIFICACAO, COLUNA_VALIDADE, COLUNA_VALOR
+        from _garantia_calculo import COLUNA_REFERENCIA, COLUNA_VALIDADE, COLUNA_VALOR
 
-        self.assertIn("Valor total atual do contrato", GARANTIA)
+        self.assertIn("Valor original do contrato", GARANTIA)
         self.assertIn("Percentual da garantia (%)", GARANTIA)
-        self.assertIn("Término da vigência contratual", GARANTIA)
-        self.assertEqual(COLUNA_VALOR, "Valor total atualmente garantido")
-        self.assertEqual(COLUNA_IDENTIFICACAO, "Identificação da garantia")
+        self.assertIn("Término da vigência original", GARANTIA)
+        self.assertEqual(COLUNA_VALOR, "Valor garantido")
+        self.assertEqual(COLUNA_REFERENCIA, "Apólice / endosso / referência")
         self.assertEqual(COLUNA_VALIDADE, "Validade")
-        for constante in ("COLUNA_IDENTIFICACAO", "COLUNA_VALOR", "COLUNA_VALIDADE"):
+        for constante in ("COLUNA_REFERENCIA", "COLUNA_VALOR", "COLUNA_VALIDADE"):
             self.assertIn(constante, CORPO_GARANTIA)
         self.assertIn('num_rows="dynamic"', GARANTIA)
+
+    def test_colunas_do_quadro_de_eventos_presentes(self):
+        from _garantia_calculo import (
+            COLUNA_EVENTO_DATA,
+            COLUNA_EVENTO_OBSERVACAO,
+            COLUNA_EVENTO_TIPO,
+            COLUNA_EVENTO_VALOR,
+            COLUNA_EVENTO_VIGENCIA,
+        )
+
+        self.assertEqual(COLUNA_EVENTO_VALOR, "Valor total do contrato após o evento")
+        self.assertEqual(COLUNA_EVENTO_VIGENCIA, "Novo término da vigência")
+        self.assertEqual(COLUNA_EVENTO_DATA, "Data do instrumento/evento")
+        for constante in (
+            "COLUNA_EVENTO_TIPO",
+            "COLUNA_EVENTO_DATA",
+            "COLUNA_EVENTO_VALOR",
+            "COLUNA_EVENTO_VIGENCIA",
+            "COLUNA_EVENTO_OBSERVACAO",
+            "TIPOS_EVENTO",
+        ):
+            self.assertIn(constante, CORPO_GARANTIA)
+        self.assertEqual(COLUNA_EVENTO_TIPO, "Tipo")
+        self.assertEqual(COLUNA_EVENTO_OBSERVACAO, "Observação")
+        self.assertIn("Evolução do contrato", GARANTIA)
 
     def test_navegacao_de_retorno_preservada(self):
         self.assertIn("← Voltar para Central", GARANTIA)
@@ -473,6 +537,19 @@ class PaginaFluxoUnicoTests(unittest.TestCase):
 
     def test_pagina_publica_apenas_resultado_proprio(self):
         self.assertIn('st.session_state["resultado_garantia"]', GARANTIA)
+
+    def test_texto_da_contratada_nao_congela_na_primeira_apuracao(self):
+        # ARMADILHA: st.text_area com key fixa só honra value= no primeiro
+        # render; sem a ressincronia por session_state o texto congela na
+        # primeira apuração e passa a mentir sobre o resultado exibido acima.
+        bloco = GARANTIA[GARANTIA.index("Texto para a contratada") :]
+        self.assertIn(
+            'if st.session_state.get("garantia_texto_comunicacao") != texto_comunicacao:', bloco
+        )
+        self.assertIn('st.session_state["garantia_texto_comunicacao"] = texto_comunicacao', bloco)
+        inicio = bloco.index("st.text_area(")
+        area = bloco[inicio : inicio + 260]
+        self.assertNotIn("value=", area, "value= com key fixa congela o texto")
 
 
 # ============================================================
@@ -526,7 +603,9 @@ class IsolamentoSessionStateTests(unittest.TestCase):
         self.assertFalse(at.exception)
 
         # Os campos manuais continuam vazios / com o default próprio.
-        self.assertEqual(at.text_input(key="garantia_valor_total_contrato").value, "")
+        self.assertEqual(at.text_input(key="garantia_valor_original").value, "")
+        self.assertEqual(at.text_input(key="garantia_numero_contrato").value, "")
+        self.assertEqual(at.text_input(key="garantia_contratada").value, "")
         self.assertEqual(at.number_input(key="garantia_percentual").value, 5.0)
         self.assertIsNone(at.date_input(key="garantia_fim_vigencia").value)
 
@@ -539,7 +618,7 @@ class IsolamentoSessionStateTests(unittest.TestCase):
         )
         for vazado in ("999.999.999", "888.888.888", "777.777.777", "123.456,78"):
             self.assertNotIn(vazado, textos)
-        self.assertIn("valor total atual do contrato", " ".join(e.value for e in at.info))
+        self.assertIn("valor original do contrato", " ".join(e.value for e in at.info))
         self.assertNotIn("resultado_garantia", at.session_state)
 
     def test_pagina_calcula_somente_com_entrada_manual(self):
@@ -549,7 +628,7 @@ class IsolamentoSessionStateTests(unittest.TestCase):
         for chave, valor in SESSAO_EXTERNA.items():
             at.session_state[chave] = valor
         at.run()
-        at.text_input(key="garantia_valor_total_contrato").set_value("1.000.000,00").run()
+        at.text_input(key="garantia_valor_original").set_value("1.000.000,00").run()
         at.date_input(key="garantia_fim_vigencia").set_value(FIM_VIGENCIA).run()
         self.assertFalse(at.exception)
 
@@ -616,6 +695,513 @@ class CardCentralTests(unittest.TestCase):
             'arquivo = None if ferramenta else st.session_state.get(documento["session_key"])', render
         )
         self.assertIn('label="Abrir calculadora" if ferramenta else "Gerar e baixar"', render)
+
+
+# ============================================================
+# GAR-UX1 — casos A a K: linha do tempo contratual e ausência de data
+# ============================================================
+
+VIGENCIA_PRORROGADA = date(2027, 12, 31)
+VALIDADE_MINIMA_PRORROGADA = date(2028, 3, 30)   # 31/12/2027 + 90 dias corridos
+
+
+def _evento(tipo, valor=None, vigencia=None, data=None, observacao=""):
+    """Linha crua do quadro de alterações, como o ``st.data_editor`` a devolve."""
+    return {
+        COLUNA_EVENTO_TIPO: tipo,
+        COLUNA_EVENTO_DATA: data,
+        COLUNA_EVENTO_VALOR: valor,
+        COLUNA_EVENTO_VIGENCIA: vigencia,
+        COLUNA_EVENTO_OBSERVACAO: observacao,
+    }
+
+
+def _situacao(valor_original="1.000.000,00", percentual=PERCENTUAL_GARANTIA_PADRAO,
+              vigencia=FIM_VIGENCIA, registros=()):
+    eventos, avisos = normalizar_eventos(list(registros))
+    situacao = calcular_situacao_atual(
+        valor_original=valor_original,
+        percentual=percentual,
+        fim_vigencia_original=vigencia,
+        eventos=eventos,
+    )
+    return situacao, avisos
+
+
+def _analise_da_situacao(situacao, garantias=()):
+    return analisar_garantia(
+        valor_total_contrato=situacao["valor_atual"],
+        percentual=situacao["percentual"],
+        data_fim_vigencia=situacao["vigencia_atual"],
+        garantias=list(garantias),
+    )
+
+
+class CasoASomenteSituacaoOriginalTests(unittest.TestCase):
+    def test_sem_eventos_a_situacao_atual_e_a_original(self):
+        situacao, avisos = _situacao()
+        self.assertEqual(avisos, [])
+        self.assertEqual(situacao["quantidade_eventos"], 0)
+        self.assertEqual(situacao["valor_original"], Decimal("1000000.00"))
+        self.assertEqual(situacao["valor_atual"], Decimal("1000000.00"))
+        self.assertEqual(situacao["variacao_acumulada"], Decimal("0.00"))
+        self.assertEqual(situacao["garantia_exigida"], Decimal("50000.00"))
+        self.assertEqual(situacao["vigencia_atual"], FIM_VIGENCIA)
+        self.assertEqual(situacao["validade_minima"], VALIDADE_MINIMA)
+
+    def test_linhas_vazias_do_editor_sao_ignoradas_em_silencio(self):
+        situacao, avisos = _situacao(
+            registros=[_evento(None), _evento(""), _evento(None, valor="")]
+        )
+        self.assertEqual(avisos, [])
+        self.assertEqual(situacao["quantidade_eventos"], 0)
+
+
+class CasoBReajusteTests(unittest.TestCase):
+    def test_reajuste_move_valor_variacao_e_garantia(self):
+        situacao, avisos = _situacao(
+            registros=[_evento(TIPO_REAJUSTE, valor="1.100.000,00")]
+        )
+        self.assertEqual(avisos, [])
+        etapa = situacao["linha_do_tempo"][0]
+        self.assertEqual(etapa["numero"], 1)
+        self.assertEqual(etapa["valor_anterior"], Decimal("1000000.00"))
+        self.assertEqual(etapa["valor"], Decimal("1100000.00"))
+        self.assertEqual(etapa["variacao"], Decimal("100000.00"))
+        self.assertEqual(etapa["garantia_exigida"], Decimal("55000.00"))
+        self.assertEqual(etapa["variacao_garantia"], Decimal("5000.00"))
+        self.assertEqual(situacao["valor_atual"], Decimal("1100000.00"))
+        self.assertEqual(situacao["garantia_exigida"], Decimal("55000.00"))
+        # O reajuste NÃO é garantia apresentada: a cobertura continua vindo só
+        # da grade de garantias.
+        analise = _analise_da_situacao(situacao, [_garantia("50.000,00", VALIDADE_MINIMA)])
+        self.assertEqual(analise["cobertura_atual"], Decimal("50000.00"))
+        self.assertEqual(analise["complemento"], Decimal("5000.00"))
+        self.assertEqual(analise["situacao_financeira"], FINANCEIRO_COMPLEMENTAR)
+
+    def test_reajuste_sem_valor_nao_entra_e_avisa(self):
+        situacao, avisos = _situacao(registros=[_evento(TIPO_REAJUSTE)])
+        self.assertEqual(situacao["quantidade_eventos"], 0)
+        self.assertEqual(len(avisos), 1)
+        self.assertIn("valor total do contrato após este evento", avisos[0])
+
+
+class CasoCProrrogacaoPuraTests(unittest.TestCase):
+    def test_prorrogacao_sem_valor_preserva_valor_e_recalcula_validade(self):
+        situacao, avisos = _situacao(
+            registros=[
+                _evento(TIPO_REAJUSTE, valor="1.100.000,00"),
+                _evento(TIPO_PRORROGACAO, vigencia=VIGENCIA_PRORROGADA),
+            ]
+        )
+        self.assertEqual(avisos, [])
+        prorrogacao = situacao["linha_do_tempo"][1]
+        self.assertFalse(prorrogacao["valor_informado"])
+        self.assertEqual(prorrogacao["valor"], Decimal("1100000.00"))
+        self.assertEqual(prorrogacao["variacao"], Decimal("0.00"))
+        self.assertEqual(prorrogacao["garantia_exigida"], Decimal("55000.00"))
+        self.assertEqual(situacao["valor_atual"], Decimal("1100000.00"))
+        self.assertEqual(situacao["garantia_exigida"], Decimal("55000.00"))
+        self.assertEqual(situacao["vigencia_atual"], VIGENCIA_PRORROGADA)
+        self.assertEqual(situacao["validade_minima"], VALIDADE_MINIMA_PRORROGADA)
+
+    def test_cobertura_cheia_com_validade_curta_nao_pede_dinheiro(self):
+        situacao, _ = _situacao(
+            registros=[
+                _evento(TIPO_REAJUSTE, valor="1.100.000,00"),
+                _evento(TIPO_PRORROGACAO, vigencia=VIGENCIA_PRORROGADA),
+            ]
+        )
+        analise = _analise_da_situacao(situacao, [_garantia("55.000,00", VALIDADE_MINIMA)])
+        self.assertTrue(analise["valor_suficiente"])
+        self.assertEqual(analise["complemento"], Decimal("0.00"))
+        self.assertEqual(analise["situacao_financeira"], FINANCEIRO_SUFICIENTE)
+        self.assertFalse(analise["validade_suficiente"])
+        self.assertEqual(analise["situacao_temporal"], TEMPORAL_INSUFICIENTE)
+        self.assertEqual(analise["diagnostico"], DIAGNOSTICO_VALIDADE)
+        texto = gerar_texto_comunicacao(analise)
+        self.assertNotIn("complementação", texto)
+        self.assertNotIn("R$", texto)
+
+    def test_prorrogacao_pode_alterar_o_valor_quando_informado(self):
+        situacao, avisos = _situacao(
+            registros=[_evento(TIPO_PRORROGACAO, valor="1.200.000,00", vigencia=VIGENCIA_PRORROGADA)]
+        )
+        self.assertEqual(avisos, [])
+        self.assertEqual(situacao["valor_atual"], Decimal("1200000.00"))
+        self.assertEqual(situacao["garantia_exigida"], Decimal("60000.00"))
+        self.assertEqual(situacao["vigencia_atual"], VIGENCIA_PRORROGADA)
+
+    def test_prorrogacao_sem_nova_vigencia_nao_entra_e_avisa(self):
+        situacao, avisos = _situacao(registros=[_evento(TIPO_PRORROGACAO)])
+        self.assertEqual(situacao["quantidade_eventos"], 0)
+        self.assertEqual(len(avisos), 1)
+        self.assertIn("novo término da vigência", avisos[0])
+
+
+class CasoDReducaoDeValorTests(unittest.TestCase):
+    def test_reducao_nao_pede_complemento_nem_determina_devolucao(self):
+        situacao, _ = _situacao(
+            registros=[
+                _evento(TIPO_REAJUSTE, valor="1.100.000,00"),
+                _evento(TIPO_ADITIVO, valor="900.000,00"),
+            ]
+        )
+        reducao = situacao["linha_do_tempo"][1]
+        self.assertEqual(reducao["variacao"], Decimal("-200000.00"))
+        self.assertEqual(situacao["valor_atual"], Decimal("900000.00"))
+        self.assertEqual(situacao["variacao_acumulada"], Decimal("-100000.00"))
+        self.assertEqual(situacao["garantia_exigida"], Decimal("45000.00"))
+
+        analise = _analise_da_situacao(situacao, [_garantia("55.000,00", VALIDADE_MINIMA)])
+        self.assertEqual(analise["complemento"], Decimal("0.00"))
+        self.assertEqual(analise["situacao_financeira"], FINANCEIRO_SUPERIOR)
+        self.assertEqual(analise["diagnostico"], DIAGNOSTICO_REGULAR)
+        texto = gerar_texto_comunicacao(analise)
+        self.assertEqual(texto, SEM_NECESSIDADE_DE_ATUALIZACAO)
+        for proibido in ("devolução", "devolver", "redução da garantia", "Solicitamos"):
+            self.assertNotIn(proibido, texto)
+
+
+class CasoEMaisDeUmEventoTests(unittest.TestCase):
+    def test_sequencia_automatica_na_ordem_de_insercao(self):
+        situacao, avisos = _situacao(
+            registros=[
+                _evento(TIPO_REAJUSTE, valor="1.100.000,00", data=date(2025, 3, 1)),
+                _evento(TIPO_PRORROGACAO, vigencia=VIGENCIA_PRORROGADA, data=date(2026, 11, 20)),
+                _evento(TIPO_ADITIVO, valor="1.300.000,00", data=date(2027, 2, 10)),
+            ]
+        )
+        self.assertEqual(avisos, [])
+        self.assertEqual([e["numero"] for e in situacao["linha_do_tempo"]], [1, 2, 3])
+        self.assertEqual(
+            [e["tipo"] for e in situacao["linha_do_tempo"]],
+            [TIPO_REAJUSTE, TIPO_PRORROGACAO, TIPO_ADITIVO],
+        )
+        self.assertEqual(situacao["valor_atual"], Decimal("1300000.00"))
+        self.assertEqual(situacao["vigencia_atual"], VIGENCIA_PRORROGADA)
+        self.assertEqual(situacao["garantia_exigida"], Decimal("65000.00"))
+        self.assertEqual(situacao["validade_minima"], VALIDADE_MINIMA_PRORROGADA)
+
+    def test_ordem_de_insercao_nunca_e_reordenada_pela_data(self):
+        # Datas fora de ordem não reordenam nada: manda a ordem das linhas.
+        situacao, _ = _situacao(
+            registros=[
+                _evento(TIPO_REAJUSTE, valor="1.100.000,00", data=date(2027, 5, 1)),
+                _evento(TIPO_ADITIVO, valor="1.300.000,00", data=date(2025, 1, 1)),
+            ]
+        )
+        self.assertEqual([e["numero"] for e in situacao["linha_do_tempo"]], [1, 2])
+        self.assertEqual(situacao["linha_do_tempo"][0]["tipo"], TIPO_REAJUSTE)
+        self.assertEqual(situacao["valor_atual"], Decimal("1300000.00"))
+
+    def test_excluir_evento_anterior_recalcula_toda_a_cadeia(self):
+        completo = [
+            _evento(TIPO_REAJUSTE, valor="1.100.000,00"),
+            _evento(TIPO_PRORROGACAO, vigencia=VIGENCIA_PRORROGADA),
+            _evento(TIPO_ADITIVO, valor="1.300.000,00"),
+        ]
+        sem_prorrogacao = [completo[0], completo[2]]
+        situacao, _ = _situacao(registros=sem_prorrogacao)
+        self.assertEqual([e["numero"] for e in situacao["linha_do_tempo"]], [1, 2])
+        self.assertEqual(situacao["valor_atual"], Decimal("1300000.00"))
+        self.assertEqual(situacao["vigencia_atual"], FIM_VIGENCIA)   # volta à vigência original
+        self.assertEqual(situacao["validade_minima"], VALIDADE_MINIMA)
+
+    def test_alterar_evento_anterior_reflete_nos_posteriores(self):
+        base = _situacao(
+            registros=[
+                _evento(TIPO_REAJUSTE, valor="1.100.000,00"),
+                _evento(TIPO_PRORROGACAO, vigencia=VIGENCIA_PRORROGADA),
+            ]
+        )[0]
+        editado = _situacao(
+            registros=[
+                _evento(TIPO_REAJUSTE, valor="1.500.000,00"),
+                _evento(TIPO_PRORROGACAO, vigencia=VIGENCIA_PRORROGADA),
+            ]
+        )[0]
+        self.assertEqual(base["valor_atual"], Decimal("1100000.00"))
+        self.assertEqual(editado["valor_atual"], Decimal("1500000.00"))
+        self.assertEqual(editado["linha_do_tempo"][1]["garantia_exigida"], Decimal("75000.00"))
+
+
+# ------------------------------------------------------------
+# Casos F, G, H, I e J — ausência de data e NaT
+# ------------------------------------------------------------
+
+class CasoFGHDataAusenteTests(unittest.TestCase):
+    def test_caso_f_nat_do_editor_nao_derruba_a_pagina(self):
+        import pandas as pd
+
+        # Exatamente o que o st.data_editor devolve numa célula de data vazia.
+        grade = pd.DataFrame(
+            {
+                COLUNA_REFERENCIA: pd.Series(["Apolice A"], dtype="object"),
+                COLUNA_VALOR: pd.Series(["50.000,00"], dtype="object"),
+                COLUNA_VALIDADE: pd.Series([pd.NaT], dtype="datetime64[ns]"),
+            }
+        )
+        registros = grade.to_dict("records")
+        self.assertTrue(data_ausente(registros[0][COLUNA_VALIDADE]))
+
+        linhas, avisos = normalizar_garantias(registros)
+        self.assertEqual(len(linhas), 1)
+        self.assertIsNone(linhas[0]["validade"])
+        self.assertTrue(any("validade" in aviso.lower() for aviso in avisos))
+
+        analise = _analise(garantias=linhas)   # não pode levantar TypeError
+        self.assertEqual(analise["cobertura_atual"], Decimal("50000.00"))
+        self.assertTrue(analise["valor_suficiente"])
+        self.assertFalse(analise["validade_suficiente"])
+        self.assertEqual(analise["situacao_temporal"], TEMPORAL_NAO_INFORMADA)
+
+    def test_caso_f_nat_cru_chegando_ao_motor_nao_explode(self):
+        import pandas as pd
+
+        # Blindagem da causa raiz: NaT é instância de datetime e sobrevive a um
+        # "is not None"; o motor precisa reconhecê-lo como ausência.
+        self.assertTrue(data_ausente(pd.NaT))
+        self.assertIsNone(parse_data_br(pd.NaT))
+        analise = _analise(garantias=[_garantia("50.000,00", pd.NaT)])
+        self.assertIsNone(analise["garantias"][0]["validade"])
+        self.assertFalse(analise["validade_suficiente"])
+        self.assertEqual(analise["diagnostico"], DIAGNOSTICO_VALIDADE)
+
+    def test_caso_f_nat_tambem_e_seguro_no_quadro_de_eventos(self):
+        import pandas as pd
+
+        situacao, avisos = _situacao(
+            registros=[
+                _evento(TIPO_REAJUSTE, valor="1.100.000,00", data=pd.NaT, vigencia=pd.NaT),
+                _evento(TIPO_PRORROGACAO, data=pd.NaT, vigencia=pd.Timestamp("2027-12-31")),
+            ]
+        )
+        self.assertEqual(avisos, [])
+        self.assertIsNone(situacao["linha_do_tempo"][0]["data"])
+        self.assertEqual(situacao["linha_do_tempo"][0]["vigencia"], FIM_VIGENCIA)
+        self.assertEqual(situacao["vigencia_atual"], VIGENCIA_PRORROGADA)
+
+    def test_caso_g_none_tem_o_mesmo_comportamento_seguro(self):
+        self.assertTrue(data_ausente(None))
+        self.assertIsNone(parse_data_br(None))
+        analise = _analise(garantias=[_garantia("50.000,00", None)])
+        self.assertFalse(analise["validade_suficiente"])
+        self.assertEqual(analise["situacao_temporal"], TEMPORAL_NAO_INFORMADA)
+
+    def test_caso_g_outras_formas_de_ausencia(self):
+        for ausente in (float("nan"), "", "   ", "NaT", "nan", "None", "<NA>"):
+            with self.subTest(ausente=ausente):
+                self.assertTrue(data_ausente(ausente))
+                self.assertIsNone(parse_data_br(ausente))
+
+    def test_caso_h_timestamp_valido_compara_normalmente(self):
+        import pandas as pd
+
+        self.assertFalse(data_ausente(pd.Timestamp("2027-06-30")))
+        self.assertEqual(parse_data_br(pd.Timestamp("2027-06-30")), date(2027, 6, 30))
+        analise = _analise(garantias=[_garantia("50.000,00", pd.Timestamp("2027-06-30"))])
+        self.assertTrue(analise["validade_suficiente"])
+        self.assertEqual(analise["situacao_temporal"], TEMPORAL_SUFICIENTE)
+        self.assertEqual(analise["diagnostico"], DIAGNOSTICO_REGULAR)
+
+    def test_datas_validas_nunca_sao_confundidas_com_ausencia(self):
+        from datetime import datetime as _datetime
+
+        for presente in (FIM_VIGENCIA, _datetime(2026, 12, 31, 23, 59), "31/12/2026"):
+            with self.subTest(presente=presente):
+                self.assertFalse(data_ausente(presente))
+                self.assertEqual(parse_data_br(presente), FIM_VIGENCIA)
+
+
+class CasoIValidadeInsuficienteTests(unittest.TestCase):
+    def test_validade_curta_classifica_sem_erro(self):
+        analise = _analise(garantias=[_garantia("50.000,00", date(2027, 1, 31))])
+        self.assertTrue(analise["valor_suficiente"])
+        self.assertEqual(analise["situacao_financeira"], FINANCEIRO_SUFICIENTE)
+        self.assertFalse(analise["validade_suficiente"])
+        self.assertEqual(analise["situacao_temporal"], TEMPORAL_INSUFICIENTE)
+        self.assertEqual(analise["complemento"], Decimal("0.00"))
+        self.assertEqual(analise["diagnostico"], DIAGNOSTICO_VALIDADE)
+
+
+class CasoJMultiplasGarantiasTests(unittest.TestCase):
+    def test_uma_data_preenchida_e_outra_vazia_nao_provoca_erro(self):
+        import pandas as pd
+
+        grade = pd.DataFrame(
+            {
+                COLUNA_REFERENCIA: pd.Series(["Apolice A", "Carta de fianca B"], dtype="object"),
+                COLUNA_VALOR: pd.Series(["30.000,00", "20.000,00"], dtype="object"),
+                COLUNA_VALIDADE: pd.Series(
+                    [pd.Timestamp("2027-06-30"), pd.NaT], dtype="datetime64[ns]"
+                ),
+            }
+        )
+        linhas, avisos = normalizar_garantias(grade.to_dict("records"))
+        self.assertEqual(len(linhas), 2)
+        self.assertEqual(linhas[0]["validade"], date(2027, 6, 30))
+        self.assertIsNone(linhas[1]["validade"])
+        self.assertEqual(len(avisos), 1)
+
+        analise = _analise(garantias=linhas)
+        # Semântica econômica preservada: garantias independentes somam.
+        self.assertEqual(analise["cobertura_atual"], Decimal("50000.00"))
+        self.assertEqual(analise["quantidade_garantias"], 2)
+        self.assertTrue(analise["valor_suficiente"])
+        self.assertFalse(analise["validade_suficiente"])
+        self.assertEqual(analise["situacao_temporal"], TEMPORAL_NAO_INFORMADA)
+
+    def test_endosso_continua_sem_duplicar_a_cobertura(self):
+        analise = _analise(
+            garantias=[
+                _garantia("30.000,00", date(2027, 6, 30), "Apolice 123"),
+                _garantia("50.000,00", date(2027, 6, 30), "Apolice 123"),
+            ]
+        )
+        self.assertEqual(analise["cobertura_atual"], Decimal("50000.00"))
+        self.assertEqual(analise["quantidade_garantias"], 1)
+
+
+class CasoKPercentualDiferenteTests(unittest.TestCase):
+    def test_percentual_de_tres_por_cento_atravessa_toda_a_pagina(self):
+        situacao, _ = _situacao(
+            percentual=Decimal("3"),
+            registros=[_evento(TIPO_REAJUSTE, valor="2.000.000,00")],
+        )
+        self.assertEqual(situacao["garantia_original"], Decimal("30000.00"))
+        self.assertEqual(situacao["linha_do_tempo"][0]["garantia_exigida"], Decimal("60000.00"))
+        self.assertEqual(situacao["garantia_exigida"], Decimal("60000.00"))
+
+        analise = _analise_da_situacao(situacao, [_garantia("40.000,00", VALIDADE_MINIMA)])
+        self.assertEqual(analise["percentual"], Decimal("3"))
+        self.assertEqual(analise["garantia_necessaria"], Decimal("60000.00"))
+        self.assertEqual(analise["complemento"], Decimal("20000.00"))
+
+        texto = gerar_texto_comunicacao(analise)
+        self.assertIn("correspondente a 3% passa a ser de R$ 60.000,00", texto)
+        self.assertNotIn("5%", texto)
+
+    def test_percentual_quebrado_nao_vira_string_fixa(self):
+        situacao, _ = _situacao(percentual=Decimal("4.75"))
+        self.assertEqual(situacao["garantia_exigida"], Decimal("47500.00"))
+        self.assertEqual(formatar_percentual(situacao["percentual"]), "4,75")
+        analise = _analise_da_situacao(situacao, [])
+        self.assertIn("correspondente a 4,75%", gerar_texto_comunicacao(analise))
+
+
+# ------------------------------------------------------------
+# Texto à contratada: as quatro situações do enunciado
+# ------------------------------------------------------------
+
+class TextoQuatroSituacoesTests(unittest.TestCase):
+    def test_a_sem_garantia_apresentada_indica_a_garantia_total(self):
+        texto = gerar_texto_comunicacao(_analise(garantias=[]))
+        self.assertIn("Não há garantia contratual atualmente apresentada", texto)
+        self.assertIn("R$ 50.000,00", texto)
+
+    def test_b_insuficiencia_financeira_indica_o_complemento(self):
+        texto = gerar_texto_comunicacao(_analise(garantias=[_garantia("40.000,00", date(2027, 6, 30))]))
+        self.assertIn("complementação no valor de R$ 10.000,00", texto)
+
+    def test_c_apenas_validade_nao_inventa_complemento(self):
+        texto = gerar_texto_comunicacao(_analise(garantias=[_garantia("50.000,00", date(2027, 1, 31))]))
+        self.assertNotIn("R$ 0,00", texto)
+        self.assertNotIn("complementação", texto)
+        self.assertIn("validade mínima até 31/03/2027", texto)
+
+    def test_d_tudo_suficiente_nao_declara_aceitacao_juridica(self):
+        texto = gerar_texto_comunicacao(_analise(garantias=[_garantia("50.000,00", date(2027, 6, 30))]))
+        self.assertIn("Com os dados apresentados", texto)
+        self.assertIn("não foi identificada necessidade de complementação", texto)
+        for proibido in ("aceita", "aprovada", "homologada", "Solicitamos"):
+            self.assertNotIn(proibido, texto)
+
+    def test_identificacao_entra_na_referencia_do_texto(self):
+        analise = _analise(garantias=[_garantia("40.000,00", date(2027, 6, 30))])
+        texto = gerar_texto_comunicacao(
+            analise, numero_contrato="123/2024", contratada="Empresa Exemplo Ltda."
+        )
+        self.assertTrue(texto.startswith("Ref.: Contrato nº 123/2024 — Empresa Exemplo Ltda."))
+        self.assertIn("Prezados,", texto)
+
+    def test_identificacao_ausente_nao_deixa_referencia_vazia(self):
+        analise = _analise(garantias=[_garantia("40.000,00", date(2027, 6, 30))])
+        self.assertTrue(gerar_texto_comunicacao(analise).startswith("Prezados,"))
+        self.assertTrue(
+            gerar_texto_comunicacao(analise, contratada="Empresa Exemplo Ltda.").startswith(
+                "Ref.: Empresa Exemplo Ltda."
+            )
+        )
+
+    def test_texto_menciona_a_vigencia_atual_apurada(self):
+        situacao, _ = _situacao(
+            registros=[
+                _evento(TIPO_REAJUSTE, valor="1.100.000,00"),
+                _evento(TIPO_PRORROGACAO, vigencia=VIGENCIA_PRORROGADA),
+            ]
+        )
+        analise = _analise_da_situacao(situacao, [_garantia("40.000,00", VALIDADE_MINIMA_PRORROGADA)])
+        texto = gerar_texto_comunicacao(analise)
+        self.assertIn("R$ 1.100.000,00", texto)
+        self.assertIn("encerrada em 31/12/2027", texto)
+
+
+# ------------------------------------------------------------
+# Página: preenchimento parcial não derruba a aplicação
+# ------------------------------------------------------------
+
+class PaginaPreenchimentoParcialTests(unittest.TestCase):
+    def _abrir(self):
+        from streamlit.testing.v1 import AppTest
+
+        at = AppTest.from_file(str(ROOT / "pages" / "05_Garantia.py"), default_timeout=60)
+        at.run()
+        return at
+
+    def test_pagina_abre_vazia_sem_excecao(self):
+        at = self._abrir()
+        self.assertFalse(at.exception)
+        self.assertIn("valor original do contrato", " ".join(e.value for e in at.info))
+
+    def test_somente_situacao_original_ja_produz_a_situacao_atual(self):
+        at = self._abrir()
+        at.text_input(key="garantia_valor_original").set_value("1.000.000,00").run()
+        at.date_input(key="garantia_fim_vigencia").set_value(FIM_VIGENCIA).run()
+        self.assertFalse(at.exception)
+
+        resultado = at.session_state["resultado_garantia"]
+        self.assertEqual(resultado["valor_original"], Decimal("1000000.00"))
+        self.assertEqual(resultado["valor_total_contrato"], Decimal("1000000.00"))
+        self.assertEqual(resultado["garantia_necessaria"], Decimal("50000.00"))
+        self.assertEqual(resultado["quantidade_eventos"], 0)
+        self.assertEqual(resultado["validade_minima"], VALIDADE_MINIMA)
+        self.assertEqual(resultado["situacao_temporal"], TEMPORAL_NAO_INFORMADA)
+
+    def test_percentual_manual_chega_ao_texto_da_pagina(self):
+        at = self._abrir()
+        at.text_input(key="garantia_valor_original").set_value("1.000.000,00").run()
+        at.date_input(key="garantia_fim_vigencia").set_value(FIM_VIGENCIA).run()
+        at.number_input(key="garantia_percentual").set_value(3.0).run()
+        self.assertFalse(at.exception)
+
+        resultado = at.session_state["resultado_garantia"]
+        self.assertEqual(resultado["garantia_necessaria"], Decimal("30000.00"))
+        self.assertIn("correspondente a 3% passa a ser de R$ 30.000,00", resultado["texto_comunicacao"])
+        self.assertNotIn("5%", resultado["texto_comunicacao"])
+
+    def test_identificacao_da_pagina_chega_a_referencia_do_texto(self):
+        at = self._abrir()
+        at.text_input(key="garantia_numero_contrato").set_value("123/2024").run()
+        at.text_input(key="garantia_contratada").set_value("Empresa Exemplo Ltda.").run()
+        at.text_input(key="garantia_valor_original").set_value("1.000.000,00").run()
+        at.date_input(key="garantia_fim_vigencia").set_value(FIM_VIGENCIA).run()
+        self.assertFalse(at.exception)
+        self.assertTrue(
+            at.session_state["resultado_garantia"]["texto_comunicacao"].startswith(
+                "Ref.: Contrato nº 123/2024 — Empresa Exemplo Ltda."
+            )
+        )
 
 
 if __name__ == "__main__":
