@@ -14,3 +14,9 @@ font = "sans-serif"
 
 [client]
 toolbarMode = "minimal"
+
+[server]
+# Em MiB: o Streamlit multiplica este valor por 1024*1024. Espelha exatamente
+# _seguranca_xlsx.TAMANHO_MAXIMO_ARQUIVO (20 MiB), para que o transporte recuse
+# o excesso pelo Content-Length antes de bufferizar o corpo da requisicao.
+maxUploadSize = 20
