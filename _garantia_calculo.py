@@ -310,18 +310,29 @@ def normalizar_eventos(registros):
     ``COLUNA_EVENTO_DATA``, ``COLUNA_EVENTO_VALOR``, ``COLUNA_EVENTO_VIGENCIA``
     e ``COLUNA_EVENTO_OBSERVACAO``.
 
-    Retorna ``(eventos, avisos)``. Cada evento é
+    Retorna ``(eventos, avisos, pendencias)``. Cada evento é
     ``{"numero", "tipo", "data", "valor", "vigencia", "observacao"}``, com a
     numeração automática 1, 2, 3... na ORDEM DE INSERÇÃO — nunca reordenada pela
     data. Linhas totalmente vazias são ignoradas em silêncio; linhas incompletas
     geram aviso localizado e não entram na linha do tempo.
+
+    ``pendencias`` são os avisos de linha DESCARTADA — entrada materialmente
+    preenchida que não pôde ser considerada. Entrada incompleta não é o mesmo
+    que dado inexistente: enquanto houver pendência a história do contrato está
+    sabidamente incompleta e a página não conclui a análise (fail-closed).
 
     ``valor`` ausente é ``None`` (ausência não é zero): só a prorrogação e o
     evento "Outro" podem seguir sem valor, herdando o valor contratual vigente.
     """
     eventos = []
     avisos = []
+    pendencias = []
     vazios = {"", "nan", "none", "<na>", "nat"}
+
+    def descartar(mensagem):
+        """Linha materialmente preenchida que não entra na linha do tempo."""
+        avisos.append(mensagem)
+        pendencias.append(mensagem)
 
     for posicao, registro in enumerate(registros, start=1):
         tipo_bruto = registro.get(COLUNA_EVENTO_TIPO)
@@ -347,10 +358,10 @@ def normalizar_eventos(registros):
         rotulo = f"Linha {posicao} das alterações"
 
         if not tipo:
-            avisos.append(f"{rotulo}: selecione o tipo do evento.")
+            descartar(f"{rotulo}: selecione o tipo do evento.")
             continue
         if tipo not in TIPOS_EVENTO:
-            avisos.append(
+            descartar(
                 f'{rotulo}: o tipo "{tipo}" não é reconhecido. '
                 f"Use um destes: {', '.join(TIPOS_EVENTO)}."
             )
@@ -360,26 +371,26 @@ def normalizar_eventos(registros):
         if tem_texto_valor:
             valor = parse_moeda_br(valor_bruto)
             if valor is None:
-                avisos.append(
+                descartar(
                     f'{rotulo} ({tipo}): o valor "{texto_valor}" não pôde ser interpretado. '
                     "Use o formato R$ 1.000.000,00."
                 )
                 continue
             if valor < 0:
-                avisos.append(f"{rotulo} ({tipo}): o valor total do contrato não pode ser negativo.")
+                descartar(f"{rotulo} ({tipo}): o valor total do contrato não pode ser negativo.")
                 continue
             valor = arredondar_financeiro(valor)
 
         if tipo in TIPOS_COM_VALOR_OBRIGATORIO and valor is None:
-            avisos.append(f"{rotulo} ({tipo}): informe o valor total do contrato após este evento.")
+            descartar(f"{rotulo} ({tipo}): informe o valor total do contrato após este evento.")
             continue
         if tipo == TIPO_PRORROGACAO and vigencia is None:
-            avisos.append(
+            descartar(
                 f"{rotulo} ({tipo}): informe o novo término da vigência para registrar a prorrogação."
             )
             continue
         if tipo == TIPO_OUTRO and valor is None and vigencia is None and not observacao:
-            avisos.append(
+            descartar(
                 f"{rotulo} ({tipo}): informe o valor total do contrato, o novo término da vigência "
                 "ou uma observação."
             )
@@ -396,7 +407,7 @@ def normalizar_eventos(registros):
             }
         )
 
-    return eventos, avisos
+    return eventos, avisos, pendencias
 
 
 def montar_linha_do_tempo(valor_original, percentual, fim_vigencia_original, eventos):
@@ -512,17 +523,29 @@ def normalizar_garantias(registros):
     """Normaliza as linhas da grade da garantia atualmente apresentada.
 
     ``registros``: iterável de dicts com ``COLUNA_REFERENCIA`` (opcional),
-    ``COLUNA_VALOR`` e ``COLUNA_VALIDADE``. Retorna ``(linhas, avisos)``, onde
-    cada linha é ``{"referencia": str, "valor": Decimal, "validade": date|None}``.
+    ``COLUNA_VALOR`` e ``COLUNA_VALIDADE``. Retorna
+    ``(linhas, avisos, pendencias)``, onde cada linha é
+    ``{"referencia": str, "valor": Decimal, "validade": date|None}``.
 
     Linhas totalmente vazias são ignoradas em silêncio. A validade ausente não
     descarta a linha nem interrompe o cálculo financeiro (o valor continua
     compondo a cobertura), mas é tratada como prazo NÃO comprovado na avaliação
-    temporal — fail-closed.
+    temporal — fail-closed; por isso ela avisa mas NÃO gera pendência.
+
+    ``pendencias`` são os avisos de linha DESCARTADA — garantia materialmente
+    preenchida cujo valor não pôde ser considerado. Entrada incompleta não é o
+    mesmo que dado inexistente: a conclusão não pode fingir que a linha nunca
+    existiu.
     """
     linhas = []
     avisos = []
+    pendencias = []
     vazios = {"", "nan", "none", "<na>", "nat"}
+
+    def descartar(mensagem):
+        """Linha materialmente preenchida que não compõe a cobertura."""
+        avisos.append(mensagem)
+        pendencias.append(mensagem)
     for idx, reg in enumerate(registros, start=1):
         referencia_bruta = reg.get(COLUNA_REFERENCIA)
         referencia = "" if referencia_bruta is None else str(referencia_bruta).strip()
@@ -540,18 +563,18 @@ def normalizar_garantias(registros):
         rotulo = referencia or f"Garantia da linha {idx}"
 
         if not tem_texto_valor:
-            avisos.append(f"{rotulo}: informe o valor garantido.")
+            descartar(f"{rotulo}: informe o valor garantido.")
             continue
 
         valor = parse_moeda_br(valor_bruto)
         if valor is None:
-            avisos.append(
+            descartar(
                 f'{rotulo}: o valor "{texto_valor}" não pôde ser interpretado. '
                 "Use o formato R$ 50.000,00."
             )
             continue
         if valor < 0:
-            avisos.append(f"{rotulo}: o valor garantido não pode ser negativo.")
+            descartar(f"{rotulo}: o valor garantido não pode ser negativo.")
             continue
 
         if validade is None:
@@ -565,7 +588,7 @@ def normalizar_garantias(registros):
             }
         )
 
-    return linhas, avisos
+    return linhas, avisos, pendencias
 
 
 def consolidar_garantias(linhas):

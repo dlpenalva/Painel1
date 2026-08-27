@@ -332,6 +332,10 @@ if vigencia_original is None:
     pendencias.append("informe o **término da vigência original**")
 
 if pendencias:
+    # A conclusão anterior não pode sobreviver a uma entrada que deixou de
+    # fechar: session_state persiste entre reruns e o Saneador leria um
+    # resultado que a tela já não sustenta.
+    st.session_state.pop("resultado_garantia", None)
     st.info("Para montar a evolução do contrato: " + "; ".join(pendencias) + ".")
     st.stop()
 
@@ -391,7 +395,7 @@ eventos_editados = st.data_editor(
     },
 )
 registros_eventos = eventos_editados.to_dict("records") if isinstance(eventos_editados, pd.DataFrame) else []
-eventos, avisos_eventos = normalizar_eventos(registros_eventos)
+eventos, avisos_eventos, pendencias_eventos = normalizar_eventos(registros_eventos)
 for aviso in avisos_eventos:
     st.warning(aviso)
 
@@ -409,10 +413,16 @@ render_evolucao_contrato(situacao)
 # 4) Situação atual do contrato — 100% derivada dos blocos acima
 # ------------------------------------------------------------
 st.subheader("Situação atual do contrato")
-st.caption(
-    "Resultado da situação original com as alterações posteriores informadas acima. "
-    "Nada aqui é redigitado."
-)
+if pendencias_eventos:
+    st.caption(
+        "Resultado da situação original com as alterações posteriores **já completas**. "
+        "Há alteração contratual com dados pendentes, ainda não considerada abaixo."
+    )
+else:
+    st.caption(
+        "Resultado da situação original com as alterações posteriores informadas acima. "
+        "Nada aqui é redigitado."
+    )
 col_a1, col_a2, col_a3 = st.columns(3)
 with col_a1:
     card(
@@ -487,9 +497,34 @@ garantias_editadas = st.data_editor(
     },
 )
 registros_garantias = garantias_editadas.to_dict("records") if isinstance(garantias_editadas, pd.DataFrame) else []
-linhas_garantias, avisos_garantias = normalizar_garantias(registros_garantias)
+linhas_garantias, avisos_garantias, pendencias_garantias = normalizar_garantias(registros_garantias)
 for aviso in avisos_garantias:
     st.warning(aviso)
+
+# ------------------------------------------------------------
+# Gate fail-closed: entrada materialmente incompleta ≠ dado inexistente.
+# Uma linha preenchida que não pôde ser considerada deixa a história do
+# contrato (ou a cobertura) sabidamente incompleta; concluir mesmo assim
+# afirmaria "GARANTIA REGULAR" ignorando um reajuste ou uma apólice que o
+# usuário declarou existir. Os editores e os dados digitados permanecem na
+# tela — só a conclusão e o texto à contratada ficam suspensos.
+# Linha totalmente vazia não gera pendência e segue ignorada normalmente.
+# ------------------------------------------------------------
+if pendencias_eventos or pendencias_garantias:
+    partes = []
+    if pendencias_eventos:
+        partes.append("Há alteração contratual com dados pendentes.")
+    if pendencias_garantias:
+        partes.append("Há garantia apresentada com dados pendentes.")
+    # Retira também a conclusão publicada num rerun anterior: session_state
+    # persiste, e um resultado antigo passaria a valer para uma história
+    # contratual que a tela já não sustenta.
+    st.session_state.pop("resultado_garantia", None)
+    st.info(
+        " ".join(partes)
+        + " Complete ou remova a linha para concluir a análise da garantia."
+    )
+    st.stop()
 
 analise = analisar_garantia(
     valor_total_contrato=situacao["valor_atual"],

@@ -327,14 +327,14 @@ class GarantiasIndependentesTests(unittest.TestCase):
 
 class NormalizacaoGarantiasTests(unittest.TestCase):
     def test_linha_vazia_ignorada_em_silencio(self):
-        linhas, avisos = normalizar_garantias(
+        linhas, avisos, _pend = normalizar_garantias(
             [{"Apólice / endosso / referência": "", "Valor garantido": "", "Validade": None}]
         )
         self.assertEqual(linhas, [])
         self.assertEqual(avisos, [])
 
     def test_linha_valida_normalizada(self):
-        linhas, avisos = normalizar_garantias(
+        linhas, avisos, _pend = normalizar_garantias(
             [
                 {
                     "Apólice / endosso / referência": " Apolice 123 ",
@@ -349,7 +349,7 @@ class NormalizacaoGarantiasTests(unittest.TestCase):
         self.assertEqual(linhas[0]["validade"], date(2027, 3, 31))
 
     def test_valor_ausente_ou_invalido_gera_aviso_e_descarta(self):
-        linhas, avisos = normalizar_garantias(
+        linhas, avisos, _pend = normalizar_garantias(
             [
                 {"Apólice / endosso / referência": "A", "Valor garantido": "", "Validade": None},
                 {"Apólice / endosso / referência": "B", "Valor garantido": "abc", "Validade": None},
@@ -360,7 +360,7 @@ class NormalizacaoGarantiasTests(unittest.TestCase):
         self.assertEqual(len(avisos), 3)
 
     def test_validade_ausente_mantem_a_linha_e_avisa(self):
-        linhas, avisos = normalizar_garantias(
+        linhas, avisos, _pend = normalizar_garantias(
             [{"Apólice / endosso / referência": "A", "Valor garantido": "10.000,00", "Validade": None}]
         )
         self.assertEqual(len(linhas), 1)
@@ -718,7 +718,7 @@ def _evento(tipo, valor=None, vigencia=None, data=None, observacao=""):
 
 def _situacao(valor_original="1.000.000,00", percentual=PERCENTUAL_GARANTIA_PADRAO,
               vigencia=FIM_VIGENCIA, registros=()):
-    eventos, avisos = normalizar_eventos(list(registros))
+    eventos, avisos, _pend = normalizar_eventos(list(registros))
     situacao = calcular_situacao_atual(
         valor_original=valor_original,
         percentual=percentual,
@@ -945,7 +945,7 @@ class CasoFGHDataAusenteTests(unittest.TestCase):
         registros = grade.to_dict("records")
         self.assertTrue(data_ausente(registros[0][COLUNA_VALIDADE]))
 
-        linhas, avisos = normalizar_garantias(registros)
+        linhas, avisos, _pend = normalizar_garantias(registros)
         self.assertEqual(len(linhas), 1)
         self.assertIsNone(linhas[0]["validade"])
         self.assertTrue(any("validade" in aviso.lower() for aviso in avisos))
@@ -1038,7 +1038,7 @@ class CasoJMultiplasGarantiasTests(unittest.TestCase):
                 ),
             }
         )
-        linhas, avisos = normalizar_garantias(grade.to_dict("records"))
+        linhas, avisos, _pend = normalizar_garantias(grade.to_dict("records"))
         self.assertEqual(len(linhas), 2)
         self.assertEqual(linhas[0]["validade"], date(2027, 6, 30))
         self.assertIsNone(linhas[1]["validade"])
@@ -1202,6 +1202,204 @@ class PaginaPreenchimentoParcialTests(unittest.TestCase):
                 "Ref.: Contrato nº 123/2024 — Empresa Exemplo Ltda."
             )
         )
+
+
+# ------------------------------------------------------------
+# GAR-UX1 fail-closed — entrada materialmente incompleta não conclui
+# ------------------------------------------------------------
+
+class PendenciasNoMotorTests(unittest.TestCase):
+    def test_a_reajuste_sem_valor_vira_pendencia(self):
+        eventos, avisos, pendencias = normalizar_eventos([_evento(TIPO_REAJUSTE)])
+        self.assertEqual(eventos, [])
+        self.assertEqual(len(pendencias), 1)
+        self.assertEqual(pendencias, avisos)
+        self.assertIn("valor total do contrato após este evento", pendencias[0])
+
+    def test_b_prorrogacao_sem_vigencia_vira_pendencia(self):
+        eventos, avisos, pendencias = normalizar_eventos([_evento(TIPO_PRORROGACAO)])
+        self.assertEqual(eventos, [])
+        self.assertEqual(len(pendencias), 1)
+        self.assertIn("novo término da vigência", pendencias[0])
+
+    def test_c_linha_totalmente_vazia_nao_gera_pendencia(self):
+        eventos, avisos, pendencias = normalizar_eventos([_evento(None), _evento("")])
+        self.assertEqual(eventos, [])
+        self.assertEqual(avisos, [])
+        self.assertEqual(pendencias, [])
+
+    def test_d_evento_valido_nao_gera_pendencia(self):
+        eventos, avisos, pendencias = normalizar_eventos(
+            [_evento(TIPO_REAJUSTE, "1.100.000,00")]
+        )
+        self.assertEqual(len(eventos), 1)
+        self.assertEqual(avisos, [])
+        self.assertEqual(pendencias, [])
+
+    def test_e_garantia_descartada_vira_pendencia(self):
+        linhas, avisos, pendencias = normalizar_garantias(
+            [{COLUNA_REFERENCIA: "Apolice 123", COLUNA_VALOR: "", COLUNA_VALIDADE: None}]
+        )
+        self.assertEqual(linhas, [])
+        self.assertEqual(len(pendencias), 1)
+        self.assertIn("informe o valor garantido", pendencias[0])
+
+    def test_e_validade_ausente_avisa_mas_nao_e_pendencia(self):
+        # Validade em branco é um estado legítimo (VALIDADE NÃO INFORMADA): a
+        # linha compõe a cobertura e a análise financeira segue.
+        linhas, avisos, pendencias = normalizar_garantias(
+            [{COLUNA_REFERENCIA: "Apolice 123", COLUNA_VALOR: "50.000,00", COLUNA_VALIDADE: None}]
+        )
+        self.assertEqual(len(linhas), 1)
+        self.assertEqual(len(avisos), 1)
+        self.assertEqual(pendencias, [])
+
+    def test_garantia_totalmente_vazia_nao_gera_pendencia(self):
+        linhas, avisos, pendencias = normalizar_garantias(
+            [{COLUNA_REFERENCIA: "", COLUNA_VALOR: "", COLUNA_VALIDADE: None}]
+        )
+        self.assertEqual((linhas, avisos, pendencias), ([], [], []))
+
+
+class PaginaFailClosedTests(unittest.TestCase):
+    """A página não conclui a análise com história contratual incompleta."""
+
+    def _rodar(self, eventos=(), garantias=()):
+        from streamlit.testing.v1 import AppTest
+
+        at = AppTest.from_file(str(ROOT / "pages" / "05_Garantia.py"), default_timeout=90)
+        at.run()
+        at.text_input(key="garantia_valor_original").set_value("1.000.000,00").run()
+        at.date_input(key="garantia_fim_vigencia").set_value(FIM_VIGENCIA).run()
+        if eventos:
+            at.session_state["garantia_eventos_contrato"] = {
+                "edited_rows": {}, "added_rows": list(eventos), "deleted_rows": [0, 1, 2],
+            }
+        if garantias:
+            at.session_state["garantia_vigente_linhas"] = {
+                "edited_rows": {}, "added_rows": list(garantias), "deleted_rows": [0, 1],
+            }
+        at.run()
+        self.assertFalse(at.exception)
+        return at
+
+    def _linha_editor(self, tipo=None, valor=None, vigencia=None):
+        return {
+            COLUNA_EVENTO_TIPO: tipo,
+            COLUNA_EVENTO_DATA: None,
+            COLUNA_EVENTO_VALOR: valor,
+            COLUNA_EVENTO_VIGENCIA: None if vigencia is None else vigencia.isoformat(),
+            COLUNA_EVENTO_OBSERVACAO: "",
+        }
+
+    def _linha_garantia(self, valor=None, validade=None, referencia=""):
+        return {
+            COLUNA_REFERENCIA: referencia,
+            COLUNA_VALOR: valor,
+            COLUNA_VALIDADE: None if validade is None else validade.isoformat(),
+        }
+
+    def _suspenso(self, at):
+        """Conclusão suspensa: nada publicado e o convite a completar a linha."""
+        self.assertNotIn("resultado_garantia", at.session_state)
+        infos = " ".join(e.value for e in at.info)
+        self.assertIn("Complete ou remova a linha para concluir a análise", infos)
+        return infos
+
+    def test_a_reajuste_incompleto_nao_publica_conclusao(self):
+        at = self._rodar(eventos=[self._linha_editor(TIPO_REAJUSTE)])
+        avisos = " ".join(e.value for e in at.warning)
+        self.assertIn("informe o valor total do contrato após este evento", avisos)
+        infos = self._suspenso(at)
+        self.assertIn("Há alteração contratual com dados pendentes", infos)
+        # Nem diagnóstico nem texto conclusivo chegam à tela.
+        corpo = " ".join([e.value for e in at.markdown] + [e.value for e in at.warning])
+        self.assertNotIn(DIAGNOSTICO_REGULAR, corpo)
+        self.assertNotIn("Texto para a contratada", corpo)
+
+    def test_b_prorrogacao_incompleta_nao_publica_conclusao(self):
+        at = self._rodar(eventos=[self._linha_editor(TIPO_PRORROGACAO)])
+        avisos = " ".join(e.value for e in at.warning)
+        self.assertIn("novo término da vigência", avisos)
+        self._suspenso(at)
+
+    def test_c_linha_vazia_continua_ignorada_e_nao_bloqueia(self):
+        at = self._rodar(eventos=[self._linha_editor()])
+        validacoes = [e.value for e in at.warning if e.value.startswith("Linha ")]
+        self.assertEqual(validacoes, [])
+        self.assertEqual([e.value for e in at.info], [])
+        resultado = at.session_state["resultado_garantia"]
+        self.assertEqual(resultado["quantidade_eventos"], 0)
+        self.assertEqual(resultado["valor_total_contrato"], Decimal("1000000.00"))
+
+    def test_d_evento_valido_continua_calculando(self):
+        at = self._rodar(eventos=[self._linha_editor(TIPO_REAJUSTE, "1.100.000,00")])
+        resultado = at.session_state["resultado_garantia"]
+        self.assertEqual(resultado["quantidade_eventos"], 1)
+        self.assertEqual(resultado["valor_total_contrato"], Decimal("1100000.00"))
+        self.assertEqual(resultado["garantia_necessaria"], Decimal("55000.00"))
+        self.assertTrue(resultado["texto_comunicacao"])
+
+    def test_e_garantia_apresentada_incompleta_nao_publica_conclusao(self):
+        at = self._rodar(garantias=[self._linha_garantia(referencia="Apolice 123")])
+        avisos = " ".join(e.value for e in at.warning)
+        self.assertIn("informe o valor garantido", avisos)
+        infos = self._suspenso(at)
+        self.assertIn("Há garantia apresentada com dados pendentes", infos)
+
+    def test_e_garantia_sem_validade_conclui_normalmente(self):
+        # Validade em branco não é pendência: a conclusão sai, com a situação
+        # temporal reportada como não informada.
+        at = self._rodar(garantias=[self._linha_garantia("50.000,00", None, "Apolice 123")])
+        resultado = at.session_state["resultado_garantia"]
+        self.assertEqual(resultado["cobertura_atual"], Decimal("50000.00"))
+        self.assertEqual(resultado["situacao_temporal"], TEMPORAL_NAO_INFORMADA)
+
+    def test_pendencia_no_evento_nao_esconde_a_evolucao_ja_valida(self):
+        # A evolução válida até ali continua visível e os editores permanecem.
+        at = self._rodar(
+            eventos=[
+                self._linha_editor(TIPO_REAJUSTE, "1.100.000,00"),
+                self._linha_editor(TIPO_PRORROGACAO),
+            ]
+        )
+        self._suspenso(at)
+        corpo = " ".join(e.value for e in at.markdown)
+        self.assertIn("Evolução do contrato", corpo)
+        self.assertIn("R$ 1.100.000,00", corpo)
+
+    def test_conclusao_anterior_nao_sobrevive_a_pendencia(self):
+        # session_state persiste entre reruns: sem retirar a publicação, o
+        # Saneador continuaria lendo um resultado que a tela já não sustenta.
+        from streamlit.testing.v1 import AppTest
+
+        at = AppTest.from_file(str(ROOT / "pages" / "05_Garantia.py"), default_timeout=90)
+        at.run()
+        at.text_input(key="garantia_valor_original").set_value("1.000.000,00").run()
+        at.date_input(key="garantia_fim_vigencia").set_value(FIM_VIGENCIA).run()
+        self.assertIn("resultado_garantia", at.session_state)   # conclusão publicada
+
+        at.session_state["garantia_eventos_contrato"] = {
+            "edited_rows": {}, "added_rows": [self._linha_editor(TIPO_REAJUSTE)],
+            "deleted_rows": [0, 1, 2],
+        }
+        at.run()
+        self.assertFalse(at.exception)
+        self.assertNotIn("resultado_garantia", at.session_state)
+
+    def test_ordem_da_cadeia_e_a_ordem_das_linhas_e_nao_a_data(self):
+        # Verificação exigida no checkpoint: datas fora de ordem não reordenam.
+        eventos, _, _ = normalizar_eventos(
+            [
+                _evento(TIPO_REAJUSTE, "1.100.000,00", data=date(2027, 5, 1)),
+                _evento(TIPO_ADITIVO, "1.300.000,00", data=date(2025, 1, 1)),
+            ]
+        )
+        self.assertEqual([e["numero"] for e in eventos], [1, 2])
+        self.assertEqual([e["tipo"] for e in eventos], [TIPO_REAJUSTE, TIPO_ADITIVO])
+        # E a UI segue orientando o lançamento em ordem cronológica.
+        self.assertIn("em ordem cronológica", GARANTIA)
+        self.assertIn("eventos mais antigos", GARANTIA)
 
 
 if __name__ == "__main__":
