@@ -15,8 +15,14 @@ from _resultado_consolidado import (
 ROOT = Path(__file__).resolve().parents[1]
 
 
-def _resultado_base(metodo="pc"):
+def _resultado_base(metodo="pc", status_oficial="VALIDADO"):
     return {
+        # STATUS-CANON-1: a conclusao oficial da aba RESULTADOS (B3) e a fonte
+        # canonica do status apresentado. Sem ela o consolidado atua em
+        # fail-closed, entao o payload base precisa carrega-la.
+        "diagnostico_coleta": {
+            "metadados": {"status_resultados": {"geral": status_oficial}}
+        },
         "valor_atualizado_contrato": 1_000.0,
         "valor_represado_a_pagar": 125.0,
         "controle": {
@@ -78,6 +84,8 @@ def test_caso_a_resultado_limpo_e_confiavel():
     consolidado = montar_resultado_consolidado(resultado)
 
     assert consolidado["status_confiabilidade"] == STATUS_CONFIAVEL
+    assert consolidado["status_apuracao"]["codigo"] == "VALIDADO"
+    assert consolidado["status_apuracao"]["origem"] == "resultados_xls"
     assert consolidado["vta"] == 1_000.0
     assert consolidado["retroativo_reconhecido"] == 125.0
     assert resultado == antes  # função pura: não altera nem recalcula a origem
@@ -89,10 +97,14 @@ def test_caso_b_potencial_gera_ressalva_sem_alterar_vta():
 
     consolidado = montar_resultado_consolidado(resultado)
 
-    assert consolidado["status_confiabilidade"] == STATUS_RESSALVAS
+    # STATUS-CANON-1: ressalva nao rebaixa a conclusao oficial da apuracao.
+    assert consolidado["status_confiabilidade"] == STATUS_CONFIAVEL
     assert consolidado["retroativo_potencial"] == 40.0
     assert consolidado["vta"] == resultado["valor_atualizado_contrato"] == 1_000.0
-    assert "aceitação pela área gestora" in consolidado["mensagem_status"]
+    assert any(
+        "aceitação pela área gestora" in ressalva
+        for ressalva in consolidado["ressalvas"]
+    )
 
 
 def test_caso_c_pc_posterior_aparece_somente_fora_do_corte():
@@ -106,7 +118,10 @@ def test_caso_c_pc_posterior_aparece_somente_fora_do_corte():
 
     consolidado = montar_resultado_consolidado(resultado)
 
-    assert consolidado["status_confiabilidade"] == STATUS_RESSALVAS
+    assert consolidado["status_confiabilidade"] == STATUS_CONFIAVEL
+    assert "Há pedido(s) de compra posterior(es) à data de corte." in (
+        consolidado["ressalvas"]
+    )
     assert consolidado["fora_do_corte"] == {
         "aplicavel": True,
         "quantidade": 2,
@@ -138,8 +153,14 @@ def test_caso_e_bloqueio_real_tem_prioridade():
 
     consolidado = montar_resultado_consolidado(resultado)
 
-    assert consolidado["status_confiabilidade"] == STATUS_BLOQUEADO
+    # STATUS-CANON-1: bloqueio e estado da FORMALIZACAO. A apuracao mantem a
+    # conclusao oficial do XLS; o bloqueio aparece com causa objetiva ao lado.
+    assert consolidado["status_confiabilidade"] == STATUS_CONFIAVEL
     assert consolidado["formalizacao"]["bloqueada"] is True
+    assert consolidado["formalizacao"]["status"] == "BLOQUEADA"
+    assert consolidado["formalizacao"]["mensagem"] == (
+        "Divergência bloqueadora já classificada."
+    )
     assert consolidado["bloqueios"] == ["Divergência bloqueadora já classificada."]
 
 
@@ -191,7 +212,10 @@ def test_divergencia_so_bloqueia_quando_a_politica_produz_bloqueio_explicito():
 
     consolidado = montar_resultado_consolidado(resultado)
 
-    assert consolidado["status_confiabilidade"] == STATUS_RESSALVAS
+    assert consolidado["status_confiabilidade"] == STATUS_CONFIAVEL
+    assert "Há divergência relevante pendente de confirmação." in (
+        consolidado["ressalvas"]
+    )
     assert consolidado["formalizacao"]["bloqueada"] is False
 
 

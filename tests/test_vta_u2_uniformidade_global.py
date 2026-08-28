@@ -217,7 +217,10 @@ def test_c2c_o_codigo_nao_produz_mais_as_origens_antigas():
         (RAIZ / "_resultado_consolidado.py").read_text(encoding="utf-8")
     )
     trecho = fonte[fonte.index("vta_atual = resultado.get"):]
-    trecho = trecho[:trecho.index("resultado_incompleto")]
+    # STATUS-CANON-1 renomeou o marcador de fim do recorte: a classificacao
+    # de completude deixou de existir e o bloco seguinte passou a ser a
+    # leitura do status oficial. A regiao vigiada e a mesma.
+    trecho = trecho[:trecho.index("status_oficial = _status_oficial_resultados")]
     assert '"posicao_atual"' not in trecho
     assert '"ultima_posicao_disponivel"' not in trecho
     assert "ORIGEM_VTA_CANONICA" in trecho
@@ -279,7 +282,10 @@ def test_e2_regra_de_um_unico_vta_vale_para_todo_metodo():
     # auditaveis (que legitimamente le forma1/forma2 como referencia) e termina
     # antes da classificacao de completude.
     trecho = fonte[fonte.index("# VTA-U2 (achado A)"):]
-    trecho = trecho[:trecho.index("resultado_incompleto")]
+    # STATUS-CANON-1 renomeou o marcador de fim do recorte: a classificacao
+    # de completude deixou de existir e o bloco seguinte passou a ser a
+    # leitura do status oficial. A regiao vigiada e a mesma.
+    trecho = trecho[:trecho.index("status_oficial = _status_oficial_resultados")]
     assert "vta = vta_atual" in trecho
     assert "forma1_posicao_atual" not in trecho
     assert "forma2_ultima_abertura" not in trecho

@@ -12,28 +12,53 @@ def _bloco_status_css() -> str:
 
 
 def test_estado_interno_bloqueado_permanece_inalterado():
+    """STATUS-CANON-1: o bloqueio nao sumiu — mudou de eixo.
+
+    Ele deixou de ser status DA APURACAO e passou a viver integralmente na
+    FORMALIZACAO, sem perder nenhuma das fontes que o originam.
+    """
     assert 'STATUS_BLOQUEADO = "BLOQUEADO"' in CONSOLIDADO
-    assert 'status = STATUS_BLOQUEADO' in CONSOLIDADO
     assert '"bloqueada": bloqueado' in CONSOLIDADO
     assert '"BLOQUEADA"' in CONSOLIDADO
     assert 'resultado.get("formalizacao_bloqueada")' in CONSOLIDADO
     assert 'resultado.get("bloqueios_formalizacao")' in CONSOLIDADO
+    # A apuracao nunca mais e carimbada de BLOQUEADO pela politica.
+    assert 'status = STATUS_BLOQUEADO' not in CONSOLIDADO
 
 
 def test_selo_principal_bloqueado_vira_em_conferencia_so_na_ui():
-    assert 'status_em_conferencia = status == "BLOQUEADO"' in PAGINA
+    assert 'status_em_conferencia = bool(formalizacao.get("bloqueada"))' in PAGINA
     assert 'formalizacao_exibicao = "EM CONFERÊNCIA"' in PAGINA
     assert 'colunas_segunda_linha.append(("Formalização", formalizacao_exibicao))' in PAGINA
 
 
 def test_box_usa_rotulo_e_mensagem_solicitados():
-    assert '"PENDENTE DE CONFERÊNCIA" if status_em_conferencia else status' in PAGINA
+    """O box principal passou a nomear o que ele de fato e: o status DA APURACAO."""
     assert (
         '"Pode haver divergência entre a planilha e a apuração do retroativo "'
         in PAGINA
     )
     assert '"por Pedidos de Compra."' in PAGINA
-    assert "Status de confiabilidade: {html.escape(str(status_exibicao))}" in PAGINA
+    assert "Status da apuração: {html.escape(str(status_exibicao))}" in PAGINA
+    assert "Status de confiabilidade:" not in PAGINA
+
+
+def test_formalizacao_e_ressalva_tem_linhas_proprias():
+    """STATUS-CANON-1: apuracao, formalizacao e ressalva sao eixos distintos."""
+    assert 'if formalizacao_exibicao != "SEM BLOQUEIO":' in PAGINA
+    assert "Formalização: {html.escape(str(formalizacao_exibicao))}" in PAGINA
+    assert 'rotulo_ressalva = (' in PAGINA
+    assert '"Ressalva" if len(ressalvas) == 1 else f"Ressalvas ({len(ressalvas)})"' in PAGINA
+
+
+def test_status_principal_espelha_o_vocabulario_da_aba_resultados():
+    """O painel nao inventa vocabulario proprio para a conclusao do XLS."""
+    assert 'STATUS_CONFIAVEL = "VALIDADO"' in CONSOLIDADO
+    assert '"VALIDADO": STATUS_CONFIAVEL' in CONSOLIDADO
+    assert '"REVISE": STATUS_PENDENTE' in CONSOLIDADO
+    assert '"ESTIMADO": STATUS_ESTIMADO' in CONSOLIDADO
+    for rotulo in ('"VALIDADO": "confiavel"', '"ESTIMADO": "ressalvas"'):
+        assert rotulo in PAGINA
 
 
 def test_estado_bloqueado_usa_ambar_e_nao_vermelho():
@@ -46,5 +71,10 @@ def test_estado_bloqueado_usa_ambar_e_nao_vermelho():
 
 
 def test_detalhe_tecnico_permanece_recolhido_no_expander():
-    assert 'detalhes = consolidado.get("bloqueios")' in PAGINA
+    # Bloqueios e ressalvas somam no expander: nenhum fundamento e descartado
+    # por causa da separacao dos eixos.
+    assert (
+        'detalhes = list(consolidado.get("bloqueios") or []) + list(ressalvas)'
+        in PAGINA
+    )
     assert 'with st.expander("Ver fundamentos do status")' in PAGINA

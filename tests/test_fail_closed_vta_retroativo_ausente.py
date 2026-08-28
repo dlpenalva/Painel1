@@ -221,7 +221,10 @@ def test_d_goldens_reais_inalterados(caminho, ciclos_esperados):
         RETROATIVO_ESPERADO, abs=0.005
     )
     assert consolidado["vta_origem"] == ORIGEM_VTA_CANONICA
-    assert consolidado["status_confiabilidade"] == "CONFIÁVEL"
+    # STATUS-CANON-1: vocabulario do painel = vocabulario da aba RESULTADOS.
+    assert consolidado["status_confiabilidade"] == "VALIDADO"
+    assert consolidado["status_apuracao"]["codigo"] == "VALIDADO"
+    assert consolidado["status_apuracao"]["origem"] == "resultados_xls"
     assert consolidado["formalizacao"]["bloqueada"] is False
     assert diagnostico["metadados"]["ciclos_em_analise"] == ciclos_esperados
 
@@ -259,6 +262,9 @@ def test_ressalva_de_pc_e_condicionada_ao_metodo_pc():
         'if status_em_conferencia and consolidado.get("medidas_pc_aplicaveis")'
         in pagina
     )
-    # A politica de bloqueio permanece decidida so pelo status.
-    assert 'status_em_conferencia = status == "BLOQUEADO"' in pagina
-    assert '"PENDENTE DE CONFERÊNCIA" if status_em_conferencia else status' in pagina
+    # STATUS-CANON-1: a politica de bloqueio nao mudou de conteudo, mudou de
+    # eixo — passou a ser lida da FORMALIZACAO, e nao do status da apuracao.
+    assert 'status_em_conferencia = bool(formalizacao.get("bloqueada"))' in pagina
+    assert 'status_em_conferencia = status == "BLOQUEADO"' not in pagina
+    # A mensagem especifica de PC acompanha o motivo da formalizacao.
+    assert "motivo_formalizacao = (" in pagina
