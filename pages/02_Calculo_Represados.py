@@ -2981,7 +2981,13 @@ if historico_coleta:
         # a linha "Variação Acumulada Final" nunca depende de o campo chegar
         # dentro de cada item do payload de ciclos.
         fator_acumulado=float(fator_acum),
-        key="baixar_email_contratada_multiciclo",
+        # Mesma assinatura da solicitacao ao fiscal: a edicao sobrevive a
+        # reruns da mesma analise e o texto-base volta em uma nova.
+        assinatura_analise=(
+            "multiplos",
+            st.session_state.get("processar_reajustes_multiplos_key"),
+        ),
+        key="txt_comunicacao_contratada_multiciclo",
     )
 
     render_solicitacao_fiscal_coleta(
