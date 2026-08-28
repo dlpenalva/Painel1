@@ -2360,7 +2360,13 @@ if res:
             # explicitamente: a linha "Variação Acumulada Final" nunca
             # depende de o campo chegar dentro do payload do ciclo.
             fator_acumulado=_adm_email.get("fator_acumulado"),
-            key="btn_baixar_email_contratada_simples_v1",
+            # Mesma assinatura da solicitacao ao fiscal: a edicao sobrevive a
+            # reruns da mesma analise e o texto-base volta em uma nova.
+            assinatura_analise=(
+                "simples",
+                st.session_state.get("chave_analise_simples_processada"),
+            ),
+            key="txt_comunicacao_contratada_simples_v1",
         )
     except Exception as _e_email_contratada:
         # Nunca falhar em silencio: a ausencia da Comunicacao precisa ser

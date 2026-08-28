@@ -32,12 +32,13 @@ def test_texto_base_aprovado_e_generico():
         "VTA — Valor Total Atualizado",
     ):
         assert trecho in texto
+    # ADM-UX-COM2: o unico marcador deliberado e o do contrato, preenchido a
+    # mao no proprio texto editavel. Nenhum outro campo de identificacao.
+    assert texto.count("[CONTRATO: TLB-CTR-/]") == 1
     for proibido in (
-        "[CONTRATO]",
         "[CONTRATADA]",
         "[NOME]",
         "[PROCESSO]",
-        "CT-",
     ):
         assert proibido not in texto
 

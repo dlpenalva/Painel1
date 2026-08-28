@@ -18,7 +18,7 @@ TEXTO_SOLICITACAO_FISCAL = dedent(
 
     Prezados,
 
-    Recebemos o pedido de reajuste apresentado pela contratada e concluímos a etapa inicial de admissibilidade e conferência dos percentuais aplicáveis.
+    Recebemos o pedido de reajuste apresentado pela contratada no âmbito do [CONTRATO: TLB-CTR-/] e concluímos a etapa inicial de admissibilidade e conferência dos percentuais aplicáveis.
 
     Para dar continuidade à análise, especialmente ao cálculo de eventual retroativo e à atualização do valor global do contrato, precisamos agora de algumas informações sobre a execução contratual.
 
@@ -30,7 +30,7 @@ TEXTO_SOLICITACAO_FISCAL = dedent(
 
     Essa informação é necessária para registrar a posição do contrato no momento da atualização dos valores e identificar o saldo remanescente a ser considerado nos cálculos.
 
-    Na aba itens_Remanesc, devem ser registradas as quantidades remanescentes dos itens na posição correspondente.
+    Na aba itens_Remanesc, devem ser registradas as quantidades remanescentes dos itens na data correspondente.
 
     2. Histórico da execução/pagamentos — aba financeiro ou itens_PC
 
@@ -45,20 +45,22 @@ TEXTO_SOLICITACAO_FISCAL = dedent(
 
     3. Posição atual do contrato — aba CICLO_EM_EXECUCAO
 
-    Também precisamos de uma fotografia atual do contrato, para identificar quanto ainda resta de cada item na data mais recente disponível.
+    Também precisamos da posição atual do contrato, para identificar quanto ainda resta de cada item na data mais recente disponível.
 
-    Nessa aba, o preenchimento é basicamente composto por:
+    Nessa aba, devem ser informados:
 
-    - data da posição atual; e
-    - quantidade que ainda resta de cada item nessa data.
+    - a data da posição atual; e
+    - a quantidade que ainda resta de cada item nessa data.
 
     A própria planilha utiliza essas informações para comparar a posição atual com o saldo existente no início do ciclo e demonstrar a evolução da execução.
 
-    Esses dados são necessários para apurarmos o VTA — Valor Total Atualizado do contrato. Em termos práticos, o VTA representa a posição financeira atualizada do contrato, reunindo de forma consistente o que já foi executado, eventual retroativo decorrente do reajuste e o saldo que ainda permanece para execução.
+    Esses dados são necessários para apurarmos o VTA — Valor Total Atualizado do contrato. Em termos práticos, o VTA representa a posição financeira atualizada do contrato, reunindo o que já foi executado, eventual retroativo decorrente do reajuste e o saldo que ainda permanece para execução.
 
     Por isso, sempre que possível, pedimos que as informações sejam registradas diretamente na planilha de Coleta anexa, pois ela já está estruturada para organizar os dados e realizar as conferências necessárias.
 
     Caso seja mais conveniente, as informações também podem ser encaminhadas separadamente para que possamos realizar o preenchimento.
+
+    Se tiver dúvidas, fico à disposição.
 
     Atenciosamente,
     """

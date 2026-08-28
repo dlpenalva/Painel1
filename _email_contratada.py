@@ -11,8 +11,7 @@ from __future__ import annotations
 
 import re
 from datetime import datetime
-from html import escape
-from typing import Any, Iterable, Mapping
+from typing import Any, Iterable, Mapping, MutableMapping
 
 import streamlit as st
 
@@ -22,6 +21,21 @@ from _sanitizacao_documental import remover_emojis
 ASSUNTO_EMAIL_CONTRATADA = (
     "Apuração preliminar dos ciclos de reajuste – Solicitação de manifestação"
 )
+
+COMANDO_EMAIL_CONTRATADA = (
+    "Comunicar à contratada o resultado da admissibilidade"
+)
+
+CAPTION_EMAIL_CONTRATADA = (
+    "Revise o texto abaixo e copie-o para a comunicação à contratada."
+)
+
+# Respiro vertical entre o botao da Coleta e a area das comunicacoes. Elemento
+# de altura zero: soma apenas o gap padrao do layout, sem card, divisor ou
+# faixa colorida.
+_ESPACO_ANTES_DAS_COMUNICACOES = '<div style="height:0"></div>'
+
+_SUFIXO_ANALISE = "__analise"
 
 
 def _percentual(valor: Any) -> str:
@@ -299,8 +313,33 @@ def _fator_acumulado_final(ciclos: Iterable[Mapping[str, Any]] | None) -> float 
 
 
 def montar_txt_download(assunto: str, corpo: str) -> bytes:
-    """Bytes EXATOS entregues ao botao de download do rascunho (.txt)."""
+    """Bytes EXATOS do rascunho (.txt). Mantido para uso programatico."""
     return f"ASSUNTO: {assunto}\n\n{corpo}".encode("utf-8-sig")
+
+
+def montar_texto_comunicacao(assunto: str, corpo: str) -> str:
+    """Texto unico (assunto + corpo) exibido no textarea, pronto para copiar.
+
+    Reapresenta EXATAMENTE o assunto e o corpo produzidos pelo gerador; nao
+    reescreve, nao resume e nao recalcula nada.
+    """
+    return f"Assunto: {assunto}\n\n{corpo}"
+
+
+def sincronizar_texto_email_contratada(
+    estado: MutableMapping[str, Any],
+    chave_texto: str,
+    assinatura_analise: Any,
+    texto_base: str,
+) -> str:
+    """Preserva edicao na mesma analise e restaura a base em uma nova."""
+    chave_analise = f"{chave_texto}{_SUFIXO_ANALISE}"
+    if estado.get(chave_analise) != assinatura_analise:
+        estado[chave_analise] = assinatura_analise
+        estado[chave_texto] = texto_base
+    elif chave_texto not in estado:
+        estado[chave_texto] = texto_base
+    return str(estado[chave_texto])
 
 
 def gerar_rascunho_email_contratada(
@@ -365,12 +404,16 @@ def render_email_contratada(
     numero_contrato: str | None = None,
     indice: str | None = None,
     fator_acumulado: Any = None,
+    assinatura_analise: Any = None,
     key: str,
 ) -> None:
-    """Exibe a comunicacao pre-apuracao e o botao de download do rascunho.
+    """Exibe a comunicacao pre-apuracao dentro do expander da etapa.
+
+    Mesmo padrao visual da solicitacao ao fiscal: caption curto + textarea
+    editavel com o rascunho completo (assunto + corpo) pronto para copiar.
 
     FAIL-CLOSED: se a memoria de calculo disponivel nao puder ser entregue no
-    TXT, o erro e mostrado ao usuario e o download NAO e oferecido — nunca um
+    texto, o erro e mostrado ao usuario e o rascunho NAO e exibido — nunca um
     documento silenciosamente incompleto.
     """
     try:
@@ -380,26 +423,18 @@ def render_email_contratada(
     except ValueError as exc:
         st.error(f"Comunicação à Contratada indisponível: {exc}")
         return
-    st.markdown(
-        '<div style="background:#FFF9E8;border:1.5px solid #E8B923;border-radius:16px;'
-        'padding:20px 24px;margin:18px 0 8px 0;">'
-        '<div style="font-size:.82rem;font-weight:800;color:#8A3D18;letter-spacing:.07em;'
-        'margin-bottom:10px;">✉ &nbsp;COMUNICAÇÃO À CONTRATADA</div>'
-        '<div style="font-size:1rem;color:#8A3D18;line-height:1.55;">'
-        'Rascunho pré-redigido com os ciclos e percentuais desta análise, para '
-        'ciência e concordância da Contratada '
-        '<span style="color:#A76948;">antes da apuração financeira definitiva.</span>'
-        '</div>'
-        f'<div style="font-size:.92rem;color:#9A461C;margin-top:14px;">'
-        f'<strong>Assunto:</strong> {escape(assunto)}</div></div>',
-        unsafe_allow_html=True,
+    sincronizar_texto_email_contratada(
+        st.session_state,
+        key,
+        assinatura_analise,
+        montar_texto_comunicacao(assunto, corpo),
     )
-    st.download_button(
-        "Baixar rascunho (.txt)",
-        data=montar_txt_download(assunto, corpo),
-        file_name="Comunicacao_Contratada_Reajuste.txt",
-        mime="text/plain; charset=utf-8",
-        type="primary",
-        key=key,
-        help="Revise o número do contrato antes do envio à contratada.",
-    )
+    st.markdown(_ESPACO_ANTES_DAS_COMUNICACOES, unsafe_allow_html=True)
+    with st.expander(COMANDO_EMAIL_CONTRATADA, expanded=False):
+        st.caption(CAPTION_EMAIL_CONTRATADA)
+        st.text_area(
+            "Texto da comunicação à contratada",
+            key=key,
+            height=460,
+            label_visibility="collapsed",
+        )
