@@ -4960,25 +4960,29 @@ def render_resultado_consolidado(resultado, diagnostico):
         resultado["resultado_consolidado"] = consolidado
 
     st.markdown(_CSS_RESULTADO_CONSOLIDADO, unsafe_allow_html=True)
+    # STATUS-CANON-1: o selo principal reproduz a conclusao da aba RESULTADOS.
+    # Bloqueio deixou de ser status DA APURACAO e passou a ser lido do eixo
+    # separado de FORMALIZACAO — por isso `status_em_conferencia` nao olha mais
+    # para o status principal.
     status = consolidado.get("status_confiabilidade") or "PENDENTE DE CONFIRMAÇÃO"
-    status_em_conferencia = status == "BLOQUEADO"
-    status_exibicao = (
-        "PENDENTE DE CONFERÊNCIA" if status_em_conferencia else status
-    )
+    formalizacao = consolidado.get("formalizacao") or {}
+    status_em_conferencia = bool(formalizacao.get("bloqueada"))
+    status_exibicao = status
+    mensagem_status_exibicao = consolidado.get("mensagem_status") or ""
     # P0-ROBUSTEZ-VALORES-1: a ressalva sobre Pedidos de Compra so descreve um
     # caso apurado POR PC. Em Financeiro/Consumidos ela seria um diagnostico
     # falso, entao vale a mensagem real do consolidado (que traz o motivo
-    # efetivo do bloqueio). A politica de bloqueio nao muda: quem decide o selo
-    # continua sendo `status_em_conferencia`.
-    mensagem_status_exibicao = (
+    # efetivo do bloqueio). Ela agora acompanha a FORMALIZACAO, nao a apuracao.
+    motivo_formalizacao = (
         "Pode haver divergência entre a planilha e a apuração do retroativo "
         "por Pedidos de Compra."
         if status_em_conferencia and consolidado.get("medidas_pc_aplicaveis")
-        else consolidado.get("mensagem_status") or ""
+        else formalizacao.get("mensagem") or ""
     )
     classe_status = {
-        "CONFIÁVEL": "confiavel",
-        "CONFIÁVEL COM RESSALVAS": "ressalvas",
+        "VALIDADO": "confiavel",
+        "VALIDADO COM RESSALVAS": "ressalvas",
+        "ESTIMADO": "ressalvas",
         "PENDENTE DE CONFIRMAÇÃO": "pendente",
         "BLOQUEADO": "bloqueado",
     }.get(status, "pendente")
@@ -5039,7 +5043,6 @@ def render_resultado_consolidado(resultado, diagnostico):
                 "Fora da data de corte",
                 f"{quantidade_fmt} PC(s) — {_moeda_resultado(fora.get('valor_informado'))} informado(s)",
             ))
-        formalizacao = consolidado.get("formalizacao") or {}
         formalizacao_exibicao = formalizacao.get("status") or "—"
         if status_em_conferencia and formalizacao_exibicao == "BLOQUEADA":
             formalizacao_exibicao = "EM CONFERÊNCIA"
@@ -5051,11 +5054,34 @@ def render_resultado_consolidado(resultado, diagnostico):
 
         st.markdown(
             f'<div class="resultado-status resultado-status-{classe_status}">'
-            f'<strong>Status de confiabilidade: {html.escape(str(status_exibicao))}</strong>'
+            f'<strong>Status da apuração: {html.escape(str(status_exibicao))}</strong>'
             f'{html.escape(str(mensagem_status_exibicao))}</div>',
             unsafe_allow_html=True,
         )
-        detalhes = consolidado.get("bloqueios") or consolidado.get("ressalvas") or []
+        # STATUS-CANON-1: formalizacao so vira linha propria quando ha causa
+        # objetiva. Sem isso o painel voltaria a exibir dois status principais
+        # concorrentes para o mesmo resultado.
+        if formalizacao_exibicao != "SEM BLOQUEIO":
+            st.markdown(
+                '<div class="resultado-status resultado-status-bloqueado">'
+                f'<strong>Formalização: {html.escape(str(formalizacao_exibicao))}</strong>'
+                f'{html.escape(str(motivo_formalizacao))}</div>',
+                unsafe_allow_html=True,
+            )
+        # Ressalvas nao alteram o status oficial da apuracao; aparecem ao lado
+        # dele, com rotulo proprio.
+        ressalvas = consolidado.get("ressalvas") or []
+        if ressalvas:
+            rotulo_ressalva = (
+                "Ressalva" if len(ressalvas) == 1 else f"Ressalvas ({len(ressalvas)})"
+            )
+            st.markdown(
+                '<div class="resultado-status resultado-status-ressalvas">'
+                f'<strong>{rotulo_ressalva}</strong>'
+                f'{html.escape(str(ressalvas[0]))}</div>',
+                unsafe_allow_html=True,
+            )
+        detalhes = list(consolidado.get("bloqueios") or []) + list(ressalvas)
         if detalhes:
             with st.expander("Ver fundamentos do status"):
                 for detalhe in detalhes:

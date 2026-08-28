@@ -11,9 +11,18 @@ from numbers import Real
 from typing import Any
 
 
-STATUS_CONFIAVEL = "CONFIÁVEL"
-STATUS_RESSALVAS = "CONFIÁVEL COM RESSALVAS"
+# STATUS-CANON-1: o status da apuracao apresentado ao usuario NAO e calculado
+# aqui. Ele espelha a conclusao oficial ja consolidada na aba RESULTADOS
+# (RESULTADOS!B3, lido em diagnostico["metadados"]["status_resultados"]["geral"]).
+# Por isso o vocabulario visivel passou a ser o vocabulario do proprio XLS.
+STATUS_CONFIAVEL = "VALIDADO"
+STATUS_RESSALVAS = "VALIDADO COM RESSALVAS"
+STATUS_ESTIMADO = "ESTIMADO"
 STATUS_PENDENTE = "PENDENTE DE CONFIRMAÇÃO"
+# Compatibilidade: BLOQUEADO deixou de ser status DA APURACAO. Bloqueio e um
+# estado da FORMALIZACAO (formalizacao["bloqueada"]/["status"]), separado da
+# conclusao do calculo. A constante permanece exportada porque integra o
+# contrato publico ja consumido por testes e chamadores.
 STATUS_BLOQUEADO = "BLOQUEADO"
 
 # VTA-U2.2: origens possiveis do VTA entregue ao web e aos documentos. Existe um
@@ -23,10 +32,22 @@ STATUS_BLOQUEADO = "BLOQUEADO"
 ORIGEM_VTA_CANONICA = "vta_canonico"
 ORIGEM_VTA_INDISPONIVEL = "indisponivel"
 
-_STATUS_POLITICA_INCOMPLETOS = {
-    "INFORMACAO_INSUFICIENTE",
-    "APURACAO_PARCIAL",
+# STATUS-CANON-1: vocabulario emitido por RESULTADOS!B3 e sua traducao para o
+# painel. "VALIDADO COM RESSALVAS" nao e emitido pelo template atual; fica
+# mapeado porque a regra canonica e preservar a nomenclatura oficial do XLS
+# caso ela passe a existir, nunca inventar um estado novo no Python.
+_STATUS_OFICIAL_PARA_PAINEL = {
+    "VALIDADO": STATUS_CONFIAVEL,
+    "VALIDADO COM RESSALVAS": STATUS_RESSALVAS,
+    "ESTIMADO": STATUS_ESTIMADO,
+    "REVISE": STATUS_PENDENTE,
 }
+# Conclusoes de RESULTADOS que encerram a apuracao. "REVISE" e o proprio XLS
+# pedindo revisao — nao e conclusao.
+_STATUS_OFICIAL_CONCLUSIVOS = {"VALIDADO", "VALIDADO COM RESSALVAS", "ESTIMADO"}
+
+ORIGEM_STATUS_RESULTADOS = "resultados_xls"
+ORIGEM_STATUS_INDISPONIVEL = "indisponivel"
 
 _ROTULOS_METODO = {
     "financeiro": "Financeiro",
@@ -106,6 +127,33 @@ def _alertas_materiais(alertas: list[Any]) -> list[str]:
     ]
 
 
+# STATUS-CANON-1: leitura semantica — nao reproduz a formula de RESULTADOS!B3
+# nem recalcula seus eixos. Le a conclusao que o XLS ja gravou e a classifica.
+def _status_oficial_resultados(status_resultados: dict[str, Any]) -> dict[str, Any]:
+    """Classifica a conclusao oficial da aba RESULTADOS, sem fabricar VALIDADO.
+
+    Qualquer coisa fora do vocabulario oficial — ausencia, celula vazia, cache
+    nao calculado ou texto desconhecido — e indisponibilidade, nunca aprovacao.
+    """
+    bruto = (status_resultados or {}).get("geral")
+    texto = str(bruto).strip().upper() if bruto is not None else ""
+    if texto in _STATUS_OFICIAL_PARA_PAINEL:
+        return {
+            "codigo": texto,
+            "bruto": bruto,
+            "disponivel": True,
+            "conclusivo": texto in _STATUS_OFICIAL_CONCLUSIVOS,
+            "origem": ORIGEM_STATUS_RESULTADOS,
+        }
+    return {
+        "codigo": None,
+        "bruto": bruto,
+        "disponivel": False,
+        "conclusivo": False,
+        "origem": ORIGEM_STATUS_INDISPONIVEL,
+    }
+
+
 def montar_resultado_consolidado(
     resultado: dict[str, Any] | None,
     diagnostico: dict[str, Any] | None = None,
@@ -131,10 +179,13 @@ def montar_resultado_consolidado(
     metodo_pc = metodo_controle == "pc" or metodo_codigo == "pc"
     metodo_consumidos = metodo_controle == "d" or metodo_codigo == "consumidos"
 
-    status_resultados = (
-        ((diagnostico.get("metadados") or {}).get("status_resultados") or {})
-        .get("valores") or {}
+    # STATUS-CANON-1: `status_resultados_xls` e o bloco inteiro lido da aba
+    # RESULTADOS (inclui a conclusao oficial em "geral" == RESULTADOS!B3);
+    # `status_resultados` continua sendo apenas o sub-dicionario de valores.
+    status_resultados_xls = (
+        (diagnostico.get("metadados") or {}).get("status_resultados") or {}
     )
+    status_resultados = status_resultados_xls.get("valores") or {}
     bloco_corte = totais_pc.get("ate_o_corte") or {}
     if metodo_pc:
         retroativo_reconhecido = _primeiro_informado(
@@ -240,10 +291,26 @@ def montar_resultado_consolidado(
     if not composicao_disponivel and resultado.get("valor_atualizado_contrato") is not None:
         ressalvas.append("A composição detalhada do VTA não está disponível.")
     ressalvas.extend(_alertas_materiais(list(composicao_origem.get("alertas") or [])))
-    ressalvas = _unicos(ressalvas)
 
+    # STATUS-CANON-1: a politica de entrega segura continua detectando riscos
+    # reais, mas o status interno dela deixou de ser uma segunda regua que
+    # substitui a conclusao oficial. O que ela apurou entra como RESSALVA.
     status_politica = str(politica.get("status") or "").strip().upper()
     status_base = str(diagnostico.get("status_base") or "").strip().upper()
+    if status_base == "ANALISE_PARCIAL_INFORMACOES_INSUFICIENTES":
+        ressalvas.append(
+            "A leitura da Coleta registrou informações insuficientes em parte "
+            "dos blocos."
+        )
+    if metodo_consumidos and retroativo_reconhecido is None:
+        # VTA-C2: supressao deliberada, nao lacuna de informacao. Fica visivel
+        # como ressalva em vez de derrubar a apuracao inteira.
+        ressalvas.append(
+            "No método Itens consumidos não há fonte independente de pagamento "
+            "para rotular retroativo reconhecido."
+        )
+    ressalvas = _unicos(ressalvas)
+
     vta_atual = resultado.get("valor_atualizado_contrato")
     # Referencias fisicas do XLS, preservadas e rotuladas — nunca viram VTA.
     referencias_auditaveis = {
@@ -275,46 +342,71 @@ def montar_resultado_consolidado(
     # caminhos; sem ele, so ha um caminho — o calculo canonico da metodologia.
     vta = vta_atual
     vta_origem = ORIGEM_VTA_CANONICA if vta is not None else ORIGEM_VTA_INDISPONIVEL
-    resultado_incompleto = bool(
-        vta is None
-        or retroativo_reconhecido is None
-        or metodo_codigo == "indeterminado"
-        or status_politica in _STATUS_POLITICA_INCOMPLETOS
-        or status_base == "ANALISE_PARCIAL_INFORMACOES_INSUFICIENTES"
-        or (
-            metodo_pc
-            and composicao_origem.get("disponivel") is False
-        )
-    )
 
-    if bloqueado:
-        status = STATUS_BLOQUEADO
-        mensagem_status = bloqueios[0] if bloqueios else "Há bloqueio explícito à formalização."
-    elif resultado_incompleto:
+    # ------------------------------------------------------------------
+    # STATUS-CANON-1 — STATUS DA APURACAO
+    # ------------------------------------------------------------------
+    # Fonte canonica unica: a conclusao oficial da aba RESULTADOS. O Python nao
+    # recalcula esse status nem mantem uma regua paralela que o substitua.
+    #
+    # Fail-closed: quando a conclusao oficial nao existe, o painel NAO fabrica
+    # VALIDADO. Mas a indisponibilidade tem de vir da ausencia do STATUS OFICIAL
+    # (ou da ausencia do proprio VTA/metodo), jamais da ausencia isolada de
+    # PC/Financeiro/Consumo em um ciclo — execucao legitimamente zero e um valor
+    # apurado, nao uma lacuna (ZERO REAL != AUSENCIA).
+    status_oficial = _status_oficial_resultados(status_resultados_xls)
+    # Lacunas materiais do proprio nucleo, independentes da aba RESULTADOS.
+    # Nao incluem "ciclo sem PC": esse sinal e ressalva, nunca indisponibilidade.
+    nucleo_indisponivel = vta is None or metodo_codigo == "indeterminado"
+
+    if not status_oficial["disponivel"]:
         status = STATUS_PENDENTE
-        mensagem_status = "O resultado central depende de complementação ou confirmação."
-    elif ressalvas:
-        status = STATUS_RESSALVAS
-        somente_potencial = len(ressalvas) == 1 and potencial_num not in (None, 0)
         mensagem_status = (
-            ressalvas[0]
-            if somente_potencial
-            else "Resultado apurado com ressalvas que não impedem sua leitura."
+            "O status oficial da apuração (aba RESULTADOS) não está disponível "
+            "neste arquivo. Abra o XLS no Excel, recalcule, salve e reenvie."
+        )
+    elif nucleo_indisponivel:
+        status = STATUS_PENDENTE
+        mensagem_status = (
+            "O VTA ou o método da apuração não estão disponíveis nesta leitura."
+            if vta is None
+            else "O método da apuração não pôde ser determinado."
         )
     else:
-        status = STATUS_CONFIAVEL
-        mensagem_status = "Resultado apurado sem ressalvas materiais identificadas."
+        status = _STATUS_OFICIAL_PARA_PAINEL[status_oficial["codigo"]]
+        if status == STATUS_PENDENTE:
+            mensagem_status = (
+                "A aba RESULTADOS concluiu REVISE: o próprio cálculo do XLS "
+                "aponta eixos a revisar."
+            )
+        elif status == STATUS_ESTIMADO:
+            mensagem_status = (
+                "A aba RESULTADOS concluiu ESTIMADO: o remanescente foi tratado "
+                "por estimativa."
+            )
+        else:
+            mensagem_status = "Conclusão reproduzida da aba RESULTADOS do XLS."
 
+    status_conclusivo = status not in (STATUS_PENDENTE,)
+
+    # ------------------------------------------------------------------
+    # STATUS-CANON-1 — FORMALIZACAO (eixo separado)
+    # ------------------------------------------------------------------
+    # A formalizacao pode estar bloqueada com a apuracao validada, desde que
+    # exista causa objetiva e explicita. O inverso — derrubar a apuracao sem
+    # causa material — e exatamente o que esta etapa eliminou.
     formalizacao = {
         "bloqueada": bloqueado,
         "status": (
             "BLOQUEADA"
-            if bloqueado else "AGUARDA CONFIRMAÇÃO"
-            if status == STATUS_PENDENTE else "SEM BLOQUEIO"
+            if bloqueado else "SEM BLOQUEIO"
+            if status_conclusivo else "AGUARDA CONFIRMAÇÃO"
         ),
         "mensagem": (
             bloqueios[0]
-            if bloqueios else "Sem bloqueio explícito à formalização."
+            if bloqueios else "Há bloqueio explícito à formalização."
+            if bloqueado else "Sem bloqueio explícito à formalização."
+            if status_conclusivo else mensagem_status
         ),
     }
 
@@ -336,6 +428,21 @@ def montar_resultado_consolidado(
             "rotulo": _ROTULOS_METODO.get(metodo_codigo, str(metodo_codigo)),
         },
         "ciclo_vigente": controle.get("ciclo_vigente"),
+        # STATUS-CANON-1: conceito explicito e separado. `status_apuracao` diz
+        # de onde veio a conclusao; `status_confiabilidade` guarda o mesmo texto
+        # e permanece por compatibilidade com o contrato ja consumido.
+        "status_apuracao": {
+            "codigo": status_oficial["codigo"],
+            "rotulo": status,
+            "origem": status_oficial["origem"],
+            "disponivel": status_oficial["disponivel"],
+            "conclusivo": status_conclusivo,
+            "bruto": status_oficial["bruto"],
+            "mensagem": mensagem_status,
+            # Diagnostico da politica de seguranca, preservado e visivel, mas
+            # sem poder de substituir a conclusao oficial da apuracao.
+            "status_politica": status_politica or None,
+        },
         "status_confiabilidade": status,
         "mensagem_status": mensagem_status,
         "formalizacao": formalizacao,
