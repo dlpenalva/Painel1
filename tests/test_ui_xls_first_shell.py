@@ -71,7 +71,12 @@ class TestCascaXlsFirst(unittest.TestCase):
     def test_modelo_xls_e_a_fonte_do_download_inicial(self):
         self.assertIn("TEMPLATE_COLETA_OFICIAL", INICIO)
         self.assertIn("assinatura_template_coleta", INICIO)
-        self.assertIn('file_name=NOME_DOWNLOAD_COLETA', INICIO)
+        # O nome do download deixou de ser a constante NOME_DOWNLOAD_COLETA e
+        # passou a ser calculado por nome_download_coleta(), que carrega ciclos
+        # e data. O contrato que importa e a HOME usar essa fonte unica, nao o
+        # identificador antigo.
+        self.assertIn("file_name=nome_download_coleta()", INICIO)
+        self.assertNotIn("NOME_DOWNLOAD_COLETA", INICIO)
         self.assertIn('"Baixar Arquivo Coleta Oficial"', INICIO)
         self.assertNotIn("CAMINHO_MODELO_COLETA", INICIO)
 

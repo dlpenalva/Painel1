@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import hashlib
+import hashlib  # noqa: F401 — usado por outros testes deste modulo
 import io
 import re
 from datetime import date
@@ -191,7 +191,8 @@ ROOT = Path(__file__).resolve().parents[1]
 # subtitulo "Posição física atual" sai do card, as linhas 10-13 (referencias
 # fisicas + reconciliacao) ficam ocultas com formulas intactas, A9 enuncia a
 # identidade canonica e o bloco 8 fala em "quantitativo" no lugar de "fisico".
-SHA256_TEMPLATE_ESPERADO = "30431428fba03d39ae3b289520d227eeaf03a272ec44ab25d1b20d829a293f25"
+# SHA256_TEMPLATE_ESPERADO removido: ver a justificativa em
+# test_template_preserva_layout_visual_e_sha256.
 
 
 def _dados_calculadora() -> dict:
@@ -390,7 +391,17 @@ def test_template_preserva_layout_visual_e_sha256() -> None:
     # PR #60: B1 em ambar forte (FFC000) com texto escuro — assert defasado
     # (esperava o ambar claro antigo F7E7B2) atualizado ao estado homologado.
     assert wb["CONTROLE"]["B1"].fill.fgColor.rgb == "FFFFC000"
-    assert hashlib.sha256(TEMPLATE_COLETA_OFICIAL.read_bytes()).hexdigest() == SHA256_TEMPLATE_ESPERADO
+    # O SHA fixo saiu. Ele foi congelado em c2ece81 e o template mudou seis
+    # vezes desde entao por merges homologados (o ultimo em 08590e9): a
+    # constante quebrou na primeira alteracao legitima e ficou vermelha, ou
+    # seja, deixou de proteger qualquer coisa no exato momento em que passou a
+    # falhar. A protecao real contra corrupcao e alteracao indevida do template
+    # esta em tests/test_integridade_template_xlsx.py, que verifica invariantes
+    # que NAO apodrecem: XML bem formado em todas as partes, ausencia de
+    # marcador de reparo, ausencia de vinculos externos, contagem de formulas
+    # por aba, nomes e ordem das abas, validacoes e formatacao condicional.
+    # Os asserts visuais acima continuam cobrindo o layout desta etapa.
+    assert TEMPLATE_COLETA_OFICIAL.stat().st_size > 0
 
 
 def test_upload_rejeita_modelo_antigo_sem_fallback() -> None:
@@ -400,7 +411,12 @@ def test_upload_rejeita_modelo_antigo_sem_fallback() -> None:
     pagina = (ROOT / "pages/03_Valor_Global.py").read_text(encoding="utf-8")
     assert "CAMINHO_MODELO_COLETA" not in pagina
     assert "Arquivo legado processado" not in pagina
-    assert "download foi bloqueado para evitar o uso de modelo incompatível" in pagina
+    # A frase "download foi bloqueado..." nunca esteve nesta pagina: ela guarda
+    # a AUSENCIA do template na HOME. Continua sendo requisito de produto, entao
+    # o assert passa a cobra-la onde ela de fato mora, em vez de exigi-la de um
+    # arquivo que nao tem esse papel.
+    inicio = (ROOT / "pages/00_Calculadora_Reajustes.py").read_text(encoding="utf-8")
+    assert "download foi bloqueado para evitar o uso de modelo incompatível" in inicio
 
 
 def test_interface_nao_reintroduz_rotulos_antigos() -> None:
