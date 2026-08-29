@@ -17,6 +17,24 @@ TAMANHO_MAXIMO_MEMBRO = 50 * 1024 * 1024
 QUANTIDADE_MAXIMA_MEMBROS = 250
 RAZAO_MAXIMA_COMPRESSAO_MEMBRO = 100
 
+# Orçamento de XML de worksheet, cobrado ANTES do parser. O gate de geometria
+# roda depois do load_workbook: ele protege as varreduras, mas o custo do
+# próprio parse já foi pago quando ele opina. Estes tetos são a única barreira
+# que openpyxl não precisa atravessar — saem do diretório central do ZIP, sem
+# descompactar nada.
+#
+# Corpus legítimo medido (204 workbooks distintos por SHA-256, todos com abas
+# dentro da allowlist; os dez maiores conferidos um a um contra
+# validar_geometria_workbook e todos aceitos): o maior XML de worksheet tem
+# 16.738.211 bytes e a maior soma de worksheets de um mesmo workbook tem
+# 24.531.289 bytes. A distribuição é fechada no topo (p95 de 15.093.731 e
+# 23.068.279), então a folga aqui existe para uma revisão futura do template,
+# não para dispersão do corpus atual: 32 MiB dão 2,00x sobre o maior worksheet
+# e 48 MiB dão 2,05x sobre a maior soma — a mesma ordem de margem adotada na
+# calibração da geometria.
+MAX_BYTES_XML_WORKSHEET = 32 * 1024 * 1024
+MAX_BYTES_XML_WORKSHEETS = 48 * 1024 * 1024
+
 # Orçamento de geometria do workbook. A dimensão de uma aba é declarada pelo
 # arquivo, não pela aplicação: uma única célula remota infla o retângulo sem
 # inflar o pacote, e qualquer varredura posterior materializa esse retângulo
@@ -59,6 +77,7 @@ MENSAGEM_LIMITE_XLSX = "O arquivo excede os limites de segurança permitidos."
 MENSAGEM_ESTRUTURA_XLSX = "O arquivo XLSX possui uma estrutura interna não permitida."
 
 _ASSINATURA_ZIP_LOCAL = b"PK\x03\x04"
+_PREFIXO_XML_WORKSHEETS = "xl/worksheets/"
 _COMPONENTES_OOXML_MINIMOS = frozenset(
     {"[Content_Types].xml", "_rels/.rels", "xl/workbook.xml"}
 )
@@ -94,11 +113,28 @@ def _nome_membro_permitido(nome: str) -> bool:
     return not (caminho.parts and caminho.parts[0].endswith(":"))
 
 
+def _eh_xml_de_worksheet(nome: str) -> bool:
+    """Identifica a parte OOXML que carrega células, e somente ela.
+
+    ``xl/worksheets/_rels/sheet1.xml.rels`` mora no mesmo diretório e não tem
+    célula alguma: cobrá-lo no orçamento gastaria margem com bytes que nunca
+    viram custo de parse.
+    """
+    normalizado = nome.replace("\\", "/")
+    if not normalizado.startswith(_PREFIXO_XML_WORKSHEETS):
+        return False
+    resto = normalizado[len(_PREFIXO_XML_WORKSHEETS) :]
+    return resto.endswith(".xml") and "/" not in resto
+
+
 def validar_xlsx_antes_do_parser(conteudo: bytes) -> bytes:
     """Valida limites ZIP/OOXML e devolve os mesmos bytes marcados como seguros.
 
     O diretório central é inspecionado antes de ``testzip()``, de modo que
-    nenhum membro seja descompactado antes da aprovação dos limites.
+    nenhum membro seja descompactado antes da aprovação dos limites. O
+    orçamento de XML de worksheet é cobrado nessa mesma passagem: é o único
+    teto de custo de parse que openpyxl não precisa atravessar para ser
+    aplicado.
     """
     if isinstance(conteudo, _ConteudoXlsxValidado):
         return conteudo
@@ -124,11 +160,19 @@ def validar_xlsx_antes_do_parser(conteudo: bytes) -> bytes:
                 raise XlsxEstruturaError(MENSAGEM_ESTRUTURA_XLSX)
 
             total_descompactado = 0
+            total_xml_worksheets = 0
             for membro in membros:
                 if not _nome_membro_permitido(membro.filename):
                     raise XlsxEstruturaError(MENSAGEM_ESTRUTURA_XLSX)
                 if membro.file_size > TAMANHO_MAXIMO_MEMBRO:
                     raise XlsxLimiteError(MENSAGEM_LIMITE_XLSX)
+
+                if _eh_xml_de_worksheet(membro.filename):
+                    if membro.file_size > MAX_BYTES_XML_WORKSHEET:
+                        raise XlsxLimiteError(MENSAGEM_LIMITE_XLSX)
+                    total_xml_worksheets += membro.file_size
+                    if total_xml_worksheets > MAX_BYTES_XML_WORKSHEETS:
+                        raise XlsxLimiteError(MENSAGEM_LIMITE_XLSX)
 
                 total_descompactado += membro.file_size
                 if total_descompactado > TAMANHO_MAXIMO_DESCOMPACTADO:

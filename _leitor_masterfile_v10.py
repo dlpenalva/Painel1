@@ -22,7 +22,11 @@ from typing import Any
 
 from openpyxl import load_workbook
 
-from _seguranca_xlsx import ErroSegurancaXlsx, garantir_xlsx_validado
+from _seguranca_xlsx import (
+    ErroSegurancaXlsx,
+    garantir_xlsx_validado,
+    validar_geometria_workbook,
+)
 
 from _masterfile_config_v10 import (
     ABAS_OBRIGATORIAS_V10,
@@ -3242,7 +3246,12 @@ def _materializar_aberturas_temporais(registro: dict[str, Any]) -> None:
             registro[f"ALTERACAO_POSTERIOR_ABERTURA_C{n}"] = 0.0
 
 
-def _ler_posicao_contratual(wb, origem: bytes | str | None = None) -> dict[str, Any]:
+def _ler_posicao_contratual(
+    wb,
+    origem: bytes | str | None = None,
+    *,
+    validar_geometria: bool = False,
+) -> dict[str, Any]:
     """Le a aba posicao_contratual do novo modelo oficial (por cabecalho).
 
     A aba e 100% calculada (formulas). Com data_only=True, arquivos gerados
@@ -3311,11 +3320,21 @@ def _ler_posicao_contratual(wb, origem: bytes | str | None = None) -> dict[str, 
         try:
             fonte2 = BytesIO(origem) if isinstance(origem, (bytes, bytearray)) else origem
             wb_formulas = load_workbook(fonte2, data_only=False)
+            # XSEC-09: segunda materializacao dos MESMOS bytes. A geometria e
+            # propriedade do arquivo, entao aqui o gate so confirma o que ja
+            # foi aprovado na abertura principal — mas confirma, para que a
+            # regra "todo workbook aberto passa pelo gate" nao dependa de quem
+            # chamou.
+            if validar_geometria:
+                validar_geometria_workbook(wb_formulas)
             ws_f = wb_formulas[ABA_POSICAO_CONTRATUAL]
             a2_formula = str(ws_f.cell(2, col_item).value or "").startswith("=")
             a2_cache = ws.cell(2, col_item).value
             if a2_formula and a2_cache is None:
                 resultado["cache_ausente"] = True
+        except ErroSegurancaXlsx:
+            # Erro de fronteira nao pode ser engolido pelo fail-safe de cache.
+            raise
         except Exception:
             pass
     if resultado["cache_ausente"]:
@@ -3509,6 +3528,19 @@ def ler_masterfile_v10(
             origem = garantir_xlsx_validado(origem)
         fonte = BytesIO(origem) if isinstance(origem, (bytes, bytearray)) else origem
         wb = load_workbook(fonte, data_only=True)
+        # XSEC-09: este e o PRIMEIRO parser vivo do fluxo de upload. O gate de
+        # geometria precisa correr aqui, antes de qualquer percurso de celulas
+        # — as varreduras deste modulo usam ws.cell(), que MATERIALIZA a celula
+        # ausente, entao um max_row inflado vira custo real de memoria. O mesmo
+        # gate ja rodava em ler_coleta_reajuste, mas so no terceiro load do
+        # fluxo, depois de o custo ter sido pago duas vezes.
+        #
+        # So no modelo oficial: a allowlist de abas descreve a Coleta, e o
+        # caminho legado (exigir_modelo_oficial=False) le Masterfiles com abas
+        # "historico"/"validacoes", que estao fora dela. O upload real e o
+        # unico consumidor nao confiavel e sempre passa exigir_modelo_oficial.
+        if exigir_modelo_oficial:
+            validar_geometria_workbook(wb)
     except ErroSegurancaXlsx as exc:
         res["erro"] = str(exc)
         return res
@@ -3671,7 +3703,9 @@ def ler_masterfile_v10(
     for alerta in res["historico_vu"].get("alertas", []):
         res["avisos"].append(f"historico_VU: {alerta}")
 
-    res["posicao_contratual"] = _ler_posicao_contratual(wb, origem)
+    res["posicao_contratual"] = _ler_posicao_contratual(
+        wb, origem, validar_geometria=exigir_modelo_oficial
+    )
     for alerta in res["posicao_contratual"].get("alertas", []):
         res["avisos"].append(alerta)
 

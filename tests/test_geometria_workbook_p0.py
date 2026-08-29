@@ -22,6 +22,7 @@ import pytest
 from openpyxl import Workbook, load_workbook
 
 import _coleta_reajuste
+import _leitor_masterfile_v10 as _leitor
 import _seguranca_xlsx as seguranca
 from _seguranca_xlsx import (
     ABAS_PERMITIDAS,
@@ -238,3 +239,92 @@ def test_max_upload_size_espelha_o_limite_interno():
     # O Streamlit multiplica por 1024*1024, entao a unidade e MiB — a mesma de
     # TAMANHO_MAXIMO_ARQUIVO. As duas fronteiras precisam coincidir byte a byte.
     assert config["server"]["maxUploadSize"] == TAMANHO_MAXIMO_ARQUIVO // (1024 * 1024)
+
+
+# ------------------- XSEC-09: o gate tambem no PRIMEIRO parser vivo do upload
+#
+# O gate ja existia, correto, em ler_coleta_reajuste — mas esse e o TERCEIRO
+# load_workbook do fluxo de upload. ler_masterfile_v10 abre o mesmo arquivo
+# antes dele e percorre ~20 lacos "range(2, ws.max_row + 1)" com ws.cell(), que
+# materializa a celula ausente. Sem gate ali, um max_row inflado virava custo
+# real de memoria antes de qualquer veredito.
+
+
+def _bytes_wb(abas, celula=None, estados=None) -> bytes:
+    buffer = BytesIO()
+    _wb(abas, celula=celula, estados=estados).save(buffer)
+    return buffer.getvalue()
+
+
+def _proibir_materializacao_de_celula(monkeypatch):
+    """Arma a sentinela DEPOIS de o workbook hostil ja estar em bytes.
+
+    Montar o proprio caso de teste usa ws.cell(); a sentinela precisa valer so
+    a partir do momento em que o leitor recebe os bytes.
+    """
+    from openpyxl.worksheet.worksheet import Worksheet
+
+    def _sentinela(self, *_args, **_kwargs):
+        raise AssertionError(
+            f"ws.cell() foi alcancado em {self.title!r} antes do gate de geometria"
+        )
+
+    monkeypatch.setattr(Worksheet, "cell", _sentinela)
+
+
+def test_leitor_rejeita_geometria_hostil_sem_materializar_celula(monkeypatch):
+    """Regressao estrutural do XSEC-08.1."""
+    hostil = _bytes_wb(OBRIGATORIAS, celula=("itens_Remanesc", 20_000, 500))
+    _proibir_materializacao_de_celula(monkeypatch)
+    resultado = _leitor.ler_masterfile_v10(hostil, exigir_modelo_oficial=True)
+    assert resultado["erro"] == seguranca.MENSAGEM_LIMITE_XLSX
+    assert resultado["ok"] is False
+
+
+def test_leitor_rejeita_aba_nao_permitida_sem_materializar_celula(monkeypatch):
+    """A allowlist (XSEC-02) tambem chegava tarde demais."""
+    hostil = _bytes_wb(
+        OBRIGATORIAS + ("EXTRA_1",), estados={"EXTRA_1": "veryHidden"}
+    )
+    _proibir_materializacao_de_celula(monkeypatch)
+    resultado = _leitor.ler_masterfile_v10(hostil, exigir_modelo_oficial=True)
+    assert resultado["erro"] == seguranca.MENSAGEM_ESTRUTURA_XLSX
+
+
+def test_leitor_rejeita_geometria_antes_de_detectar_versao(monkeypatch):
+    """Prova de ORDEM contra a primeira instrucao que o leitor executa apos o load."""
+
+    def _sentinela(*_args, **_kwargs):
+        raise AssertionError("_detectar_versao() rodou apesar da geometria invalida")
+
+    monkeypatch.setattr(_leitor, "_detectar_versao", _sentinela)
+    resultado = _leitor.ler_masterfile_v10(
+        _bytes_wb(OBRIGATORIAS, celula=("itens_Remanesc", 20_000, 500)),
+        exigir_modelo_oficial=True,
+    )
+    assert resultado["erro"] == seguranca.MENSAGEM_LIMITE_XLSX
+
+
+def test_caminho_legado_do_leitor_nao_sofre_a_allowlist_da_coleta():
+    """A allowlist descreve a Coleta, nao o Masterfile legado.
+
+    Aplica-la fora de exigir_modelo_oficial recusaria "historico"/"validacoes",
+    que sao abas legitimas do layout antigo lido por consumidores internos.
+    """
+    legado = (
+        "CONTROLE", "parametros", "financeiro", "itens_Remanesc",
+        "itens_Consumidos", "aditivos", "historico", "itens_RC", "historico_VU",
+    )
+    resultado = _leitor.ler_masterfile_v10(_bytes_wb(legado))
+    assert resultado["erro"] not in (
+        seguranca.MENSAGEM_ESTRUTURA_XLSX,
+        seguranca.MENSAGEM_LIMITE_XLSX,
+    )
+
+
+def test_modelo_oficial_real_continua_sendo_lido():
+    """Zero falso positivo: o gate antecipado nao pode recusar arquivo legitimo."""
+    conteudo = (ROOT / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx").read_bytes()
+    resultado = _leitor.ler_masterfile_v10(conteudo, exigir_modelo_oficial=True)
+    assert resultado["ok"] is True
+    assert not resultado["erro"]
