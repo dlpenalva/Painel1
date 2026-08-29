@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import random
 from io import BytesIO
 from pathlib import Path
 from zipfile import ZIP_DEFLATED, ZipFile
@@ -179,3 +180,113 @@ def test_marcador_evitaria_cinco_inspecoes_zip(monkeypatch) -> None:
     monkeypatch.setattr(seguranca, "ZipFile", nao_pode_reabrir)
     for _ in range(5):
         assert seguranca.garantir_xlsx_validado(validado) is validado
+
+
+# --------------------------------------------- XSEC-08.2: orcamento pre-parser
+#
+# Maximos medidos no corpus legitimo (204 workbooks distintos por SHA-256, com
+# abas dentro da allowlist; os dez maiores conferidos um a um contra
+# validar_geometria_workbook e todos aceitos). Sao a base da calibracao: se um
+# dia um desses tetos descer abaixo destes numeros, arquivo legitimo passa a ser
+# recusado.
+CORPUS_MAIOR_XML_WORKSHEET = 16_738_211
+CORPUS_MAIOR_SOMA_WORKSHEETS = 24_531_289
+
+
+def _bytes_incompressiveis(tamanho: int) -> bytes:
+    """Recheio deterministico que nao dispara a razao de compressao.
+
+    Zeros seriam mais baratos, mas comprimem muito acima de 100:1 e o pacote
+    seria recusado pelo gate de razao — mascarando o teto sob teste.
+    """
+    return random.Random(20260829).randbytes(tamanho)
+
+
+def _ooxml_com_worksheets(tamanhos: list[int], extras: list[str] | None = None) -> bytes:
+    """Pacote OOXML minimo com worksheets de tamanho declarado controlado."""
+    membros: list[tuple[str, bytes | str]] = list(COMPONENTES.items())
+    for indice, tamanho in enumerate(tamanhos, start=1):
+        membros.append(
+            (f"xl/worksheets/sheet{indice}.xml", _bytes_incompressiveis(tamanho))
+        )
+    for nome in extras or []:
+        membros.append((nome, _bytes_incompressiveis(4096)))
+    return _zip(membros)
+
+
+def test_limites_de_xml_de_worksheet_sao_os_calibrados() -> None:
+    assert seguranca.MAX_BYTES_XML_WORKSHEET == 32 * 1024 * 1024
+    assert seguranca.MAX_BYTES_XML_WORKSHEETS == 48 * 1024 * 1024
+    # A folga sobre o corpus e deliberada e precisa continuar existindo.
+    assert seguranca.MAX_BYTES_XML_WORKSHEET > CORPUS_MAIOR_XML_WORKSHEET
+    assert seguranca.MAX_BYTES_XML_WORKSHEETS > CORPUS_MAIOR_SOMA_WORKSHEETS
+
+
+def test_worksheet_isolado_acima_do_teto_e_rejeitado(monkeypatch) -> None:
+    monkeypatch.setattr(seguranca, "MAX_BYTES_XML_WORKSHEET", 8_192)
+    with pytest.raises(seguranca.XlsxLimiteError) as erro:
+        seguranca.validar_xlsx_antes_do_parser(_ooxml_com_worksheets([8_193]))
+    assert str(erro.value) == seguranca.MENSAGEM_LIMITE_XLSX
+    assert "worksheet" not in str(erro.value)
+
+
+def test_soma_dos_worksheets_acima_do_teto_e_rejeitada(monkeypatch) -> None:
+    """Cada aba cabe sozinha; o workbook inteiro nao cabe."""
+    monkeypatch.setattr(seguranca, "MAX_BYTES_XML_WORKSHEET", 8_192)
+    monkeypatch.setattr(seguranca, "MAX_BYTES_XML_WORKSHEETS", 16_384)
+    with pytest.raises(seguranca.XlsxLimiteError):
+        seguranca.validar_xlsx_antes_do_parser(
+            _ooxml_com_worksheets([8_000, 8_000, 8_000])
+        )
+
+
+def test_worksheets_dentro_do_teto_passam(monkeypatch) -> None:
+    monkeypatch.setattr(seguranca, "MAX_BYTES_XML_WORKSHEET", 8_192)
+    monkeypatch.setattr(seguranca, "MAX_BYTES_XML_WORKSHEETS", 16_384)
+    conteudo = _ooxml_com_worksheets([8_000, 8_000])
+    assert bytes(seguranca.validar_xlsx_antes_do_parser(conteudo)) == conteudo
+
+
+def test_orcamento_ignora_partes_que_nao_carregam_celula(monkeypatch) -> None:
+    """xl/worksheets/_rels/* mora no mesmo diretorio e nao tem celula nenhuma."""
+    assert seguranca._eh_xml_de_worksheet("xl/worksheets/sheet1.xml") is True
+    assert seguranca._eh_xml_de_worksheet("xl/worksheets/_rels/sheet1.xml.rels") is False
+    assert seguranca._eh_xml_de_worksheet("xl/workbook.xml") is False
+    assert seguranca._eh_xml_de_worksheet("xl/worksheets/sheet1.bin") is False
+
+    monkeypatch.setattr(seguranca, "MAX_BYTES_XML_WORKSHEETS", 8_192)
+    conteudo = _ooxml_com_worksheets(
+        [8_000], extras=["xl/worksheets/_rels/sheet1.xml.rels"]
+    )
+    assert bytes(seguranca.validar_xlsx_antes_do_parser(conteudo)) == conteudo
+
+
+@pytest.mark.parametrize(
+    "arquivo",
+    ["Coleta_Reajuste.xlsx", "COLETA_REAJUSTE_OFICIAL.xlsx"],
+)
+def test_modelos_oficiais_cabem_no_orcamento(arquivo: str) -> None:
+    with ZipFile(BytesIO((ROOT / "templates" / arquivo).read_bytes())) as pacote:
+        worksheets = [
+            membro.file_size
+            for membro in pacote.infolist()
+            if seguranca._eh_xml_de_worksheet(membro.filename)
+        ]
+    assert worksheets
+    assert max(worksheets) <= seguranca.MAX_BYTES_XML_WORKSHEET
+    assert sum(worksheets) <= seguranca.MAX_BYTES_XML_WORKSHEETS
+
+
+def test_orcamento_de_xml_e_cobrado_antes_de_openpyxl(monkeypatch) -> None:
+    """O ganho do XSEC-08.2 esta em rejeitar SEM abrir o workbook."""
+    import _leitor_masterfile_v10 as leitor
+
+    def nao_pode_abrir(*_args, **_kwargs):
+        raise AssertionError("load_workbook foi alcancado apesar do orcamento estourado")
+
+    monkeypatch.setattr(seguranca, "MAX_BYTES_XML_WORKSHEET", 8_192)
+    monkeypatch.setattr(leitor, "load_workbook", nao_pode_abrir)
+    resultado = leitor.ler_masterfile_v10(
+        _ooxml_com_worksheets([8_193]), exigir_modelo_oficial=True
+    )
+    assert resultado["erro"] == seguranca.MENSAGEM_LIMITE_XLSX
