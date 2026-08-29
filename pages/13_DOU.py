@@ -18,13 +18,10 @@ except Exception:
     DOCX_OK = False
 
 try:
-    from _ui_utils import render_marca_topo, render_aviso_privacidade
+    from _ui_utils import render_cabecalho_pagina
 except Exception:
-    def render_marca_topo():
-        st.markdown("### TLB · cl8us")
-        st.caption("apoio à gestão de contratos")
-    def render_aviso_privacidade(tem_upload=False, tem_download=False):
-        return
+    def render_cabecalho_pagina(titulo, descricao=""):
+        st.markdown(f"### {titulo}")
 
 st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="TLB · cl8us - DOU", layout="wide")
 
@@ -361,12 +358,9 @@ def gerar_docx_dou(texto):
 # Interface
 # ============================================================
 
-render_marca_topo()
+render_cabecalho_pagina("DOU", "")
 if st.button("← Voltar para Central", key="voltar_central_dou"):
     st.switch_page("pages/03_Valor_Global.py")
-st.title("DOU")
-st.caption("Geração simples de DOCX pré-preenchido para extrato de publicação de Termo de Apostila.")
-render_aviso_privacidade(tem_download=True)
 
 st.markdown(
     """
