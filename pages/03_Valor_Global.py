@@ -4889,6 +4889,7 @@ _CSS_RESULTADO_CONSOLIDADO = """
 .resultado-status-ressalvas,
 .resultado-status-pendente { background:#FFF8E6; border-color:#D69E00; color:#713F12; }
 .resultado-status-bloqueado { background:#FFF8E6; border-color:#D69E00; color:#713F12; }
+.resultado-status-informativo { background:#F1F5F9; border-color:#64748B; color:#334155; }
 .resultado-divisor { border-top:1px solid #E2E8F0; margin:0.85rem 0; }
 .resultado-rodape-vta {
     background:#F1F5F9;
@@ -5068,6 +5069,20 @@ def render_resultado_consolidado(resultado, diagnostico):
                 f'{html.escape(str(motivo_formalizacao))}</div>',
                 unsafe_allow_html=True,
             )
+        # STATUS-CANON-1.1: informacao nao e pendencia. Execucao legitimamente
+        # zero entra aqui, em tom neutro e sem pedir nada ao fiscal.
+        informacoes = consolidado.get("informacoes") or []
+        if informacoes:
+            st.markdown(
+                '<div class="resultado-status resultado-status-informativo">'
+                '<strong>Informações da apuração</strong>'
+                + "".join(
+                    f'<div>{html.escape(str(informacao))}</div>'
+                    for informacao in informacoes
+                )
+                + "</div>",
+                unsafe_allow_html=True,
+            )
         # Ressalvas nao alteram o status oficial da apuracao; aparecem ao lado
         # dele, com rotulo proprio.
         ressalvas = consolidado.get("ressalvas") or []
@@ -5081,7 +5096,11 @@ def render_resultado_consolidado(resultado, diagnostico):
                 f'{html.escape(str(ressalvas[0]))}</div>',
                 unsafe_allow_html=True,
             )
-        detalhes = list(consolidado.get("bloqueios") or []) + list(ressalvas)
+        detalhes = (
+            list(consolidado.get("bloqueios") or [])
+            + list(ressalvas)
+            + list(informacoes)
+        )
         if detalhes:
             with st.expander("Ver fundamentos do status"):
                 for detalhe in detalhes:

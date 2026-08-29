@@ -11,6 +11,54 @@ STATUS_FORMALIZACAO = "APTO_PARA_FORMALIZACAO"
 
 _METODOS = ("financeiro", "pc", "consumidos")
 
+# STATUS-CANON-1.1: CONTROLE!B1 -> metodo da apuracao. A fonte de execucao a
+# consultar depende dele; nao existe fonte universal.
+_MODO_PARA_METODO = {
+    "pc": "pc",
+    "pcs": "pc",
+    "pedido de compra": "pc",
+    "pedidos de compra": "pc",
+    "principal": "financeiro",
+    "financeiro": "financeiro",
+    "base financeira": "financeiro",
+    "d": "consumidos",
+    "consumidos": "consumidos",
+    "itens consumidos": "consumidos",
+}
+
+
+def _metodo_da_apuracao(leitura: dict[str, Any]) -> str | None:
+    modo = str((leitura.get("controle") or {}).get("modo") or "").strip().lower()
+    return _MODO_PARA_METODO.get(modo)
+
+
+def _fonte_execucao_legivel(leitura: dict[str, Any], metodo: str | None) -> bool:
+    """A fonte de execucao do metodo selecionado foi lida E contem registros.
+
+    Esse e o discriminante entre ZERO CONHECIDO e EXECUCAO DESCONHECIDA. Se a
+    aba de execucao do metodo esta legivel e preenchida, um ciclo sem nenhum
+    registro nela significa que naquele ciclo nao houve execucao — e nao que a
+    informacao esteja faltando. Fonte vazia, ilegivel ou metodo indeterminado
+    devolvem False (fail-closed): a duvida permanece.
+
+    Nao consulta o status da apuracao nem valores de RESULTADOS/
+    MEMORIA_RESULTADOS: olha exatamente a aba que alimenta a execucao.
+    """
+    if metodo == "pc":
+        bloco = leitura.get("itens_pc_v10") or leitura.get("itens_pc") or {}
+        return bool(bloco.get("ok")) and bool(bloco.get("itens"))
+    if metodo == "financeiro":
+        # `informado` ja separa zero informado de celula vazia na origem.
+        return any(
+            linha.get("informado")
+            for linha in (leitura.get("financeiro") or [])
+            if isinstance(linha, dict)
+        )
+    if metodo == "consumidos":
+        bloco = leitura.get("itens_consumidos_v10") or leitura.get("itens_d") or {}
+        return bool(bloco.get("ok")) and bool(bloco.get("itens"))
+    return False
+
 
 def _numero(valor: Any) -> float | None:
     try:
@@ -47,6 +95,7 @@ def avaliar_entrega_segura(
             "pode_formalizar": False,
             "bloqueios": ["O arquivo não foi lido com sucesso."],
             "pendencias": [],
+            "informacoes": [],
             "indices": [],
             "retroativo": {},
             "remanescentes": {},
@@ -92,8 +141,15 @@ def avaliar_entrega_segura(
             evidencias_por_metodo[metodo] += int(
                 (retro.get(metodo) or {}).get("evidencias") or 0
             )
+    # STATUS-CANON-1.1: um ciclo sem registro de execucao so pode ser lido como
+    # ZERO CONHECIDO quando a fonte de execucao do metodo esta legivel e
+    # preenchida. Caso contrario continua sendo EXECUCAO DESCONHECIDA.
+    metodo_apuracao = _metodo_da_apuracao(leitura)
+    execucao_conhecida = _fonte_execucao_legivel(leitura, metodo_apuracao)
+
     retro_ciclos: list[dict[str, Any]] = []
     ciclos_sem_evidencia: list[str] = []
+    ciclos_execucao_zero: list[str] = []
     for ciclo in ciclos_apuracao:
         retro_metodos = (por_memoria.get(ciclo) or {}).get("retroativo") or {}
         metodo_ciclo = next((
@@ -101,7 +157,10 @@ def avaliar_entrega_segura(
             if int((retro_metodos.get(m) or {}).get("evidencias") or 0) > 0
         ), None)
         if metodo_ciclo is None:
-            ciclos_sem_evidencia.append(ciclo)
+            if execucao_conhecida:
+                ciclos_execucao_zero.append(ciclo)
+            else:
+                ciclos_sem_evidencia.append(ciclo)
             continue
         reg = retro_metodos.get(metodo_ciclo) or {}
         retro_ciclos.append({
@@ -134,6 +193,8 @@ def avaliar_entrega_segura(
     bloqueios = list(pend_obj.get("bloqueantes") or [])
     pendencias = list(pend_obj.get("advertencias") or [])
     pendencias.extend(pend_obj.get("ressalvas") or [])
+    # Fatos apurados que merecem ser ditos, mas que nao sao pendencia nenhuma.
+    informacoes: list[str] = []
 
     reconciliacao = leitura.get("reconciliacao") or {}
     if reconciliacao.get("bloqueia_formalizacao"):
@@ -174,22 +235,44 @@ def avaliar_entrega_segura(
     if not ciclos_apuracao:
         bloqueios.append("Nenhum ciclo foi marcado para esta apuração.")
 
+    # Fail-closed: havendo bloqueio material, a execucao do ciclo volta a ser
+    # tratada como nao confirmada — zero conhecido exige apuracao integra.
+    if bloqueios and ciclos_execucao_zero:
+        indeterminados = set(ciclos_sem_evidencia) | set(ciclos_execucao_zero)
+        ciclos_sem_evidencia = [c for c in ciclos_apuracao if c in indeterminados]
+        ciclos_execucao_zero = []
+
     if ciclos_sem_evidencia:
         pendencias.append(
             "Sem evidência de execução registrada em " + ", ".join(ciclos_sem_evidencia)
             + "; o fiscal deve confirmar que não houve execução ou complementar o XLS."
         )
+    # ZERO CONHECIDO nao e pendencia: e informacao. Sem pedido de confirmacao ao
+    # fiscal e sem pedido de complementacao do XLS.
+    for ciclo in ciclos_execucao_zero:
+        informacoes.append(
+            f"Não houve execução registrada em {ciclo}. Para a apuração, foi "
+            "considerado R$ 0,00 no ciclo."
+        )
     if not itens_residuais:
         pendencias.append(
             "Remanescentes não demonstrados; o valor futuro e o VTA permanecem indisponíveis."
         )
-    if metodo is None:
+    # Quando TODOS os ciclos da apuracao tiveram execucao zero conhecida nao ha
+    # metodo com evidencia — e esse e o resultado correto, nao uma lacuna. Dizer
+    # que "nenhuma evidencia permite apurar retroativo" seria a mesma falsa
+    # pendencia com outro texto.
+    execucao_zero_integral = bool(
+        ciclos_apuracao and ciclos_execucao_zero and not ciclos_sem_evidencia
+    )
+    if metodo is None and not execucao_zero_integral:
         pendencias.append(
             "Nenhuma evidência financeira, PC pago definitivo ou consumo pago permite apurar retroativo."
         )
 
     bloqueios = _unicos(bloqueios)
     pendencias = _unicos(pendencias)
+    informacoes = _unicos(informacoes)
     pode_confirmar = bool(
         ciclos_apuracao and not ciclos_indice_incompleto and metodo and not bloqueios
     )
@@ -225,6 +308,7 @@ def avaliar_entrega_segura(
         "confirmacao_gcc": bool(confirmacao_gcc),
         "bloqueios": bloqueios,
         "pendencias": pendencias,
+        "informacoes": informacoes,
         "indices": indices,
         "ciclos_apuracao": ciclos_apuracao,
         "retroativo": {
@@ -232,6 +316,7 @@ def avaliar_entrega_segura(
             "evidencias_por_metodo": evidencias_por_metodo,
             "ciclos_com_evidencia": retro_ciclos,
             "ciclos_sem_evidencia": ciclos_sem_evidencia,
+            "ciclos_execucao_zero": ciclos_execucao_zero,
             "subtotal_evidencias_recebidas": subtotal_retroativo,
             "total_definitivo": subtotal_retroativo if pode_formalizar else None,
         },

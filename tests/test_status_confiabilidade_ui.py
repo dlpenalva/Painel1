@@ -71,10 +71,22 @@ def test_estado_bloqueado_usa_ambar_e_nao_vermelho():
 
 
 def test_detalhe_tecnico_permanece_recolhido_no_expander():
-    # Bloqueios e ressalvas somam no expander: nenhum fundamento e descartado
-    # por causa da separacao dos eixos.
-    assert (
-        'detalhes = list(consolidado.get("bloqueios") or []) + list(ressalvas)'
-        in PAGINA
-    )
+    # Bloqueios, ressalvas e informacoes somam no expander: nenhum fundamento e
+    # descartado por causa da separacao dos eixos.
+    assert 'list(consolidado.get("bloqueios") or [])' in PAGINA
+    assert "+ list(ressalvas)" in PAGINA
+    assert "+ list(informacoes)" in PAGINA
     assert 'with st.expander("Ver fundamentos do status")' in PAGINA
+
+
+def test_informacao_tem_linha_neutra_propria():
+    """STATUS-CANON-1.1: execucao zero e informacao, nao ressalva."""
+    assert 'informacoes = consolidado.get("informacoes") or []' in PAGINA
+    assert "Informações da apuração" in PAGINA
+    assert "resultado-status-informativo" in PAGINA
+    # Tom neutro: nem verde de validado, nem ambar de pendencia.
+    inicio = PAGINA.index(".resultado-status-informativo")
+    css = PAGINA[inicio:PAGINA.index("}", inicio) + 1]
+    assert "background:#F1F5F9" in css
+    for cor_de_alerta in ("#FFF8E6", "#D69E00", "#ECFDF3", "#16803A"):
+        assert cor_de_alerta not in css

@@ -390,6 +390,18 @@ def montar_resultado_consolidado(
     status_conclusivo = status not in (STATUS_PENDENTE,)
 
     # ------------------------------------------------------------------
+    # STATUS-CANON-1.1 — INFORMACOES (execucao zero conhecida)
+    # ------------------------------------------------------------------
+    # A politica ja separou ZERO CONHECIDO de EXECUCAO DESCONHECIDA olhando a
+    # fonte de execucao do metodo. Aqui entra a ultima condicao do contrato: o
+    # resultado oficial precisa estar disponivel. Sem conclusao oficial o fato
+    # volta a ser ressalva — nunca o contrario.
+    informacoes = _unicos(list(politica.get("informacoes") or []))
+    if informacoes and not status_conclusivo:
+        ressalvas = _unicos(ressalvas + informacoes)
+        informacoes = []
+
+    # ------------------------------------------------------------------
     # STATUS-CANON-1 — FORMALIZACAO (eixo separado)
     # ------------------------------------------------------------------
     # A formalizacao pode estar bloqueada com a apuracao validada, desde que
@@ -448,6 +460,9 @@ def montar_resultado_consolidado(
         "formalizacao": formalizacao,
         "bloqueios": bloqueios,
         "ressalvas": ressalvas,
+        # Fatos apurados, sem linguagem de pendencia. Nao alteram o status da
+        # apuracao nem a formalizacao.
+        "informacoes": informacoes,
         "campos_nao_confiaveis": campos_nao_confiaveis,
         "composicao_vta": composicao,
     }
