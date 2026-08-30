@@ -1,5 +1,6 @@
 import streamlit as st
 import base64
+import hashlib
 import json
 import re
 import pandas as pd
@@ -47,6 +48,8 @@ from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox,
 from _indice_utils import (calcular_ist_numero_indice, coletar_sgs_produtorio,
                            serie_sgs_do_indice)
 from _reajuste_utils import (
+    APLICAR_VARIACAO_NEGATIVA,
+    NEUTRALIZAR_VARIACAO_NEGATIVA,
     _competencias_mensais,
     _formatar_data,
     _formatar_moeda_br,
@@ -54,6 +57,8 @@ from _reajuste_utils import (
     _parse_moeda_br,
     SITUACAO_SEM_PEDIDO,
     classificar_pedido_por_data_exata,
+    resolver_tratamento_variacao_negativa,
+    situacao_com_tratamento_variacao_negativa,
 )
 from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, gerar_coleta_oficial_preenchida, nome_download_coleta
 from _memoria_calculo import normalizar_memoria_calculo
@@ -2036,6 +2041,8 @@ else:
 
 validacao_indice = _validar_indice_disponivel(res, dt_base, dt_fim_ap, tipo_idx)
 if not validacao_indice.get("ok", False):
+    st.session_state.pop("tratamento_variacao_negativa_simples_c1", None)
+    st.session_state.pop("assinatura_variacao_negativa_simples_c1", None)
     _render_alerta_indice_ausente(validacao_indice, ciclo_label)
     st.stop()
 
@@ -2073,13 +2080,9 @@ if res:
     referencia_documental = ""
     data_inicio_efeito_negocial = None
 
-    if ciclo_negativo:
-        st.warning(
-            "A variação final apurada para o ciclo foi negativa. Para fins de composição acumulada, "
-            "o percentual aplicado neste ciclo será tratado como 0,00%. Meses negativos isolados dentro "
-            "do ciclo não são zerados; a regra somente se aplica quando o resultado final do ciclo é negativo."
-        )
-        situacao_aplicada = f"{status_ped} | 🔻 CICLO NEGATIVO (APLICADO 0,00%)"
+    if sem_pedido or "PRECLUSO" in status_ped.upper():
+        st.session_state.pop("tratamento_variacao_negativa_simples_c1", None)
+        st.session_state.pop("assinatura_variacao_negativa_simples_c1", None)
 
     if sem_pedido:
         # Nao houve pedido: nao ha pedido precluso a ser admitido por acordo,
@@ -2145,6 +2148,70 @@ if res:
             fator_ciclo_efetivo = 1.0
             if ciclo_negativo:
                 situacao_aplicada = f"{status_ped} | 🔻 CICLO NEGATIVO (APLICADO 0,00%)"
+    elif ciclo_negativo:
+        chave_tratamento = "tratamento_variacao_negativa_simples_c1"
+        chave_assinatura = "assinatura_variacao_negativa_simples_c1"
+        assinatura_resultado = (
+            ciclo_label,
+            tipo_idx,
+            str(dt_base),
+            str(dt_fim_ap),
+            str(periodo_inicio),
+            str(periodo_fim),
+            percentual_indice,
+            situacao_pedido,
+            bool(efeito_financeiro_retardado),
+        )
+        if st.session_state.get(chave_assinatura) != assinatura_resultado:
+            st.session_state.pop(chave_tratamento, None)
+            st.session_state[chave_assinatura] = assinatura_resultado
+
+        with st.container(border=True):
+            st.markdown(
+                """
+                <div style="background:#fff1f2;border-left:5px solid #e11d48;
+                            padding:0.75rem 0.9rem;border-radius:0.5rem;">
+                  <strong>Atenção: variação final negativa — selecione o tratamento aplicável</strong><br>
+                  <span>Defina o tratamento aplicável conforme o contrato e a instrução processual.</span>
+                </div>
+                """,
+                unsafe_allow_html=True,
+            )
+            tratamento_escolhido = st.radio(
+                "Tratamento da variação final negativa",
+                options=(
+                    APLICAR_VARIACAO_NEGATIVA,
+                    NEUTRALIZAR_VARIACAO_NEGATIVA,
+                ),
+                index=None,
+                format_func=lambda opcao: (
+                    f"Aplicar a variação apurada ({v_fmt})"
+                    if opcao == APLICAR_VARIACAO_NEGATIVA
+                    else "Neutralizar a variação e aplicar 0,00%"
+                ),
+                key=chave_tratamento,
+                label_visibility="collapsed",
+            )
+
+        tratamento_resolvido = resolver_tratamento_variacao_negativa(
+            percentual_indice, tratamento_escolhido
+        )
+        if tratamento_resolvido["pendente"]:
+            st.info("Decisão pendente: o resultado final e o Arquivo de Coleta permanecem bloqueados.")
+            st.stop()
+
+        percentual_aplicado = tratamento_resolvido["percentual_aplicado"]
+        fator_ciclo_efetivo = tratamento_resolvido["fator"]
+        tratamento_negativo = tratamento_resolvido["tratamento"]
+        situacao_base_negativa = (
+            "TEMPESTIVO*" if efeito_financeiro_retardado else situacao_pedido
+        )
+        situacao_aplicada = situacao_com_tratamento_variacao_negativa(
+            situacao_base_negativa, tratamento_negativo
+        )
+    else:
+        st.session_state.pop("tratamento_variacao_negativa_simples_c1", None)
+        st.session_state.pop("assinatura_variacao_negativa_simples_c1", None)
 
     with st.expander("🔍 Memória de Cálculo Detalhada"):
         st.write(f"**Metodologia:** {res['metodo']}")
@@ -2191,8 +2258,11 @@ if res:
     st.subheader("Relatório de Apuração")
     percentual_aplicado_fmt = f"{percentual_aplicado * 100:,.2f}%".replace('.', ',')
     observacao_ciclo_negativo = (
-        "\n        Observação: a variação final do ciclo foi negativa; para composição acumulada, o percentual aplicado foi limitado a 0,00%."
-        if ciclo_negativo and not superacao_negocial else ""
+        f"\n        Observação: a variação final do ciclo foi negativa; tratamento registrado: {situacao_aplicada}."
+        if ciclo_negativo and tratamento_negativo in (
+            APLICAR_VARIACAO_NEGATIVA,
+            NEUTRALIZAR_VARIACAO_NEGATIVA,
+        ) else ""
     )
     # Redacao padronizada (apresentacao apenas — nenhuma regra matematica,
     # data calculada ou regra de admissibilidade muda aqui):
@@ -2327,6 +2397,8 @@ if res:
     render_referencia_temporal_anterior(st.session_state.get("dados_admissibilidade", {}))
 
     # >>> BOTAO_COLETA_SIMPLES_ESTAVEL_V1
+    _slot_download_coleta = st.empty()
+    _slot_download_coleta.empty()
     try:
         _bytes_coleta_estavel = gerar_coleta_oficial_preenchida(
             st.session_state.get("dados_admissibilidade", {})
@@ -2334,17 +2406,22 @@ if res:
         _nome_coleta_estavel = nome_download_coleta(
             st.session_state.get("dados_admissibilidade", {})
         )
-        st.download_button(
+        _slot_download_coleta.download_button(
             label="Baixar Arquivo Coleta Oficial",
             data=_bytes_coleta_estavel,
             file_name=_nome_coleta_estavel,
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
             help="Baixa o Arquivo Coleta Oficial pré-preenchido com os dados desta apuração.",
             type="primary",
-            key="btn_baixar_coleta_reajuste_estavel_simples_v1",
+            key=(
+                "btn_baixar_coleta_reajuste_estavel_simples_v1_"
+                + hashlib.sha256(_bytes_coleta_estavel).hexdigest()[:16]
+            ),
         )
     except Exception as _e_coleta_estavel:
-        st.warning(f"Não foi possível gerar o Arquivo Coleta Oficial: {_e_coleta_estavel}")
+        _slot_download_coleta.warning(
+            f"Não foi possível gerar o Arquivo Coleta Oficial: {_e_coleta_estavel}"
+        )
     # <<< BOTAO_COLETA_SIMPLES_ESTAVEL_V1
 
     # ── Comunicação à Contratada (pré-apuração) ───────────────────────────

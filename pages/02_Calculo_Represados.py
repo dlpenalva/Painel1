@@ -1,5 +1,6 @@
 import streamlit as st
 import base64
+import hashlib
 import json
 import re
 import pandas as pd
@@ -50,6 +51,8 @@ from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox,
 from _indice_utils import (calcular_ist_numero_indice, coletar_sgs_produtorio,
                            serie_sgs_do_indice)
 from _reajuste_utils import (
+    APLICAR_VARIACAO_NEGATIVA,
+    NEUTRALIZAR_VARIACAO_NEGATIVA,
     _competencias_mensais,
     _data_para_datetime,
     _formatar_data,
@@ -60,6 +63,8 @@ from _reajuste_utils import (
     SITUACAO_SEM_PEDIDO,
     classificar_pedido_por_data_exata,
     referencia_exata_pedido_subsequente,
+    resolver_tratamento_variacao_negativa,
+    situacao_com_tratamento_variacao_negativa,
 )
 from _coleta_oficial import NOME_ARQUIVO_COLETA_OFICIAL, gerar_coleta_oficial_preenchida, nome_download_coleta
 from _memoria_calculo import normalizar_memoria_calculo
@@ -2662,6 +2667,12 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             )
 
         if not validacao_indice.get("ok", False):
+            st.session_state.pop(
+                f"tratamento_variacao_negativa_multiplos_c{i}", None
+            )
+            st.session_state.pop(
+                f"assinatura_variacao_negativa_multiplos_c{i}", None
+            )
             _render_alerta_indice_ausente(validacao_indice, f"C{i}")
             pendencias_indice.append({
                 "Ciclo": f"C{i}",
@@ -2682,6 +2693,13 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             percentual_aplicado = 0.0 if ciclo_negativo else percentual_indice
             situacao_aplicada = sit_emoji
             tratamento_negativo = "Ciclo negativo - percentual aplicado 0,00% no acumulado" if ciclo_negativo else ""
+            if situacao_limpa == "PRECLUSO":
+                st.session_state.pop(
+                    f"tratamento_variacao_negativa_multiplos_c{i}", None
+                )
+                st.session_state.pop(
+                    f"assinatura_variacao_negativa_multiplos_c{i}", None
+                )
             if situacao_limpa == "PRECLUSO" and superacao_negocial:
                 percentual_aplicado = percentual_negocial
                 fator_ciclo = 1 + percentual_aplicado
@@ -2692,11 +2710,78 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
                 if ciclo_negativo:
                     situacao_aplicada = f"{sit_emoji} | 🔻 CICLO NEGATIVO (APLICADO 0,00%)"
             elif ciclo_negativo:
-                percentual_aplicado = 0.0
-                fator_ciclo = 1.0
-                situacao_aplicada = f"{sit_emoji} | 🔻 CICLO NEGATIVO (APLICADO 0,00%)"
+                chave_tratamento = f"tratamento_variacao_negativa_multiplos_c{i}"
+                chave_assinatura = f"assinatura_variacao_negativa_multiplos_c{i}"
+                assinatura_resultado = (
+                    f"C{i}",
+                    idx_sel,
+                    str(data_atual),
+                    str(d_fim),
+                    str(periodo_inicio),
+                    str(periodo_fim),
+                    percentual_indice,
+                    situacao_limpa,
+                    bool(efeito_financeiro_retardado),
+                    bool(ciclo_ja_concedido),
+                )
+                if st.session_state.get(chave_assinatura) != assinatura_resultado:
+                    st.session_state.pop(chave_tratamento, None)
+                    st.session_state[chave_assinatura] = assinatura_resultado
+
+                with st.container(border=True):
+                    st.markdown(
+                        """
+                        <div style="background:#fff1f2;border-left:5px solid #e11d48;
+                                    padding:0.75rem 0.9rem;border-radius:0.5rem;">
+                          <strong>Atenção: variação final negativa — selecione o tratamento aplicável</strong><br>
+                          <span>Defina o tratamento aplicável conforme o contrato e a instrução processual.</span>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    tratamento_escolhido = st.radio(
+                        "Tratamento da variação final negativa",
+                        options=(
+                            APLICAR_VARIACAO_NEGATIVA,
+                            NEUTRALIZAR_VARIACAO_NEGATIVA,
+                        ),
+                        index=None,
+                        format_func=lambda opcao: (
+                            f"Aplicar a variação apurada ({res_c['var'] * 100:,.2f}%)".replace('.', ',')
+                            if opcao == APLICAR_VARIACAO_NEGATIVA
+                            else "Neutralizar a variação e aplicar 0,00%"
+                        ),
+                        key=chave_tratamento,
+                        label_visibility="collapsed",
+                    )
+
+                tratamento_resolvido = resolver_tratamento_variacao_negativa(
+                    percentual_indice, tratamento_escolhido
+                )
+                if tratamento_resolvido["pendente"]:
+                    st.info(
+                        f"Decisão pendente em C{i}: o acumulado dos ciclos seguintes, "
+                        "o resultado final e o Arquivo de Coleta permanecem bloqueados."
+                    )
+                    st.stop()
+
+                percentual_aplicado = tratamento_resolvido["percentual_aplicado"]
+                fator_ciclo = tratamento_resolvido["fator"]
+                tratamento_negativo = tratamento_resolvido["tratamento"]
+                situacao_base_negativa = (
+                    "TEMPESTIVO*" if efeito_financeiro_retardado else situacao_limpa
+                )
+                situacao_aplicada = situacao_com_tratamento_variacao_negativa(
+                    situacao_base_negativa, tratamento_negativo
+                )
             else:
                 fator_ciclo = fator_indice
+                st.session_state.pop(
+                    f"tratamento_variacao_negativa_multiplos_c{i}", None
+                )
+                st.session_state.pop(
+                    f"assinatura_variacao_negativa_multiplos_c{i}", None
+                )
             # Somente a situacao APLICADA/persistida recebe o marcador; a
             # situacao pura (situacao_limpa/sit_emoji) segue intacta e continua
             # governando efeitos, fator, percentual e propagacao.
@@ -2736,11 +2821,7 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             elif situacao_limpa == "PRECLUSO":
                 st.caption("Variação apurada apenas para registro, sem composição no acumulado final.")
             elif ciclo_negativo:
-                st.warning(
-                    "A variação final apurada para este ciclo foi negativa. Para fins de composição acumulada, "
-                    "o percentual aplicado neste ciclo será tratado como 0,00%. Meses negativos isolados dentro "
-                    "do ciclo não são zerados; a regra somente se aplica quando o resultado final do ciclo é negativo."
-                )
+                st.caption(f"Tratamento registrado: {situacao_aplicada}.")
 
             with st.expander(f"🔍 Memória de Cálculo Detalhada - Ciclo {i}"):
                 st.write(f"**Metodologia:** {res_c['metodo']}")
@@ -2963,13 +3044,22 @@ if historico_coleta:
     # leitura, derivado das datas ja apuradas acima; nada e recalculado.
     render_referencia_temporal_anterior(st.session_state['dados_admissibilidade'])
 
-    st.download_button(
+    _slot_download_coleta = st.empty()
+    _slot_download_coleta.empty()
+    _bytes_coleta_estavel = gerar_coleta_oficial_preenchida(
+        st.session_state['dados_admissibilidade']
+    )
+    _slot_download_coleta.download_button(
         label="Baixar Arquivo Coleta Oficial",
         type="primary",
-        data=gerar_coleta_oficial_preenchida(st.session_state['dados_admissibilidade']),
+        data=_bytes_coleta_estavel,
         file_name=nome_download_coleta(st.session_state['dados_admissibilidade']),
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         use_container_width=False,
+        key=(
+            "btn_baixar_coleta_reajuste_estavel_multiplos_v1_"
+            + hashlib.sha256(_bytes_coleta_estavel).hexdigest()[:16]
+        ),
     )
 
     render_email_contratada(
