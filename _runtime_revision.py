@@ -8,9 +8,18 @@ anterior. O resultado e uma arvore hibrida: arquivo novo executando com modulo
 antigo — ``ImportError`` no melhor caso, calculo com regra velha no pior.
 
 Este modulo detecta a troca de revisao pelo SHA do checkout e, apenas nesse
-momento, remove de ``sys.modules`` os modulos do proprio projeto para que os
-imports seguintes leiam o disco. Em rerun normal (mesma revisao) o custo e a
-leitura de dois arquivos pequenos e nada e recarregado.
+momento, executa a transicao: remove de ``sys.modules`` os modulos do proprio
+projeto e esvazia ``st.cache_data``. Em rerun normal (mesma revisao) o custo e
+a leitura de dois arquivos pequenos e nada e recarregado.
+
+A revisao nova so e declarada coerente DEPOIS que a transicao inteira terminou
+com sucesso. Se qualquer etapa falhar, o processo fica marcado como incoerente
+e toda execucao seguinte falha ate o reboot — nunca um hibrido silencioso.
+
+A coordenacao (trava e estado) vive em ``sys``, e nao neste modulo, porque a
+propria transicao remove este arquivo de ``sys.modules``: uma sessao que
+reimporte o helper no meio da troca recebe uma instancia nova do modulo e
+precisa encontrar a MESMA trava do processo.
 """
 
 from __future__ import annotations
@@ -22,19 +31,44 @@ from pathlib import Path
 
 RAIZ = Path(__file__).resolve().parent
 
-# A revisao ja carregada no processo vive fora do proprio modulo: a purga
-# remove este arquivo de sys.modules e um sentinela interno se perderia.
-# Somente metadado tecnico (o SHA do checkout) e guardado aqui.
-_ATRIBUTO_SENTINELA = "_painel1_revisao_carregada"
+# Somente metadado tecnico do processo: a trava, a situacao e o SHA. Nunca
+# dado de usuario.
+_ATRIBUTO_ESTADO = "_painel1_revisao_estado"
 
-_TRAVA = threading.Lock()
+NOVO = "NOVO"            # nada registrado ainda neste processo
+PRONTO = "PRONTO"        # a revisao registrada e coerente
+TRANSICAO = "TRANSICAO"  # troca em curso, sob a trava
+FALHA = "FALHA"          # transicao incompleta: so o reboot recupera
 
 _DIRETORIOS_IGNORADOS = ("site-packages", "dist-packages", ".venv", "venv")
 
+_ORIENTACAO_REBOOT = (
+    "Reinicie o aplicativo (Manage app -> Reboot app) antes de prosseguir."
+)
+
 
 class RevisaoIncoerenteError(RuntimeError):
-    """A troca de revisao foi detectada mas a purga nao pode ser concluida."""
+    """Nao ha garantia de que a execucao usa uma unica revisao do codigo."""
 
+
+def _estado_do_processo() -> dict:
+    """A trava e o estado da revisao, compartilhados por todo o processo.
+
+    ``dict.setdefault`` e atomico: duas sessoes que cheguem juntas no primeiro
+    boot obtem o MESMO dicionario e, portanto, a MESMA trava.
+    """
+    estado = getattr(sys, _ATRIBUTO_ESTADO, None)
+    if estado is None:
+        estado = sys.__dict__.setdefault(
+            _ATRIBUTO_ESTADO,
+            {"trava": threading.RLock(), "situacao": NOVO, "revisao": None},
+        )
+    return estado
+
+
+# --------------------------------------------------------------------------
+# identidade da revisao
+# --------------------------------------------------------------------------
 
 def _diretorio_comum(git: Path) -> Path:
     """Onde ficam refs/ e packed-refs (numa worktree, o diretorio principal)."""
@@ -96,6 +130,10 @@ def revisao_atual(raiz: Path | None = None) -> str | None:
         return None
 
 
+# --------------------------------------------------------------------------
+# acoes da transicao
+# --------------------------------------------------------------------------
+
 def _eh_modulo_local(modulo: object, raiz: Path) -> bool:
     arquivo = getattr(modulo, "__file__", None)
     if not arquivo:
@@ -119,6 +157,16 @@ def modulos_locais_carregados(raiz: Path | None = None) -> list[str]:
     ]
 
 
+def _modulos_de_revisao_anterior(raiz: Path) -> list[str]:
+    """Modulos locais que podem pertencer a outra revisao.
+
+    O proprio helper nao conta: num processo recem-iniciado ele e o unico
+    modulo local carregado quando ``app.py`` chama a blindagem, e purga-lo ai
+    seria trabalho a toa.
+    """
+    return [nome for nome in modulos_locais_carregados(raiz) if nome != __name__]
+
+
 def _purgar(raiz: Path) -> list[str]:
     nomes = modulos_locais_carregados(raiz)
     for nome in nomes:
@@ -126,29 +174,97 @@ def _purgar(raiz: Path) -> list[str]:
     return nomes
 
 
+def _limpar_caches_de_dados() -> None:
+    """Esvazia ``st.cache_data`` uma unica vez, dentro da transicao.
+
+    A chave de cache do Streamlit hasheia o fonte da funcao decorada, mas nao o
+    dos helpers que ela chama: uma funcao inalterada que chama um helper local
+    alterado devolveria o valor da revisao anterior ate o TTL. ``sys.modules``
+    coerente nao implica artefato cacheado coerente.
+
+    ``st.session_state`` e ``st.cache_resource`` nao sao tocados.
+    """
+    import streamlit as st
+
+    st.cache_data.clear()
+
+
+# --------------------------------------------------------------------------
+# maquina de estados da revisao
+# --------------------------------------------------------------------------
+
+def _falhar(estado: dict, motivo: str, causa: BaseException | None = None) -> None:
+    estado["situacao"] = FALHA
+    erro = RevisaoIncoerenteError(motivo + " " + _ORIENTACAO_REBOOT)
+    if causa is not None:
+        raise erro from causa
+    raise erro
+
+
+def _transicionar(estado: dict, raiz: Path, revisao: str | None) -> list[str]:
+    """Executa a troca inteira e so entao declara a revisao coerente."""
+    estado["situacao"] = TRANSICAO
+    try:
+        removidos = _purgar(raiz)
+        _limpar_caches_de_dados()
+    except Exception as erro:  # noqa: BLE001 - qualquer falha aqui e fail-closed
+        _falhar(
+            estado,
+            "A revisao do codigo mudou e a troca nao pode ser concluida.",
+            erro,
+        )
+    except BaseException:
+        # Interrupcao dura no meio da troca: o processo nao pode voltar a
+        # considerar esta revisao coerente so porque a excecao subiu.
+        estado["situacao"] = FALHA
+        raise
+    estado["situacao"] = PRONTO
+    estado["revisao"] = revisao
+    return removidos
+
+
+def _sem_identidade(estado: dict, raiz: Path) -> list[str]:
+    """Nao foi possivel ler o SHA do checkout."""
+    if estado["situacao"] == PRONTO and estado["revisao"] is None:
+        return []  # ambiente sem Git desde o inicio: coerente por construcao
+    if estado["situacao"] == NOVO and not _modulos_de_revisao_anterior(raiz):
+        estado["situacao"] = PRONTO
+        estado["revisao"] = None
+        return []
+    _falhar(
+        estado,
+        "A revisao do codigo deixou de ser identificavel e nao ha como garantir "
+        "que esta execucao usa uma unica revisao.",
+    )
+    return []  # inalcancavel: _falhar sempre levanta
+
+
 def garantir_revisao_coerente(raiz: Path | None = None) -> list[str]:
-    """Alinha ``sys.modules`` a revisao presente no disco.
+    """Alinha o runtime a revisao presente no disco.
 
     Devolve os modulos removidos. Lista vazia significa que nada foi feito:
-    primeiro boot, mesma revisao ou identidade indisponivel.
+    primeiro boot limpo ou mesma revisao. Levanta ``RevisaoIncoerenteError``
+    quando a coerencia nao pode ser garantida.
     """
     base = (Path(raiz) if raiz is not None else RAIZ).resolve()
-    revisao = revisao_atual(base)
-    if revisao is None:
-        return []
-    with _TRAVA:
-        anterior = getattr(sys, _ATRIBUTO_SENTINELA, None)
-        if anterior == revisao:
-            return []
-        # A revisao e registrada antes da purga: uma sessao concorrente que
-        # entre neste ponto no mesmo instante nao repete a remocao.
-        setattr(sys, _ATRIBUTO_SENTINELA, revisao)
-        if anterior is None:
-            return []  # primeiro boot: nada foi importado da revisao anterior
-        try:
-            return _purgar(base)
-        except Exception as erro:  # pragma: no cover - fail-closed
+    estado = _estado_do_processo()
+    with estado["trava"]:
+        if estado["situacao"] == FALHA:
             raise RevisaoIncoerenteError(
-                "A revisao do codigo mudou e os modulos da revisao anterior nao "
-                "puderam ser descarregados. Reinicie o aplicativo (Manage app -> Reboot)."
-            ) from erro
+                "A troca de revisao anterior falhou neste processo. " + _ORIENTACAO_REBOOT
+            )
+
+        revisao = revisao_atual(base)
+        if revisao is None:
+            return _sem_identidade(estado, base)
+
+        if estado["situacao"] == PRONTO and estado["revisao"] == revisao:
+            return []
+
+        if estado["situacao"] == NOVO and not _modulos_de_revisao_anterior(base):
+            # Processo recem-iniciado: nada da revisao anterior foi importado.
+            estado["situacao"] = PRONTO
+            estado["revisao"] = revisao
+            return []
+
+        return _transicionar(estado, base, revisao)
