@@ -20,6 +20,7 @@ from __future__ import annotations
 
 import datetime as dt
 import os
+import re
 import shutil
 import tempfile
 from io import BytesIO
@@ -227,15 +228,184 @@ def test_template_b259_na_tem_semantica_propria():
     assert "N/A" not in i259
 
 
+# --- comparativo executivo de referencia (B28/B29) -------------------------
+#
+# Invariante que a 26C criou em MEMORIA_RESULTADOS!A28:C29: a comparacao
+# executiva e feita POR REFERENCIA, "sem matematica nova" — B28 apenas aponta
+# para valores que a propria aba ja consolidou e B29 aponta para o comparativo
+# do contrato integralmente reajustado.
+#
+# A formula literal de B28 evoluiu depois da 26C: VTA-M2 e VTA-C2 deram a
+# Financeiro e a Itens um ramo proprio dentro do VTA FINAL (B26), e a
+# decomposicao generica B20+B21+B22 (B23) passou a ser SO comparativa para
+# esses dois metodos. O literal exato ja e travado pelas frentes que o
+# definiram (tests/test_vta_m2_financeiro_condicional.py e
+# tests/test_vta_c2_consumido_canonico.py); aqui protege-se a SEMANTICA que a
+# 26C introduziu, que nenhuma dessas evolucoes pode quebrar.
+
+# Metodo oficial em MEMORIA_RESULTADOS!B4 -> celula canonica que B28 exibe.
+# Financeiro/Itens tem ramo proprio em B26, entao o comparativo mostra a
+# decomposicao generica B23; PC (e metodo ainda nao selecionado) continuam
+# mostrando o proprio VTA FINAL, exatamente como na 26C.
+METODO_FONTE_COMPARATIVA = {
+    "Financeiro": "$B$23",
+    "Itens": "$B$23",
+    "PCs": "$B$26",
+    "SELECIONE O METODO EM CONTROLE!B1": "$B$26",
+}
+CELULAS_PERMITIDAS_B28 = {"$B$4", "$B$23", "$B$26"}
+SIMBOLOS_MATEMATICOS = set("+-*/^%&")
+FUNCOES_PROIBIDAS_B28 = (
+    "SUMPRODUCT", "SUMIFS", "SUMIF", "SUM(", "ROUND", "COUNT", "AVERAGE",
+)
+
+
+def _dividir_argumentos(texto: str) -> list[str]:
+    """Divide os argumentos de uma funcao Excel no nivel superior."""
+    partes: list[str] = []
+    atual: list[str] = []
+    nivel = 0
+    aspas = False
+    for ch in texto:
+        if ch == '"':
+            aspas = not aspas
+        elif not aspas:
+            if ch == "(":
+                nivel += 1
+            elif ch == ")":
+                nivel -= 1
+            elif ch == "," and nivel == 0:
+                partes.append("".join(atual))
+                atual = []
+                continue
+        atual.append(ch)
+    partes.append("".join(atual))
+    return [p.strip() for p in partes]
+
+
+def _sem_literais(formula: str) -> str:
+    """Remove o conteudo das strings para nao confundir texto com referencia."""
+    return re.sub(r'"[^"]*"', '""', formula)
+
+
+def _celulas_referenciadas(formula: str) -> set[str]:
+    return set(re.findall(r"\$?[A-Z]{1,3}\$?\d+", _sem_literais(formula)))
+
+
+def _condicao_b28(expr: str, metodo: str) -> bool:
+    """Avalia a condicao de B28 para um metodo, so com a gramatica permitida."""
+    expr = expr.strip()
+    caixa_alta = expr.upper()
+    for prefixo, agregador in (("OR(", any), ("AND(", all)):
+        if caixa_alta.startswith(prefixo) and expr.endswith(")"):
+            interno = expr[len(prefixo):-1]
+            return agregador(
+                _condicao_b28(arg, metodo)
+                for arg in _dividir_argumentos(interno)
+            )
+    if caixa_alta.startswith("NOT(") and expr.endswith(")"):
+        return not _condicao_b28(expr[4:-1], metodo)
+    for operador in ("<>", "="):
+        if operador in expr:
+            esquerda, direita = (p.strip() for p in expr.split(operador, 1))
+            assert esquerda == "$B$4", (
+                "B28 so pode decidir pelo metodo oficial $B$4; "
+                f"achado: {esquerda!r}"
+            )
+            assert direita.startswith('"') and direita.endswith('"'), (
+                f"B28 so compara $B$4 com literal de metodo; achado: {direita!r}"
+            )
+            literal = direita[1:-1]
+            return metodo == literal if operador == "=" else metodo != literal
+    raise AssertionError(f"condicao nao reconhecida em B28: {expr!r}")
+
+
+def _referencia_exibida_por_b28(expr: str, metodo: str) -> str:
+    """Resolve a celula que B28 exibe quando MEMORIA_RESULTADOS!B4 = metodo."""
+    expr = expr.strip()
+    if expr.upper().startswith("IF(") and expr.endswith(")"):
+        argumentos = _dividir_argumentos(expr[3:-1])
+        assert len(argumentos) == 3, f"IF malformado em B28: {expr!r}"
+        condicao, ramo_sim, ramo_nao = argumentos
+        escolhido = ramo_sim if _condicao_b28(condicao, metodo) else ramo_nao
+        return _referencia_exibida_por_b28(escolhido, metodo)
+    return expr
+
+
+def _validar_b28(formula: object) -> None:
+    """Contrato de B28: referencia pura, method-aware, sem matematica nova."""
+    assert isinstance(formula, str) and formula.startswith("="), (
+        f"B28 precisa continuar sendo formula; achado: {formula!r}"
+    )
+    corpo = formula[1:]
+    # (a) le somente celulas canonicas desta aba: nada de outra aba, nada do
+    #     bloco historico que a 26C desacoplou.
+    assert "!" not in _sem_literais(corpo), (
+        f"B28 nao pode referenciar outra aba: {formula!r}"
+    )
+    assert _celulas_referenciadas(corpo) == CELULAS_PERMITIDAS_B28, (
+        "B28 deve ler exatamente o metodo oficial e as duas fontes canonicas "
+        f"{sorted(CELULAS_PERMITIDAS_B28)}; achado: {formula!r}"
+    )
+    # (b) "sem matematica nova": B28 seleciona, nunca recalcula.
+    assert not SIMBOLOS_MATEMATICOS & set(_sem_literais(corpo)), (
+        f"B28 nao pode conter aritmetica: {formula!r}"
+    )
+    for proibida in FUNCOES_PROIBIDAS_B28:
+        assert proibida not in corpo.upper(), (
+            f"B28 nao pode agregar/recalcular ({proibida}): {formula!r}"
+        )
+    # (c) semantica por metodo: cada metodo exibe a sua fonte comparativa.
+    for metodo, esperada in METODO_FONTE_COMPARATIVA.items():
+        obtida = _referencia_exibida_por_b28(corpo, metodo)
+        assert obtida == esperada, (
+            f"B28 com metodo {metodo!r} deveria exibir {esperada}, "
+            f"exibe {obtida}: {formula!r}"
+        )
+
+
 def test_template_comparativo_executivo_por_referencia():
     r = load_workbook(TEMPLATE, data_only=False)["MEMORIA_RESULTADOS"]
-    assert r["B28"].value == "=$B$26"
+    _validar_b28(r["B28"].value)
     assert r["B29"].value == "=comparativo_VTA!$B$208"
     assert "COMPARACAO DE REFERENCIA" in str(r["A28"].value)
     assert "integralmente reajustado" in str(r["A29"].value)
     assert "comparativo" in str(r["C28"].value)
     # Sem matematica duplicada: as celulas sao referencias puras.
     assert "SUMPRODUCT" not in str(r["B28"].value) + str(r["B29"].value)
+
+
+# Formulas que NAO podem passar no contrato acima. Existem para provar que a
+# validacao semantica de B28 continua detectando regressao real, em vez de
+# virar um assert que aceita qualquer coisa.
+B28_REGRESSOES = (
+    # perde o method-aware: Financeiro/Itens voltariam a exibir o proprio VTA
+    "=$B$26",
+    # inverte os metodos: PC passaria a exibir a decomposicao generica
+    '=IF($B$4="PCs",$B$23,$B$26)',
+    # perde a fonte canonica do VTA FINAL
+    '=IF(OR($B$4="Financeiro",$B$4="Itens"),$B$23,$B$20)',
+    # reintroduz matematica na celula meramente comparativa
+    '=IF(OR($B$4="Financeiro",$B$4="Itens"),$B$23,$B$20+$B$21+$B$22)',
+    # passa a depender de outra aba em vez da fonte consolidada local
+    '=IF(OR($B$4="Financeiro",$B$4="Itens"),$B$23,comparativo_VTA!$B$208)',
+    # decide por celula que nao e o metodo oficial
+    '=IF(OR($C$4="Financeiro",$C$4="Itens"),$B$23,$B$26)',
+    # deixa de ser formula
+    0.0,
+)
+
+
+@pytest.mark.parametrize("formula", B28_REGRESSOES)
+def test_contrato_de_b28_rejeita_regressao(formula):
+    with pytest.raises(AssertionError):
+        _validar_b28(formula)
+
+
+def test_contrato_de_b28_independe_da_escrita_da_formula():
+    """A validacao e semantica: reescrever preservando o contrato passa."""
+    _validar_b28('=IF(OR($B$4="Itens",$B$4="Financeiro"),$B$23,$B$26)')
+    _validar_b28('=IF($B$4="Financeiro",$B$23,IF($B$4="Itens",$B$23,$B$26))')
 
 
 def test_help_removido_somente_do_marco_temporal():
