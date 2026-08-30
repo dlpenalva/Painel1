@@ -90,7 +90,7 @@ def render_cabecalho_pagina(titulo, descricao=""):
 def render_versao_sidebar():
     """Exibe o carimbo obrigatório da versão efetivamente publicada."""
     st.markdown('<div class="cl8us-version-rule"></div>', unsafe_allow_html=True)
-    st.caption(f"Atualizado em {atualizado_em()}")
+    st.caption(f"Última atualização publicada em {atualizado_em()}")
 
 
 def _normalizar_mes_ano_ist(valor):
