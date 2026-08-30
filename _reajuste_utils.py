@@ -183,6 +183,75 @@ def _formatar_data(valor):
         return str(valor)
 
 
+# --- Tratamento da variacao final negativa ----------------------------------
+APLICAR_VARIACAO_NEGATIVA = "APLICAR_VARIACAO_NEGATIVA"
+NEUTRALIZAR_VARIACAO_NEGATIVA = "NEUTRALIZAR_VARIACAO_NEGATIVA"
+
+QUALIFICADOR_VARIACAO_NEGATIVA = "VARIAÇÃO NEGATIVA"
+QUALIFICADOR_VARIACAO_NEGATIVA_NEUTRALIZADA = (
+    "VARIAÇÃO NEGATIVA NEUTRALIZADA EM 0,00%"
+)
+
+
+def resolver_tratamento_variacao_negativa(percentual_indice, tratamento=None):
+    """Resolve apenas o tratamento de um resultado final ja calculado.
+
+    O chamador continua responsavel por indice, competencias, admissibilidade e
+    acumulado. Resultado negativo sem decisao fica explicitamente pendente, sem
+    percentual aplicado nem fator provisorio.
+    """
+    percentual = float(percentual_indice)
+    if percentual >= 0:
+        return {
+            "ciclo_negativo": False,
+            "pendente": False,
+            "percentual_indice": percentual,
+            "percentual_aplicado": percentual,
+            "fator": 1.0 + percentual,
+            "tratamento": None,
+        }
+
+    if tratamento is None:
+        return {
+            "ciclo_negativo": True,
+            "pendente": True,
+            "percentual_indice": percentual,
+            "percentual_aplicado": None,
+            "fator": None,
+            "tratamento": None,
+        }
+
+    if tratamento == APLICAR_VARIACAO_NEGATIVA:
+        percentual_aplicado = percentual
+    elif tratamento == NEUTRALIZAR_VARIACAO_NEGATIVA:
+        percentual_aplicado = 0.0
+    else:
+        raise ValueError("Tratamento de variação negativa inválido.")
+
+    return {
+        "ciclo_negativo": True,
+        "pendente": False,
+        "percentual_indice": percentual,
+        "percentual_aplicado": percentual_aplicado,
+        "fator": 1.0 + percentual_aplicado,
+        "tratamento": tratamento,
+    }
+
+
+def situacao_com_tratamento_variacao_negativa(situacao_base, tratamento):
+    """Anexa o qualificador aprovado sem alterar a classificacao-base."""
+    base = str(situacao_base or "").strip()
+    if not base:
+        raise ValueError("Situação-base obrigatória para variação negativa.")
+    if tratamento == APLICAR_VARIACAO_NEGATIVA:
+        qualificador = QUALIFICADOR_VARIACAO_NEGATIVA
+    elif tratamento == NEUTRALIZAR_VARIACAO_NEGATIVA:
+        qualificador = QUALIFICADOR_VARIACAO_NEGATIVA_NEUTRALIZADA
+    else:
+        raise ValueError("Tratamento de variação negativa inválido.")
+    return f"{base} — {qualificador}"
+
+
 # --- Ciclo sem pedido da contratada -----------------------------------------
 # Ha ciclos em que a CONTRATADA simplesmente NAO apresentou pedido. Ate aqui a
 # unica forma de registrar isso era digitar uma data ficticia, o que produzia

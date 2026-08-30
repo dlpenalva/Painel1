@@ -139,7 +139,7 @@ def montar_dados_sumario_executivo(
         ),
         "memoria_calculo": _montar_secao_memoria(memoria_calculo),
         "aditivos": _montar_secao_aditivos(dados_op, parametros),
-        "observacoes": _montar_observacoes(objeto, pendencias),
+        "observacoes": _montar_observacoes(objeto, pendencias, ciclos_sec),
         "campos_nao_confiaveis": sorted(campos_nc),
         # Tres referencias do VTA (auditoria): posicao atual / ultima abertura /
         # integral reajustado. Espelho de RESULTADOS!Tabela 1; nunca oficial.
@@ -755,7 +755,9 @@ def _montar_secao_aditivos(
 
 
 def _montar_observacoes(
-    objeto: dict[str, Any], pendencias: dict[str, Any]
+    objeto: dict[str, Any],
+    pendencias: dict[str, Any],
+    ciclos: list[dict[str, Any]],
 ) -> dict[str, Any]:
     evidencias = objeto.get("evidencias") or {}
     return {
@@ -764,7 +766,68 @@ def _montar_observacoes(
         "ressalvas": list(pendencias.get("ressalvas") or []),
         "limitacoes_evidencias": list(evidencias.get("limitacoes") or []),
         "grau_confiabilidade": evidencias.get("grau_confiabilidade"),
+        "reajuste_negativo": _observacoes_reajuste_negativo(ciclos),
     }
+
+
+def _observacoes_reajuste_negativo(
+    ciclos: list[dict[str, Any]],
+) -> list[str]:
+    """Explica somente os tratamentos canonicos persistidos pela Calculadora."""
+    aplicados: list[str] = []
+    neutralizados: list[str] = []
+    marcador_neutralizado = " — VARIAÇÃO NEGATIVA NEUTRALIZADA EM 0,00%"
+    marcador_aplicado = " — VARIAÇÃO NEGATIVA"
+
+    for ciclo in ciclos or []:
+        nome = str(ciclo.get("ciclo") or "").strip()
+        situacao = str(ciclo.get("situacao") or "").strip()
+        if marcador_neutralizado in situacao:
+            neutralizados.append(nome)
+        elif marcador_aplicado in situacao:
+            aplicados.append(nome)
+
+    if not aplicados and not neutralizados:
+        return []
+
+    observacoes: list[str] = []
+    if aplicados:
+        referencia_tcu = (
+            "Observação sobre o reajuste negativo: o percentual aplicado "
+            "corresponde à variação efetivamente apurada pelo índice de "
+            "reajuste previsto contratualmente. Como referência interpretativa, "
+            "o Manual de Licitações & Contratos – Orientações e Jurisprudência "
+            "do TCU, 5ª edição, caracteriza o reajuste em sentido estrito pela "
+            "aplicação do índice de correção monetária previsto no contrato, "
+            "destinado a refletir a variação efetiva dos custos de produção."
+        )
+        if len(aplicados) == 1 and not neutralizados:
+            observacoes.append(
+                referencia_tcu
+                + " No presente ciclo, a variação apurada foi negativa e foi "
+                  "aplicada conforme a opção registrada na apuração."
+            )
+        else:
+            observacoes.append(referencia_tcu)
+            observacoes.extend(
+                f"{nome}: a variação apurada foi negativa e foi aplicada "
+                "conforme a opção registrada na apuração."
+                for nome in aplicados
+            )
+
+    total_negativos = len(aplicados) + len(neutralizados)
+    for nome in neutralizados:
+        prefixo = (
+            "Observação sobre o reajuste negativo: "
+            if total_negativos == 1 else f"{nome}: "
+        )
+        observacoes.append(
+            prefixo
+            + "a variação final apurada pelo índice contratual no ciclo foi "
+              "negativa. Conforme a opção registrada na apuração, essa variação "
+              "foi neutralizada para 0,00% no percentual aplicado ao ciclo."
+        )
+    return observacoes
 
 
 # ---------------------------------------------------------------------------
@@ -922,6 +985,7 @@ def gerar_sumario_executivo_pdf(dados: dict[str, Any]) -> bytes:
     _bloco_itens(historia, dados, estilos)
     _bloco_memoria(historia, dados, estilos)
     _bloco_aditivos(historia, dados, estilos)
+    _bloco_observacao_reajuste_negativo(historia, dados, estilos)
     # Secao "8. Observacoes de consistencia" removida (requisito Etapa 5 v2).
 
     rodape = _rodape_factory(dados)
@@ -1457,6 +1521,14 @@ def _bloco_aditivos(historia, dados, estilos) -> None:
         [largura * 0.40, largura * 0.12, largura * 0.24, largura * 0.24],
         estilos, alinhamentos_direita={2},
     ))
+
+
+def _bloco_observacao_reajuste_negativo(historia, dados, estilos) -> None:
+    observacoes = (
+        (dados.get("observacoes") or {}).get("reajuste_negativo") or []
+    )
+    for texto in observacoes:
+        historia.append(_paragrafo(texto, estilos["normal"]))
 
 
 def _bloco_observacoes(historia, dados, estilos) -> None:
