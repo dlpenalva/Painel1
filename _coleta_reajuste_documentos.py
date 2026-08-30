@@ -15,6 +15,7 @@ import pandas as pd
 from openpyxl import load_workbook
 
 from _coleta_reajuste import ler_coleta_reajuste
+from _contexto_coleta import ContextoColeta
 from _leitor_masterfile_v10 import ler_masterfile_v10
 from _politica_entrega_segura import avaliar_entrega_segura
 from _reconciliacao_xls_python import campos_nao_confiaveis_para_documentos
@@ -116,16 +117,24 @@ def adaptar_coleta_reajuste_para_documentos(
     *,
     leitura: dict[str, Any] | None = None,
     diagnostico: dict[str, Any] | None = None,
+    contexto=None,
 ) -> dict[str, Any]:
     """Monta o contrato documental, preferindo os cálculos do leitor Python."""
 
     conteudo = garantir_xlsx_validado(conteudo)
-    diagnostico = diagnostico or ler_coleta_reajuste(conteudo)
+    diagnostico = diagnostico or ler_coleta_reajuste(conteudo, contexto=contexto)
     if not diagnostico.get("valido"):
         raise ValueError("A coleta possui pendências estruturais e não pode liberar documentos.")
     capacidades = diagnostico.get("capacidades") or {}
 
-    wb = load_workbook(BytesIO(conteudo), data_only=True, read_only=True)
+    # PERF-ARCH-1: este adaptador so LE celulas ja calculadas. No fluxo oficial
+    # a mesma representacao data_only ja esta aberta e aprovada no contexto da
+    # execucao; abrir de novo era o quarto parse dos mesmos bytes.
+    wb = (
+        contexto.workbook_valores
+        if contexto is not None
+        else load_workbook(BytesIO(conteudo), data_only=True, read_only=True)
+    )
     controle = wb["CONTROLE"]
     parametros = wb["parametros"]
     financeiro = wb["financeiro"]
@@ -595,11 +604,26 @@ def aplicar_bloqueio_documental(capacidades: dict[str, Any], bloqueios: list[str
 def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], dict[str, Any]]:
     """Entry point único usado pelo upload real e pelos testes de integração."""
     conteudo = garantir_xlsx_validado(conteudo)
-    leitura = ler_masterfile_v10(conteudo, exigir_modelo_oficial=True)
+    # PERF-ARCH-1: um contexto por execucao. Os tres leitores abaixo recebem as
+    # MESMAS representacoes ja abertas e ja aprovadas na fronteira de
+    # geometria, em vez de repagar o parse XML do mesmo pacote a cada etapa. O
+    # contexto e estritamente local: nao entra em cache, nao entra em
+    # session_state e morre no `finally` desta chamada.
+    contexto = ContextoColeta(conteudo)
+    try:
+        return _processar_com_contexto(conteudo, contexto)
+    finally:
+        contexto.fechar()
+
+
+def _processar_com_contexto(
+    conteudo: bytes, contexto: ContextoColeta
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    leitura = ler_masterfile_v10(conteudo, exigir_modelo_oficial=True, contexto=contexto)
     if not leitura.get("ok"):
         raise ValueError(leitura.get("erro") or "O Arquivo Coleta Oficial não pôde ser lido.")
 
-    diagnostico = ler_coleta_reajuste(conteudo)
+    diagnostico = ler_coleta_reajuste(conteudo, contexto=contexto)
     if not diagnostico.get("valido"):
         pendencias = diagnostico.get("pendencias") or diagnostico.get("bloqueios_estruturais") or []
         raise ValueError("; ".join(str(item) for item in pendencias) or "A estrutura do Arquivo Coleta Oficial é inválida.")
@@ -609,6 +633,7 @@ def processar_coleta_oficial_runtime(conteudo: bytes) -> tuple[dict[str, Any], d
             conteudo,
             leitura=leitura,
             diagnostico=diagnostico,
+            contexto=contexto,
         )
     except ErroSegurancaXlsx:
         raise

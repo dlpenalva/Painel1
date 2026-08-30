@@ -226,7 +226,10 @@ def test_calculadoras_e_upload_usam_o_mesmo_fluxo_oficial() -> None:
         assert "NOME_ARQUIVO_COLETA_OFICIAL" in pagina
     assert "processar_coleta_oficial_runtime(conteudo_upload)" in upload
     assert "processar_arquivo_coleta(conteudo)" not in upload
-    assert "ler_masterfile_v10(conteudo, exigir_modelo_oficial=True)" in runtime
+    # PERF-ARCH-1 acrescentou o contexto de execucao a esta chamada; o que o
+    # teste guarda continua sendo o fluxo: o runtime le os bytes do upload
+    # exigindo o modelo oficial.
+    assert "ler_masterfile_v10(conteudo, exigir_modelo_oficial=True" in runtime
     assert "reconciliacao_xls_python" in runtime
     assert "avaliar_entrega_segura" in runtime
     assert 'if leitura\n        else _rotulo_origem_coleta(conteudo)' in runtime
