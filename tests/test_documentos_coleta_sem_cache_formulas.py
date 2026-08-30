@@ -18,7 +18,10 @@ O que estes testes fixam:
 * dados que realmente nao existem na Coleta continuam ausentes, sem virar zero
   nem valor inventado;
 * campos de preenchimento manual continuam como marcador;
-* a classificacao juridica das tres referencias do VTA nao se altera.
+* a classificacao juridica das tres referencias do VTA nao se altera;
+* o inicio dos efeitos financeiros permanece apurado como DATA EXATA no dado
+  canonico e e apresentado nos documentos pela COMPETENCIA (mm/aaaa) dela
+  derivada — o efeito alcanca a competencia inteira, nunca uma fracao de mes.
 """
 
 from __future__ import annotations
@@ -32,10 +35,23 @@ from openpyxl import load_workbook
 
 from _coleta_oficial import gerar_coleta_oficial_preenchida
 from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
+from _sumario_executivo import montar_dados_sumario_executivo
 from _templates_documentos import gerar_despacho_saneador, gerar_termo_apostila
 
 
+CICLO = "C1"
 PERCENTUAL_C1 = 0.0307853139440224
+# Marco temporal do cenario: unica fonte tanto da Coleta gerada quanto do
+# valor esperado nos documentos. Nada de data fixa repetida a mao.
+FINANCEIRO_INICIO_C1 = date(2026, 4, 1)
+
+
+def _data_br(valor: date) -> str:
+    return valor.strftime("%d/%m/%Y")
+
+
+def _competencia(valor: date) -> str:
+    return valor.strftime("%m/%Y")
 
 
 def _dados_cenario() -> dict:
@@ -49,7 +65,7 @@ def _dados_cenario() -> dict:
             "data_inicio": date(2026, 2, 1),
             "data_fim": date(2027, 1, 31),
             "data_pedido": date(2026, 2, 1),
-            "financeiro_inicio": date(2026, 4, 1),
+            "financeiro_inicio": FINANCEIRO_INICIO_C1,
             "percentual_aplicado": PERCENTUAL_C1,
             "situacao": "✅ TEMPESTIVO",
             "objeto_analise_atual": True,
@@ -64,6 +80,18 @@ def _texto_docx(conteudo: bytes) -> str:
         for linha in tabela.rows:
             partes.append(" | ".join(c.text.strip() for c in linha.cells))
     return "\n".join(partes)
+
+
+def _linha_do_quadro(texto: str, ciclo: str) -> str:
+    """Linha da tabela de ciclos (docx serializado com ' | ') do ciclo dado."""
+    linhas = [
+        linha for linha in texto.splitlines()
+        if ciclo in [celula.strip() for celula in linha.split("|")]
+    ]
+    assert len(linhas) == 1, (
+        f"esperada exatamente 1 linha de quadro para {ciclo}; achadas: {linhas}"
+    )
+    return linhas[0]
 
 
 @pytest.fixture(scope="module")
@@ -132,14 +160,39 @@ def test_apostila_traz_o_percentual_acumulado(texto_apostila: str) -> None:
     assert "[PREENCHER: Percentual acumulado apurado]" not in texto_apostila
 
 
-def test_ciclo_percentual_efeitos_e_situacao_no_quadro_de_ciclos(
-    texto_saneador: str, texto_apostila: str
+@pytest.fixture(scope="module")
+def ciclo_apurado(payload: dict) -> dict:
+    """Ciclo como a consolidacao canonica o entrega aos dois geradores."""
+    dados = montar_dados_sumario_executivo(payload, None)
+    ciclos = [c for c in (dados.get("ciclos") or []) if c.get("ciclo") == CICLO]
+    assert len(ciclos) == 1, f"cenario invalido: {CICLO} nao foi consolidado"
+    return ciclos[0]
+
+
+def test_inicio_dos_efeitos_permanece_data_exata_no_dado_apurado(
+    ciclo_apurado: dict,
 ) -> None:
+    """A conversao para competencia e de apresentacao: a data nao se perde."""
+    assert ciclo_apurado["inicio_efeito_financeiro"] == _data_br(
+        FINANCEIRO_INICIO_C1
+    )
+
+
+def test_ciclo_percentual_efeitos_e_situacao_no_quadro_de_ciclos(
+    ciclo_apurado: dict, texto_saneador: str, texto_apostila: str
+) -> None:
+    # Esperado derivado do proprio marco do cenario: data exata apurada ->
+    # competencia declarada. Trocar o marco muda o esperado junto.
+    data_exata = _data_br(FINANCEIRO_INICIO_C1)
+    assert ciclo_apurado["inicio_efeito_financeiro"] == data_exata
+    competencia = _competencia(FINANCEIRO_INICIO_C1)
     for texto in (texto_saneador, texto_apostila):
-        assert "C1" in texto
-        assert "3,08%" in texto
-        assert "01/04/2026" in texto
-        assert "TEMPESTIVO" in texto
+        linha = _linha_do_quadro(texto, CICLO)
+        assert "3,08%" in linha
+        assert f"A partir de {competencia}" in linha
+        assert "TEMPESTIVO" in linha
+        # O quadro declara a competencia, nunca o dia do inicio do efeito.
+        assert data_exata not in linha
 
 
 # --- ausencias legitimas permanecem ausentes ---

@@ -228,8 +228,34 @@ def test_template_b259_na_tem_semantica_propria():
 
 
 def test_template_comparativo_executivo_por_referencia():
+    """Comparativo executivo da 26C: referencia pura, sem matematica nova.
+
+    A 26C criou MEMORIA_RESULTADOS!A28:C29 como comparacao POR REFERENCIA a
+    valores que a propria aba ja consolidou. B28 nasceu como "=$B$26"; depois,
+    VTA-M2 e VTA-C2 deram a Financeiro e a Itens ramo proprio dentro do VTA
+    FINAL (B26) e a decomposicao generica B23 passou a ser so comparativa para
+    esses metodos, tornando B28 method-aware. A formula exata e obrigacao das
+    frentes que a definiram (tests/test_vta_m2_financeiro_condicional.py e
+    tests/test_vta_c2_consumido_canonico.py) e NAO e reduplicada aqui: este
+    teste guarda apenas o invariante da 26C.
+    """
     r = load_workbook(TEMPLATE, data_only=False)["MEMORIA_RESULTADOS"]
-    assert r["B28"].value == "=$B$26"
+    b28 = r["B28"].value
+    assert isinstance(b28, str) and b28.startswith("="), (
+        f"B28 precisa continuar sendo formula; achado: {b28!r}"
+    )
+    # Referencia, nunca calculo novo: le o metodo oficial e as duas fontes
+    # canonicas de VTA da propria aba.
+    for referencia in ("$B$4", "$B$23", "$B$26"):
+        assert referencia in b28, f"B28 deixou de referenciar {referencia}: {b28!r}"
+    # Nao volta a depender de outra aba nem do bloco historico desacoplado.
+    assert "!" not in b28, f"B28 nao pode referenciar outra aba: {b28!r}"
+    # Sem matematica nova: B28 seleciona, nao recalcula.
+    assert not set("+-*/^%&") & set(b28), f"B28 nao pode conter aritmetica: {b28!r}"
+    for funcao in ("SUMPRODUCT", "SUMIFS", "SUMIF", "SUM(", "ROUND", "COUNT"):
+        assert funcao not in b28.upper(), (
+            f"B28 nao pode agregar/recalcular ({funcao}): {b28!r}"
+        )
     assert r["B29"].value == "=comparativo_VTA!$B$208"
     assert "COMPARACAO DE REFERENCIA" in str(r["A28"].value)
     assert "integralmente reajustado" in str(r["A29"].value)
