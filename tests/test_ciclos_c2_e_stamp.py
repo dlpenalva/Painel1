@@ -52,7 +52,7 @@ class TestCiclosC2EStamp(unittest.TestCase):
         )
         self.assertIsNotNone(match)
         self.assertIn("from _versao import atualizado_em", UI)
-        self.assertIn('st.caption(f"Atualizado em {atualizado_em()}")', UI)
+        self.assertIn('st.caption(f"Última atualização publicada em {atualizado_em()}")', UI)
         self.assertIn("render_versao_sidebar()", APP)
 
     def test_sidebar_adota_indicador_visual_do_modelo_3(self):
