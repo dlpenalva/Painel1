@@ -20,7 +20,11 @@ from openpyxl import load_workbook
 from openpyxl.cell.cell import MergedCell
 from openpyxl.styles import Font, PatternFill
 
-from _seguranca_xlsx import garantir_xlsx_validado, validar_geometria_workbook
+from _seguranca_xlsx import (
+    ErroSegurancaXlsx,
+    garantir_xlsx_validado,
+    validar_geometria_workbook,
+)
 
 from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
 from _capacidades_apuracao import avaliar_capacidades_apuracao
@@ -509,19 +513,36 @@ def _celula_tem_observacao(valor: Any) -> bool:
     return "OBSERVACAO" in texto or texto.strip() == "OBS"
 
 
-def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
-    """Valida o XLS no upload sem recalcular nem substituir resultados do Excel."""
+def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
+    """Valida o XLS no upload sem recalcular nem substituir resultados do Excel.
+
+    ``contexto`` (PERF-ARCH-1) e o contexto da execucao corrente do fluxo
+    oficial: quando fornecido, as duas representacoes deste arquivo ja foram
+    abertas e aprovadas na fronteira de geometria, e sao reaproveitadas em vez
+    de repagar o parse. Sem contexto, a leitura isolada abre os proprios bytes
+    exatamente como antes.
+    """
 
     conteudo = garantir_xlsx_validado(conteudo)
-    try:
-        wb = load_workbook(BytesIO(conteudo), data_only=False, read_only=False)
-    except Exception as exc:
-        raise ValueError("O arquivo não é um XLSX válido.") from exc
+    if contexto is not None:
+        try:
+            # O gate de geometria roda dentro do contexto, antes da entrega.
+            wb = contexto.workbook_formulas
+        except ErroSegurancaXlsx:
+            # Erro de fronteira mantem a mensagem controlada da fronteira.
+            raise
+        except Exception as exc:
+            raise ValueError("O arquivo não é um XLSX válido.") from exc
+    else:
+        try:
+            wb = load_workbook(BytesIO(conteudo), data_only=False, read_only=False)
+        except Exception as exc:
+            raise ValueError("O arquivo não é um XLSX válido.") from exc
 
-    # Fronteira de geometria: aprova o orçamento de varredura antes que qualquer
-    # percurso de células aconteça, de modo que _formulas() e as demais leituras
-    # trabalhem sempre dentro de um retângulo já validado.
-    validar_geometria_workbook(wb)
+        # Fronteira de geometria: aprova o orçamento de varredura antes que
+        # qualquer percurso de células aconteça, de modo que _formulas() e as
+        # demais leituras trabalhem sempre dentro de um retângulo já validado.
+        validar_geometria_workbook(wb)
 
     faltantes = [aba for aba in ABAS_OBRIGATORIAS_LEGADO if aba not in wb.sheetnames]
     proibidas = [aba for aba in ABAS_PROIBIDAS if aba in wb.sheetnames]
@@ -838,7 +859,15 @@ def ler_coleta_reajuste(conteudo: bytes) -> dict[str, Any]:
 
     status_resultados: dict[str, Any] = {}
     try:
-        wb_valores = load_workbook(BytesIO(conteudo), data_only=True, read_only=True)
+        # PERF-ARCH-1: a representacao data_only deste mesmo arquivo ja existe
+        # na execucao oficial (o leitor masterfile a abriu e o contexto a
+        # guarda). Reabri-la aqui repagava o parse XML integral so para varrer
+        # erros de calculo em cache.
+        wb_valores = (
+            contexto.workbook_valores
+            if contexto is not None
+            else load_workbook(BytesIO(conteudo), data_only=True, read_only=True)
+        )
         erros = []
         for ws in wb_valores.worksheets:
             for row in ws.iter_rows():

@@ -3251,6 +3251,7 @@ def _ler_posicao_contratual(
     origem: bytes | str | None = None,
     *,
     validar_geometria: bool = False,
+    contexto=None,
 ) -> dict[str, Any]:
     """Le a aba posicao_contratual do novo modelo oficial (por cabecalho).
 
@@ -3318,20 +3319,29 @@ def _ler_posicao_contratual(
         # Distingue reabrindo o arquivo com data_only=False: se ha formula
         # onde a leitura data_only retornou None, o cache esta ausente.
         try:
-            fonte2 = BytesIO(origem) if isinstance(origem, (bytes, bytearray)) else origem
-            # PERF-TEST-1: esta reabertura existe para UMA pergunta — a celula
-            # tem formula? Responde-la materializava o workbook inteiro (~2
-            # milhoes de celulas, 1,69 s) para consultar duas celulas. Em modo
-            # read_only o mesmo valor sai por streaming em 0,04 s. data_only
-            # continua False: e a formula, nao o cache, que responde a pergunta.
-            wb_formulas = load_workbook(fonte2, data_only=False, read_only=True)
-            # XSEC-09: segunda materializacao dos MESMOS bytes. A geometria e
-            # propriedade do arquivo, entao aqui o gate so confirma o que ja
-            # foi aprovado na abertura principal — mas confirma, para que a
-            # regra "todo workbook aberto passa pelo gate" nao dependa de quem
-            # chamou.
-            if validar_geometria:
-                validar_geometria_workbook(wb_formulas)
+            if contexto is not None:
+                # PERF-ARCH-1: no fluxo oficial este caminho raro deixa de ser
+                # uma materializacao extra. O contexto ja abre (ou vai abrir)
+                # a representacao de formulas para ler_coleta_reajuste — a
+                # pergunta daqui viaja de carona nela, e o gate de geometria
+                # corre dentro do proprio contexto, antes da entrega.
+                wb_formulas = contexto.workbook_formulas
+            else:
+                fonte2 = BytesIO(origem) if isinstance(origem, (bytes, bytearray)) else origem
+                # PERF-TEST-1: esta reabertura existe para UMA pergunta — a
+                # celula tem formula? Responde-la materializava o workbook
+                # inteiro (~2 milhoes de celulas, 1,69 s) para consultar duas
+                # celulas. Em modo read_only o mesmo valor sai por streaming
+                # em 0,04 s. data_only continua False: e a formula, nao o
+                # cache, que responde a pergunta.
+                wb_formulas = load_workbook(fonte2, data_only=False, read_only=True)
+                # XSEC-09: segunda materializacao dos MESMOS bytes. A geometria
+                # e propriedade do arquivo, entao aqui o gate so confirma o que
+                # ja foi aprovado na abertura principal — mas confirma, para
+                # que a regra "todo workbook aberto passa pelo gate" nao
+                # dependa de quem chamou.
+                if validar_geometria:
+                    validar_geometria_workbook(wb_formulas)
             ws_f = wb_formulas[ABA_POSICAO_CONTRATUAL]
             a2_formula = str(ws_f.cell(2, col_item).value or "").startswith("=")
             a2_cache = ws.cell(2, col_item).value
@@ -3492,7 +3502,10 @@ def _detectar_versao(wb) -> str:
 # ---------------------------------------------------------------------------
 
 def ler_masterfile_v10(
-    origem: bytes | str, *, exigir_modelo_oficial: bool = False
+    origem: bytes | str,
+    *,
+    exigir_modelo_oficial: bool = False,
+    contexto=None,
 ) -> dict[str, Any]:
     """
     Le Masterfile v10 RC. Aceita bytes (upload) ou caminho.
@@ -3505,6 +3518,12 @@ def ler_masterfile_v10(
     oficial. False (padrao): compatibilidade temporaria com estruturas
     anteriores, amparada na politica de versionamento existente
     (_detectar_versao), para consumidores internos e testes.
+
+    contexto (PERF-ARCH-1): contexto da execucao corrente do fluxo oficial.
+    Quando fornecido, o workbook data_only=True deste arquivo ja foi aberto e
+    ja passou pelo gate de geometria dentro do contexto, e e reaproveitado em
+    vez de repagar o parse. Sem contexto, a leitura isolada abre os proprios
+    bytes exatamente como antes — inclusive quanto a quando o gate roda.
     """
     res: dict[str, Any] = {
         "ok": False, "erro": "", "avisos": [], "abas_ausentes": [],
@@ -3531,21 +3550,29 @@ def ler_masterfile_v10(
     try:
         if isinstance(origem, (bytes, bytearray, memoryview)):
             origem = garantir_xlsx_validado(origem)
-        fonte = BytesIO(origem) if isinstance(origem, (bytes, bytearray)) else origem
-        wb = load_workbook(fonte, data_only=True)
-        # XSEC-09: este e o PRIMEIRO parser vivo do fluxo de upload. O gate de
-        # geometria precisa correr aqui, antes de qualquer percurso de celulas
-        # — as varreduras deste modulo usam ws.cell(), que MATERIALIZA a celula
-        # ausente, entao um max_row inflado vira custo real de memoria. O mesmo
-        # gate ja rodava em ler_coleta_reajuste, mas so no terceiro load do
-        # fluxo, depois de o custo ter sido pago duas vezes.
-        #
-        # So no modelo oficial: a allowlist de abas descreve a Coleta, e o
-        # caminho legado (exigir_modelo_oficial=False) le Masterfiles com abas
-        # "historico"/"validacoes", que estao fora dela. O upload real e o
-        # unico consumidor nao confiavel e sempre passa exigir_modelo_oficial.
-        if exigir_modelo_oficial:
-            validar_geometria_workbook(wb)
+        if contexto is not None:
+            # PERF-ARCH-1: o contexto da execucao ja materializou ESTES bytes
+            # em data_only=True e ja aplicou validar_geometria_workbook antes
+            # de entregar o objeto — o gate XSEC-09 continua correndo antes do
+            # primeiro acesso a celula, so que uma vez por upload em vez de
+            # uma vez por leitor.
+            wb = contexto.workbook_valores
+        else:
+            fonte = BytesIO(origem) if isinstance(origem, (bytes, bytearray)) else origem
+            wb = load_workbook(fonte, data_only=True)
+            # XSEC-09: em chamada isolada este e o PRIMEIRO parser vivo. O gate
+            # de geometria precisa correr aqui, antes de qualquer percurso de
+            # celulas — as varreduras deste modulo usam ws.cell(), que
+            # MATERIALIZA a celula ausente, entao um max_row inflado vira custo
+            # real de memoria.
+            #
+            # So no modelo oficial: a allowlist de abas descreve a Coleta, e o
+            # caminho legado (exigir_modelo_oficial=False) le Masterfiles com
+            # abas "historico"/"validacoes", que estao fora dela. O upload real
+            # e o unico consumidor nao confiavel e sempre passa
+            # exigir_modelo_oficial.
+            if exigir_modelo_oficial:
+                validar_geometria_workbook(wb)
     except ErroSegurancaXlsx as exc:
         res["erro"] = str(exc)
         return res
@@ -3709,7 +3736,7 @@ def ler_masterfile_v10(
         res["avisos"].append(f"historico_VU: {alerta}")
 
     res["posicao_contratual"] = _ler_posicao_contratual(
-        wb, origem, validar_geometria=exigir_modelo_oficial
+        wb, origem, validar_geometria=exigir_modelo_oficial, contexto=contexto
     )
     for alerta in res["posicao_contratual"].get("alertas", []):
         res["avisos"].append(alerta)
