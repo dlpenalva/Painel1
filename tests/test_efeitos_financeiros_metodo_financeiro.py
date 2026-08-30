@@ -12,6 +12,7 @@ from _coleta_oficial import (
     gerar_coleta_oficial_preenchida,
     normalizar_dados_calculadora,
 )
+from _fabrica_coleta import workbook_coleta_oficial
 from _coleta_reajuste import ler_coleta_reajuste
 from _coleta_reajuste_documentos import (
     adaptar_coleta_reajuste_para_documentos,
@@ -43,10 +44,14 @@ def _dados(inicio_efeito="18/04/2024"):
 
 
 def _wb(dados=None):
-    return load_workbook(
-        io.BytesIO(gerar_coleta_oficial_preenchida(dados or _dados())),
-        data_only=False,
-    )
+    """Workbook novo e independente da Coleta preenchida.
+
+    Os bytes vem da fabrica: a mesma entrada e gerada uma unica vez por sessao
+    (custava ~13 s por chamada e este modulo pedia a MESMA entrada dezenas de
+    vezes). O ``Workbook`` continua exclusivo de quem chamou — os testes deste
+    arquivo mutam celulas e nao podem compartilhar objeto.
+    """
+    return workbook_coleta_oficial(dados or _dados())
 
 
 def _linha_competencia(ws, ano, mes):
@@ -226,11 +231,17 @@ def test_limites_operacionais_convergem_na_linha_73():
     assert all(str(ws[f"{col}74"].value).upper().startswith("=SUM") for col in "CEF")
     assert all(ws[f"{col}74"].value is None for col in "ADG")
     assert all(str(intervalo.sqref) == "A2:G73" for intervalo in ws.conditional_formatting._cf_rules)
+    # O invariante e sobre FORMULAS que referenciam a aba financeiro. Filtrar
+    # so por "financeiro!" no texto tambem captura os rotulos de V61:V65
+    # ("Financeiro considerado C0 (financeiro!E)" etc.), que sao legendas e
+    # nunca conteriam "$73". O criterio semantico e o tipo da celula.
     formulas_resultados = [
         cell.value for row in wb["MEMORIA_RESULTADOS"].iter_rows() for cell in row
-        if isinstance(cell.value, str) and "financeiro!" in cell.value
+        if cell.data_type == "f"
+        and isinstance(cell.value, str)
+        and "financeiro!" in cell.value
     ]
-    assert formulas_resultados
+    assert len(formulas_resultados) == 12
     assert all("$73" in formula and "$74" not in formula for formula in formulas_resultados)
 
 

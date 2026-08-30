@@ -3319,7 +3319,12 @@ def _ler_posicao_contratual(
         # onde a leitura data_only retornou None, o cache esta ausente.
         try:
             fonte2 = BytesIO(origem) if isinstance(origem, (bytes, bytearray)) else origem
-            wb_formulas = load_workbook(fonte2, data_only=False)
+            # PERF-TEST-1: esta reabertura existe para UMA pergunta — a celula
+            # tem formula? Responde-la materializava o workbook inteiro (~2
+            # milhoes de celulas, 1,69 s) para consultar duas celulas. Em modo
+            # read_only o mesmo valor sai por streaming em 0,04 s. data_only
+            # continua False: e a formula, nao o cache, que responde a pergunta.
+            wb_formulas = load_workbook(fonte2, data_only=False, read_only=True)
             # XSEC-09: segunda materializacao dos MESMOS bytes. A geometria e
             # propriedade do arquivo, entao aqui o gate so confirma o que ja
             # foi aprovado na abertura principal — mas confirma, para que a
