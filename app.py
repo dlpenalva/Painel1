@@ -10,15 +10,25 @@ from pathlib import Path
 
 import streamlit as st
 
-from _theme import render_cl8us_light_theme
-from _ui_utils import render_versao_sidebar
-
-
 st.set_page_config(
     page_title="TLB · cl8us — Reajustes contratuais",
     page_icon=str(Path(__file__).resolve().parent / "assets" / "cl8us_favicon_512.png"),
     layout="wide",
 )
+
+# O deploy troca os arquivos do checkout sem reiniciar o processo: sem este
+# alinhamento, pagina nova passa a conviver com modulo antigo em sys.modules.
+# Roda antes de qualquer import local e so age quando o SHA do checkout muda.
+from _runtime_revision import RevisaoIncoerenteError, garantir_revisao_coerente  # noqa: E402
+
+try:
+    garantir_revisao_coerente()
+except RevisaoIncoerenteError as erro:
+    st.error(str(erro))
+    st.stop()
+
+from _theme import render_cl8us_light_theme  # noqa: E402
+from _ui_utils import render_versao_sidebar  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent
 PAGES_DIR = ROOT / "pages"
