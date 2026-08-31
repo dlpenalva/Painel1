@@ -5477,22 +5477,90 @@ def _financeiro_por_ciclo_para_validacao_contratada(resultado, consolidado):
             }
         return saida
 
-    df_fin = resultado.get("df_financeiro_mensal")
-    if not isinstance(df_fin, pd.DataFrame) or df_fin.empty:
+    # Financeiro: o comunicado nao reclassifica a coluna G. O inicio vem da
+    # base mensal ja tratada pelo motor; as competencias excluidas vem do
+    # dataframe canonico de meses sem efeito. Assim, vazio/indeterminado nao
+    # vira "Nao" por exclusao logica e ciclo neutro nao vira perda financeira.
+    df_tratado = resultado.get("df_financeiro_mensal_tratado")
+    df_sem_efeito = resultado.get("df_meses_sem_efeito_financeiro")
+    if not isinstance(df_tratado, pd.DataFrame):
+        df_tratado = pd.DataFrame()
+    if not isinstance(df_sem_efeito, pd.DataFrame):
+        df_sem_efeito = pd.DataFrame()
+    if df_tratado.empty and df_sem_efeito.empty:
         return saida
-    for ciclo, grupo in df_fin.groupby("Ciclo"):
-        com_efeito = grupo[grupo["Efeito financeiro"] == "Sim"]
-        sem_efeito = grupo[grupo["Efeito financeiro"] != "Sim"]
+
+    diferenca_potencial_por_ciclo = {}
+    df_ciclos = resultado.get("df_ciclos")
+    if isinstance(df_ciclos, pd.DataFrame) and not df_ciclos.empty:
+        for _, row in df_ciclos.iterrows():
+            ciclo = str(row.get("Ciclo") or "").strip().upper()
+            material = None
+            for coluna_fator in ("Fator acumulado efetivo", "Fator acumulado"):
+                fator = pd.to_numeric(row.get(coluna_fator), errors="coerce")
+                if pd.notna(fator):
+                    material = abs(float(fator) - 1.0) > 0.0000001
+                    break
+            if material is None:
+                variacao = pd.to_numeric(row.get("Variação"), errors="coerce")
+                if pd.notna(variacao):
+                    material = abs(float(variacao)) > 0.0000001
+            if ciclo and material is not None:
+                diferenca_potencial_por_ciclo[ciclo] = material
+
+    ciclos = set()
+    for df in (df_tratado, df_sem_efeito):
+        if not df.empty and "Ciclo" in df.columns:
+            ciclos.update(str(v or "").strip().upper() for v in df["Ciclo"])
+
+    for ciclo in sorted(c for c in ciclos if c):
+        grupo = (
+            df_tratado[
+                df_tratado["Ciclo"].astype(str).str.strip().str.upper().eq(ciclo)
+            ].copy()
+            if not df_tratado.empty and "Ciclo" in df_tratado.columns
+            else pd.DataFrame()
+        )
+        if "Competência sem efeito financeiro?" in grupo.columns:
+            flags = grupo["Competência sem efeito financeiro?"].astype(str).str.strip().str.upper()
+            com_efeito = grupo[flags.isin({"NAO", "NÃO"})]
+        elif "Efeito financeiro" in grupo.columns:
+            flags = grupo["Efeito financeiro"].astype(str).str.strip().str.upper()
+            com_efeito = grupo[flags.eq("SIM")]
+        else:
+            com_efeito = pd.DataFrame()
+
+        sem_efeito = (
+            df_sem_efeito[
+                df_sem_efeito["Ciclo"].astype(str).str.strip().str.upper().eq(ciclo)
+            ].copy()
+            if not df_sem_efeito.empty and "Ciclo" in df_sem_efeito.columns
+            else pd.DataFrame()
+        )
+        coluna_delta = next(
+            (col for col in ("Delta não devido", "Delta sem efeito financeiro") if col in sem_efeito.columns),
+            None,
+        )
+        if coluna_delta:
+            delta = pd.to_numeric(sem_efeito[coluna_delta], errors="coerce")
+            sem_efeito = sem_efeito[delta.abs() > 0.004]
+        elif not diferenca_potencial_por_ciclo.get(ciclo, False):
+            # G="Nao" em ciclo de fator 1,00 nao retirou diferenca financeira.
+            sem_efeito = sem_efeito.iloc[0:0]
+
         periodos_com_efeito = sorted(
             p for p in com_efeito["Competência"].apply(normalizar_competencia_periodo) if p is not None
-        )
+        ) if not com_efeito.empty and "Competência" in com_efeito.columns else []
         periodos_sem_efeito = sorted(
             p for p in sem_efeito["Competência"].apply(normalizar_competencia_periodo) if p is not None
-        )
-        saida[str(ciclo).upper()] = {
+        ) if not sem_efeito.empty and "Competência" in sem_efeito.columns else []
+        saida[ciclo] = {
             "inicio_efeito": periodo_para_label_br(periodos_com_efeito[0]) if periodos_com_efeito else None,
             "competencias_sem_efeito": [periodo_para_label_br(p) for p in periodos_sem_efeito],
-            "valor_sem_efeito": float(sem_efeito["Valor pago/faturado"].sum()) if not sem_efeito.empty else 0.0,
+            "valor_sem_efeito": (
+                float(sem_efeito["Valor pago/faturado"].sum())
+                if not sem_efeito.empty and "Valor pago/faturado" in sem_efeito.columns else 0.0
+            ),
         }
     return saida
 

@@ -11,10 +11,10 @@ from numbers import Real
 from typing import Any
 
 
-# STATUS-CANON-1: o status da apuracao apresentado ao usuario NAO e calculado
-# aqui. Ele espelha a conclusao oficial ja consolidada na aba RESULTADOS
-# (RESULTADOS!B3, lido em diagnostico["metadados"]["status_resultados"]["geral"]).
-# Por isso o vocabulario visivel passou a ser o vocabulario do proprio XLS.
+# STATUS-CANON-1: o status apresentado nao e recalculado aqui. O cache de
+# RESULTADOS!B3 tem precedencia; quando apenas esse cache falta, a conclusao ja
+# emitida pela politica canonica Python pode ser usada. O vocabulario visivel
+# permanece o vocabulario oficial do produto.
 STATUS_CONFIAVEL = "VALIDADO"
 STATUS_RESSALVAS = "VALIDADO COM RESSALVAS"
 STATUS_ESTIMADO = "ESTIMADO"
@@ -47,7 +47,13 @@ _STATUS_OFICIAL_PARA_PAINEL = {
 _STATUS_OFICIAL_CONCLUSIVOS = {"VALIDADO", "VALIDADO COM RESSALVAS", "ESTIMADO"}
 
 ORIGEM_STATUS_RESULTADOS = "resultados_xls"
+ORIGEM_STATUS_MOTOR_PYTHON = "motor_canonico_python"
 ORIGEM_STATUS_INDISPONIVEL = "indisponivel"
+
+_STATUS_POLITICA_CONCLUSIVOS = {
+    "PRONTO_PARA_VALIDACAO_FISCAL",
+    "APTO_PARA_FORMALIZACAO",
+}
 
 _ROTULOS_METODO = {
     "financeiro": "Financeiro",
@@ -152,6 +158,45 @@ def _status_oficial_resultados(status_resultados: dict[str, Any]) -> dict[str, A
         "conclusivo": False,
         "origem": ORIGEM_STATUS_INDISPONIVEL,
     }
+
+
+def _status_canonico_apuracao(
+    status_resultados: dict[str, Any],
+    politica: dict[str, Any],
+    formula_status_presente: bool = False,
+) -> dict[str, Any]:
+    """Seleciona uma conclusao existente sem recalcular a formula do XLS.
+
+    O cache valido de RESULTADOS continua tendo precedencia, inclusive para
+    REVISE e ESTIMADO. O fallback so existe para a situacao precisamente
+    distinguivel de formula sem cache: a formula foi comprovada no workbook,
+    mas seu valor esta vazio, enquanto a politica canonica Python ja concluiu
+    a apuracao e declarou que ela pode ser confirmada. Formula/bloco ausente,
+    vocabulario desconhecido e politica parcial/bloqueada permanecem
+    fail-closed.
+    """
+    status_xls = _status_oficial_resultados(status_resultados)
+    if status_xls["disponivel"]:
+        return status_xls
+
+    bruto = (status_resultados or {}).get("geral")
+    formula_presente = formula_status_presente is True
+    cache_vazio = bruto is None or not str(bruto).strip()
+    status_politica = str((politica or {}).get("status") or "").strip().upper()
+    politica_conclusiva = (
+        status_politica in _STATUS_POLITICA_CONCLUSIVOS
+        and (politica or {}).get("pode_confirmar") is True
+        and not list((politica or {}).get("bloqueios") or [])
+    )
+    if formula_presente and cache_vazio and politica_conclusiva:
+        return {
+            "codigo": "VALIDADO",
+            "bruto": bruto,
+            "disponivel": True,
+            "conclusivo": True,
+            "origem": ORIGEM_STATUS_MOTOR_PYTHON,
+        }
+    return status_xls
 
 
 def montar_resultado_consolidado(
@@ -346,15 +391,22 @@ def montar_resultado_consolidado(
     # ------------------------------------------------------------------
     # STATUS-CANON-1 — STATUS DA APURACAO
     # ------------------------------------------------------------------
-    # Fonte canonica unica: a conclusao oficial da aba RESULTADOS. O Python nao
-    # recalcula esse status nem mantem uma regua paralela que o substitua.
+    # Fonte primaria: conclusao da aba RESULTADOS. Sem o cache dessa formula, a
+    # politica canonica Python pode fornecer a conclusao que ela ja produziu;
+    # este modulo nao reproduz a formula nem cria uma regua paralela.
     #
     # Fail-closed: quando a conclusao oficial nao existe, o painel NAO fabrica
     # VALIDADO. Mas a indisponibilidade tem de vir da ausencia do STATUS OFICIAL
     # (ou da ausencia do proprio VTA/metodo), jamais da ausencia isolada de
     # PC/Financeiro/Consumo em um ciclo — execucao legitimamente zero e um valor
     # apurado, nao uma lacuna (ZERO REAL != AUSENCIA).
-    status_oficial = _status_oficial_resultados(status_resultados_xls)
+    status_oficial = _status_canonico_apuracao(
+        status_resultados_xls,
+        politica,
+        (diagnostico.get("metadados") or {}).get(
+            "formula_status_resultados_presente"
+        ),
+    )
     # Lacunas materiais do proprio nucleo, independentes da aba RESULTADOS.
     # Nao incluem "ciclo sem PC": esse sinal e ressalva, nunca indisponibilidade.
     nucleo_indisponivel = vta is None or metodo_codigo == "indeterminado"
@@ -383,6 +435,11 @@ def montar_resultado_consolidado(
             mensagem_status = (
                 "A aba RESULTADOS concluiu ESTIMADO: o remanescente foi tratado "
                 "por estimativa."
+            )
+        elif status_oficial["origem"] == ORIGEM_STATUS_MOTOR_PYTHON:
+            mensagem_status = (
+                "Conclusão produzida pelo motor canônico da apuração; a fórmula "
+                "de status do XLS está presente, mas sem valor cacheado."
             )
         else:
             mensagem_status = "Conclusão reproduzida da aba RESULTADOS do XLS."

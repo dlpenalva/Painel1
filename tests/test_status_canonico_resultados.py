@@ -1,4 +1,4 @@
-"""STATUS-CANON-1 — a aba RESULTADOS e a fonte canonica do status da apuracao.
+"""STATUS-CANON-1 — status vem de conclusao canonica, nao de regra da UI.
 
 Defeito corrigido (caso real ICTI, Coleta_Reajuste_C1_ICTI_27-08-2026):
 
@@ -15,7 +15,8 @@ conclusao oficial do XLS.
 
 Contrato fixado aqui:
 
-* STATUS DA APURACAO   -> espelha RESULTADOS!B3 (VALIDADO/ESTIMADO/REVISE);
+* STATUS DA APURACAO   -> usa RESULTADOS!B3 quando cacheado; sem esse cache,
+                          aceita a conclusao ja emitida pelo motor Python;
 * RESSALVAS            -> informam, nunca rebaixam o status oficial;
 * FORMALIZACAO         -> eixo separado, pode bloquear com apuracao validada;
 * ZERO REAL            -> valor apurado (0.0), jamais lacuna;
@@ -37,7 +38,10 @@ _SEM_BLOCO_DE_STATUS = object()
 
 
 def _diagnostico(status_oficial="VALIDADO"):
-    metadados = {"ciclos_em_analise": ["C1"]}
+    metadados = {
+        "ciclos_em_analise": ["C1"],
+        "formula_status_resultados_presente": True,
+    }
     if status_oficial is not _SEM_BLOCO_DE_STATUS:
         metadados["status_resultados"] = {
             "geral": status_oficial,
@@ -89,6 +93,7 @@ def _caso_icti(status_oficial="VALIDADO"):
         # metodo do ciclo ficar indefinido.
         "politica_entrega_segura": {
             "status": "INFORMACAO_INSUFICIENTE",
+            "pode_confirmar": False,
             "pode_formalizar": False,
             "retroativo": {
                 "metodo": None,
@@ -174,14 +179,29 @@ def test_ausencia_do_vta_continua_fail_closed_mesmo_com_resultados_validado():
 # TESTES NEGATIVOS — a correcao nao pode transformar tudo em VALIDADO
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize(
-    "status_oficial",
-    [None, "", "   ", "QUALQUER COISA"],
-    ids=["ausente", "vazio", "espacos", "vocabulario-desconhecido"],
-)
-def test_sem_status_oficial_o_painel_nao_fabrica_validado(status_oficial):
-    """A indisponibilidade vem da AUSENCIA DO STATUS OFICIAL, nao de PC."""
+def test_cache_de_status_vazio_usa_conclusao_canonica_python():
+    caso = _caso_icti(None)
+    caso["politica_entrega_segura"].update({
+        "status": "PRONTO_PARA_VALIDACAO_FISCAL",
+        "pode_confirmar": True,
+        "bloqueios": [],
+    })
+
+    consolidado = montar_resultado_consolidado(caso, _diagnostico(None))
+
+    assert consolidado["status_confiabilidade"] == STATUS_CONFIAVEL
+    assert consolidado["status_apuracao"]["origem"] == "motor_canonico_python"
+    assert consolidado["formalizacao"]["status"] == "SEM BLOQUEIO"
+
+
+def test_status_desconhecido_no_xls_nao_usa_fallback_python():
+    status_oficial = "QUALQUER COISA"
     caso = _caso_icti(status_oficial)
+    caso["politica_entrega_segura"].update({
+        "status": "PRONTO_PARA_VALIDACAO_FISCAL",
+        "pode_confirmar": True,
+        "bloqueios": [],
+    })
 
     consolidado = montar_resultado_consolidado(caso, _diagnostico(status_oficial))
 
@@ -190,6 +210,36 @@ def test_sem_status_oficial_o_painel_nao_fabrica_validado(status_oficial):
     assert consolidado["status_apuracao"]["origem"] == "indisponivel"
     assert "aba RESULTADOS" in consolidado["mensagem_status"]
     assert consolidado["formalizacao"]["status"] == "AGUARDA CONFIRMAÇÃO"
+
+
+def test_cache_vazio_com_politica_parcial_continua_fail_closed():
+    caso = _caso_icti(None)
+    caso["politica_entrega_segura"].update({
+        "status": "APURACAO_PARCIAL",
+        "pode_confirmar": False,
+        "bloqueios": [],
+    })
+
+    consolidado = montar_resultado_consolidado(caso, _diagnostico(None))
+
+    assert consolidado["status_confiabilidade"] == STATUS_PENDENTE
+    assert consolidado["status_apuracao"]["origem"] == "indisponivel"
+
+
+def test_cache_vazio_sem_formula_de_status_continua_fail_closed():
+    caso = _caso_icti(None)
+    caso["politica_entrega_segura"].update({
+        "status": "PRONTO_PARA_VALIDACAO_FISCAL",
+        "pode_confirmar": True,
+        "bloqueios": [],
+    })
+    diagnostico = _diagnostico(None)
+    diagnostico["metadados"]["formula_status_resultados_presente"] = False
+
+    consolidado = montar_resultado_consolidado(caso, diagnostico)
+
+    assert consolidado["status_confiabilidade"] == STATUS_PENDENTE
+    assert consolidado["status_apuracao"]["origem"] == "indisponivel"
 
 
 def test_bloco_de_status_totalmente_ausente_tambem_e_fail_closed():

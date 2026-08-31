@@ -858,6 +858,7 @@ def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
         avisos.append("Ainda não há valores mensais nem itens remanescentes preenchidos pelo fiscal.")
 
     status_resultados: dict[str, Any] = {}
+    formula_status = None
     try:
         # PERF-ARCH-1: a representacao data_only deste mesmo arquivo ja existe
         # na execucao oficial (o leitor masterfile a abriu e o contexto a
@@ -922,6 +923,11 @@ def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
                 )
         resultados_valores = wb_valores[aba_resultados_tecnicos]
         resultados_executivos = wb_valores["RESULTADOS"]
+        formula_status = (
+            wb["RESULTADOS"]["B3"].value
+            if "MEMORIA_RESULTADOS" in wb.sheetnames
+            else wb[aba_resultados_tecnicos]["J4"].value
+        )
         status_resultados = {
             "geral": (
                 resultados_executivos["B3"].value
@@ -967,6 +973,10 @@ def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
         "data_corte": wb["CONTROLE"]["B3"].value,
         "ciclos_em_analise": [f"C{numero}" for numero in ativos],
         "status_resultados": status_resultados,
+        "formula_status_resultados_presente": (
+            isinstance(formula_status, str) and formula_status.startswith("=")
+            if status_resultados else False
+        ),
         "arquitetura_posicao_contratual": "canonica" if possui_posicao_contratual else "legada",
     }
     # HARD BLOCK: somente falhas estruturais tornam o arquivo invalido e barram
