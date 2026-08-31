@@ -68,7 +68,8 @@ def test_leitor_referencias_fail_closed_no_template():
     assert ref["disponivel"] is True
     assert ref["forma1_posicao_atual"] is None
     assert ref["posicao_atual_disponivel"] is False
-    assert ref["fontes"]["forma1"].startswith("MEMORIA_RESULTADOS!W50")
+    assert ref["origem_leitura"] == "defined_names"
+    assert ref["fontes"]["forma1"] == "AUDITORIA_SITUACAO_ATUAL_CONTRATO"
 
 
 def test_leitor_referencias_le_da_tabela1_sintetica():
@@ -85,6 +86,7 @@ def test_leitor_referencias_le_da_tabela1_sintetica():
     ce["D5"] = _dt.date(2027, 6, 15)
     ce["A9"] = 999.0
     ref = _ler_referencias_vta(wb)
+    assert ref["origem_leitura"] == "legacy_coordinates"
     assert ref["forma1_posicao_atual"] == 100.0
     assert ref["forma2_ultima_abertura"] == 200.0
     assert ref["forma3_integral_reajustado"] == 300.0

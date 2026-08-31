@@ -832,6 +832,7 @@
    "forma2_situacao": "REFERENCIA - ABERTURA DO CICLO C0",
    "forma2_ultima_abertura": 3000.0,
    "forma3_integral_reajustado": 3267.04,
+   "origem_leitura": "legacy_coordinates",
    "posicao_atual_disponivel": false,
    "reconciliacao_status": "POSICAO ATUAL NAO INFORMADA",
    "reconciliacao_valor": null
