@@ -910,6 +910,7 @@
    "forma2_situacao": "REFERENCIA - ABERTURA DO CICLO C3",
    "forma2_ultima_abertura": 7835180.34,
    "forma3_integral_reajustado": 8499931.01,
+   "origem_leitura": "legacy_coordinates",
    "posicao_atual_disponivel": true,
    "reconciliacao_status": "RECONCILIADO",
    "reconciliacao_valor": 0.0

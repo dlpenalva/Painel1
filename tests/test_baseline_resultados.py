@@ -150,7 +150,12 @@ def test_ancoras_nomeadas_da_aba_resultados_estao_estaveis():
     """Os intervalos nomeados ancorados na aba sao API, nao decoracao."""
     contrato = fotografar_contrato_xls(bytes_cenario("01_financeiro_normal"))
     assert contrato["nomes_ancorados_na_aba"] == [
+        "AJUSTES_DEVIDOS",
+        "AUDITORIA_ABERTURA_STATUS",
+        "AUDITORIA_SITUACAO_ATUAL_STATUS",
+        "CONFERENCIA_FORMACAO_VTA",
         "EXECUCAO_ATUALIZADA_CICLO",
+        "EXECUTADO_APURADO",
         "OPCOES_APLICAR_MANUAL",
         "SALDO_REMANESCENTE_ATUAL",
         "STATUS_RESULTADOS",

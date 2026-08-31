@@ -3370,12 +3370,32 @@ def _ler_posicao_contratual(
     return resultado
 
 
+_NOMES_RESULTADOS_PUBLICADOS_PR1 = (
+    "EXECUTADO_APURADO", "AJUSTES_DEVIDOS", "CONFERENCIA_FORMACAO_VTA",
+    "PC_TOTAL_CADASTRADO", "PC_TOTAL_ATE_CORTE", "PC_TOTAL_COM_EFEITO",
+    "PC_TOTAL_SEM_EFEITO",
+)
+
+
 _NOMES_RESULTADOS_XLS = (
     "METODO_RETROATIVO", "TOLERANCIA_DIVERGENCIA",
     "RETRO_FIN", "RETRO_PC", "RETRO_ITENS", "RETRO_OFICIAL",
     "VTA_CALCULADO", "AJUSTE_MANUAL_VTA", "VTA_MANUAL_OFICIAL", "VTA_FINAL",
     "QTD_REM_OFICIAL", "REM_BASE_OFICIAL", "REM_ATUALIZADO_OFICIAL",
-)
+) + _NOMES_RESULTADOS_PUBLICADOS_PR1
+
+
+# Allowlist separada: estas referencias existem exclusivamente para auditoria
+# e nunca integram o mapa de resultados oficiais acima.
+_NOMES_AUDITORIA_XLS = {
+    "forma1_posicao_atual": "AUDITORIA_SITUACAO_ATUAL_CONTRATO",
+    "forma2_ultima_abertura": "AUDITORIA_ULTIMA_REFERENCIA_ABERTURA",
+    "forma3_integral_reajustado": "AUDITORIA_COMPARATIVO_INTEGRAL",
+    "reconciliacao_valor": "AUDITORIA_DIFERENCA_REFERENCIAS",
+    "forma1_situacao": "AUDITORIA_SITUACAO_ATUAL_STATUS",
+    "forma2_situacao": "AUDITORIA_ABERTURA_STATUS",
+    "reconciliacao_status": "AUDITORIA_CONFERENCIA_STATUS",
+}
 
 
 def _ler_resultados_xls(wb) -> dict[str, Any]:
@@ -3412,7 +3432,7 @@ def _ler_resultados_xls(wb) -> dict[str, Any]:
         "RETRO_FIN", "RETRO_PC", "RETRO_ITENS", "RETRO_OFICIAL",
         "VTA_CALCULADO", "VTA_FINAL",
         "QTD_REM_OFICIAL", "REM_BASE_OFICIAL", "REM_ATUALIZADO_OFICIAL",
-    )
+    ) + _NOMES_RESULTADOS_PUBLICADOS_PR1
     presentes_calc = [n for n in calculados if n in resultado["nomes_presentes"]]
     resultado["cache_ausente"] = bool(presentes_calc) and all(
         resultado["valores"].get(n) is None for n in presentes_calc
@@ -3426,6 +3446,18 @@ def _num_ou_none(v: Any) -> float | None:
     if isinstance(v, (int, float)):
         return float(v)
     return None
+
+
+def _valor_por_nome_definido(wb, nome: str) -> Any:
+    """Resolve um nome publicado de celula unica, sem descoberta por prefixo."""
+    dn = wb.defined_names[nome]
+    destinos = list(dn.destinations)
+    if len(destinos) != 1:
+        raise ValueError(f"Nome definido {nome} nao aponta para uma celula unica.")
+    aba, referencia = destinos[0]
+    if ":" in referencia:
+        raise ValueError(f"Nome definido {nome} aponta para intervalo, nao celula.")
+    return wb[aba][referencia.replace("$", "")].value
 
 
 def _ler_referencias_vta(wb) -> dict[str, Any]:
@@ -3443,6 +3475,7 @@ def _ler_referencias_vta(wb) -> dict[str, Any]:
     """
     out: dict[str, Any] = {
         "disponivel": False,
+        "origem_leitura": None,
         "forma1_posicao_atual": None,
         "forma2_ultima_abertura": None,
         "forma3_integral_reajustado": None,
@@ -3468,11 +3501,50 @@ def _ler_referencias_vta(wb) -> dict[str, Any]:
         return out
     res = wb["RESULTADOS"]
     out["disponivel"] = True
-    out["forma1_posicao_atual"] = _num_ou_none(res["B10"].value)
-    out["forma2_ultima_abertura"] = _num_ou_none(res["B11"].value)
-    out["forma3_integral_reajustado"] = _num_ou_none(res["B12"].value)
-    out["reconciliacao_valor"] = _num_ou_none(res["B13"].value)
-    st10, st11, st13 = res["H10"].value, res["H11"].value, res["H13"].value
+    nomes_presentes = set(wb.defined_names)
+    usa_nomes = set(_NOMES_AUDITORIA_XLS.values()) <= nomes_presentes
+    if usa_nomes:
+        valores_auditoria = {
+            chave: _valor_por_nome_definido(wb, nome)
+            for chave, nome in _NOMES_AUDITORIA_XLS.items()
+        }
+        out["origem_leitura"] = "defined_names"
+        out["fontes"].update({
+            "forma1": "AUDITORIA_SITUACAO_ATUAL_CONTRATO",
+            "forma2": "AUDITORIA_ULTIMA_REFERENCIA_ABERTURA",
+            "forma3": "AUDITORIA_COMPARATIVO_INTEGRAL",
+            "reconciliacao": (
+                "AUDITORIA_DIFERENCA_REFERENCIAS/"
+                "AUDITORIA_CONFERENCIA_STATUS"
+            ),
+        })
+    else:
+        valores_auditoria = {
+            "forma1_posicao_atual": res["B10"].value,
+            "forma2_ultima_abertura": res["B11"].value,
+            "forma3_integral_reajustado": res["B12"].value,
+            "reconciliacao_valor": res["B13"].value,
+            "forma1_situacao": res["H10"].value,
+            "forma2_situacao": res["H11"].value,
+            "reconciliacao_status": res["H13"].value,
+        }
+        out["origem_leitura"] = "legacy_coordinates"
+
+    out["forma1_posicao_atual"] = _num_ou_none(
+        valores_auditoria["forma1_posicao_atual"]
+    )
+    out["forma2_ultima_abertura"] = _num_ou_none(
+        valores_auditoria["forma2_ultima_abertura"]
+    )
+    out["forma3_integral_reajustado"] = _num_ou_none(
+        valores_auditoria["forma3_integral_reajustado"]
+    )
+    out["reconciliacao_valor"] = _num_ou_none(
+        valores_auditoria["reconciliacao_valor"]
+    )
+    st10 = valores_auditoria["forma1_situacao"]
+    st11 = valores_auditoria["forma2_situacao"]
+    st13 = valores_auditoria["reconciliacao_status"]
     out["forma1_situacao"] = str(st10).strip() if st10 not in (None, "") else None
     out["forma2_situacao"] = str(st11).strip() if st11 not in (None, "") else None
     out["reconciliacao_status"] = str(st13).strip() if st13 not in (None, "") else None

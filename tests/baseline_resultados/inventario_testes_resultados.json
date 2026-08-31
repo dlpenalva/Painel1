@@ -1,10 +1,10 @@
 {
  "resumo": {
   "arquivos": 49,
-  "ocorrencias": 372,
+  "ocorrencias": 371,
   "por_classificacao": {
    "A": 61,
-   "B": 38,
+   "B": 37,
    "C": 9,
    "D": 51,
    "E": 213
@@ -3068,21 +3068,7 @@
   },
   {
    "arquivo": "tests/test_referencias_vta_documentos.py",
-   "linha": 71,
-   "teste": "test_leitor_referencias_fail_closed_no_template",
-   "referencia": "assert ref[\"fontes\"][\"forma1\"].startswith(\"MEMORIA_RESULTADOS!W50\")",
-   "coordenadas": [
-    "W50"
-   ],
-   "aba": "MEMORIA_RESULTADOS",
-   "classificacao": "B",
-   "sobrevive_ao_pr1": false,
-   "atualizar_no_pr2": true,
-   "justificativa": "verifica apresentacao (formato, cor, geometria ou visibilidade)"
-  },
-  {
-   "arquivo": "tests/test_referencias_vta_documentos.py",
-   "linha": 77,
+   "linha": 78,
    "teste": "test_leitor_referencias_le_da_tabela1_sintetica",
    "referencia": "res.title = \"RESULTADOS\"",
    "coordenadas": [
@@ -3104,7 +3090,7 @@
   },
   {
    "arquivo": "tests/test_referencias_vta_documentos.py",
-   "linha": 80,
+   "linha": 81,
    "teste": "test_leitor_referencias_le_da_tabela1_sintetica",
    "referencia": "mem = wb.create_sheet(\"MEMORIA_RESULTADOS\")",
    "coordenadas": [
