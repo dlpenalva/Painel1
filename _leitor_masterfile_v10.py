@@ -1883,9 +1883,17 @@ def _ler_parcelas_sombra_financeiro(wb) -> list[dict[str, Any]]:
 
     for r in linhas:
         ciclo = str(ws.cell(r, col_ciclo).value or "").strip()
-        if not ciclo and novo_mensal:
+        # Nos bytes oficiais abertos com data_only=True, B traz o cache do
+        # ciclo. Em testes/diagnosticos com formulas, B pode trazer a propria
+        # formula; nesse caso a competencia continua sendo a fonte segura.
+        if novo_mensal and (not ciclo or ciclo.startswith("=")):
             ciclo = _ciclo_por_competencia(wb, ws.cell(r, col_comp).value)
-        if not ciclo:
+        ciclo = ciclo.upper()
+        # A aba pode encerrar o historico com uma linha agregadora (por
+        # exemplo, TOTAL). Ela consolida os ciclos e nunca representa uma
+        # competencia/evento de execucao. Somente C0..C4 pertencem ao dominio
+        # da apuracao financeira.
+        if ciclo not in _ORDEM_CICLOS:
             continue
 
         efeito = str(ws.cell(r, col_efeito).value or "").strip()
@@ -1910,7 +1918,7 @@ def _ler_parcelas_sombra_financeiro(wb) -> list[dict[str, Any]]:
                 "tipo_parcela": "Execucao realizada",
                 "tipo_financeiro": "Execucao Atualizada",
                 "fonte_parcela": "Financeiro",
-                "ciclo": ciclo.upper(),
+                "ciclo": ciclo,
                 "valor": base,
                 "valor_atualizado": atualizado,
                 "justificativa_vta": "Base executada do financeiro; G nao exclui base.",
@@ -1923,7 +1931,7 @@ def _ler_parcelas_sombra_financeiro(wb) -> list[dict[str, Any]]:
                 "tipo_parcela": "Execucao realizada",
                 "tipo_financeiro": "Retroativo Reconhecido",
                 "fonte_parcela": "Financeiro",
-                "ciclo": ciclo.upper(),
+                "ciclo": ciclo,
                 "valor": delta,
                 "justificativa_vta": "Delta financeiro computado apenas com EFEITO_FINANCEIRO=Sim.",
             })

@@ -490,7 +490,7 @@
     "ciclo_referencia_acumulado": "C2",
     "justificativa_metodologia": "Execucao estrutural por PCs validos, independente do pagamento; o pagamento classifica apenas o retroativo (reconhecido x potencial).",
     "metodo_vta": "Pedido de Compras",
-    "resumo_executivo": "Conclusao recomendada: Aguardar pagamento ou comprovacao de execucao. Ha retroativo em analise; reconhecimento depende de evidencia ou ato administrativo. Metodologia: Pedidos de Compra (PC). Resultado: R$ 62.167,44.",
+    "resumo_executivo": "Conclusao recomendada: Aguardar pagamento ou comprovacao de execucao. Ha retroativo em analise; reconhecimento depende de evidencia ou ato administrativo. Metodologia: Pedidos de Compra (PC). Valor recomendado pela metodologia: R$ 62.167,44.",
     "retroativo_estado": "em análise",
     "retroativo_total": 1387.15,
     "situacao_processo": "aguardar_evidencia_ou_ato",

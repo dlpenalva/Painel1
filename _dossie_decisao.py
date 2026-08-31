@@ -275,7 +275,8 @@ def montar_dossie_decisao(assistente: dict[str, Any], painel: dict[str, Any]) ->
     resumo = (
         f"Conclusao recomendada: {ato}. {motivo} "
         f"Metodologia: {(assistente.get('metodologia') or {}).get('escolhida') or 'nao definida'}. "
-        f"Resultado: {_brl(resultado.get('valor_recomendado')) if resultado else 'sem resultado recomendado'}."
+        "Valor recomendado pela metodologia: "
+        f"{_brl(resultado.get('valor_recomendado')) if resultado else 'sem resultado recomendado'}."
     )
 
     precisa_abrir_excel = (

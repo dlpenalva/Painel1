@@ -533,7 +533,7 @@
     "ciclo_referencia_acumulado": null,
     "justificativa_metodologia": "Execucao estrutural por PCs validos, independente do pagamento; o pagamento classifica apenas o retroativo (reconhecido x potencial).",
     "metodo_vta": "Pedido de Compras",
-    "resumo_executivo": "Conclusao recomendada: Nenhum ato imediato. Nao ha retroativo pendente nem inconsistencia impeditiva. Metodologia: Pedidos de Compra (PC). Resultado: R$ 0,00.",
+    "resumo_executivo": "Conclusao recomendada: Nenhum ato imediato. Nao ha retroativo pendente nem inconsistencia impeditiva. Metodologia: Pedidos de Compra (PC). Valor recomendado pela metodologia: R$ 0,00.",
     "retroativo_estado": null,
     "retroativo_total": null,
     "situacao_processo": "apto_para_confirmacao",

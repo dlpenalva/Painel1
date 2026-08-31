@@ -531,7 +531,6 @@
     "limitacoes_evidencias": [
      "Evidencia de pcs nao localizada no MasterFile lido.",
      "Evidencia de consumidos nao localizada no MasterFile lido.",
-     "Evidencia de remanescentes nao localizada no MasterFile lido.",
      "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 10: 'COMPUTA?'.",
      "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 11: 'NAO'.",
      "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 12: 'SIM'.",
@@ -553,9 +552,9 @@
    },
    "sintese": {
     "ciclo_referencia_acumulado": "C3",
-    "justificativa_metodologia": "Usa a execucao financeira como evidencia mais forte de valor realizado.",
+    "justificativa_metodologia": "Usa financeiro para o que ja ocorreu e remanescente para a parcela futura.",
     "metodo_vta": "Financeiro",
-    "resumo_executivo": "Conclusao recomendada: Preparar apostilamento. Ha retroativo reconhecido e evidencias suficientes para preparar a formalizacao. Metodologia: Financeiro. Resultado: R$ 14.626.459,46.",
+    "resumo_executivo": "Conclusao recomendada: Preparar apostilamento. Ha retroativo reconhecido e evidencias suficientes para preparar a formalizacao. Metodologia: Financeiro + Remanescentes. Valor recomendado pela metodologia: R$ 8.689.141,34.",
     "retroativo_estado": "reconhecido",
     "retroativo_total": 24678.92,
     "situacao_processo": "apto_para_confirmacao",

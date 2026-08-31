@@ -530,7 +530,7 @@
     "ciclo_referencia_acumulado": null,
     "justificativa_metodologia": "Usa a execucao financeira como evidencia mais forte de valor realizado.",
     "metodo_vta": "Financeiro",
-    "resumo_executivo": "Conclusao recomendada: Nenhum ato imediato. Nao ha retroativo pendente nem inconsistencia impeditiva. Metodologia: Financeiro. Resultado: R$ 2.040.000,00.",
+    "resumo_executivo": "Conclusao recomendada: Nenhum ato imediato. Nao ha retroativo pendente nem inconsistencia impeditiva. Metodologia: Financeiro. Valor recomendado pela metodologia: R$ 2.040.000,00.",
     "retroativo_estado": null,
     "retroativo_total": 0.0,
     "situacao_processo": "apto_para_confirmacao",
