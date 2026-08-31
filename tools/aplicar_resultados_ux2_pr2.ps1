@@ -40,6 +40,8 @@ $xlPageBreakManual = -4135
 $xlLeft            = -4131
 $xlCenter          = -4108
 $xlA4              = 9
+$xlCalcManual      = -4135
+$xlCalcAutomatic   = -4105
 
 function ConvertTo-BGR([string]$rgb) {
   # Excel COM usa BGR; o plano guarda RGB no formato hexadecimal usual.
@@ -62,6 +64,15 @@ $wb = $null
 try {
   $wb = $xl.Workbooks.Open($alvo, 0, $false)
   Start-Sleep -Seconds 2
+
+  # ARMADILHA: o template tem ~5.000 formulas. Com calculo automatico, cada
+  # escrita de celula dispara um recalculo, o Excel fica ocupado e passa a
+  # recusar as chamadas COM seguintes com RPC_E_CALL_REJECTED (0x80010001) —
+  # de forma reproduzivel, nao aleatoria. Suspender o calculo durante a fase
+  # de escrita e restaura-lo antes do rebuild final resolve na raiz.
+  $xl.Calculation = $xlCalcManual
+  $xl.ScreenUpdating = $false
+  $xl.EnableEvents = $false
 
   $mem = $wb.Worksheets.Item("MEMORIA_RESULTADOS")
   $ws  = $wb.Worksheets.Item($p.aba)
@@ -204,6 +215,9 @@ try {
   $xl.ActiveWindow.ScrollRow = 90
   $ws.Range("A90").Select() | Out-Null
 
+  $xl.Calculation = $xlCalcAutomatic
+  $xl.EnableEvents = $true
+  $xl.ScreenUpdating = $true
   $xl.Application.CalculateFullRebuild()
   Start-Sleep -Seconds 3
   $wb.Save()

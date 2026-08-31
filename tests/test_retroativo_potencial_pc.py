@@ -395,6 +395,22 @@ def test_terminologia_nova_esta_aplicada(ws):
     assert ws["A157"].value == "DIFERENÇA"
 
 
+def test_coluna_do_efeito_financeiro_e_a_competencia_de_inicio(ws):
+    """parametros!H guarda QUANDO o efeito comeca, nao SE ha efeito nem quanto.
+
+    O rotulo antigo ("Efeito financeiro") era ambiguo: podia ser lido como
+    Sim/Nao ou como valor monetario.
+    """
+    assert ws["F106"].value == "INÍCIO DO EFEITO FINANCEIRO"
+    assert ws["F106"].alignment.wrap_text is True
+    for i in range(5):
+        r, p = 107 + i, 2 + i
+        assert ws.cell(r, 6).value == (
+            f'=IF(parametros!$H${p}="","",parametros!$H${p})'
+        )
+        assert ws.cell(r, 6).number_format == "mm/yyyy"
+
+
 def test_jargao_antigo_nao_aparece_na_camada_humana(ws):
     proibidos = ("Delta", "posição física", "posicao fisica", "AUDITORIA INTERNA")
     achados = []

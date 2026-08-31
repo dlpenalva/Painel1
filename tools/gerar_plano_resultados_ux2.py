@@ -93,8 +93,9 @@ def secao(ref_merge, ref, texto):
     cel(ref, valor=texto, tam=12, negrito=True, cor=AZUL_ESCURO, fundo=AZUL_CLARO)
 
 
-def rotulo(ref, texto, *, fundo=None):
-    cel(ref, valor=texto, tam=9, negrito=True, cor=CINZA_TXT, fundo=fundo)
+def rotulo(ref, texto, *, fundo=None, wrap=False):
+    cel(ref, valor=texto, tam=9, negrito=True, cor=CINZA_TXT, fundo=fundo,
+        wrap=wrap)
 
 
 # =========================================================== PAGINA 1
@@ -200,10 +201,17 @@ alturas["104"] = 8
 # --- ciclos apurados (§9E). Fatores NAO aparecem nesta pagina.
 secao("A105:H105", "A105", "CICLOS APURADOS")
 merges.append("G106:H106")
+# "INÍCIO DO EFEITO FINANCEIRO" nomeia o que parametros!H de fato guarda: a
+# competencia em que o reajuste passa a produzir efeitos. O rotulo antigo
+# ("Efeito financeiro") era ambiguo — podia ser lido como Sim/Nao ou como
+# valor monetario. A fonte e o formato mm/aaaa nao mudam.
 for ref, txt in (("A106", "Ciclo"), ("B106", "Situação"), ("C106", "Período"),
                  ("D106", "Variação apurada"), ("E106", "Percentual aplicado"),
-                 ("F106", "Efeito financeiro"), ("G106", "Observação")):
-    rotulo(ref, txt, fundo=CINZA)
+                 ("F106", "INÍCIO DO EFEITO FINANCEIRO"),
+                 ("G106", "Observação")):
+    rotulo(ref, txt, fundo=CINZA, wrap=(ref == "F106"))
+# O cabecalho passa a caber em duas linhas sem truncar na coluna F.
+alturas["106"] = 26
 for i in range(5):
     r = 107 + i          # linha de destino
     p = 2 + i            # parametros: cadastro do ciclo (B/C/D/E/G/H)
