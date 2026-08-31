@@ -37,6 +37,7 @@ from pathlib import Path
 import pytest
 
 from _baseline_fotografia import fotografar_cenario
+from _leitor_masterfile_v10 import ler_masterfile_v10
 
 DIRETORIO_SNAPSHOTS = Path(__file__).resolve().parent / "baseline_resultados" / "goldens"
 REGRAVAR = os.environ.get("RESULTADOS_BASELINE_REGRAVAR") == "1"
@@ -64,6 +65,10 @@ GOLDENS = {
 # JSON — para que qualquer alteracao apareca como mudanca de INTENCAO no diff.
 VTA_FINANCEIRO_HOMOLOGADO = 8_713_820.26
 RETROATIVO_FINANCEIRO_HOMOLOGADO = 24_678.92
+EXECUCAO_FINANCEIRA_HOMOLOGADA = 7_300_890.27
+REMANESCENTE_FINANCEIRO_HOMOLOGADO = 1_388_251.07
+VALOR_RECOMENDADO_METODOLOGIA = 8_689_141.34
+VALOR_RECOMENDADO_ANTERIOR = 14_626_459.46
 
 
 def _caminho(nome: str) -> Path:
@@ -153,6 +158,52 @@ def test_composicao_do_vta_fecha_com_o_vta_oficial():
     assert round(soma, 2) == web["vta_oficial"], (
         f"as parcelas somam {soma:.2f} e o VTA oficial e {web['vta_oficial']:.2f}"
     )
+
+
+def test_valor_recomendado_financeiro_mais_remanescente_no_golden():
+    leitura = ler_masterfile_v10(
+        GOLDENS["financeiro_multiciclo_validado"].read_bytes(),
+        exigir_modelo_oficial=True,
+    )
+    objeto = leitura["objeto_processo"]
+    assistente = objeto["consumidores"]["assistente_operacional"]
+    dossie = objeto["consumidores"]["dossie_decisao"]
+    motor = assistente["motor_metodologias"]
+    evidencias = motor["evidencias"]
+    resultado = assistente["resultado_recomendado"]
+
+    eventos_financeiros = [
+        evento for evento in leitura["event_log_sombra"]["eventos"]
+        if evento.get("fonte_parcela") == "Financeiro"
+    ]
+    assert eventos_financeiros
+    assert {evento["ciclo"] for evento in eventos_financeiros} <= {
+        "C0", "C1", "C2", "C3", "C4",
+    }
+    assert not any(evento.get("linha") == 74 for evento in eventos_financeiros)
+    assert evidencias["financeiro"]["pago"] == EXECUCAO_FINANCEIRA_HOMOLOGADA
+    assert evidencias["financeiro"]["reconhecido"] == RETROATIVO_FINANCEIRO_HOMOLOGADO
+    assert evidencias["remanescentes"]["valor"] == REMANESCENTE_FINANCEIRO_HOMOLOGADO
+    assert evidencias["remanescentes"]["fonte"] == (
+        "composicao_vta.saldo_remanescente.valor_atualizado"
+    )
+    assert resultado["metodologia"] == "Financeiro + Remanescentes"
+    assert resultado["valor_recomendado"] == VALOR_RECOMENDADO_METODOLOGIA
+    assert resultado["valor_recomendado"] != VALOR_RECOMENDADO_ANTERIOR
+    assert resultado["vta"] != resultado["valor_recomendado"]
+
+    resumo = dossie["resumo_executivo"]
+    assert "Valor recomendado pela metodologia: R$ 8.689.141,34" in resumo
+    assert "14.626.459,46" not in resumo
+
+
+def test_valor_incorreto_desaparece_do_sumario_executivo():
+    fotografia = _fotografar("financeiro_multiciclo_validado")
+    resumo = fotografia["documentos"]["sumario_executivo"]["sintese"][
+        "resumo_executivo"
+    ]
+    assert "Valor recomendado pela metodologia: R$ 8.689.141,34" in resumo
+    assert "14.626.459,46" not in resumo
 
 
 def test_referencias_auditaveis_nao_sao_o_vta_oficial():

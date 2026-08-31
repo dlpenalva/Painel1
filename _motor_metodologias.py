@@ -57,6 +57,32 @@ def _totais_motor(painel: dict[str, Any]) -> dict[str, Any]:
     return dict((painel.get("situacao_financeira") or {}).get("totais") or {})
 
 
+def _remanescente_canonico(
+    leitura: dict[str, Any], painel: dict[str, Any]
+) -> dict[str, Any]:
+    """Consome o saldo ja materializado pela composicao oficial do metodo."""
+    composicao = leitura.get("composicao_vta") or {}
+    saldo = composicao.get("saldo_remanescente") or {}
+    valor = saldo.get("valor_atualizado")
+    if valor is not None:
+        return {
+            "presente": True,
+            "valor": _round(valor),
+            "fonte": "composicao_vta.saldo_remanescente.valor_atualizado",
+        }
+
+    resumo = _resumo_oficial(painel)
+    valor = resumo.get("saldo_remanescente")
+    return {
+        # O resumo legado usa 0 como default de apresentacao. Sem uma parcela
+        # canonica materializada, esse zero nao prova que existe evidência de
+        # remanescente (ausencia e zero continuam estados distintos).
+        "presente": valor not in (None, "") and _round(valor) != 0.0,
+        "valor": _round(valor),
+        "fonte": "situacao_financeira.resumo_oficial.saldo_remanescente",
+    }
+
+
 def _valor_consumidos(leitura: dict[str, Any]) -> float:
     consumidos = leitura.get("itens_consumidos_v10") or {}
     totais = consumidos.get("totais") if isinstance(consumidos, dict) else {}
@@ -102,6 +128,7 @@ def _evidencias(leitura: dict[str, Any], painel: dict[str, Any]) -> dict[str, An
     consumidos = (leitura.get("itens_consumidos_v10") or {}).get("itens") or []
     exec_saldo = (leitura.get("execucao_saldo") or {}).get("itens") or []
     financeiro = _valor_financeiro(leitura)
+    remanescente = _remanescente_canonico(leitura, painel)
 
     parcelas_financeiro = 0
     parcelas_remanescentes = 0
@@ -124,10 +151,15 @@ def _evidencias(leitura: dict[str, Any], painel: dict[str, Any]) -> dict[str, An
             "pago": financeiro["pago"],
         },
         "remanescentes": {
-            "presente": parcelas_remanescentes > 0 or len(exec_saldo) > 0,
+            "presente": (
+                remanescente["presente"]
+                or parcelas_remanescentes > 0
+                or len(exec_saldo) > 0
+            ),
             "parcelas": parcelas_remanescentes,
             "itens_execucao_saldo": len(exec_saldo),
-            "valor": _round(_resumo_oficial(painel).get("saldo_remanescente")),
+            "valor": remanescente["valor"],
+            "fonte": remanescente["fonte"],
         },
         "pcs": {
             "presente": len(pcs) > 0,

@@ -527,7 +527,7 @@
     "ciclo_referencia_acumulado": null,
     "justificativa_metodologia": "Fallback excepcional: itens consumidos representam execucao efetivamente paga quando nao ha financeiro suficiente.",
     "metodo_vta": null,
-    "resumo_executivo": "Conclusao recomendada: Nenhum ato imediato. Nao ha retroativo pendente nem inconsistencia impeditiva. Metodologia: Itens Consumidos. Resultado: R$ 0,00.",
+    "resumo_executivo": "Conclusao recomendada: Nenhum ato imediato. Nao ha retroativo pendente nem inconsistencia impeditiva. Metodologia: Itens Consumidos. Valor recomendado pela metodologia: R$ 0,00.",
     "retroativo_estado": null,
     "retroativo_total": null,
     "situacao_processo": "apto_para_confirmacao",
