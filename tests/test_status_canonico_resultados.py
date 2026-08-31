@@ -194,6 +194,28 @@ def test_cache_de_status_vazio_usa_conclusao_canonica_python():
     assert consolidado["formalizacao"]["status"] == "SEM BLOQUEIO"
 
 
+def test_cache_b3_vazio_preserva_estimado_da_posicao_existente():
+    """B3 sem cache nao apaga o ESTIMADO ja distinguido na referencia VTA."""
+    caso = _caso_icti(None)
+    caso["politica_entrega_segura"].update({
+        "status": "PRONTO_PARA_VALIDACAO_FISCAL",
+        "pode_confirmar": True,
+        "bloqueios": [],
+    })
+    caso["referencias_vta"] = {
+        "forma1_situacao": "ESTIMADA - POSICAO FISICA DE 30/06/2024",
+    }
+    diagnostico = _diagnostico(None)
+    assert diagnostico["metadados"]["formula_status_resultados_presente"] is True
+    assert diagnostico["metadados"]["status_resultados"]["geral"] is None
+
+    consolidado = montar_resultado_consolidado(caso, diagnostico)
+
+    assert consolidado["status_confiabilidade"] == STATUS_ESTIMADO
+    assert consolidado["status_apuracao"]["codigo"] == "ESTIMADO"
+    assert consolidado["status_apuracao"]["origem"] == "motor_canonico_python"
+
+
 def test_status_desconhecido_no_xls_nao_usa_fallback_python():
     status_oficial = "QUALQUER COISA"
     caso = _caso_icti(status_oficial)

@@ -164,6 +164,7 @@ def _status_canonico_apuracao(
     status_resultados: dict[str, Any],
     politica: dict[str, Any],
     formula_status_presente: bool = False,
+    referencias_vta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Seleciona uma conclusao existente sem recalcular a formula do XLS.
 
@@ -189,8 +190,14 @@ def _status_canonico_apuracao(
         and not list((politica or {}).get("bloqueios") or [])
     )
     if formula_presente and cache_vazio and politica_conclusiva:
+        situacao_posicao = str(
+            (referencias_vta or {}).get("forma1_situacao") or ""
+        ).strip().upper()
+        codigo = (
+            "ESTIMADO" if situacao_posicao.startswith("ESTIMADA") else "VALIDADO"
+        )
         return {
-            "codigo": "VALIDADO",
+            "codigo": codigo,
             "bruto": bruto,
             "disponivel": True,
             "conclusivo": True,
@@ -406,6 +413,7 @@ def montar_resultado_consolidado(
         (diagnostico.get("metadados") or {}).get(
             "formula_status_resultados_presente"
         ),
+        referencias_vta,
     )
     # Lacunas materiais do proprio nucleo, independentes da aba RESULTADOS.
     # Nao incluem "ciclo sem PC": esse sinal e ressalva, nunca indisponibilidade.
