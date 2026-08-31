@@ -1,12 +1,12 @@
 {
  "resumo": {
   "arquivos": 49,
-  "ocorrencias": 371,
+  "ocorrencias": 372,
   "por_classificacao": {
    "A": 61,
    "B": 37,
    "C": 9,
-   "D": 51,
+   "D": 52,
    "E": 213
   },
   "arquivos_que_tocam_a_aba_executiva": [
@@ -2712,9 +2712,9 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 105,
+   "linha": 106,
    "teste": "<modulo>",
-   "referencia": "\"MEMORIA_RESULTADOS\": 4410,",
+   "referencia": "\"MEMORIA_RESULTADOS\": 4411,",
    "coordenadas": [
     "H14",
     "H24",
@@ -2730,7 +2730,7 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 134,
+   "linha": 135,
    "teste": "<modulo>",
    "referencia": "# texto fixo e passam a FORMULA condicional a MEMORIA_RESULTADOS!$B$4,",
    "coordenadas": [
@@ -2746,7 +2746,7 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 135,
+   "linha": 136,
    "teste": "<modulo>",
    "referencia": "# para RESULTADOS nao explicar o metodo Financeiro quando o metodo",
    "coordenadas": [
@@ -2760,9 +2760,23 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 143,
+   "linha": 144,
    "teste": "<modulo>",
-   "referencia": "\"RESULTADOS\": 139,",
+   "referencia": "# PR 2 (RESULTADOS-UX2): a expectativa de 139 estava defasada — a main",
+   "coordenadas": [
+    "UX2"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "D",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "endereca celula do leiaute atual que nao e contrato vivo nem verificacao de apresentacao"
+  },
+  {
+   "arquivo": "tests/test_integridade_template_xlsx.py",
+   "linha": 150,
+   "teste": "<modulo>",
+   "referencia": "\"RESULTADOS\": 282,",
    "coordenadas": [],
    "aba": "RESULTADOS",
    "classificacao": "E",

@@ -4997,7 +4997,20 @@ def render_resultado_consolidado(resultado, diagnostico):
             f'Ciclo vigente: {html.escape(str(ciclo))}</div>',
             unsafe_allow_html=True,
         )
-        col_vta, col_reconhecido, col_potencial = st.columns([1.45, 1, 1])
+        # RESULTADOS-UX2: o potencial so ocupa espaco quando ha valor material
+        # a mostrar — metodo PC e potencial diferente de zero. Fora disso a
+        # linha fica com dois cards, sem bloco vazio. A grandeza continua vindo
+        # da cadeia canonica do Python; o XLS publica o mesmo numero por
+        # RETROATIVO_POTENCIAL_PC, mas a web nao le o XLS para "fazer bater".
+        _potencial = consolidado.get("retroativo_potencial")
+        mostra_potencial = (
+            bool(consolidado.get("medidas_pc_aplicaveis")) and bool(_potencial)
+        )
+        if mostra_potencial:
+            col_vta, col_reconhecido, col_potencial = st.columns([1.45, 1, 1])
+        else:
+            col_vta, col_reconhecido = st.columns([1.45, 1])
+            col_potencial = None
         with col_vta:
             # VTA-U2 (achado A): o VTA exibido e sempre o canonico do metodo.
             # As referencias fisicas nunca o substituem; quando o calculo nao
@@ -5019,17 +5032,30 @@ def render_resultado_consolidado(resultado, diagnostico):
                 "Retroativo reconhecido",
                 _moeda_resultado(consolidado.get("retroativo_reconhecido")),
             )
-        with col_potencial:
-            _celula_resultado(
-                "Retroativo potencial",
-                _moeda_resultado(
-                    consolidado.get("retroativo_potencial"),
-                    nao_aplicavel=not consolidado.get("medidas_pc_aplicaveis"),
-                ),
-                potencial=True,
-            )
+        if mostra_potencial:
+            with col_potencial:
+                _celula_resultado(
+                    "Retroativo potencial — em análise",
+                    _moeda_resultado(_potencial),
+                    potencial=True,
+                    nota=(
+                        "Valor potencial relacionado a PCs ainda em análise. "
+                        "Não compõe os valores oficiais enquanto permanecer "
+                        "em análise."
+                    ),
+                )
 
         st.markdown('<div class="resultado-divisor"></div>', unsafe_allow_html=True)
+        # (RESULTADOS-UX2) Aviso de revisao, espelhando o texto da aba
+        # RESULTADOS. Informativo puro: sem aceite, trava ou registro de
+        # concordancia.
+        st.caption(
+            "**IMPORTANTE** — Esta ferramenta auxilia a apuração e a "
+            "conferência dos cálculos, mas não substitui a revisão do "
+            "responsável pela análise. Antes de qualquer aprovação ou "
+            "formalização, confirme os dados de entrada, os critérios "
+            "aplicados e os resultados apresentados."
+        )
         colunas_segunda_linha = []
         if consolidado.get("medidas_pc_aplicaveis"):
             colunas_segunda_linha.append((
