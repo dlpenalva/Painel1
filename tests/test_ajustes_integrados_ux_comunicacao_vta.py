@@ -28,6 +28,7 @@ import sys
 from pathlib import Path
 
 import openpyxl
+import pandas as pd
 import pytest
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -439,6 +440,51 @@ def test_e1_variacao_acumulada_vem_do_fator_canonico_e_nao_da_soma():
     assert "df_ciclos" not in trecho
     assert "Variação" not in trecho
     assert "sum(" not in trecho
+
+
+def test_comunicados_financeiros_consumem_a_classificacao_canonica():
+    classificar = _funcao_pura_da_pagina(
+        "_financeiro_por_ciclo_para_validacao_contratada"
+    )
+    resultado = {
+        "df_ciclos": pd.DataFrame([
+            {"Ciclo": "C1", "Variação": 0.0, "Fator acumulado efetivo": 1.0},
+            {"Ciclo": "C2", "Variação": 0.0, "Fator acumulado efetivo": 1.0289},
+        ]),
+        "df_financeiro_mensal_tratado": pd.DataFrame([
+            {"Ciclo": "C1", "Competência": "10/2024", "Efeito financeiro": "Nao"},
+            {"Ciclo": "C2", "Competência": "08/2026", "Efeito financeiro": "Nao"},
+            {"Ciclo": "C2", "Competência": "09/2026", "Efeito financeiro": "Sim"},
+        ]),
+        "df_meses_sem_efeito_financeiro": pd.DataFrame([
+            {"Ciclo": "C1", "Competência": "10/2024", "Valor pago/faturado": 1000.0},
+            {"Ciclo": "C2", "Competência": "08/2026", "Valor pago/faturado": 1000.0},
+        ]),
+    }
+
+    financeiro = classificar(resultado, {"medidas_pc_aplicaveis": False})
+
+    assert financeiro["C1"]["competencias_sem_efeito"] == []
+    assert financeiro["C2"]["competencias_sem_efeito"] == ["08/2026"]
+    assert financeiro["C2"]["inicio_efeito"] == "09/2026"
+
+
+def test_comunicados_nao_transformam_efeito_vazio_em_sem_efeito():
+    classificar = _funcao_pura_da_pagina(
+        "_financeiro_por_ciclo_para_validacao_contratada"
+    )
+    resultado = {
+        "df_ciclos": pd.DataFrame([{"Ciclo": "C1", "Variação": 0.05}]),
+        "df_financeiro_mensal_tratado": pd.DataFrame([
+            {"Ciclo": "C1", "Competência": "01/2025", "Efeito financeiro": ""},
+        ]),
+        "df_meses_sem_efeito_financeiro": pd.DataFrame(),
+    }
+
+    financeiro = classificar(resultado, {"medidas_pc_aplicaveis": False})
+
+    assert financeiro["C1"]["inicio_efeito"] is None
+    assert financeiro["C1"]["competencias_sem_efeito"] == []
 
 
 def test_e1b_variacao_e_derivada_do_fator_ao_centavo_do_percentual():
