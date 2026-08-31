@@ -36,6 +36,10 @@ BRANCO = "FFFFFF"
 # expresso em pt-BR e aplicado por .NumberFormatLocal; o monetario e copiado
 # de uma celula ja homologada (RESULTADOS!C5), o que dispensa traducao.
 MOEDA = "@COPIAR_DE:C5"
+# Igual ao monetario, mas com a 4a secao (texto) VAZIA. O formato homologado
+# usa "—" ali, o que faz uma celula condicional que devolve "" desenhar um
+# travessao orfao. Onde a ausencia deve ser invisivel, usamos este.
+MOEDA_MUDA = '"R$" #.##0,00;-"R$" #.##0,00;"R$" 0,00;'
 PCT = '0,00%;-0,00%;0,00%;"—"'
 FATOR = "0,000000"
 COMPETENCIA = "mm/aaaa"
@@ -115,7 +119,9 @@ rotulo("C91", "CICLOS", fundo=AZUL_CLARO)
 rotulo("E91", "DATA DE CORTE", fundo=AZUL_CLARO)
 rotulo("G91", "ÍNDICE", fundo=AZUL_CLARO)
 cel("A92", formula="=$B$3", tam=11, negrito=True)          # STATUS_RESULTADOS
-cel("B92", formula='=IF($B$5="","—",$B$5)', tam=11)
+# $J$6 vale 1 so quando ha metodo valido. Sem ele, $B$5 devolve a instrucao
+# interna "SELECIONE O METODO EM CONTROLE!B1", que expoe aba e endereco.
+cel("B92", formula='=IF($J$6=1,$B$5,"Não selecionado")', tam=11)
 cel("C92", formula='=IF($J$11="","—",$J$11)', tam=11)
 cel("E92", formula='=IF(CONTROLE!$B$3="","—",CONTROLE!$B$3)', fmt=DATA, tam=11)
 cel("G92", formula='=IF(parametros!$E$16="","—",parametros!$E$16)', fmt=FATOR,
@@ -170,7 +176,7 @@ for m in ("A100:C100", "E100:H100", "A101:H101"):
 cel("A100", formula=f'=IF({COND_POT},"RETROATIVO POTENCIAL — EM ANÁLISE","")',
     tam=10, negrito=True, cor=AMBAR_TXT)
 cel("D100", formula=f'=IF({COND_POT},RETROATIVO_POTENCIAL_PC,"")',
-    fmt=MOEDA, tam=13, negrito=True, cor=AMBAR_TXT)
+    fmt=MOEDA_MUDA, tam=13, negrito=True, cor=AMBAR_TXT)
 cel("A101", formula=(
     f'=IF({COND_POT},"Valor potencial relacionado a PCs ainda em análise. '
     'Não compõe os valores oficiais enquanto permanecer em análise.","")'),
@@ -240,10 +246,19 @@ for i in range(5):
         f'IF(parametros!$C${m}="",0,parametros!$C${m}))'), fmt=PCT, tam=10)
     cel(f"F{r}", formula=f'=IF(parametros!$H${p}="","",parametros!$H${p})',
         fmt=COMPETENCIA, tam=10)
-    cel(f"G{r}", formula=(
-        f'=IF(parametros!$B${p}="","",'
-        f'IF(parametros!$F${m}="","",parametros!$F${m}))'), tam=9,
-        cor=CINZA_TXT)
+    # A observacao NAO espelha o texto do motor (que vem em ASCII, sem
+    # acento). Ela e escrita aqui a partir do MESMO dado de entrada que o
+    # motor usa — parametros!A (COMPUTAR_NESTA_APURACAO) —, o que evita
+    # reproduzir a string interna e mantem o motor intocado. C0 e sempre a
+    # base do historico.
+    if i == 0:
+        cel(f"G{r}", formula=f'=IF(parametros!$B${p}="","","Base")',
+            tam=9, cor=CINZA_TXT)
+    else:
+        cel(f"G{r}", formula=(
+            f'=IF(parametros!$B${p}="","",'
+            f'IF(parametros!$A${p}="Sim","Aplicado","Fora da apuração"))'),
+            tam=9, cor=CINZA_TXT)
     alturas[str(r)] = 16
 alturas["112"] = 8
 
@@ -274,24 +289,45 @@ secao("A117:H117", "A117",
       "VALOR TOTAL ATUALIZADO DO CONTRATO — METODOLOGIA E FORMAÇÃO")
 merges.append("A118:H118")
 merges.append("A119:H119")
-cel("A118", formula="=$A$69", tam=9, cor=CINZA_TXT)   # identidade conceitual
-cel("A119", formula="=$A$70", tam=9, cor=CINZA_TXT)   # frase do metodo
+# Texto proprio: os espelhos de A69/A70 traziam ASCII sem acento e o
+# endereco "CONTROLE!B1". O motor nao muda; a camada humana e reescrita.
+cel("A118", valor=(
+    "O VTA reúne o valor já executado, os ajustes ainda devidos e o saldo "
+    "que ainda falta executar, já atualizado."), tam=9, cor=CINZA_TXT)
+cel("A119", formula=(
+    '=IF(MEMORIA_RESULTADOS!$B$4="Financeiro",'
+    '"Método Financeiro: a execução já realizada corresponde aos valores '
+    'efetivamente desembolsados.",'
+    'IF(MEMORIA_RESULTADOS!$B$4="PCs",'
+    '"Método Pedidos de Compra: a execução já realizada corresponde aos '
+    'valores apurados pelos Pedidos de Compra.",'
+    'IF(MEMORIA_RESULTADOS!$B$4="Itens",'
+    '"Método Consumido: a execução já realizada corresponde às quantidades '
+    'consumidas pelos valores unitários aplicáveis.",'
+    '"Método ainda não selecionado.")))'), tam=9, cor=CINZA_TXT)
 merges.append("C120:H120")
 for ref, txt in (("A120", "Parcela"), ("B120", "Valor"), ("C120", "Origem")):
     rotulo(ref, txt, fundo=CINZA)
+# A coluna Origem deixa de espelhar C83:C86: aquelas celulas citam abas,
+# enderecos e defined names ("MEMORIA!D35", "MEMORIA_RESULTADOS!B26 =
+# VTA_FINAL"), que sao contrato interno e nao pertencem a camada humana.
 formacao = (
     (121, "Executado apurado",
-     '=IF(EXECUTADO_APURADO="","",EXECUTADO_APURADO)', "=$C$83"),
+     '=IF(EXECUTADO_APURADO="","",EXECUTADO_APURADO)',
+     "Apuração do método selecionado"),
     (122, "(+) Ajustes ainda devidos",
-     '=IF(AJUSTES_DEVIDOS="","",AJUSTES_DEVIDOS)', "=$C$84"),
-    (123, "(+) Remanescente atualizado", '=IF($B$85="","",$B$85)', "=$C$85"),
-    (124, "(=) VTA OFICIAL", '=IF(VTA_FINAL="","",VTA_FINAL)', "=$C$86"),
+     '=IF(AJUSTES_DEVIDOS="","",AJUSTES_DEVIDOS)',
+     "Ajustes reconhecidos na apuração"),
+    (123, "(+) Remanescente atualizado", '=IF($B$85="","",$B$85)',
+     "Saldo contratual atualizado"),
+    (124, "(=) VTA OFICIAL", '=IF(VTA_FINAL="","",VTA_FINAL)',
+     "Resultado oficial da apuração"),
 )
 for r, parcela, valor, origem in formacao:
     merges.append(f"C{r}:H{r}")
     cel(f"A{r}", valor=parcela, tam=10, negrito=(r == 124))
     cel(f"B{r}", formula=valor, fmt=MOEDA, tam=10, negrito=(r == 124))
-    cel(f"C{r}", formula=origem, tam=9, cor=CINZA_TXT)
+    cel(f"C{r}", valor=origem, tam=9, cor=CINZA_TXT)
     alturas[str(r)] = 16
 # Conferencia da formacao: "DE ACORDO" quando fecha (§13).
 merges.append("C125:H125")
@@ -302,7 +338,9 @@ cel("B125",
 cel("C125", formula=(
     '=IF(CONFERENCIA_FORMACAO_VTA="","Aguardando base para conferir.",'
     'IF(ABS(CONFERENCIA_FORMACAO_VTA)<=MEMORIA_RESULTADOS!$D$4,'
-    '"DE ACORDO — as parcelas fecham com o VTA Oficial.",$C$87))'), tam=9)
+    '"DE ACORDO — as parcelas fecham com o VTA Oficial.",'
+    '"As parcelas não fecham com o VTA Oficial; confira os ajustes '
+    'manuais registrados."))'), tam=9)
 alturas["125"] = 16
 alturas["126"] = 8
 cel("I125", formula=('=IF(AND(CONFERENCIA_FORMACAO_VTA<>"",'
@@ -389,8 +427,14 @@ alturas["155"] = 8
 secao("A156:H156", "A156", "CONFERÊNCIA ENTRE REFERÊNCIAS DO CONTRATO")
 merges.append("C157:H157")
 cel("A157", valor="DIFERENÇA", tam=10, negrito=True, cor=CINZA_TXT)
-cel("B157", formula='=IF($B$13="","",$B$13)', fmt=MOEDA, tam=10)
-cel("C157", formula='=IF($H$13="","",$H$13)', tam=9, cor=CINZA_TXT)
+cel("B157", formula='=IF($B$13="","",$B$13)', fmt=MOEDA_MUDA, tam=10)
+# Texto proprio: o espelho de H13 trazia "POSICAO ATUAL NAO INFORMADA",
+# sem acento e com terminologia antiga.
+cel("C157", formula=(
+    '=IF($B$13="","Situação atual do contrato não informada.",'
+    'IF(ROUND($B$13,2)=0,"As duas referências conciliam.",'
+    '"Há diferença entre as referências; confira os valores acima."))'),
+    tam=9, cor=CINZA_TXT)
 alturas["157"] = 15
 alturas["158"] = 8
 
@@ -400,22 +444,38 @@ merges.append("F160:H160")
 for ref, txt in (("A160", "Ciclo"), ("B160", "Desembolsado informado"),
                  ("C160", "Execução estimada pelo quantitativo"),
                  ("D160", "Diferença"), ("E160", "Conferência")):
-    rotulo(ref, txt, fundo=CINZA)
+    # "Execução estimada pelo quantitativo" nao cabe na largura da coluna C
+    # e era truncado; os cabecalhos passam a quebrar em duas linhas.
+    rotulo(ref, txt, fundo=CINZA, wrap=True)
+alturas["160"] = 26
 cel("F160", formula=(
     '=IF(MEMORIA_RESULTADOS!$B$4="Financeiro","",'
     '"Não aplicável ao método selecionado.")'), tam=9, italico=True,
     cor=CINZA_TXT)
+# Fora do metodo Financeiro estas linhas ficam VISUALMENTE VAZIAS. Com o
+# monetario homologado (4a secao "—") elas desenhavam cinco fileiras de
+# travessoes ao lado da propria mensagem de nao aplicabilidade. A estrutura
+# e as formulas permanecem; muda so a secao de texto do formato.
 for i in range(5):
     r, o = 161 + i, 73 + i
     for col in ("A", "B", "C", "D", "E"):
         cel(f"{col}{r}", formula=(
             f'=IF(MEMORIA_RESULTADOS!$B$4<>"Financeiro","",${col}${o})'),
-            fmt=(MOEDA if col in ("B", "C", "D") else None), tam=10)
+            fmt=(MOEDA_MUDA if col in ("B", "C", "D") else None), tam=10)
     alturas[str(r)] = 15
 merges.append("A166:H166")
-cel("A166", formula='=IF(MEMORIA_RESULTADOS!$B$4<>"Financeiro","",$A$78)',
+# Texto proprio no lugar do espelho de A78, que vinha em ASCII sem acento.
+cel("A166", formula=(
+    '=IF(MEMORIA_RESULTADOS!$B$4<>"Financeiro","",'
+    '"Esta conferência compara o Financeiro informado com uma reconstrução '
+    'pelo quantitativo. Ela não altera o VTA Oficial.")'),
     tam=9, italico=True, cor=CINZA_TXT)
 alturas["166"] = 14
+
+# Os cabecalhos com quebra de linha (106 e 160) somaram altura. Para a
+# pagina 2 continuar fechando em 75%, os espacadores dela cedem 2pt cada.
+for _espacador in ("126", "135", "143", "149", "155", "158"):
+    alturas[_espacador] = 6
 
 plano = {
     "aba": "RESULTADOS",

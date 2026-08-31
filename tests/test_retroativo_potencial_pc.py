@@ -21,6 +21,7 @@ e "Sim") e DESCARTADO_DUPLICIDADE so e atribuido pela via fiscal
 from __future__ import annotations
 
 import datetime as dt
+import re
 import io
 from pathlib import Path
 
@@ -458,3 +459,61 @@ def test_fator_aparece_com_seis_casas_e_so_na_pagina_2(ws):
     # §9: a pagina 1 nao exibe fatores.
     for r in range(107, 112):
         assert ws.cell(r, 3).number_format != "0.000000"
+
+
+# ------------------------------------------- FASE 5.1: acabamento visual
+
+def test_ausencia_de_potencial_nao_desenha_travessao(ws):
+    """Sem potencial material, D100 fica visualmente vazio.
+
+    O monetario homologado usa "—" na 4a secao (texto), o que fazia uma
+    celula condicional que devolve "" desenhar um travessao ambar orfao.
+    """
+    assert ws["D100"].number_format.endswith(";")
+    assert '"—"' not in ws["D100"].number_format
+
+
+def test_conferencia_da_execucao_nao_deixa_linhas_de_travessao(ws):
+    """Fora do Financeiro as cinco linhas ficam visualmente vazias."""
+    for r in range(161, 166):
+        for c in (2, 3, 4):
+            fmt = ws.cell(r, c).number_format
+            assert fmt.endswith(";"), f"{ws.cell(r, c).coordinate}: {fmt}"
+            assert '"—"' not in fmt
+    assert "Não aplicável ao método selecionado" in ws["F160"].value
+
+
+def test_cabecalhos_longos_quebram_em_vez_de_truncar(ws):
+    assert ws["C160"].value == "Execução estimada pelo quantitativo"
+    for c in range(1, 6):
+        assert ws.cell(160, c).alignment.wrap_text is True
+    assert ws.row_dimensions[160].height >= 24
+
+
+def test_camada_humana_nao_expoe_nada_tecnico(ws):
+    """Nem literais nem formulas podem citar aba, endereco ou name tecnico."""
+    proibido = re.compile(
+        r"(MEMORIA(_RESULTADOS)?!|CONTROLE!|parametros!|comparativo_VTA!"
+        r"|itens_PC!|historico_VU!|financeiro!|posicao_\w+!"
+        r"|VTA_FINAL|RETRO_OFICIAL|apuracao|POSICAO|posi[cç][aã]o f[ií]sica)",
+        re.I,
+    )
+    achados = []
+    for r in range(90, 167):
+        for c in range(1, 9):
+            v = ws.cell(r, c).value
+            if not isinstance(v, str):
+                continue
+            # Numa formula so o texto entre aspas chega ao usuario.
+            alvos = re.findall(r'"([^"]*)"', v) if v.startswith("=") else [v]
+            for alvo in alvos:
+                if proibido.search(alvo):
+                    achados.append((ws.cell(r, c).coordinate, alvo[:60]))
+    assert achados == [], f"vazamento tecnico visivel: {achados}"
+
+
+def test_coluna_origem_usa_texto_proprio(ws):
+    assert ws["C121"].value == "Apuração do método selecionado"
+    assert ws["C122"].value == "Ajustes reconhecidos na apuração"
+    assert ws["C123"].value == "Saldo contratual atualizado"
+    assert ws["C124"].value == "Resultado oficial da apuração"

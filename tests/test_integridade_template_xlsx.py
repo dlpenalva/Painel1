@@ -147,7 +147,7 @@ FORMULAS_POR_ABA = {
     # camada de apresentacao das linhas 90-166, que e composta de espelhos:
     # 143 + 144 = 287. A expectativa e atualizada porque foi DIRETAMENTE
     # atingida por esta mudanca, nao como limpeza oportunista.
-    "RESULTADOS": 287,
+    "RESULTADOS": 282,
 }
 
 

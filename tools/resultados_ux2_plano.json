@@ -132,7 +132,7 @@
   },
   {
    "ref": "B92",
-   "formula": "=IF($B$5=\"\",\"—\",$B$5)",
+   "formula": "=IF($J$6=1,$B$5,\"Não selecionado\")",
    "fmtl": "Geral",
    "tam": 11
   },
@@ -259,7 +259,7 @@
   {
    "ref": "D100",
    "formula": "=IF(AND(MEMORIA_RESULTADOS!$B$4=\"PCs\",N(RETROATIVO_POTENCIAL_PC)>0),RETROATIVO_POTENCIAL_PC,\"\")",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 13,
    "negrito": true,
    "cor": "9A6700"
@@ -397,7 +397,7 @@
   },
   {
    "ref": "G107",
-   "formula": "=IF(parametros!$B$2=\"\",\"\",IF(parametros!$F$11=\"\",\"\",parametros!$F$11))",
+   "formula": "=IF(parametros!$B$2=\"\",\"\",\"Base\")",
    "fmtl": "Geral",
    "tam": 9,
    "cor": "595959"
@@ -440,7 +440,7 @@
   },
   {
    "ref": "G108",
-   "formula": "=IF(parametros!$B$3=\"\",\"\",IF(parametros!$F$12=\"\",\"\",parametros!$F$12))",
+   "formula": "=IF(parametros!$B$3=\"\",\"\",IF(parametros!$A$3=\"Sim\",\"Aplicado\",\"Fora da apuração\"))",
    "fmtl": "Geral",
    "tam": 9,
    "cor": "595959"
@@ -483,7 +483,7 @@
   },
   {
    "ref": "G109",
-   "formula": "=IF(parametros!$B$4=\"\",\"\",IF(parametros!$F$13=\"\",\"\",parametros!$F$13))",
+   "formula": "=IF(parametros!$B$4=\"\",\"\",IF(parametros!$A$4=\"Sim\",\"Aplicado\",\"Fora da apuração\"))",
    "fmtl": "Geral",
    "tam": 9,
    "cor": "595959"
@@ -526,7 +526,7 @@
   },
   {
    "ref": "G110",
-   "formula": "=IF(parametros!$B$5=\"\",\"\",IF(parametros!$F$14=\"\",\"\",parametros!$F$14))",
+   "formula": "=IF(parametros!$B$5=\"\",\"\",IF(parametros!$A$5=\"Sim\",\"Aplicado\",\"Fora da apuração\"))",
    "fmtl": "Geral",
    "tam": 9,
    "cor": "595959"
@@ -569,7 +569,7 @@
   },
   {
    "ref": "G111",
-   "formula": "=IF(parametros!$B$6=\"\",\"\",IF(parametros!$F$15=\"\",\"\",parametros!$F$15))",
+   "formula": "=IF(parametros!$B$6=\"\",\"\",IF(parametros!$A$6=\"Sim\",\"Aplicado\",\"Fora da apuração\"))",
    "fmtl": "Geral",
    "tam": 9,
    "cor": "595959"
@@ -599,14 +599,14 @@
   },
   {
    "ref": "A118",
-   "formula": "=$A$69",
+   "valor": "O VTA reúne o valor já executado, os ajustes ainda devidos e o saldo que ainda falta executar, já atualizado.",
    "fmtl": "Geral",
    "tam": 9,
    "cor": "595959"
   },
   {
    "ref": "A119",
-   "formula": "=$A$70",
+   "formula": "=IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",\"Método Financeiro: a execução já realizada corresponde aos valores efetivamente desembolsados.\",IF(MEMORIA_RESULTADOS!$B$4=\"PCs\",\"Método Pedidos de Compra: a execução já realizada corresponde aos valores apurados pelos Pedidos de Compra.\",IF(MEMORIA_RESULTADOS!$B$4=\"Itens\",\"Método Consumido: a execução já realizada corresponde às quantidades consumidas pelos valores unitários aplicáveis.\",\"Método ainda não selecionado.\")))",
    "fmtl": "Geral",
    "tam": 9,
    "cor": "595959"
@@ -652,7 +652,7 @@
   },
   {
    "ref": "C121",
-   "formula": "=$C$83",
+   "valor": "Apuração do método selecionado",
    "fmtl": "Geral",
    "tam": 9,
    "cor": "595959"
@@ -671,7 +671,7 @@
   },
   {
    "ref": "C122",
-   "formula": "=$C$84",
+   "valor": "Ajustes reconhecidos na apuração",
    "fmtl": "Geral",
    "tam": 9,
    "cor": "595959"
@@ -690,7 +690,7 @@
   },
   {
    "ref": "C123",
-   "formula": "=$C$85",
+   "valor": "Saldo contratual atualizado",
    "fmtl": "Geral",
    "tam": 9,
    "cor": "595959"
@@ -711,7 +711,7 @@
   },
   {
    "ref": "C124",
-   "formula": "=$C$86",
+   "valor": "Resultado oficial da apuração",
    "fmtl": "Geral",
    "tam": 9,
    "cor": "595959"
@@ -730,7 +730,7 @@
   },
   {
    "ref": "C125",
-   "formula": "=IF(CONFERENCIA_FORMACAO_VTA=\"\",\"Aguardando base para conferir.\",IF(ABS(CONFERENCIA_FORMACAO_VTA)<=MEMORIA_RESULTADOS!$D$4,\"DE ACORDO — as parcelas fecham com o VTA Oficial.\",$C$87))",
+   "formula": "=IF(CONFERENCIA_FORMACAO_VTA=\"\",\"Aguardando base para conferir.\",IF(ABS(CONFERENCIA_FORMACAO_VTA)<=MEMORIA_RESULTADOS!$D$4,\"DE ACORDO — as parcelas fecham com o VTA Oficial.\",\"As parcelas não fecham com o VTA Oficial; confira os ajustes manuais registrados.\"))",
    "fmtl": "Geral",
    "tam": 9
   },
@@ -1280,12 +1280,12 @@
   {
    "ref": "B157",
    "formula": "=IF($B$13=\"\",\"\",$B$13)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
    "ref": "C157",
-   "formula": "=IF($H$13=\"\",\"\",$H$13)",
+   "formula": "=IF($B$13=\"\",\"Situação atual do contrato não informada.\",IF(ROUND($B$13,2)=0,\"As duas referências conciliam.\",\"Há diferença entre as referências; confira os valores acima.\"))",
    "fmtl": "Geral",
    "tam": 9,
    "cor": "595959"
@@ -1306,7 +1306,8 @@
    "tam": 9,
    "negrito": true,
    "cor": "595959",
-   "fundo": "F2F2F2"
+   "fundo": "F2F2F2",
+   "wrap": true
   },
   {
    "ref": "B160",
@@ -1315,7 +1316,8 @@
    "tam": 9,
    "negrito": true,
    "cor": "595959",
-   "fundo": "F2F2F2"
+   "fundo": "F2F2F2",
+   "wrap": true
   },
   {
    "ref": "C160",
@@ -1324,7 +1326,8 @@
    "tam": 9,
    "negrito": true,
    "cor": "595959",
-   "fundo": "F2F2F2"
+   "fundo": "F2F2F2",
+   "wrap": true
   },
   {
    "ref": "D160",
@@ -1333,7 +1336,8 @@
    "tam": 9,
    "negrito": true,
    "cor": "595959",
-   "fundo": "F2F2F2"
+   "fundo": "F2F2F2",
+   "wrap": true
   },
   {
    "ref": "E160",
@@ -1342,7 +1346,8 @@
    "tam": 9,
    "negrito": true,
    "cor": "595959",
-   "fundo": "F2F2F2"
+   "fundo": "F2F2F2",
+   "wrap": true
   },
   {
    "ref": "F160",
@@ -1361,19 +1366,19 @@
   {
    "ref": "B161",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$B$73)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
    "ref": "C161",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$C$73)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
    "ref": "D161",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$D$73)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
@@ -1391,19 +1396,19 @@
   {
    "ref": "B162",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$B$74)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
    "ref": "C162",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$C$74)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
    "ref": "D162",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$D$74)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
@@ -1421,19 +1426,19 @@
   {
    "ref": "B163",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$B$75)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
    "ref": "C163",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$C$75)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
    "ref": "D163",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$D$75)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
@@ -1451,19 +1456,19 @@
   {
    "ref": "B164",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$B$76)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
    "ref": "C164",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$C$76)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
    "ref": "D164",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$D$76)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
@@ -1481,19 +1486,19 @@
   {
    "ref": "B165",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$B$77)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
    "ref": "C165",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$C$77)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
    "ref": "D165",
    "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$D$77)",
-   "fmt": "@COPIAR_DE:C5",
+   "fmtl": "\"R$\" #.##0,00;-\"R$\" #.##0,00;\"R$\" 0,00;",
    "tam": 10
   },
   {
@@ -1504,7 +1509,7 @@
   },
   {
    "ref": "A166",
-   "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",$A$78)",
+   "formula": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"\",\"Esta conferência compara o Financeiro informado com uma reconstrução pelo quantitativo. Ela não altera o VTA Oficial.\")",
    "fmtl": "Geral",
    "tam": 9,
    "italico": true,
@@ -1543,31 +1548,32 @@
   "123": 16,
   "124": 16,
   "125": 16,
-  "126": 8,
+  "126": 6,
   "129": 15,
   "130": 15,
   "131": 15,
   "132": 15,
   "133": 15,
   "134": 16,
-  "135": 8,
+  "135": 6,
   "138": 15,
   "139": 15,
   "140": 15,
   "141": 15,
   "142": 15,
-  "143": 8,
+  "143": 6,
   "145": 15,
   "146": 15,
   "147": 15,
   "148": 15,
-  "149": 8,
+  "149": 6,
   "152": 15,
   "153": 15,
   "154": 15,
-  "155": 8,
+  "155": 6,
   "157": 15,
-  "158": 8,
+  "158": 6,
+  "160": 26,
   "161": 15,
   "162": 15,
   "163": 15,

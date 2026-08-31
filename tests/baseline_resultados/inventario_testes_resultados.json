@@ -2776,7 +2776,7 @@
    "arquivo": "tests/test_integridade_template_xlsx.py",
    "linha": 150,
    "teste": "<modulo>",
-   "referencia": "\"RESULTADOS\": 287,",
+   "referencia": "\"RESULTADOS\": 282,",
    "coordenadas": [],
    "aba": "RESULTADOS",
    "classificacao": "E",
