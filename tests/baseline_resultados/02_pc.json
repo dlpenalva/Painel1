@@ -1,0 +1,1140 @@
+{
+ "cenario": "02_pc",
+ "checkpoint_pre_resultados": "f8296f7c2962352716edd22044ed9573f5eeee8a",
+ "contrato_xls": {
+  "aba_presente": true,
+  "coordenadas_lidas_em_runtime": {
+   "A1": "_coleta_reajuste.py — titulo literal, gate de integridade da aba",
+   "B10": "_leitor_masterfile_v10.py — referencias_vta.forma1_posicao_atual",
+   "B11": "_leitor_masterfile_v10.py — referencias_vta.forma2_ultima_abertura",
+   "B12": "_leitor_masterfile_v10.py — referencias_vta.forma3_integral_reajustado",
+   "B13": "_leitor_masterfile_v10.py — referencias_vta.reconciliacao_valor",
+   "B3": "_coleta_reajuste.py — status_resultados['geral'] (STATUS_RESULTADOS)",
+   "H10": "_leitor_masterfile_v10.py — referencias_vta.forma1_situacao",
+   "H11": "_leitor_masterfile_v10.py — referencias_vta.forma2_situacao",
+   "H13": "_leitor_masterfile_v10.py — referencias_vta.reconciliacao_status"
+  },
+  "coordenadas_lidas_por_outras_abas": {
+   "C43": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "C44": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "C45": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "C46": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "C47": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "C48": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "C49": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "C50": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "D43": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "D44": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "D45": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "G43": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "G44": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "G45": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "G46": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "G47": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "G48": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "G49": [
+    "MEMORIA_RESULTADOS"
+   ],
+   "G50": [
+    "MEMORIA_RESULTADOS"
+   ]
+  },
+  "dimensoes": "A1:J87",
+  "e_ultima_aba": true,
+  "formulas": {
+   "A1": "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL",
+   "A10": "[AUDITORIA INTERNA] Posicao fisica atual - nao e VTA",
+   "A11": "[AUDITORIA INTERNA] Ultima posicao de abertura - nao e VTA",
+   "A12": "[AUDITORIA INTERNA] Contrato original integralmente reajustado - comparativo",
+   "A13": "[AUDITORIA INTERNA] Reconciliacao (posicao atual - ultima abertura)",
+   "A15": "2. RETROATIVO POR CICLO",
+   "A16": "C0",
+   "A17": "C1",
+   "A18": "C2",
+   "A19": "C3",
+   "A2": "Síntese executiva e memória auditável da apuração",
+   "A20": "C4",
+   "A21": "Ajuste manual não rateado",
+   "A22": "TOTAL",
+   "A23": "=IF(OR(MEMORIA_RESULTADOS!$B$4<>\"PCs\",MEMORIA_RESULTADOS!$T$28=0),\"\",\"PCs sem efeito financeiro: \"&MEMORIA_RESULTADOS!$T$28&\" PC(s)\")",
+   "A24": "3. REMANESCENTE TOTAL POR CICLO",
+   "A25": "Ciclo",
+   "A26": "C0",
+   "A27": "C1",
+   "A28": "C2",
+   "A29": "C3",
+   "A3": "=IF($J$6=1,$B$5,\"selecionar na aba CONTROLE\")",
+   "A30": "C4",
+   "A33": "=IF(UPPER(CONTROLE!$B$2)=\"\",\"4. CICLO ATUAL EM EXECUÇÃO\",\"4. CICLO ATUAL EM EXECUÇÃO (\"&UPPER(CONTROLE!$B$2)&\")\")",
+   "A34": "Ciclo em execução",
+   "A35": "Data de referência utilizada",
+   "A36": "Valor executado atualizado até a data",
+   "A37": "Remanescente atualizado na abertura do ciclo",
+   "A38": "Saldo remanescente atualizado",
+   "A39": "=IF(MEMORIA_RESULTADOS!$W$49=1,\"Posicao fisica itemizada informada pelo fiscal (CICLO_EM_EXECUCAO): execucao e remanescente do ciclo atual sao medidos, nao estimados.\",IF(AND($B$36<>\"\",posicao_referencia!$I$2<>TRUE),\"Estimativa: assume execucao registrada pelo metodo oficial (\"&$B$5&\") aproximadamente igual ao consumo fisico do ciclo.\",\"\"))",
+   "A4": "VTA OFICIAL",
+   "A41": "5. AJUSTES MANUAIS",
+   "A42": "Tipo",
+   "A43": "Retroativo manual oficial",
+   "A44": "Ajuste do VTA",
+   "A45": "VTA manual substitutivo",
+   "A46": "Complemento histórico",
+   "A47": "Complemento histórico",
+   "A48": "Complemento histórico",
+   "A49": "Complemento histórico",
+   "A50": "Complemento histórico",
+   "A53": "6. TOTAIS CANONICOS DE PCs — MEDIDAS COM NOMES CLAROS",
+   "A54": "Medida",
+   "A55": "1. Total cadastrado de PCs",
+   "A56": "2. Total considerado ate a data de corte",
+   "A57": "3. Total enquadrado nos ciclos",
+   "A58": "4. Total com efeito financeiro",
+   "A59": "5. Total sem efeito financeiro",
+   "A60": "6. Retroativo reconhecido",
+   "A61": "7. Execucao fisica do ciclo atual",
+   "A62": "8. Remanescente fisico atual",
+   "A63": "9. VTA oficial",
+   "A64": "10. Referencias auditaveis",
+   "A65": "11. Reconciliacao",
+   "A66": "12. Status",
+   "A68": "7. METODOLOGIA DO VTA",
+   "A69": "VTA = execucao ja realizada + acertos ainda devidos + saldo futuro atualizado.",
+   "A7": "=IF($J$5=0,\"APURAÇÃO CONCLUÍDA\",\"PENDÊNCIAS PARA CONCLUSÃO:\")",
+   "A70": "=IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",\"Metodo Financeiro: execucao ja realizada = valores efetivamente desembolsados informados no financeiro.\",IF(MEMORIA_RESULTADOS!$B$4=\"PCs\",\"Metodo PCs: execucao ja realizada = valores apurados pelos Pedidos de Compra conforme as regras do metodo.\",IF(MEMORIA_RESULTADOS!$B$4=\"Itens\",\"Metodo Consumido: execucao ja realizada = quantidades consumidas x valores unitarios aplicaveis.\",\"Selecione o metodo em CONTROLE!B1.\")))",
+   "A71": "=IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",\"8. CONFERENCIA DA EXECUCAO (Financeiro) - camada de auditoria; nao recalcula o VTA oficial\",\"8. CONFERENCIA DA EXECUCAO - auditoria especifica do metodo Financeiro; nao aplicavel ao metodo selecionado\")",
+   "A72": "Ciclo",
+   "A73": "C0",
+   "A74": "C1",
+   "A75": "C2",
+   "A76": "C3",
+   "A77": "C4",
+   "A78": "Esta conferencia compara o Financeiro informado com uma reconstrucao pelo quantitativo. Ela nao altera o VTA Oficial.",
+   "A79": "9. COMO E FORMADO O VTA?",
+   "A80": "O VTA reune o valor ja executado, os ajustes ainda devidos (quando houver) e o saldo que ainda falta executar, ja atualizado.",
+   "A81": "Para conferir: VTA Oficial = Executado apurado + Ajustes ainda devidos + Remanescente atualizado.",
+   "A82": "Parcela",
+   "A83": "Executado apurado",
+   "A84": "(+) Ajustes ainda devidos",
+   "A85": "(+) Remanescente atualizado",
+   "A86": "(=) VTA Oficial",
+   "A87": "Conferencia (deve ser 0,00)",
+   "A9": "1. COMPOSIÇÃO DO VTA — Executado apurado + Ajustes ainda devidos + Remanescente atualizado = VTA Oficial (quadro detalhado na seção 9)",
+   "B10": "=IF(MEMORIA_RESULTADOS!$W$50=\"\",\"\",MEMORIA_RESULTADOS!$W$50)",
+   "B11": "=IF(MEMORIA_RESULTADOS!$W$48=\"\",\"\",MEMORIA_RESULTADOS!$W$48)",
+   "B12": "=IFERROR(comparativo_VTA!$B$208,\"\")",
+   "B13": "=IF(MEMORIA_RESULTADOS!$W$51=\"\",\"\",MEMORIA_RESULTADOS!$W$51)",
+   "B15": "Valor pago / considerado",
+   "B16": "=IF($B$5=\"Financeiro\",IF(COUNTIFS(financeiro!$B$2:$B$73,\"c0\",financeiro!$C$2:$C$73,\">0\")>0,ROUND(SUMIFS(financeiro!$C$2:$C$73,financeiro!$B$2:$B$73,\"c0\",financeiro!$C$2:$C$73,\">0\"),2),IF(AND(ISNUMBER(cobertura_temporal!$B$13),ISNUMBER(parametros!$D$2),cobertura_temporal!$B$13>=IF(CONTROLE!$B$3=\"\",parametros!$D$2,MIN(parametros!$D$2,CONTROLE!$B$3))),0,\"\")),IF($B$5=\"PCs\",IF(COUNTIFS(itens_PC!$C$2:$C$5001,\"C0\",itens_PC!$D$2:$D$5001,\">0\",itens_PC!$G$2:$G$5001,\"Sim\",itens_PC!$B$2:$B$5001,\"<=\"&MEMORIA_RESULTADOS!$T$31)>0,ROUND(SUMIFS(itens_PC!$D$2:$D$5001,itens_PC!$C$2:$C$5001,\"C0\",itens_PC!$G$2:$G$5001,\"Sim\",itens_PC!$B$2:$B$5001,\"<=\"&MEMORIA_RESULTADOS!$T$31),2),IF(AND(ISNUMBER(cobertura_temporal!$B$15),ISNUMBER(parametros!$D$2),cobertura_temporal!$B$15>=IF(CONTROLE!$B$3=\"\",parametros!$D$2,MIN(parametros!$D$2,CONTROLE!$B$3))),0,\"\")),IF($B$5=\"Itens\",IF(COUNTIFS(itens_Consumidos!$E$2:$E$200,\">0\")=0,\"\",ROUND(SUMPRODUCT(itens_Consumidos!$E$2:$E$200,itens_Consumidos!$C$2:$C$200),2)),\"\")))",
+   "B17": "=IF($B$5=\"Financeiro\",IF(COUNTIFS(financeiro!$B$2:$B$73,\"c1\",financeiro!$C$2:$C$73,\">0\")>0,ROUND(SUMIFS(financeiro!$C$2:$C$73,financeiro!$B$2:$B$73,\"c1\",financeiro!$C$2:$C$73,\">0\"),2),IF(AND(ISNUMBER(cobertura_temporal!$B$13),ISNUMBER(parametros!$D$3),cobertura_temporal!$B$13>=IF(CONTROLE!$B$3=\"\",parametros!$D$3,MIN(parametros!$D$3,CONTROLE!$B$3))),0,\"\")),IF($B$5=\"PCs\",IF(COUNTIFS(itens_PC!$C$2:$C$5001,\"C1\",itens_PC!$D$2:$D$5001,\">0\",itens_PC!$G$2:$G$5001,\"Sim\",itens_PC!$B$2:$B$5001,\"<=\"&MEMORIA_RESULTADOS!$T$31)>0,ROUND(SUMIFS(itens_PC!$D$2:$D$5001,itens_PC!$C$2:$C$5001,\"C1\",itens_PC!$G$2:$G$5001,\"Sim\",itens_PC!$B$2:$B$5001,\"<=\"&MEMORIA_RESULTADOS!$T$31),2),IF(AND(ISNUMBER(cobertura_temporal!$B$15),ISNUMBER(parametros!$D$3),cobertura_temporal!$B$15>=IF(CONTROLE!$B$3=\"\",parametros!$D$3,MIN(parametros!$D$3,CONTROLE!$B$3))),0,\"\")),IF($B$5=\"Itens\",IF(COUNTIFS(itens_Consumidos!$G$2:$G$200,\">0\")=0,\"\",ROUND(SUMPRODUCT(itens_Consumidos!$G$2:$G$200,itens_Consumidos!$C$2:$C$200),2)),\"\")))",
+   "B18": "=IF($B$5=\"Financeiro\",IF(COUNTIFS(financeiro!$B$2:$B$73,\"c2\",financeiro!$C$2:$C$73,\">0\")>0,ROUND(SUMIFS(financeiro!$C$2:$C$73,financeiro!$B$2:$B$73,\"c2\",financeiro!$C$2:$C$73,\">0\"),2),IF(AND(ISNUMBER(cobertura_temporal!$B$13),ISNUMBER(parametros!$D$4),cobertura_temporal!$B$13>=IF(CONTROLE!$B$3=\"\",parametros!$D$4,MIN(parametros!$D$4,CONTROLE!$B$3))),0,\"\")),IF($B$5=\"PCs\",IF(COUNTIFS(itens_PC!$C$2:$C$5001,\"C2\",itens_PC!$D$2:$D$5001,\">0\",itens_PC!$G$2:$G$5001,\"Sim\",itens_PC!$B$2:$B$5001,\"<=\"&MEMORIA_RESULTADOS!$T$31)>0,ROUND(SUMIFS(itens_PC!$D$2:$D$5001,itens_PC!$C$2:$C$5001,\"C2\",itens_PC!$G$2:$G$5001,\"Sim\",itens_PC!$B$2:$B$5001,\"<=\"&MEMORIA_RESULTADOS!$T$31),2),IF(AND(ISNUMBER(cobertura_temporal!$B$15),ISNUMBER(parametros!$D$4),cobertura_temporal!$B$15>=IF(CONTROLE!$B$3=\"\",parametros!$D$4,MIN(parametros!$D$4,CONTROLE!$B$3))),0,\"\")),IF($B$5=\"Itens\",IF(COUNTIFS(itens_Consumidos!$I$2:$I$200,\">0\")=0,\"\",ROUND(SUMPRODUCT(itens_Consumidos!$I$2:$I$200,itens_Consumidos!$C$2:$C$200),2)),\"\")))",
+   "B19": "=IF($B$5=\"Financeiro\",IF(COUNTIFS(financeiro!$B$2:$B$73,\"c3\",financeiro!$C$2:$C$73,\">0\")>0,ROUND(SUMIFS(financeiro!$C$2:$C$73,financeiro!$B$2:$B$73,\"c3\",financeiro!$C$2:$C$73,\">0\"),2),IF(AND(ISNUMBER(cobertura_temporal!$B$13),ISNUMBER(parametros!$D$5),cobertura_temporal!$B$13>=IF(CONTROLE!$B$3=\"\",parametros!$D$5,MIN(parametros!$D$5,CONTROLE!$B$3))),0,\"\")),IF($B$5=\"PCs\",IF(COUNTIFS(itens_PC!$C$2:$C$5001,\"C3\",itens_PC!$D$2:$D$5001,\">0\",itens_PC!$G$2:$G$5001,\"Sim\",itens_PC!$B$2:$B$5001,\"<=\"&MEMORIA_RESULTADOS!$T$31)>0,ROUND(SUMIFS(itens_PC!$D$2:$D$5001,itens_PC!$C$2:$C$5001,\"C3\",itens_PC!$G$2:$G$5001,\"Sim\",itens_PC!$B$2:$B$5001,\"<=\"&MEMORIA_RESULTADOS!$T$31),2),IF(AND(ISNUMBER(cobertura_temporal!$B$15),ISNUMBER(parametros!$D$5),cobertura_temporal!$B$15>=IF(CONTROLE!$B$3=\"\",parametros!$D$5,MIN(parametros!$D$5,CONTROLE!$B$3))),0,\"\")),IF($B$5=\"Itens\",IF(COUNTIFS(itens_Consumidos!$K$2:$K$200,\">0\")=0,\"\",ROUND(SUMPRODUCT(itens_Consumidos!$K$2:$K$200,itens_Consumidos!$C$2:$C$200),2)),\"\")))",
+   "B20": "=IF($B$5=\"Financeiro\",IF(COUNTIFS(financeiro!$B$2:$B$73,\"c4\",financeiro!$C$2:$C$73,\">0\")>0,ROUND(SUMIFS(financeiro!$C$2:$C$73,financeiro!$B$2:$B$73,\"c4\",financeiro!$C$2:$C$73,\">0\"),2),IF(AND(ISNUMBER(cobertura_temporal!$B$13),ISNUMBER(parametros!$D$6),cobertura_temporal!$B$13>=IF(CONTROLE!$B$3=\"\",parametros!$D$6,MIN(parametros!$D$6,CONTROLE!$B$3))),0,\"\")),IF($B$5=\"PCs\",IF(COUNTIFS(itens_PC!$C$2:$C$5001,\"C4\",itens_PC!$D$2:$D$5001,\">0\",itens_PC!$G$2:$G$5001,\"Sim\",itens_PC!$B$2:$B$5001,\"<=\"&MEMORIA_RESULTADOS!$T$31)>0,ROUND(SUMIFS(itens_PC!$D$2:$D$5001,itens_PC!$C$2:$C$5001,\"C4\",itens_PC!$G$2:$G$5001,\"Sim\",itens_PC!$B$2:$B$5001,\"<=\"&MEMORIA_RESULTADOS!$T$31),2),IF(AND(ISNUMBER(cobertura_temporal!$B$15),ISNUMBER(parametros!$D$6),cobertura_temporal!$B$15>=IF(CONTROLE!$B$3=\"\",parametros!$D$6,MIN(parametros!$D$6,CONTROLE!$B$3))),0,\"\")),IF($B$5=\"Itens\",IF(COUNTIFS(itens_Consumidos!$M$2:$M$200,\">0\")=0,\"\",ROUND(SUMPRODUCT(itens_Consumidos!$M$2:$M$200,itens_Consumidos!$C$2:$C$200),2)),\"\")))",
+   "B22": "=IF(COUNT(B16:B20)=0,\"\",ROUND(SUM(B16:B20),2))",
+   "B23": "=IF(OR(MEMORIA_RESULTADOS!$B$4<>\"PCs\",MEMORIA_RESULTADOS!$T$28=0),\"\",MEMORIA_RESULTADOS!$T$29)",
+   "B25": "Remanescente sem reajuste",
+   "B26": "=IF(IFERROR(VALUE(MID(UPPER(CONTROLE!$B$2),2,1)),-1)<0,\"\",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,\"<>\")=0,\"\",IFERROR(comparativo_VTA!$C$204,\"\")))",
+   "B27": "=IF(IFERROR(VALUE(MID(UPPER(CONTROLE!$B$2),2,1)),-1)<1,\"\",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,\"<>\")=0,\"\",IFERROR(comparativo_VTA!$D$204,\"\")))",
+   "B28": "=IF(IFERROR(VALUE(MID(UPPER(CONTROLE!$B$2),2,1)),-1)<2,\"\",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,\"<>\")=0,\"\",IFERROR(comparativo_VTA!$E$204,\"\")))",
+   "B29": "=IF(IFERROR(VALUE(MID(UPPER(CONTROLE!$B$2),2,1)),-1)<3,\"\",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,\"<>\")=0,\"\",IFERROR(comparativo_VTA!$F$204,\"\")))",
+   "B3": "=IF(OR($H$8=\"REVISE\",$H$14=\"REVISE\",$H$24=\"REVISE\",$H$33=\"REVISE\",COUNTIF($H$43:$H$50,\"REVISE\")>0),\"REVISE\",IF($H$33=\"ESTIMADO\",\"ESTIMADO\",\"VALIDADO\"))",
+   "B30": "=IF(IFERROR(VALUE(MID(UPPER(CONTROLE!$B$2),2,1)),-1)<4,\"\",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,\"<>\")=0,\"\",IFERROR(comparativo_VTA!$G$204,\"\")))",
+   "B34": "=UPPER(CONTROLE!$B$2)",
+   "B35": "=IF($B$5=\"Financeiro\",IF(cobertura_temporal!$B$13<>\"\",cobertura_temporal!$B$13,IF(cobertura_temporal!$B$12<>\"\",cobertura_temporal!$B$12,\"\")),IF($B$5=\"PCs\",IF(cobertura_temporal!$B$15<>\"\",cobertura_temporal!$B$15,IF(cobertura_temporal!$B$14<>\"\",cobertura_temporal!$B$14,\"\")),IF(posicao_referencia!$I$5<>\"\",posicao_referencia!$I$5,IF(CONTROLE!$B$3=\"\",\"\",CONTROLE!$B$3))))",
+   "B36": "=IF(MEMORIA_RESULTADOS!$W$49=1,ROUND(IFERROR(SUM(INDIRECT(\"CICLO_EM_EXECUCAO!F13:F211\")),0),2),(IF(OR(CONTROLE!$B$2=\"\",$B$35=\"\"),\"\",IF($B$5=\"Financeiro\",ROUND(SUMIFS(financeiro!$E$2:$E$73,financeiro!$B$2:$B$73,LOWER(CONTROLE!$B$2),financeiro!$A$2:$A$73,\"<=\"&$B$35),2),IF($B$5=\"PCs\",ROUND(SUMIFS(itens_PC!$F$2:$F$5001,itens_PC!$C$2:$C$5001,UPPER(CONTROLE!$B$2),itens_PC!$B$2:$B$5001,\"<=\"&$B$35),2),IF($B$5=\"Itens\",IF(UPPER(CONTROLE!$B$2)=\"C0\",ROUND(SUMPRODUCT(itens_Consumidos!$E$2:$E$200,historico_VU!$C$2:$C$200),2),IF(UPPER(CONTROLE!$B$2)=\"C1\",ROUND(SUMPRODUCT(itens_Consumidos!$G$2:$G$200,historico_VU!$D$2:$D$200),2),IF(UPPER(CONTROLE!$B$2)=\"C2\",ROUND(SUMPRODUCT(itens_Consumidos!$I$2:$I$200,historico_VU!$E$2:$E$200),2),IF(UPPER(CONTROLE!$B$2)=\"C3\",ROUND(SUMPRODUCT(itens_Consumidos!$K$2:$K$200,historico_VU!$F$2:$F$200),2),IF(UPPER(CONTROLE!$B$2)=\"C4\",ROUND(SUMPRODUCT(itens_Consumidos!$M$2:$M$200,historico_VU!$G$2:$G$200),2),\"\"))))),\"\"))))))",
+   "B37": "=IFERROR(INDEX($C$26:$C$30,MATCH(UPPER(CONTROLE!$B$2),$A$26:$A$30,0)),\"\")",
+   "B38": "=IF(OR(B36=\"\",B37=\"\"),\"\",ROUND(B37-B36,2))",
+   "B42": "Ciclo",
+   "B43": "TOTAL",
+   "B44": "TOTAL",
+   "B45": "TOTAL",
+   "B46": "C0",
+   "B47": "C1",
+   "B48": "C2",
+   "B49": "C3",
+   "B5": "=MEMORIA_RESULTADOS!$B$4",
+   "B50": "C4",
+   "B54": "Valor",
+   "B55": "=IF($B$5<>\"PCs\",\"\",MEMORIA_RESULTADOS!$T$33)",
+   "B56": "=IF($B$5<>\"PCs\",\"\",MEMORIA_RESULTADOS!$T$34)",
+   "B57": "=IF($B$5<>\"PCs\",\"\",MEMORIA_RESULTADOS!$T$35)",
+   "B58": "=IF($B$5<>\"PCs\",\"\",MEMORIA_RESULTADOS!$T$36)",
+   "B59": "=IF($B$5<>\"PCs\",\"\",MEMORIA_RESULTADOS!$T$37)",
+   "B6": "=IF(parametros!$E$16=\"\",\"\",parametros!$E$16)",
+   "B60": "=$D$22",
+   "B61": "=$B$36",
+   "B62": "=$B$38",
+   "B63": "=IF(VTA_FINAL=\"\",\"\",VTA_FINAL)",
+   "B64": "=\"Linhas 10 a 13 (ocultas - auditoria interna)\"",
+   "B65": "=$B$13",
+   "B66": "=$B$3",
+   "B7": "=IF($J$5=0,\"Nenhuma pendência registrada pelas validações desta apuração.\",\"Informar / concluir: \"&IF($H$8<>\"VALIDADO\",\"composição do VTA; \",\"\")&IF($H$14<>\"VALIDADO\",\"retroativo por ciclo; \",\"\")&IF($H$24<>\"VALIDADO\",\"remanescente por ciclo; \",\"\")&IF($H$33<>\"VALIDADO\",\"situação do ciclo atual\"&IF(CONTROLE!$B$2=\"\",\"\",\" (\"&UPPER(CONTROLE!$B$2)&\")\")&\"; \",\"\")&IF(COUNTIF($H$43:$H$50,\"REVISE\")>0,\"ajustes manuais; \",\"\"))",
+   "B72": "Desembolsado informado",
+   "B73": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(COUNTIFS(financeiro!$B$2:$B$73,\"c0\",financeiro!$C$2:$C$73,\"<>\")=0,\"\",ROUND(SUMIFS(financeiro!$C$2:$C$73,financeiro!$B$2:$B$73,\"c0\"),2)))",
+   "B74": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(COUNTIFS(financeiro!$B$2:$B$73,\"c1\",financeiro!$C$2:$C$73,\"<>\")=0,\"\",ROUND(SUMIFS(financeiro!$C$2:$C$73,financeiro!$B$2:$B$73,\"c1\"),2)))",
+   "B75": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(COUNTIFS(financeiro!$B$2:$B$73,\"c2\",financeiro!$C$2:$C$73,\"<>\")=0,\"\",ROUND(SUMIFS(financeiro!$C$2:$C$73,financeiro!$B$2:$B$73,\"c2\"),2)))",
+   "B76": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(COUNTIFS(financeiro!$B$2:$B$73,\"c3\",financeiro!$C$2:$C$73,\"<>\")=0,\"\",ROUND(SUMIFS(financeiro!$C$2:$C$73,financeiro!$B$2:$B$73,\"c3\"),2)))",
+   "B77": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(COUNTIFS(financeiro!$B$2:$B$73,\"c4\",financeiro!$C$2:$C$73,\"<>\")=0,\"\",ROUND(SUMIFS(financeiro!$C$2:$C$73,financeiro!$B$2:$B$73,\"c4\"),2)))",
+   "B82": "Valor",
+   "B83": "=IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",IF(MEMORIA_RESULTADOS!$D$20=\"\",\"\",MEMORIA_RESULTADOS!$D$20),IF(MEMORIA_RESULTADOS!$B$4=\"Itens\",IF(MEMORIA_RESULTADOS!$F$20=\"\",\"\",MEMORIA_RESULTADOS!$F$20),IF(MEMORIA_RESULTADOS!$B$4=\"PCs\",IF(MEMORIA_RESULTADOS!$T$25=\"CALCULO MANUAL REQUERIDO\",\"\",ROUND(MEMORIA_RESULTADOS!$T$21+MEMORIA_RESULTADOS!$T$22,2)),\"\")))",
+   "B84": "=IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",IF(MEMORIA_RESULTADOS!$B$21=\"\",\"\",MEMORIA_RESULTADOS!$B$21),IF(OR(MEMORIA_RESULTADOS!$B$4=\"Itens\",MEMORIA_RESULTADOS!$B$4=\"PCs\"),0,\"\"))",
+   "B85": "=IF(MEMORIA_RESULTADOS!$D$35=\"\",\"\",MEMORIA_RESULTADOS!$D$35)",
+   "B86": "=IF(VTA_FINAL=\"\",\"\",VTA_FINAL)",
+   "B87": "=IF(OR($B$83=\"\",$B$85=\"\",$B$86=\"\"),\"\",ROUND($B$86-($B$83+N($B$84)+$B$85),2))",
+   "C10": "=IF(MEMORIA_RESULTADOS!$W$50=\"\",\"POSICAO ATUAL NAO INFORMADA (CICLO_EM_EXECUCAO ausente/incompleta)\",IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",\"execucao historica financeiro!E ciclos encerrados (MEMORIA!W66) + execucao ate a data + remanescente atual (CICLO_EM_EXECUCAO!F/G)\",\"C0 exec (MEMORIA!T21) + ciclos encerrados (MEMORIA!T22) + execucao ate a data + remanescente atual (CICLO_EM_EXECUCAO!F/G)\"))",
+   "C11": "=IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",\"execucao historica financeiro!E ate a abertura adotada (MEMORIA!W67)\",\"C0 exec (MEMORIA!T21) + ciclos encerrados (MEMORIA!T22)\")&\" + remanescente na abertura C\"&IF(MEMORIA_RESULTADOS!$W$46=\"\",\"?\",MEMORIA_RESULTADOS!$W$46)&\" (MEMORIA!AB)\"&IF(MEMORIA_RESULTADOS!$W$47=\"\",\" \",\" — \"&MEMORIA_RESULTADOS!$W$47)",
+   "C12": "SUMPRODUCT(posicao_contratual!B x C) x CONTROLE!B11 (fator historico integral)",
+   "C13": "Diferenca entre FORMA 1 e FORMA 2 (0 = reconciliado)",
+   "C15": "Valor reajustado",
+   "C16": "=IF(OR(B16=\"\",D16=\"\"),\"\",ROUND(B16+D16,2))",
+   "C17": "=IF(OR(B17=\"\",D17=\"\"),\"\",ROUND(B17+D17,2))",
+   "C18": "=IF(OR(B18=\"\",D18=\"\"),\"\",ROUND(B18+D18,2))",
+   "C19": "=IF(OR(B19=\"\",D19=\"\"),\"\",ROUND(B19+D19,2))",
+   "C20": "=IF(OR(B20=\"\",D20=\"\"),\"\",ROUND(B20+D20,2))",
+   "C22": "=IF(OR(B22=\"\",D22=\"\"),\"\",ROUND(B22+D22,2))",
+   "C23": "=IF(OR(MEMORIA_RESULTADOS!$B$4<>\"PCs\",MEMORIA_RESULTADOS!$T$28=0),\"\",ROUND(MEMORIA_RESULTADOS!$T$29+MEMORIA_RESULTADOS!$T$30,2))",
+   "C25": "Remanescente atualizado",
+   "C26": "=IF(B26=\"\",\"\",ROUND(SUMPRODUCT(posicao_contratual!$G$2:$G$201,historico_VU!$C$2:$C$201),2))",
+   "C27": "=IF(B27=\"\",\"\",ROUND(SUMPRODUCT(posicao_contratual!$K$2:$K$201,historico_VU!$D$2:$D$201),2))",
+   "C28": "=IF(B28=\"\",\"\",ROUND(SUMPRODUCT(posicao_contratual!$O$2:$O$201,historico_VU!$E$2:$E$201),2))",
+   "C29": "=IF(B29=\"\",\"\",ROUND(SUMPRODUCT(posicao_contratual!$S$2:$S$201,historico_VU!$F$2:$F$201),2))",
+   "C3": "=IF($J$8=\"\",\"—\",UPPER($J$8))",
+   "C30": "=IF(B30=\"\",\"\",ROUND(SUMPRODUCT(posicao_contratual!$W$2:$W$201,historico_VU!$G$2:$G$201),2))",
+   "C35": "=IF($B$35=\"\",\"Aguardando dado\",\"\")",
+   "C36": "=IF($B$36=\"\",\"Aguardando dado\",\"\")",
+   "C37": "=IF($B$37=\"\",\"Aguardando dado\",\"\")",
+   "C38": "=IF($B$38=\"\",\"Aguardando dado\",\"\")",
+   "C4": "=$H$8",
+   "C42": "Valor (+/-)",
+   "C5": "=IF(VTA_FINAL=\"\",\"\",VTA_FINAL)",
+   "C54": "Composicao auditavel",
+   "C55": "itens_PC!D (inventario integral, sem corte)",
+   "C56": "MEMORIA!T34 = T33 - PCs com DATA_PC > CONTROLE!B3",
+   "C57": "itens_PC!O (por ciclo) - posteriores ao corte",
+   "C58": "itens_PC!L=Sim, ate o corte",
+   "C59": "enquadrado - com efeito (competencias anteriores ao inicio do efeito)",
+   "C60": "MEMORIA!B16 (retroativo oficial)",
+   "C61": "CICLO_EM_EXECUCAO!F13:F211 quando a posicao fisica esta completa",
+   "C62": "abertura do ciclo vigente - execucao fisica",
+   "C63": "MEMORIA!B26 (VTA_FINAL) - saida canonica do metodo selecionado",
+   "C64": "posicao atual / ultima abertura / contrato integralmente reajustado",
+   "C65": "MEMORIA!W51 (FORMA 1 - FORMA 2); 0,00 reconcilia",
+   "C66": "STATUS GLOBAL desta aba",
+   "C72": "Execucao estimada pelo quantitativo",
+   "C73": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(SUMPRODUCT((itens_Remanesc!$A$2:$A$201<>\"\")*(1-ISNUMBER(itens_Remanesc!$AC$2:$AC$201)))>0,\"Sem historico quantitativo suficiente\",ROUND(SUM(N(itens_Remanesc!$AC$2:$AC$201)),2)))",
+   "C74": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(SUMPRODUCT((itens_Remanesc!$A$2:$A$201<>\"\")*(1-ISNUMBER(itens_Remanesc!$N$2:$N$201)))>0,\"Sem historico quantitativo suficiente\",ROUND(SUM(N(itens_Remanesc!$N$2:$N$201)),2)))",
+   "C75": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(SUMPRODUCT((itens_Remanesc!$A$2:$A$201<>\"\")*(1-ISNUMBER(itens_Remanesc!$P$2:$P$201)))>0,\"Sem historico quantitativo suficiente\",ROUND(SUM(N(itens_Remanesc!$P$2:$P$201)),2)))",
+   "C76": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(SUMPRODUCT((itens_Remanesc!$A$2:$A$201<>\"\")*(1-ISNUMBER(itens_Remanesc!$R$2:$R$201)))>0,\"Sem historico quantitativo suficiente\",ROUND(SUM(N(itens_Remanesc!$R$2:$R$201)),2)))",
+   "C77": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",\"Sem historico quantitativo suficiente\")",
+   "C82": "De onde vem",
+   "C83": "=IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",\"Valores efetivamente pagos, conforme informados na aba Financeiro.\",IF(MEMORIA_RESULTADOS!$B$4=\"Itens\",\"Quantidades consumidas x valores unitarios aplicaveis, ja atualizados.\",IF(MEMORIA_RESULTADOS!$B$4=\"PCs\",\"Valor considerado dos Pedidos de Compra anteriores ao ciclo vigente.\",\"Selecione o metodo em CONTROLE!B1.\")))",
+   "C84": "=IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",\"Reajuste ja reconhecido e ainda nao contido no valor pago.\",IF(MEMORIA_RESULTADOS!$B$4=\"Itens\",\"Nao aplicavel: o reajuste ja esta dentro da execucao atualizada.\",IF(MEMORIA_RESULTADOS!$B$4=\"PCs\",\"Nao aplicavel: o retroativo ja esta dentro do valor considerado dos PCs.\",\"\")))",
+   "C85": "Saldo que ainda falta executar, ja atualizado (MEMORIA!D35).",
+   "C86": "Saida canonica do metodo (MEMORIA_RESULTADOS!B26 = VTA_FINAL).",
+   "C87": "=IF($B$87=\"\",\"Aguardando base para conferir.\",IF(ABS($B$87)<=MEMORIA_RESULTADOS!$D$4,\"As parcelas fecham com o VTA Oficial.\",IF(OR(ISNUMBER(MEMORIA_RESULTADOS!$B$24),ISNUMBER(MEMORIA_RESULTADOS!$B$25)),\"Diferenca corresponde ao ajuste manual registrado na secao 5.\",\"REVISE - as parcelas nao fecham com o VTA Oficial.\")))",
+   "D15": "Delta",
+   "D16": "=IF(B16=\"\",\"\",IF(MEMORIA_RESULTADOS!$E$10=\"\",0,MEMORIA_RESULTADOS!$E$10))",
+   "D17": "=IF(B17=\"\",\"\",IF(MEMORIA_RESULTADOS!$E$11=\"\",0,MEMORIA_RESULTADOS!$E$11))",
+   "D18": "=IF(B18=\"\",\"\",IF(MEMORIA_RESULTADOS!$E$12=\"\",0,MEMORIA_RESULTADOS!$E$12))",
+   "D19": "=IF(B19=\"\",\"\",IF(MEMORIA_RESULTADOS!$E$13=\"\",0,MEMORIA_RESULTADOS!$E$13))",
+   "D20": "=IF(B20=\"\",\"\",IF(MEMORIA_RESULTADOS!$E$14=\"\",0,MEMORIA_RESULTADOS!$E$14))",
+   "D21": "=IF(ISNUMBER(MEMORIA_RESULTADOS!$B$5),ROUND(RETRO_OFICIAL-SUM($D$16:$D$20),2),\"\")",
+   "D22": "=IFERROR(RETRO_OFICIAL,\"\")",
+   "D23": "=IF(OR(MEMORIA_RESULTADOS!$B$4<>\"PCs\",MEMORIA_RESULTADOS!$T$28=0),\"\",MEMORIA_RESULTADOS!$T$30)",
+   "D25": "Delta",
+   "D26": "=IF(OR(B26=\"\",C26=\"\"),\"\",ROUND(C26-B26,2))",
+   "D27": "=IF(OR(B27=\"\",C27=\"\"),\"\",ROUND(C27-B27,2))",
+   "D28": "=IF(OR(B28=\"\",C28=\"\"),\"\",ROUND(C28-B28,2))",
+   "D29": "=IF(OR(B29=\"\",C29=\"\"),\"\",ROUND(C29-B29,2))",
+   "D30": "=IF(OR(B30=\"\",C30=\"\"),\"\",ROUND(C30-B30,2))",
+   "D4": "RETROATIVO TOTAL A PAGAR",
+   "D41": "USAR SOMENTE QUANDO NECESSÁRIO",
+   "D42": "Justificativa",
+   "D5": "=$D$22",
+   "D6": "=IF($H$5=\"\",\"\",$H$5-1)",
+   "D72": "Diferenca para o Financeiro informado",
+   "D73": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(OR(B73=\"\",C73=\"\",NOT(ISNUMBER(C73))),\"\",ROUND(B73-C73,2)))",
+   "D74": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(OR(B74=\"\",C74=\"\",NOT(ISNUMBER(C74))),\"\",ROUND(B74-C74,2)))",
+   "D75": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(OR(B75=\"\",C75=\"\",NOT(ISNUMBER(C75))),\"\",ROUND(B75-C75,2)))",
+   "D76": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(OR(B76=\"\",C76=\"\",NOT(ISNUMBER(C76))),\"\",ROUND(B76-C76,2)))",
+   "D77": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(OR(B77=\"\",C77=\"\",NOT(ISNUMBER(C77))),\"\",ROUND(B77-C77,2)))",
+   "E16": "=IF($A$23=\"\",\"\",$A$23&CHAR(10)&\"Pago: R$ \"&ROUND($B$23,2)&\"  ·  Reajustado: R$ \"&ROUND($C$23,2)&\"  ·  Delta: R$ \"&ROUND($D$23,2)&CHAR(10)&$E$23)",
+   "E23": "=IF(OR(MEMORIA_RESULTADOS!$B$4<>\"PCs\",MEMORIA_RESULTADOS!$T$28=0),\"\",\"Sem retroativo pela regra de DATA_PC. Detalhes: itens_PC -> EFEITO_FINANCEIRO_PC = Nao\")",
+   "E25": "Cada linha é a fotografia de um ciclo — ciclos não se somam. O ciclo vigente aparece destacado.",
+   "E3": "=$F$5",
+   "E34": "Saldo = remanescente atualizado na abertura do ciclo − executado atualizado até a data.",
+   "E35": "=IF($A$39=\"\",\"\",$A$39)",
+   "E4": "=$H$14",
+   "E42": "Responsável",
+   "E6": "=IF($D$22<>\"\",IF($J$11=\"\",\"Ciclos apurados\",\"Ciclos apurados — \"&$J$11),IF($J$6=0,\"SELECIONE O MÉTODO NA ABA CONTROLE\",\"INFORME A BASE DO MÉTODO\"))",
+   "E72": "Conferencia",
+   "E73": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"NAO APLICAVEL\",IF(OR(B73=\"\",C73=\"\",NOT(ISNUMBER(C73))),\"Sem dados quantitativos para comparar\",IF(ROUND(D73,2)=0,\"OK\",\"REVISAR\")))",
+   "E74": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"NAO APLICAVEL\",IF(OR(B74=\"\",C74=\"\",NOT(ISNUMBER(C74))),\"Sem dados quantitativos para comparar\",IF(ROUND(D74,2)=0,\"OK\",\"REVISAR\")))",
+   "E75": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"NAO APLICAVEL\",IF(OR(B75=\"\",C75=\"\",NOT(ISNUMBER(C75))),\"Sem dados quantitativos para comparar\",IF(ROUND(D75,2)=0,\"OK\",\"REVISAR\")))",
+   "E76": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"NAO APLICAVEL\",IF(OR(B76=\"\",C76=\"\",NOT(ISNUMBER(C76))),\"Sem dados quantitativos para comparar\",IF(ROUND(D76,2)=0,\"OK\",\"REVISAR\")))",
+   "E77": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"NAO APLICAVEL\",IF(OR(B77=\"\",C77=\"\",NOT(ISNUMBER(C77))),\"Sem dados quantitativos para comparar\",IF(ROUND(D77,2)=0,\"OK\",\"REVISAR\")))",
+   "F10": "CICLO_EM_EXECUCAO (fiscal) + itens_PC (C0/encerrados)",
+   "F11": "itens_PC!O+Q (valor considerado) + posicao_contratual (G/K/O/S/W) x historico_VU",
+   "F12": "comparativo_VTA!B208",
+   "F13": "MEMORIA!W50 − MEMORIA!W48",
+   "F4": "REMANESCENTE ATUALIZADO",
+   "F42": "Data",
+   "F5": "=IF(CONTROLE!$B$3=\"\",\"\",CONTROLE!$B$3)",
+   "F6": "=IF(CONTROLE!$B$3=\"\",\"Data de corte não informada\",\"Posição em \"&RIGHT(\"0\"&DAY(CONTROLE!$B$3),2)&\"/\"&RIGHT(\"0\"&MONTH(CONTROLE!$B$3),2)&\"/\"&YEAR(CONTROLE!$B$3))",
+   "G1": "=$B$3",
+   "G2": "=IF($J$5=0,\"Sem pendências\",\"PENDÊNCIAS:\"&CHAR(10)&_xlfn.TEXTJOIN(CHAR(10),TRUE,IF($H$8<>\"VALIDADO\",\"• VTA não validado.\",\"\"),IF($H$14<>\"VALIDADO\",\"• Retroativo não validado.\",\"\"),IF($H$24<>\"VALIDADO\",\"• Remanescente não validado.\",\"\"),IF($H$33=\"REVISE\",\"• \"&IF(posicao_referencia!$I$10=\"REVISE\",posicao_referencia!$I$11,\"Ciclo em execução não preenchido ou incompleto — VTA da posição atual indisponível.\"),\"\"),IF(COUNTIF($H$43:$H$50,\"REVISE\")>0,\"• \"&COUNTIF($H$43:$H$50,\"REVISE\")&\" checagem(ns) de itens com REVISE.\",\"\")))&IF(AND($H$33=\"ESTIMADO\",posicao_referencia!$I$10=\"ESTIMADO\"),CHAR(10)&\"Posição física de \"&RIGHT(\"0\"&DAY(posicao_referencia!$I$9),2)&\"/\"&RIGHT(\"0\"&MONTH(posicao_referencia!$I$9),2)&\"/\"&YEAR(posicao_referencia!$I$9)&\" anterior à data de corte de \"&RIGHT(\"0\"&DAY(CONTROLE!$B$3),2)&\"/\"&RIGHT(\"0\"&MONTH(CONTROLE!$B$3),2)&\"/\"&YEAR(CONTROLE!$B$3)&\" — referência estimada.\",\"\")",
+   "G3": "=$D$6",
+   "G42": "Aplicar?",
+   "G5": "=$B$38",
+   "H10": "=IF(AND(ISNUMBER(posicao_referencia!$I$9),ISNUMBER(CONTROLE!$B$3),posicao_referencia!$I$9>CONTROLE!$B$3),\"REVISE - POSICAO POSTERIOR A DATA DE CORTE\",IF(MEMORIA_RESULTADOS!$W$50=\"\",\"NAO DISPONIVEL - POSICAO FISICA NAO INFORMADA OU INCOMPLETA\",IF(posicao_referencia!$I$10=\"VALIDADO\",\"UTILIZADA - POSICAO FISICA DE \"&(RIGHT(\"0\"&DAY(posicao_referencia!$I$9),2)&\"/\"&RIGHT(\"0\"&MONTH(posicao_referencia!$I$9),2)&\"/\"&YEAR(posicao_referencia!$I$9)),\"ESTIMADA - POSICAO FISICA DE \"&(RIGHT(\"0\"&DAY(posicao_referencia!$I$9),2)&\"/\"&RIGHT(\"0\"&MONTH(posicao_referencia!$I$9),2)&\"/\"&YEAR(posicao_referencia!$I$9)))))",
+   "H11": "=IF(MEMORIA_RESULTADOS!$W$48=\"\",\"INCOMPLETO\",\"REFERENCIA - ABERTURA DO CICLO C\"&MEMORIA_RESULTADOS!$W$46)",
+   "H12": "COMPARATIVO — NAO E VTA OFICIAL",
+   "H13": "=MEMORIA_RESULTADOS!$W$52",
+   "H14": "=IF(ISNUMBER(SEARCH(\"MANUAL VALIDADO\",MEMORIA_RESULTADOS!$F$16)),\"VALIDADO\",IF(OR(AND(parametros!$A$2=\"Sim\",NOT(ISNUMBER($B$16))),AND(parametros!$A$3=\"Sim\",NOT(ISNUMBER($B$17))),AND(parametros!$A$4=\"Sim\",NOT(ISNUMBER($B$18))),AND(parametros!$A$5=\"Sim\",NOT(ISNUMBER($B$19))),AND(parametros!$A$6=\"Sim\",NOT(ISNUMBER($B$20))),NOT(ISNUMBER(SEARCH(\"CALCULADO\",MEMORIA_RESULTADOS!$F$16)))),\"REVISE\",\"VALIDADO\"))",
+   "H24": "=IF(ISNUMBER(SEARCH(\"CONFERIR\",MEMORIA_RESULTADOS!$F$36)),\"VALIDADO\",\"REVISE\")",
+   "H33": "=IF(OR($B$35=\"\",$B$36=\"\",$B$37=\"\",$B$38=\"\",$B$38<0),\"REVISE\",IF(posicao_referencia!$I$10=\"REVISE\",\"REVISE\",IF(posicao_referencia!$I$10=\"VALIDADO\",\"VALIDADO\",IF(posicao_referencia!$I$10=\"ESTIMADO\",\"ESTIMADO\",IF(MEMORIA_RESULTADOS!$W$49=1,\"VALIDADO\",\"ESTIMADO\")))))",
+   "H4": "=$H$33",
+   "H42": "Situação",
+   "H43": "=IF(COUNTA(C43:G43)=0,\"\",IF(G43<>\"Sim\",\"REVISE\",IF(AND(ISNUMBER(C43),D43<>\"\",E43<>\"\",ISNUMBER(F43)),\"VALIDADO\",\"REVISE\")))",
+   "H44": "=IF(COUNTA(C44:G44)=0,\"\",IF(G44<>\"Sim\",\"REVISE\",IF(AND(ISNUMBER(C44),D44<>\"\",E44<>\"\",ISNUMBER(F44)),\"VALIDADO\",\"REVISE\")))",
+   "H45": "=IF(COUNTA(C45:G45)=0,\"\",IF(G45<>\"Sim\",\"REVISE\",IF(AND(ISNUMBER(C45),D45<>\"\",E45<>\"\",ISNUMBER(F45)),\"VALIDADO\",\"REVISE\")))",
+   "H46": "=IF(COUNTA(C46:G46)=0,\"\",IF(G46<>\"Sim\",\"REVISE\",IF(AND(AND(ISNUMBER(C46),C46>=0),D46<>\"\",E46<>\"\",ISNUMBER(F46)),\"VALIDADO\",\"REVISE\")))",
+   "H47": "=IF(COUNTA(C47:G47)=0,\"\",IF(G47<>\"Sim\",\"REVISE\",IF(AND(AND(ISNUMBER(C47),C47>=0),D47<>\"\",E47<>\"\",ISNUMBER(F47)),\"VALIDADO\",\"REVISE\")))",
+   "H48": "=IF(COUNTA(C48:G48)=0,\"\",IF(G48<>\"Sim\",\"REVISE\",IF(AND(AND(ISNUMBER(C48),C48>=0),D48<>\"\",E48<>\"\",ISNUMBER(F48)),\"VALIDADO\",\"REVISE\")))",
+   "H49": "=IF(COUNTA(C49:G49)=0,\"\",IF(G49<>\"Sim\",\"REVISE\",IF(AND(AND(ISNUMBER(C49),C49>=0),D49<>\"\",E49<>\"\",ISNUMBER(F49)),\"VALIDADO\",\"REVISE\")))",
+   "H5": "=IF(CONTROLE!$B$11=\"\",\"\",CONTROLE!$B$11)",
+   "H50": "=IF(COUNTA(C50:G50)=0,\"\",IF(G50<>\"Sim\",\"REVISE\",IF(AND(AND(ISNUMBER(C50),C50>=0),D50<>\"\",E50<>\"\",ISNUMBER(F50)),\"VALIDADO\",\"REVISE\")))",
+   "H8": "=IF(OR(VTA_FINAL=\"\",NOT(ISNUMBER(VTA_FINAL)),CONTROLE!$B$11=\"\",NOT(OR(ISNUMBER(SEARCH(\"CALCULADO\",MEMORIA_RESULTADOS!$E$26)),ISNUMBER(SEARCH(\"MANUAL VALIDADO\",MEMORIA_RESULTADOS!$E$26)),ISNUMBER(SEARCH(\"COM AJUSTE MANUAL\",MEMORIA_RESULTADOS!$E$26))))),\"REVISE\",\"VALIDADO\")",
+   "J10": "=_xlfn.TEXTJOIN(\", \",TRUE,IF(parametros!$A$3=\"Sim\",parametros!$B$3,\"\"),IF(parametros!$A$4=\"Sim\",parametros!$B$4,\"\"),IF(parametros!$A$5=\"Sim\",parametros!$B$5,\"\"),IF(parametros!$A$6=\"Sim\",parametros!$B$6,\"\"))",
+   "J11": "=IF($J$9=0,\"\",IF($J$9=1,$J$10,LEFT($J$10,FIND(\"|\",SUBSTITUTE($J$10,\", \",\"|\",$J$9-1))-1)&\" e \"&MID($J$10,FIND(\"|\",SUBSTITUTE($J$10,\", \",\"|\",$J$9-1))+2,200)))",
+   "J2": "Sim",
+   "J3": "Nao",
+   "J5": "=($H$8<>\"VALIDADO\")+($H$14<>\"VALIDADO\")+($H$24<>\"VALIDADO\")+($H$33=\"REVISE\")+COUNTIF($H$43:$H$50,\"REVISE\")",
+   "J6": "=IF(OR($B$5=\"Financeiro\",$B$5=\"PCs\",$B$5=\"Itens\"),1,0)",
+   "J8": "=UPPER(CONTROLE!$B$2)",
+   "J9": "=COUNTIF(parametros!$A$3:$A$6,\"Sim\")"
+  },
+  "nomes_ancorados_na_aba": [
+   "EXECUCAO_ATUALIZADA_CICLO",
+   "OPCOES_APLICAR_MANUAL",
+   "SALDO_REMANESCENTE_ATUAL",
+   "STATUS_RESULTADOS",
+   "VTA_ATUALIZACAO_CHEIA"
+  ],
+  "nomes_definidos": {
+   "AJUSTE_MANUAL_VTA": "MEMORIA_RESULTADOS!$B$24",
+   "EXECUCAO_ATUALIZADA_CICLO": "RESULTADOS!$B$36",
+   "JUSTIFICATIVA_RETRO": "MEMORIA_RESULTADOS!$D$5",
+   "METODO_RETROATIVO": "MEMORIA_RESULTADOS!$B$4",
+   "OPCOES_APLICAR_MANUAL": "RESULTADOS!$J$2:$J$3",
+   "OPCOES_SIM_NAO": "parametros!$T$2:$T$3",
+   "OPCOES_SIM_NAO_NA": "parametros!$T$2:$T$4",
+   "QTD_REM_OFICIAL": "MEMORIA_RESULTADOS!$B$35",
+   "REM_ATUALIZADO_OFICIAL": "MEMORIA_RESULTADOS!$D$35",
+   "REM_BASE_OFICIAL": "MEMORIA_RESULTADOS!$C$35",
+   "RETRO_FIN": "MEMORIA_RESULTADOS!$B$15",
+   "RETRO_ITENS": "MEMORIA_RESULTADOS!$D$15",
+   "RETRO_OFICIAL": "MEMORIA_RESULTADOS!$B$16",
+   "RETRO_PC": "MEMORIA_RESULTADOS!$C$15",
+   "SALDO_REMANESCENTE_ATUAL": "RESULTADOS!$B$38",
+   "STATUS_RESULTADOS": "RESULTADOS!$B$3",
+   "TOLERANCIA_DIVERGENCIA": "MEMORIA_RESULTADOS!$D$4",
+   "VALOR_MANUAL_RETRO": "MEMORIA_RESULTADOS!$B$5",
+   "VTA_ATUALIZACAO_CHEIA": "RESULTADOS!$B$12",
+   "VTA_CALCULADO": "MEMORIA_RESULTADOS!$B$23",
+   "VTA_FINAL": "MEMORIA_RESULTADOS!$B$26",
+   "VTA_MANUAL_OFICIAL": "MEMORIA_RESULTADOS!$B$25"
+  },
+  "quantidade_celulas_preenchidas": 270,
+  "titulo_a1": "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL",
+  "visibilidade": "visible"
+ },
+ "descricao": "Metodo PC — pedidos de compra dentro do corte, com efeito financeiro",
+ "documentos": {
+  "comunicacao_contratada": {
+   "assunto": "Apuração preliminar dos ciclos de reajuste – Solicitação de manifestação",
+   "linhas_negociais": [
+    "• Ciclo 1: 0,00% – tempestivo, efeitos financeiros pendentes de definição;",
+    "• Ciclo 2: 0,00% – tempestivo, efeitos financeiros pendentes de definição;",
+    "• Ciclo 3: 0,00% – tempestivo, efeitos financeiros pendentes de definição;",
+    "• Ciclo 4: 0,00% – situação em análise, efeitos financeiros pendentes de definição.",
+    "Variação Acumulada Final: 5,12%.",
+    "Eventuais ciclos preclusos permanecem registrados para fins de histórico e memória contratual, sem geração de efeitos financeiros retroativos."
+   ]
+  },
+  "despacho_saneador": {
+   "linhas_negociais": [
+    "A CONTRATADA apresentou pedido de atualização contratual em [PREENCHER: Data do pedido], conforme [PREENCHER: Referencia do pedido]. A análise considerou a data-base 01/01/2024, a referência econômica IST (Anatel) e classificou o pedido como TEMPESTIVO, com efeitos financeiros a partir de 01/2024.",
+    "SITUAÇÃO DOS VALORES RETROATIVOS\nRetroativo reconhecido: R$ 14.156,80\nValor atualizado em análise: R$ 152.686,80\nRetroativo potencial: R$ 7.436,80\n\nA apuração identificou retroativo reconhecido no valor de R$ 14.156,80. Foram identificados, ainda, Pedidos de Compra com valores sujeitos à confirmação, correspondentes a retroativo potencial de até R$ 7.436,80.\n\nA conversão do retroativo potencial em valor reconhecido dependerá da aceitação dos respectivos Pedidos de Compra pela área gestora do contrato, a quem compete conduzir a validação desses eventos e os procedimentos relacionados ao eventual pagamento.\n\nEnquanto não houver essa confirmação, o retroativo potencial não integra o valor reconhecido a pagar.",
+    "Ciclo | Data-base | Data do pedido | Situação | Efeito financeiro | Percentual",
+    "C1 | 01/01/2024 | [PREENCHER: Data do pedido] | TEMPESTIVO | A partir de 01/2024 | 5,12%",
+    "Valor pago no período analisado | R$ 276.500,00",
+    "Valor devido após a atualização contratual | R$ 290.656,80",
+    "Retroativo a pagar | R$ 14.156,80"
+   ]
+  },
+  "dou": {
+   "reajuste_contratual": "C1: 5,12%. Percentual acumulado: 5,12%",
+   "valor_total_atualizado": 0.0
+  },
+  "sumario_executivo": {
+   "ciclos": [
+    {
+     "ciclo": "C0",
+     "computar": "Não",
+     "data_fim": "31/12/2023",
+     "data_inicio": "01/01/2023",
+     "data_pedido": "Não informado",
+     "eh_base": true,
+     "fator_acumulado": null,
+     "indice_acumulado": null,
+     "inicio_efeito_financeiro": "Não informado",
+     "meses_sem_efeito": {
+      "competencias": [],
+      "quantidade": null,
+      "status": "Não aplicável"
+     },
+     "percentual_reajuste": "Não aplicável",
+     "situacao": "Não informado"
+    },
+    {
+     "ciclo": "C1",
+     "computar": "Sim",
+     "data_fim": "31/12/2024",
+     "data_inicio": "01/01/2024",
+     "data_pedido": "Não informado",
+     "eh_base": false,
+     "fator_acumulado": null,
+     "indice_acumulado": null,
+     "inicio_efeito_financeiro": "01/01/2024",
+     "meses_sem_efeito": {
+      "competencias": [],
+      "quantidade": 0,
+      "status": "ok"
+     },
+     "percentual_reajuste": 0.0512,
+     "situacao": "TEMPESTIVO"
+    },
+    {
+     "ciclo": "C2",
+     "computar": "Não",
+     "data_fim": "31/12/2025",
+     "data_inicio": "01/01/2025",
+     "data_pedido": "Não informado",
+     "eh_base": false,
+     "fator_acumulado": null,
+     "indice_acumulado": null,
+     "inicio_efeito_financeiro": "01/01/2025",
+     "meses_sem_efeito": {
+      "competencias": [],
+      "quantidade": 0,
+      "status": "ok"
+     },
+     "percentual_reajuste": 0.0374,
+     "situacao": "TEMPESTIVO"
+    },
+    {
+     "ciclo": "C3",
+     "computar": "Não",
+     "data_fim": "31/12/2026",
+     "data_inicio": "01/01/2026",
+     "data_pedido": "Não informado",
+     "eh_base": false,
+     "fator_acumulado": null,
+     "indice_acumulado": null,
+     "inicio_efeito_financeiro": "01/01/2026",
+     "meses_sem_efeito": {
+      "competencias": [],
+      "quantidade": 0,
+      "status": "ok"
+     },
+     "percentual_reajuste": 0.0289,
+     "situacao": "TEMPESTIVO"
+    },
+    {
+     "ciclo": "C4",
+     "computar": "Não",
+     "data_fim": "31/12/2027",
+     "data_inicio": "01/01/2027",
+     "data_pedido": "Não informado",
+     "eh_base": false,
+     "fator_acumulado": null,
+     "indice_acumulado": null,
+     "inicio_efeito_financeiro": "Não informado",
+     "meses_sem_efeito": {
+      "competencias": [],
+      "quantidade": null,
+      "status": "Não informado"
+     },
+     "percentual_reajuste": null,
+     "situacao": "Não informado"
+    }
+   ],
+   "composicao_vta": {
+    "componentes": [],
+    "exibivel": false,
+    "metodo": "pc",
+    "total": null
+   },
+   "observacoes": {
+    "advertencias": [
+     "O ciclo do PC esta sem FATOR_ACUMULADO numerico na aba parametros; o valor devido nao pode ser calculado."
+    ],
+    "bloqueantes": [],
+    "grau_confiabilidade": "medio",
+    "limitacoes_evidencias": [
+     "Evidencia de financeiro nao localizada no MasterFile lido.",
+     "Evidencia de consumidos nao localizada no MasterFile lido.",
+     "Evidencia de remanescentes nao localizada no MasterFile lido.",
+     "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 10: 'COMPUTA?'.",
+     "posicao_contratual: valores de formula indisponiveis (arquivo sem recalculo do Excel); abra e salve o arquivo no Excel antes do upload para materializar os valores.",
+     "execucao_saldo: Aba 'itens_Execucao_Saldo' nao presente — entrada XLS consolidada nao preenchida (opcional em v10.1; ciclos e indices devem ser fornecidos pela GCC).",
+     "vta_sombra: VTA oficial ausente no historico; comparacao sombra usa 0 como base."
+    ],
+    "reajuste_negativo": [],
+    "ressalvas": [
+     "VU por ciclo nao localizado no Objeto Processo; nao foi estimado."
+    ]
+   },
+   "sintese": {
+    "ciclo_referencia_acumulado": null,
+    "justificativa_metodologia": "Execucao estrutural por PCs validos, independente do pagamento; o pagamento classifica apenas o retroativo (reconhecido x potencial).",
+    "metodo_vta": "Pedido de Compras",
+    "resumo_executivo": "Conclusao recomendada: Nenhum ato imediato. Nao ha retroativo pendente nem inconsistencia impeditiva. Metodologia: Pedidos de Compra (PC). Resultado: R$ 0,00.",
+    "retroativo_estado": null,
+    "retroativo_total": null,
+    "situacao_processo": "apto_para_confirmacao",
+    "variacao_acumulada": null,
+    "vta": null,
+    "vta_execucao_atualizada": null,
+    "vta_motivo": "VTA pelo metodo PC requer a composicao canonica (PCs validos anteriores a linha de corte + remanescente do mesmo corte); sem essa base o VTA nao e fabricado a partir de PCs pagos (fail-closed).",
+    "vta_natureza": "INDETERMINADO",
+    "vta_saldo_remanescente_atualizado": null
+   },
+   "status_vta": null
+  },
+  "termo_apostila": {
+   "linhas_negociais": [
+    "5. As informações encaminhadas pela área gestora do contrato quanto à execução, ao saldo remanescente, aos itens contratuais, aos aditivos/supressões e aos documentos de suporte da apuração;",
+    "6. A memória de cálculo constante em [PREENCHER: Referencia da memoria de calculo], que apurou os ciclos de reajuste, os percentuais aplicáveis, os efeitos financeiros, o saldo retroativo a pagar e a composição do Valor Total Atualizado do Contrato;",
+    "2. Da apuração financeira do retroativo",
+    "2.1. A apuração financeira consolidada indicou valor pago efetivo de R$ 276.500,00 e valor devido após o reajuste de R$ 290.656,80, resultando em valor retroativo a pagar de R$ 14.156,80, conforme Quadro 2.",
+    "3.1. Para fins de consolidação contratual, a composição do Valor Total Atualizado foi organizada de forma evolutiva, demonstrando a execução por ciclo, os remanescentes intermediários, o saldo remanescente final e os aditivos/supressões computáveis, quando aplicáveis.",
+    "SITUAÇÃO DOS VALORES RETROATIVOS\nRetroativo reconhecido: R$ 14.156,80\nRetroativo potencial: R$ 7.436,80\n\nNo âmbito da apuração, foi reconhecido retroativo de R$ 14.156,80. Adicionalmente, foi identificado retroativo potencial de até R$ 7.436,80, relacionado a Pedidos de Compra ainda sujeitos à aceitação pela área gestora do contrato.\n\nA confirmação desses valores e a condução do eventual pagamento competem à área gestora, observados os critérios, o índice, o percentual e o período de efeitos formalizados nesta Apostila.\n\nO retroativo potencial não integra, nesta data, o montante reconhecido a pagar.",
+    "5.2. Os aditivos e supressões computáveis integram o Valor Total Atualizado quando não estiverem refletidos na execução atualizada, no saldo remanescente ou no valor formalizado anterior, vedada a dupla contagem.",
+    "Ref. | Ciclo | Percentual aplicado | Efeitos financeiros | Situação",
+    "A | C1 | 5,12% | A partir de 01/2024 | TEMPESTIVO",
+    "Ciclo | Valor pago efetivo | Valor devido após o reajuste | Diferença/retroativo",
+    "C1 | R$ 276.500,00 | R$ 290.656,80 | R$ 14.156,80",
+    "Total | R$ 276.500,00 | R$ 290.656,80 | R$ 14.156,80"
+   ]
+  }
+ },
+ "valores_xls": {
+  "aba_presente": true,
+  "cache_ausente": true,
+  "coordenadas": {
+   "A1": "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL",
+   "B10": null,
+   "B11": null,
+   "B12": null,
+   "B13": null,
+   "B3": null,
+   "B36": null,
+   "B38": null,
+   "H10": null,
+   "H11": null,
+   "H13": null
+  },
+  "nomes_definidos": {
+   "AJUSTE_MANUAL_VTA": null,
+   "EXECUCAO_ATUALIZADA_CICLO": null,
+   "JUSTIFICATIVA_RETRO": null,
+   "METODO_RETROATIVO": null,
+   "OPCOES_APLICAR_MANUAL": null,
+   "OPCOES_SIM_NAO": null,
+   "OPCOES_SIM_NAO_NA": null,
+   "QTD_REM_OFICIAL": null,
+   "REM_ATUALIZADO_OFICIAL": null,
+   "REM_BASE_OFICIAL": null,
+   "RETRO_FIN": null,
+   "RETRO_ITENS": null,
+   "RETRO_OFICIAL": null,
+   "RETRO_PC": null,
+   "SALDO_REMANESCENTE_ATUAL": null,
+   "STATUS_RESULTADOS": null,
+   "TOLERANCIA_DIVERGENCIA": 0.005,
+   "VALOR_MANUAL_RETRO": null,
+   "VTA_ATUALIZACAO_CHEIA": null,
+   "VTA_CALCULADO": null,
+   "VTA_FINAL": null,
+   "VTA_MANUAL_OFICIAL": null
+  }
+ },
+ "web": {
+  "avisos_da_leitura": [
+   "Somente a guia RESULTADOS deve possuir cor de aba.",
+   "Metadado tecnico CL8US_INICIO_EFEITO ausente; adotada a fonte visivel parametros!INICIO_EFEITO_FINANCEIRO como canonica.",
+   "Os status de RESULTADOS não estão calculados em cache; abra, recalcule e salve o XLS no Excel.",
+   "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 10: 'COMPUTA?'.",
+   "posicao_contratual: valores de formula indisponiveis (arquivo sem recalculo do Excel); abra e salve o arquivo no Excel antes do upload para materializar os valores.",
+   "execucao_saldo: Aba 'itens_Execucao_Saldo' nao presente — entrada XLS consolidada nao preenchida (opcional em v10.1; ciclos e indices devem ser fornecidos pela GCC).",
+   "vta_sombra: VTA oficial ausente no historico; comparacao sombra usa 0 como base."
+  ],
+  "bloqueios": [
+   "A aba posicao_contratual não tem valores calculados: o arquivo não foi recalculado pelo Excel. Abra o XLS no Excel, salve e reenvie antes de qualquer formalização.",
+   "Índice ou fator acumulado ausente em: C1."
+  ],
+  "campos_nao_confiaveis": [],
+  "ciclo_vigente": "C1",
+  "ciclos": [
+   {
+    "ciclo": "C0",
+    "data_base": "01/01/2023",
+    "data_do_pedido": null,
+    "efeito_financeiro": "Fora da apuração",
+    "fator_acumulado": 1.0,
+    "fator_acumulado_efetivo": 1.0,
+    "fator_ciclo_efetivo": 1.0,
+    "fator_proprio": 1.0,
+    "intervalo_do_indice": null,
+    "janela_de_admissibilidade": null,
+    "percentual_efetivamente_aplicado": 0.0,
+    "situacao": null,
+    "variacao_apurada": 0.0
+   },
+   {
+    "ciclo": "C1",
+    "data_base": "01/01/2024",
+    "data_do_pedido": null,
+    "efeito_financeiro": "Apurar",
+    "fator_acumulado": 1.0512,
+    "fator_acumulado_efetivo": 1.0512,
+    "fator_ciclo_efetivo": 1.0512,
+    "fator_proprio": 1.0512,
+    "intervalo_do_indice": null,
+    "janela_de_admissibilidade": null,
+    "percentual_efetivamente_aplicado": 0.05119999999999991,
+    "situacao": "TEMPESTIVO",
+    "variacao_apurada": 0.0512
+   },
+   {
+    "ciclo": "C2",
+    "data_base": "01/01/2025",
+    "data_do_pedido": null,
+    "efeito_financeiro": "Fora da apuração",
+    "fator_acumulado": 1.09051488,
+    "fator_acumulado_efetivo": 1.09051488,
+    "fator_ciclo_efetivo": 1.09051488,
+    "fator_proprio": 1.09051488,
+    "intervalo_do_indice": null,
+    "janela_de_admissibilidade": null,
+    "percentual_efetivamente_aplicado": 0.09051487999999996,
+    "situacao": "TEMPESTIVO",
+    "variacao_apurada": 0.0374
+   },
+   {
+    "ciclo": "C3",
+    "data_base": "01/01/2026",
+    "data_do_pedido": null,
+    "efeito_financeiro": "Fora da apuração",
+    "fator_acumulado": 1.1220307600319999,
+    "fator_acumulado_efetivo": 1.1220307600319999,
+    "fator_ciclo_efetivo": 1.1220307600319999,
+    "fator_proprio": 1.1220307600319999,
+    "intervalo_do_indice": null,
+    "janela_de_admissibilidade": null,
+    "percentual_efetivamente_aplicado": 0.12203076003199986,
+    "situacao": "TEMPESTIVO",
+    "variacao_apurada": 0.0289
+   },
+   {
+    "ciclo": "C4",
+    "data_base": "01/01/2027",
+    "data_do_pedido": null,
+    "efeito_financeiro": "Fora da apuração",
+    "fator_acumulado": 1.0,
+    "fator_acumulado_efetivo": 1.0,
+    "fator_ciclo_efetivo": 1.0,
+    "fator_proprio": 1.0,
+    "intervalo_do_indice": null,
+    "janela_de_admissibilidade": null,
+    "percentual_efetivamente_aplicado": 0.0,
+    "situacao": null,
+    "variacao_apurada": 0.0
+   }
+  ],
+  "ciclos_considerados": [
+   "C1"
+  ],
+  "composicao_vta": {
+   "conciliada": null,
+   "disponivel": false,
+   "exibivel": false,
+   "ha_aditivos_nao_computados": false,
+   "linhas": [],
+   "mensagem": "A composição detalhada do VTA não está disponível."
+  },
+  "convergencia_xls_python": {
+   "campos": [
+    {
+     "campo": "RETRO_FIN",
+     "nota": "Sem contraparte Python disponivel — comparacao nao aplicavel.",
+     "python": null,
+     "rotulo": "Retroativo financeiro",
+     "status": null,
+     "xls": null
+    },
+    {
+     "campo": "RETRO_PC",
+     "nota": null,
+     "python": 14156.8,
+     "rotulo": "Retroativo por PCs",
+     "status": "RESULTADO_XLS_INDISPONIVEL_POR_CACHE",
+     "xls": null
+    },
+    {
+     "campo": "RETRO_ITENS",
+     "nota": "Sem contraparte Python disponivel — comparacao nao aplicavel.",
+     "python": null,
+     "rotulo": "Retroativo por itens",
+     "status": null,
+     "xls": null
+    },
+    {
+     "campo": "RETRO_OFICIAL",
+     "nota": null,
+     "python": 14156.8,
+     "rotulo": "Retroativo oficial",
+     "status": "RESULTADO_XLS_INDISPONIVEL_POR_CACHE",
+     "xls": null
+    },
+    {
+     "campo": "QTD_REM_OFICIAL",
+     "nota": "Sem contraparte Python disponivel — comparacao nao aplicavel.",
+     "python": null,
+     "rotulo": "Quantidade remanescente oficial",
+     "status": null,
+     "xls": null
+    },
+    {
+     "campo": "REM_BASE_OFICIAL",
+     "nota": "Sem contraparte Python disponivel — comparacao nao aplicavel.",
+     "python": null,
+     "rotulo": "Valor remanescente base",
+     "status": null,
+     "xls": null
+    },
+    {
+     "campo": "REM_ATUALIZADO_OFICIAL",
+     "nota": "Sem contraparte Python disponivel — comparacao nao aplicavel.",
+     "python": null,
+     "rotulo": "Valor remanescente atualizado",
+     "status": null,
+     "xls": null
+    },
+    {
+     "campo": "VTA_FINAL",
+     "nota": "Sem contraparte Python disponivel — comparacao nao aplicavel.",
+     "python": null,
+     "rotulo": "VTA final",
+     "status": null,
+     "xls": null
+    }
+   ],
+   "disponivel": true,
+   "divergencias_relevantes": [],
+   "sem_cache": true,
+   "status_geral": "RESULTADO_XLS_INDISPONIVEL_POR_CACHE",
+   "tolerancia": 0.005
+  },
+  "data_corte": "2024-12-31",
+  "execucao_atualizada_do_ciclo": null,
+  "fator_acumulado_global": 1.0512,
+  "fora_do_corte": {
+   "aplicavel": true,
+   "data_corte": "2024-12-31",
+   "quantidade": 0,
+   "valor_informado": 0.0
+  },
+  "formalizacao": {
+   "bloqueada": true,
+   "mensagem": "A aba posicao_contratual não tem valores calculados: o arquivo não foi recalculado pelo Excel. Abra o XLS no Excel, salve e reenvie antes de qualquer formalização.",
+   "status": "BLOQUEADA"
+  },
+  "indice": "IST (Anatel)",
+  "informacoes": [],
+  "medidas_pc_aplicaveis": true,
+  "mensagem_status": "O status oficial da apuração (aba RESULTADOS) não está disponível neste arquivo. Abra o XLS no Excel, recalcule, salve e reenvie.",
+  "metodo": {
+   "codigo": "pc",
+   "rotulo": "Pedidos de Compra"
+  },
+  "metodo_do_retroativo": null,
+  "pendencias": [],
+  "quantidade_ciclos": 5,
+  "quantidade_remanescente": null,
+  "referencias_auditaveis": {
+   "posicao_atual_disponivel": false,
+   "posicao_fisica_atual": null,
+   "rotulos": {
+    "posicao_fisica_atual": "Referência auditável — posição física atual",
+    "ultima_abertura_disponivel": "Referência auditável — última posição de abertura disponível"
+   },
+   "ultima_abertura_disponivel": null
+  },
+  "referencias_vta_xls": {
+   "ciclo_ultima_abertura": null,
+   "ciclo_vigente": "C1",
+   "data_posicao_atual": "2024-12-31",
+   "disponivel": true,
+   "fallback_razao": null,
+   "fontes": {
+    "ciclo_vigente": "CONTROLE!B2",
+    "data_posicao": "CICLO_EM_EXECUCAO!D5",
+    "forma1": "MEMORIA_RESULTADOS!W50 (RESULTADOS!B10)",
+    "forma2": "MEMORIA_RESULTADOS!W48 (RESULTADOS!B11)",
+    "forma3": "comparativo_VTA!B208 (RESULTADOS!B12)",
+    "reconciliacao": "MEMORIA_RESULTADOS!W51/W52 (RESULTADOS!B13/H13)"
+   },
+   "forma1_posicao_atual": null,
+   "forma1_situacao": null,
+   "forma2_situacao": null,
+   "forma2_ultima_abertura": null,
+   "forma3_integral_reajustado": null,
+   "posicao_atual_disponivel": false,
+   "reconciliacao_status": null,
+   "reconciliacao_valor": null
+  },
+  "remanescente_atualizado": 0.0,
+  "remanescente_original": 0.0,
+  "ressalvas": [
+   "O ciclo do PC esta sem FATOR_ACUMULADO numerico na aba parametros; o valor devido nao pode ser calculado.",
+   "VU por ciclo nao localizado no Objeto Processo; nao foi estimado.",
+   "Remanescentes não demonstrados; o valor futuro e o VTA permanecem indisponíveis.",
+   "Há valor potencial sujeito à aceitação pela área gestora e à condução do eventual pagamento por essa área.",
+   "Parte das conferências automáticas está indisponível.",
+   "A leitura da Coleta registrou informações insuficientes em parte dos blocos."
+  ],
+  "retroativo_por_ciclo": [
+   {
+    "ciclo": "C0",
+    "data_fim": "2023-12-31",
+    "data_inicio": "2023-01-01",
+    "fator_acumulado": 1.0,
+    "residuais": {
+     "itens": 0,
+     "quantidade": 0.0,
+     "valor_atualizado": 0.0,
+     "valor_original": 0.0
+    },
+    "retroativo": {
+     "consumidos": {
+      "base_original": 0.0,
+      "evidencias": 0,
+      "retroativo": 0.0,
+      "valor_atualizado": 0.0
+     },
+     "financeiro": {
+      "base_original": 0.0,
+      "evidencias": 0,
+      "retroativo": 0.0,
+      "valor_atualizado": 0.0
+     },
+     "pc": {
+      "base_original": 0.0,
+      "evidencias": 0,
+      "retroativo": 0.0,
+      "valor_atualizado": 0.0
+     }
+    }
+   },
+   {
+    "ciclo": "C1",
+    "data_fim": "2024-12-31",
+    "data_inicio": "2024-01-01",
+    "fator_acumulado": null,
+    "residuais": {
+     "itens": 0,
+     "quantidade": 0.0,
+     "valor_atualizado": 0.0,
+     "valor_original": 0.0
+    },
+    "retroativo": {
+     "consumidos": {
+      "base_original": 0.0,
+      "evidencias": 0,
+      "retroativo": 0.0,
+      "valor_atualizado": 0.0
+     },
+     "financeiro": {
+      "base_original": 0.0,
+      "evidencias": 0,
+      "retroativo": 0.0,
+      "valor_atualizado": 0.0
+     },
+     "pc": {
+      "base_original": 276500.0,
+      "evidencias": 2,
+      "retroativo": 14156.8,
+      "valor_atualizado": 290656.8
+     }
+    }
+   },
+   {
+    "ciclo": "C2",
+    "data_fim": "2025-12-31",
+    "data_inicio": "2025-01-01",
+    "fator_acumulado": null,
+    "residuais": {
+     "itens": 0,
+     "quantidade": 0.0,
+     "valor_atualizado": 0.0,
+     "valor_original": 0.0
+    },
+    "retroativo": {
+     "consumidos": {
+      "base_original": 0.0,
+      "evidencias": 0,
+      "retroativo": 0.0,
+      "valor_atualizado": 0.0
+     },
+     "financeiro": {
+      "base_original": 0.0,
+      "evidencias": 0,
+      "retroativo": 0.0,
+      "valor_atualizado": 0.0
+     },
+     "pc": {
+      "base_original": 0.0,
+      "evidencias": 0,
+      "retroativo": 0.0,
+      "valor_atualizado": 0.0
+     }
+    }
+   },
+   {
+    "ciclo": "C3",
+    "data_fim": "2026-12-31",
+    "data_inicio": "2026-01-01",
+    "fator_acumulado": null,
+    "residuais": {
+     "itens": 0,
+     "quantidade": 0.0,
+     "valor_atualizado": 0.0,
+     "valor_original": 0.0
+    },
+    "retroativo": {
+     "consumidos": {
+      "base_original": 0.0,
+      "evidencias": 0,
+      "retroativo": 0.0,
+      "valor_atualizado": 0.0
+     },
+     "financeiro": {
+      "base_original": 0.0,
+      "evidencias": 0,
+      "retroativo": 0.0,
+      "valor_atualizado": 0.0
+     },
+     "pc": {
+      "base_original": 0.0,
+      "evidencias": 0,
+      "retroativo": 0.0,
+      "valor_atualizado": 0.0
+     }
+    }
+   },
+   {
+    "ciclo": "C4",
+    "data_fim": "2027-12-31",
+    "data_inicio": "2027-01-01",
+    "fator_acumulado": null,
+    "residuais": {
+     "itens": 0,
+     "quantidade": 0.0,
+     "valor_atualizado": 0.0,
+     "valor_original": 0.0
+    },
+    "retroativo": {
+     "consumidos": {
+      "base_original": 0.0,
+      "evidencias": 0,
+      "retroativo": 0.0,
+      "valor_atualizado": 0.0
+     },
+     "financeiro": {
+      "base_original": 0.0,
+      "evidencias": 0,
+      "retroativo": 0.0,
+      "valor_atualizado": 0.0
+     },
+     "pc": {
+      "base_original": 0.0,
+      "evidencias": 0,
+      "retroativo": 0.0,
+      "valor_atualizado": 0.0
+     }
+    }
+   }
+  ],
+  "retroativo_potencial": 7436.8,
+  "retroativo_total": 14156.8,
+  "status_apuracao": {
+   "bruto": null,
+   "codigo": null,
+   "conclusivo": false,
+   "disponivel": false,
+   "mensagem": "O status oficial da apuração (aba RESULTADOS) não está disponível neste arquivo. Abra o XLS no Excel, recalcule, salve e reenvie.",
+   "origem": "indisponivel",
+   "rotulo": "PENDENTE DE CONFIRMAÇÃO",
+   "status_politica": "BLOQUEADO_PARA_FORMALIZACAO"
+  },
+  "status_confiabilidade": "PENDENTE DE CONFIRMAÇÃO",
+  "status_resultados_xls": {
+   "geral": null,
+   "metodo_retroativo": null,
+   "origem_retroativo_oficial": null,
+   "remanescente": null,
+   "retroativo": null,
+   "valores": {
+    "quantidade_remanescente": null,
+    "remanescente_atualizado": null,
+    "remanescente_original": null,
+    "retroativo_financeiro": null,
+    "retroativo_itens": null,
+    "retroativo_oficial": null,
+    "retroativo_pc": null,
+    "vta_ajuste_manual": null,
+    "vta_ajuste_remanescente": null,
+    "vta_base_contratual": null,
+    "vta_calculado": null,
+    "vta_manual_oficial": null,
+    "vta_oficial": null,
+    "vta_pc_execucao_anterior": null,
+    "vta_pc_parcelas_intermediarias": null,
+    "vta_pc_remanescente_corte": null,
+    "vta_pc_total": null,
+    "vta_retroativo": null
+   },
+   "vta": null
+  },
+  "totais_canonicos_pc": {
+   "ate_o_corte": {
+    "delta_potencial": 7436.8,
+    "quantidade": 3,
+    "retroativo": 14156.8,
+    "valor_atualizado_em_analise": 152686.8,
+    "valor_considerado": 435906.8,
+    "valor_pc": 421750.0
+   },
+   "com_efeito": {
+    "delta_potencial": 7436.8,
+    "quantidade": 3,
+    "retroativo": 14156.8,
+    "valor_atualizado_em_analise": 152686.8,
+    "valor_considerado": 435906.8,
+    "valor_pc": 421750.0
+   },
+   "corte_aplicado": true,
+   "data_corte": "2024-12-31",
+   "enquadrado_ciclos": {
+    "delta_potencial": 7436.8,
+    "quantidade": 3,
+    "retroativo": 14156.8,
+    "valor_atualizado_em_analise": 152686.8,
+    "valor_considerado": 435906.8,
+    "valor_pc": 421750.0
+   },
+   "indeterminado": {
+    "delta_potencial": 0.0,
+    "quantidade": 0,
+    "retroativo": 0.0,
+    "valor_atualizado_em_analise": 0.0,
+    "valor_considerado": 0.0,
+    "valor_pc": 0.0
+   },
+   "informado": {
+    "delta_potencial": 7436.8,
+    "quantidade": 3,
+    "retroativo": 14156.8,
+    "valor_atualizado_em_analise": 152686.8,
+    "valor_considerado": 435906.8,
+    "valor_pc": 421750.0
+   },
+   "intervalo_precluso": {
+    "delta_potencial": 0.0,
+    "quantidade": 0,
+    "retroativo": 0.0,
+    "valor_atualizado_em_analise": 0.0,
+    "valor_considerado": 0.0,
+    "valor_pc": 0.0
+   },
+   "por_ciclo": {
+    "C1": {
+     "delta_potencial": 7436.8,
+     "quantidade": 3,
+     "retroativo": 14156.8,
+     "valor_atualizado_em_analise": 152686.8,
+     "valor_considerado": 435906.8,
+     "valor_pc": 421750.0
+    }
+   },
+   "posterior_ao_corte": {
+    "delta_potencial": 0.0,
+    "quantidade": 0,
+    "retroativo": 0.0,
+    "valor_atualizado_em_analise": 0.0,
+    "valor_considerado": 0.0,
+    "valor_pc": 0.0
+   },
+   "sem_efeito_ciclo": {
+    "delta_potencial": 0.0,
+    "quantidade": 0,
+    "retroativo": 0.0,
+    "valor_atualizado_em_analise": 0.0,
+    "valor_considerado": 0.0,
+    "valor_pc": 0.0
+   }
+  },
+  "valor_atualizado_contrato": null,
+  "valor_atualizado_em_analise": 152686.8,
+  "variacao_acumulada_global": 0.05119999999999991,
+  "vta_oficial": null,
+  "vta_origem": "indisponivel",
+  "vta_usa_ultima_posicao": false
+ }
+}
