@@ -700,21 +700,26 @@
    "valor": "(=) VTA OFICIAL",
    "fmtl": "Geral",
    "tam": 10,
-   "negrito": true
+   "negrito": true,
+   "cor": "1F3864",
+   "fundo": "D9E2F3"
   },
   {
    "ref": "B124",
    "formula": "=IF(VTA_FINAL=\"\",\"\",VTA_FINAL)",
    "fmt": "@COPIAR_DE:C5",
    "tam": 10,
-   "negrito": true
+   "negrito": true,
+   "cor": "1F3864",
+   "fundo": "D9E2F3"
   },
   {
    "ref": "C124",
    "valor": "Resultado oficial da apuração",
    "fmtl": "Geral",
    "tam": 9,
-   "cor": "595959"
+   "cor": "1F3864",
+   "fundo": "D9E2F3"
   },
   {
    "ref": "A125",
@@ -1597,6 +1602,24 @@
   {
    "faixa": "A92",
    "expr": "=$A$92=\"REVISE\"",
+   "fundo": "F8CBAD",
+   "cor": "9C0006"
+  },
+  {
+   "faixa": "G98",
+   "expr": "=$G$98=\"VALIDADO\"",
+   "fundo": "C6E0B4",
+   "cor": "375623"
+  },
+  {
+   "faixa": "G98",
+   "expr": "=$G$98=\"ESTIMADO\"",
+   "fundo": "FFE699",
+   "cor": "9A6700"
+  },
+  {
+   "faixa": "G98",
+   "expr": "=$G$98=\"REVISE\"",
    "fundo": "F8CBAD",
    "cor": "9C0006"
   },

@@ -517,3 +517,114 @@ def test_coluna_origem_usa_texto_proprio(ws):
     assert ws["C122"].value == "Ajustes reconhecidos na apuração"
     assert ws["C123"].value == "Saldo contratual atualizado"
     assert ws["C124"].value == "Resultado oficial da apuração"
+
+
+# ------------------------------------------------- UX2.1: acabamento e status
+
+def test_a92_status_tem_formato_textual(ws):
+    """O status e texto; nunca pode herdar formato numerico da vizinhanca."""
+    assert ws["A92"].value == "=$B$3"
+    assert ws["A92"].number_format == "General"
+
+
+def test_g98_situacao_tem_cor_semantica_derivada_do_valor(ws):
+    """A cor da SITUACAO vem do valor real, nunca fixa."""
+    assert ws["G98"].value == '=IF($H$33="","",$H$33)'   # formula intacta
+    regras = {}
+    for faixa in ws.conditional_formatting:
+        if str(faixa.sqref) != "G98":
+            continue
+        for regra in faixa.rules:
+            expr = regra.formula[0] if regra.formula else None
+            regras[expr] = (
+                regra.dxf.fill.bgColor.rgb if regra.dxf and regra.dxf.fill else None
+            )
+    assert regras == {
+        '$G$98="VALIDADO"': "FFC6E0B4",   # verde suave
+        '$G$98="ESTIMADO"': "FFFFE699",   # ambar
+        '$G$98="REVISE"': "FFF8CBAD",     # vermelho suave
+    }, regras
+    # Ausente/nao aplicavel fica neutro: nao existe regra para vazio.
+
+
+def test_b124_vta_oficial_tem_destaque_leve_sem_competir(ws):
+    cel = ws["B124"]
+    assert cel.value == '=IF(VTA_FINAL="","",VTA_FINAL)'      # formula intacta
+    assert cel.number_format.startswith('"R$"')               # monetario
+    assert cel.font.b is True                                 # negrito
+    assert cel.font.color.rgb == "FF1F3864"                   # azul escuro
+    assert cel.fill.fgColor.rgb == "FFD9E2F3"                 # azul muito claro
+    # Nao pode competir com o hero da pagina 1 (20pt): fica no corpo da tabela.
+    assert cel.font.size == ws["B123"].font.size
+    assert cel.font.size < ws["A95"].font.size
+
+
+# ------------------------------------------------- UX2.1: status oficial
+#
+# O status do painel vem de RESULTADOS!B3, lido do cache do XLS:
+#   RESULTADOS!B3 -> _coleta_reajuste.ler_coleta_reajuste
+#   -> metadados["status_resultados"]["geral"]
+#   -> _resultado_consolidado._status_oficial_resultados -> web
+# Nunca e fabricado a partir do VTA ou do retroativo.
+
+import os  # noqa: E402
+
+from _coleta_reajuste import ler_coleta_reajuste  # noqa: E402
+from _resultado_consolidado import (  # noqa: E402
+    _status_oficial_resultados,
+)
+
+GOLDEN_FINANCEIRO = Path(
+    os.environ.get("CL8US_GOLDENS_DIR", r"C:\Users\danie\Downloads\anthropic-skills")
+) / "Coleta_Reajuste_C3_ICTI_25agosto2026.xlsx"
+
+
+def _status_do_arquivo(caminho_ou_bytes):
+    raw = (
+        caminho_ou_bytes
+        if isinstance(caminho_ou_bytes, bytes)
+        else Path(caminho_ou_bytes).read_bytes()
+    )
+    diag = ler_coleta_reajuste(raw)
+    bloco = (diag.get("metadados") or {}).get("status_resultados") or {}
+    return bloco, _status_oficial_resultados(bloco)
+
+
+@pytest.mark.skipif(
+    not GOLDEN_FINANCEIRO.exists(), reason="golden Financeiro indisponivel"
+)
+def test_golden_financeiro_continua_validado():
+    """O caso homologado de 8,7 milhoes nao pode virar PENDENTE."""
+    bloco, oficial = _status_do_arquivo(GOLDEN_FINANCEIRO)
+    assert bloco.get("geral") == "VALIDADO"
+    assert oficial["codigo"] == "VALIDADO"
+    assert oficial["disponivel"] is True
+    assert oficial["conclusivo"] is True
+    assert oficial["origem"] == "resultados_xls"
+
+
+def test_status_realmente_ausente_continua_fail_closed():
+    """Sem cache do Excel o status nao pode ser inventado.
+
+    O template versionado JA vem recalculado (B3 em cache, "REVISE"), entao
+    ele nao serve de caso negativo. Reabrir e regravar por openpyxl descarta
+    o cache das formulas e reproduz exatamente o arquivo que volta do fiscal
+    sem ter passado pelo Excel — o caso em que a web deve seguir pedindo
+    confirmacao.
+    """
+    buffer = io.BytesIO()
+    load_workbook(TEMPLATE).save(buffer)      # regrava sem cache de formula
+    bloco, oficial = _status_do_arquivo(buffer.getvalue())
+
+    assert not bloco.get("geral"), "sem cache o status tem de ficar ausente"
+    assert oficial["disponivel"] is False
+    assert oficial["codigo"] != "VALIDADO"
+
+
+def test_status_nunca_e_fabricado_a_partir_de_vta_ou_retroativo():
+    """Status ausente segue ausente, haja ou nao numeros no bloco."""
+    buffer = io.BytesIO()
+    load_workbook(TEMPLATE).save(buffer)
+    bloco, oficial = _status_do_arquivo(buffer.getvalue())
+    assert oficial["disponivel"] is False
+    assert oficial["codigo"] != "VALIDADO", bloco.get("valores")

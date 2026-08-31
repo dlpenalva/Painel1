@@ -118,7 +118,10 @@ rotulo("B91", "MÉTODO", fundo=AZUL_CLARO)
 rotulo("C91", "CICLOS", fundo=AZUL_CLARO)
 rotulo("E91", "DATA DE CORTE", fundo=AZUL_CLARO)
 rotulo("G91", "ÍNDICE", fundo=AZUL_CLARO)
-cel("A92", formula="=$B$3", tam=11, negrito=True)          # STATUS_RESULTADOS
+# UX2.1 item 1: formato textual EXPLICITO. O status e texto
+# (VALIDADO/ESTIMADO/REVISE) e nunca pode herdar formato numerico da
+# vizinhanca; "Geral" e aplicado por NumberFormatLocal.
+cel("A92", formula="=$B$3", fmt=GERAL, tam=11, negrito=True)
 # $J$6 vale 1 so quando ha metodo valido. Sem ele, $B$5 devolve a instrucao
 # interna "SELECIONE O METODO EM CONTROLE!B1", que expoe aba e endereco.
 cel("B92", formula='=IF($J$6=1,$B$5,"Não selecionado")', tam=11)
@@ -165,7 +168,18 @@ cel("A98", formula='=IF(REM_ATUALIZADO_OFICIAL="","",REM_ATUALIZADO_OFICIAL)',
 cel("C98", formula='=IF(SALDO_REMANESCENTE_ATUAL="","",SALDO_REMANESCENTE_ATUAL)',
     fmt=MOEDA, tam=12, negrito=True)
 cel("E98", formula='=IF($D$6="","",$D$6)', fmt=PCT, tam=12, negrito=True)
-cel("G98", formula='=IF($H$33="","",$H$33)', tam=12, negrito=True)
+cel("G98", formula='=IF($H$33="","",$H$33)', fmt=GERAL, tam=12,
+    negrito=True)
+# UX2.1 item 2: a SITUACAO ganha o mesmo esquema semantico do STATUS.
+# Comparacoes UNICAS: FormatConditions.Add usa o separador de lista
+# local, entao nada de AND(). Ausente/nao aplicavel fica neutro, sem
+# regra — a formula e o texto nao mudam.
+for _valor, _fundo, _cor in (("VALIDADO", VERDE, VERDE_TXT),
+                             ("ESTIMADO", AMBAR, AMBAR_TXT),
+                             ("REVISE", VERMELHO, VERMELHO_TXT)):
+    condicionais.append({"faixa": "G98",
+                         "expr": f'=$G$98="{_valor}"',
+                         "fundo": _fundo, "cor": _cor})
 alturas["97"] = 14
 alturas["98"] = 20
 alturas["99"] = 8
@@ -325,9 +339,21 @@ formacao = (
 )
 for r, parcela, valor, origem in formacao:
     merges.append(f"C{r}:H{r}")
-    cel(f"A{r}", valor=parcela, tam=10, negrito=(r == 124))
-    cel(f"B{r}", formula=valor, fmt=MOEDA, tam=10, negrito=(r == 124))
-    cel(f"C{r}", valor=origem, tam=9, cor=CINZA_TXT)
+    fecha = r == 124                       # linha do (=) VTA OFICIAL
+    # UX2.1 item 3: destaque leve no VTA OFICIAL da formacao — azul muito
+    # claro da propria paleta, texto azul escuro, negrito e monetario
+    # mantidos. Deliberadamente mais discreto que o hero da pagina 1: mesmo
+    # corpo de 10pt das demais parcelas, sem aumento de fonte, para nao
+    # competir com ele.
+    cel(f"A{r}", valor=parcela, tam=10, negrito=fecha,
+        cor=(AZUL_ESCURO if fecha else None),
+        fundo=(AZUL_CLARO if fecha else None))
+    cel(f"B{r}", formula=valor, fmt=MOEDA, tam=10, negrito=fecha,
+        cor=(AZUL_ESCURO if fecha else None),
+        fundo=(AZUL_CLARO if fecha else None))
+    cel(f"C{r}", valor=origem, tam=9,
+        cor=(AZUL_ESCURO if fecha else CINZA_TXT),
+        fundo=(AZUL_CLARO if fecha else None))
     alturas[str(r)] = 16
 # Conferencia da formacao: "DE ACORDO" quando fecha (§13).
 merges.append("C125:H125")
