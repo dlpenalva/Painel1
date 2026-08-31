@@ -90,7 +90,10 @@ def test_names_antigos_preservados_t35_sem_nome_e_zero_vinculo_externo():
         names = _names(wb)
         assert {name: names.get(name) for name in NOMES_PREEXISTENTES} == \
             NOMES_PREEXISTENTES
-        assert len(names) == len(NOMES_PREEXISTENTES) + 14
+        # PR 2 (RESULTADOS-UX2) acrescentou o 15o name publicado,
+        # RETROATIVO_POTENCIAL_PC -> MEMORIA_RESULTADOS!$T$38, com
+        # autorizacao expressa. Os 14 do PR #135 seguem intactos acima.
+        assert len(names) == len(NOMES_PREEXISTENTES) + 14 + 1
         assert "MEMORIA_RESULTADOS!$T$35" not in names.values()
         assert not wb._external_links
     finally:

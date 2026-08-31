@@ -102,7 +102,8 @@ FORMULAS_POR_ABA = {
     # itens_Consumidos!VALOR_CONS_C0..C4 com gate de presenca; unica
     # formula nova. B26/B28/C33/D33 sao reescritas no ramo Itens, nao
     # acrescentadas. Financeiro/PC intactos).
-    "MEMORIA_RESULTADOS": 4410,
+    # PR 2: +1 formula publicada (name RETROATIVO_POTENCIAL_PC).
+    "MEMORIA_RESULTADOS": 4411,
     # 57 do prototipo + 4 selos por tabela + 1 premissa da estimativa - 1
     # helper J4 removido (status global agora agrega os selos H8/H14/H24/H33).
     # 26G: +5 (linha executiva A23:E23 dos PCs sem efeito financeiro).
@@ -140,7 +141,13 @@ FORMULAS_POR_ABA = {
     # prova a reconciliacao das parcelas com o VTA. C5 e B63 sao REPONTADAS
     # para VTA_FINAL (ja eram formulas, nao somam), e o bloco 8 tem suas
     # formulas reescritas com o novo rotulo de ausencia de base (nao somam).
-    "RESULTADOS": 139,
+    # PR 2 (RESULTADOS-UX2): a expectativa de 139 estava defasada — a main
+    # do checkpoint 8bd98ce ja trazia 143 formulas (divergencia
+    # pre-existente, reproduzida em worktree limpa). O PR 2 acrescenta a
+    # camada de apresentacao das linhas 90-166, que e composta de espelhos:
+    # 143 + 144 = 287. A expectativa e atualizada porque foi DIRETAMENTE
+    # atingida por esta mudanca, nao como limpeza oportunista.
+    "RESULTADOS": 287,
 }
 
 

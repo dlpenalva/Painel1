@@ -55,6 +55,7 @@ ARQUIVOS_DO_HARNESS = {
     "test_baseline_resultados.py",
     "test_baseline_resultados_goldens.py",
     "test_resultados_contract_pr1.py",
+    "test_retroativo_potencial_pc.py",
     "_baseline_cenarios.py",
     "_baseline_fotografia.py",
 }
