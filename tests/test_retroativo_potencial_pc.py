@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
-"""RETROATIVO_POTENCIAL_PC (PR 2, FASE 1-4).
+"""RETROATIVO_POTENCIAL_PC (contrato do name e paridade com a web).
+
+RESULTADOS-ROLLBACK-1: os testes de leiaute da camada humana das linhas
+90-166 foram removidos junto com a apresentacao que eles protegiam. O que
+permanece aqui independe dela: o contrato do defined name, a paridade
+economica com a grandeza que a web ja publicava antes do PR 2 e o status
+oficial lido de RESULTADOS!B3.
 
 Grandeza EXCLUSIVAMENTE informativa: expoe no XLS o mesmo numero que a web ja
 publica como `retroativo_potencial`, sem entrar em nenhuma soma oficial.
@@ -21,7 +27,6 @@ e "Sim") e DESCARTADO_DUPLICIDADE so e atribuido pela via fiscal
 from __future__ import annotations
 
 import datetime as dt
-import re
 import io
 from pathlib import Path
 
@@ -98,32 +103,23 @@ def test_vta_atualizacao_cheia_continua_fora_da_cadeia_oficial(wb):
 
 
 # --------------------------------------------------------------- FASE 3
-# A camada humana do PR 2 vive a partir da linha 90 de RESULTADOS. Abaixo
-# disso esta o motor tecnico, que nao pode enxergar o potencial.
-PRIMEIRA_LINHA_APRESENTACAO = 90
+# RESULTADOS-ROLLBACK-1: a camada humana das linhas 90-166 foi aposentada e
+# com ela sumiram os unicos consumidores do name no workbook. O name segue
+# publicado (grandeza terminal, disponivel para leitura), mas agora NENHUMA
+# formula pode cita-lo — se voltar a aparecer, ou a apresentacao descartada
+# foi reintroduzida, ou o potencial entrou numa cadeia de calculo.
 
 
-def test_potencial_so_e_citado_pela_camada_de_apresentacao(wb):
-    """O name pode ser EXIBIDO, nunca somado.
-
-    Citacao permitida apenas em RESULTADOS a partir da linha 90 (a camada
-    humana). Qualquer citacao no motor tecnico (linhas 1-87) ou em outra aba
-    significaria que o potencial entrou numa cadeia de calculo.
-    """
-    indevidas = []
+def test_potencial_nao_e_citado_por_nenhuma_formula(wb):
+    """O name existe para ser lido, nunca somado nem exibido pela aba."""
+    citacoes = []
     for ws in wb.worksheets:
         for row in ws.iter_rows():
             for cel in row:
                 v = cel.value
-                if not (isinstance(v, str) and v.startswith("=") and NOME in v):
-                    continue
-                apresentacao = (
-                    ws.title == "RESULTADOS"
-                    and cel.row >= PRIMEIRA_LINHA_APRESENTACAO
-                )
-                if not apresentacao:
-                    indevidas.append(f"{ws.title}!{cel.coordinate}")
-    assert indevidas == [], f"{NOME} virou insumo de calculo em {indevidas}"
+                if isinstance(v, str) and v.startswith("=") and NOME in v:
+                    citacoes.append(f"{ws.title}!{cel.coordinate}")
+    assert citacoes == [], f"{NOME} citado por {citacoes}"
 
 
 def test_t38_nao_e_citada_por_nenhuma_formula(wb):
@@ -321,242 +317,6 @@ def test_potencial_nao_contamina_retro_oficial_nem_vta(monkeypatch):
                ).get("ate_o_corte", {}).get("delta_potencial")
     assert round(float(pot_sem or 0), 2) == 0.0
     assert round(float(pot_com or 0), 2) == 8000.0
-
-
-# ------------------------------------------------- FASE 5: novo leiaute
-#
-# A aba passa a ter duas camadas: o motor tecnico (linhas 1-87, oculto) e a
-# apresentacao humana (linhas 90-166). Os testes abaixo protegem a fronteira.
-
-PRIMEIRA_LINHA_TECNICA = 1
-ULTIMA_LINHA_TECNICA = 87
-
-
-@pytest.fixture(scope="module")
-def ws(wb):
-    return wb["RESULTADOS"]
-
-
-def test_camada_tecnica_esta_oculta_e_a_humana_visivel(ws):
-    ocultas = [r for r in range(1, 90) if ws.row_dimensions[r].hidden]
-    assert len(ocultas) == 89, "a camada tecnica precisa sair da leitura"
-    visiveis = [r for r in range(90, 167) if ws.row_dimensions[r].hidden]
-    assert visiveis == [], f"linhas da apresentacao ocultas: {visiveis}"
-    # A coluna I hospeda so as guias de formatacao condicional.
-    assert ws.column_dimensions["I"].hidden
-
-
-def test_impressao_em_duas_paginas_paisagem(ws):
-    assert ws.print_area == "'RESULTADOS'!$A$90:$H$166"
-    assert ws.page_setup.orientation == "landscape"
-    assert int(ws.page_setup.scale) == 75
-    # Quebra explicita entre a pagina 1 e a pagina 2.
-    assert [b.id for b in ws.row_breaks.brk] == [116]
-
-
-def test_pinos_tecnicos_seguem_nas_mesmas_coordenadas(ws):
-    assert ws["B3"].value.startswith("=IF(OR($H$8=")
-    assert ws["B22"].value == '=IF(COUNT(B16:B20)=0,"",ROUND(SUM(B16:B20),2))'
-    assert ws["B37"].value == (
-        '=IFERROR(INDEX($C$26:$C$30,MATCH(UPPER(CONTROLE!$B$2),$A$26:$A$30,0)),"")'
-    )
-    assert ws["B38"].value == '=IF(OR(B36="",B37=""),"",ROUND(B37-B36,2))'
-
-
-def test_hero_values_leem_a_cadeia_canonica(ws):
-    assert ws["A95"].value == '=IF(VTA_FINAL="","",VTA_FINAL)'
-    assert ws["E95"].value == "=$D$22"          # RETRO_OFICIAL via D22
-    assert ws["A94"].value == "VTA OFICIAL"
-    assert ws["E94"].value == "RETROATIVO TOTAL A PAGAR"
-
-
-def test_formacao_do_vta_usa_os_names_do_pr1(ws):
-    assert "EXECUTADO_APURADO" in ws["B121"].value
-    assert "AJUSTES_DEVIDOS" in ws["B122"].value
-    assert ws["B123"].value == '=IF($B$85="","",$B$85)'
-    assert "VTA_FINAL" in ws["B124"].value
-    assert "CONFERENCIA_FORMACAO_VTA" in ws["B125"].value
-    assert "DE ACORDO" in ws["C125"].value
-
-
-def test_terminologia_nova_esta_aplicada(ws):
-    assert ws["A117"].value == (
-        "VALOR TOTAL ATUALIZADO DO CONTRATO — METODOLOGIA E FORMAÇÃO"
-    )
-    assert ws["D128"].value == "Diferença"          # nunca "Delta"
-    assert ws["A144"].value == "SITUAÇÃO ATUAL DO CONTRATO"
-    assert ws["A150"].value == (
-        "REFERÊNCIAS PARA CONFERÊNCIA — NÃO SÃO O VTA OFICIAL"
-    )
-    assert ws["C151"].value == "FINALIDADE"          # nunca "Situação"
-    assert ws["C152"].value == "REFERÊNCIA ATUAL"
-    assert ws["C153"].value == "REFERÊNCIA DE ABERTURA"
-    assert ws["C154"].value == "COMPARATIVO TEÓRICO"
-    assert ws["A156"].value == "CONFERÊNCIA ENTRE REFERÊNCIAS DO CONTRATO"
-    assert ws["A157"].value == "DIFERENÇA"
-
-
-def test_coluna_do_efeito_financeiro_e_a_competencia_de_inicio(ws):
-    """parametros!H guarda QUANDO o efeito comeca, nao SE ha efeito nem quanto.
-
-    O rotulo antigo ("Efeito financeiro") era ambiguo: podia ser lido como
-    Sim/Nao ou como valor monetario.
-    """
-    assert ws["F106"].value == "INÍCIO DO EFEITO FINANCEIRO"
-    assert ws["F106"].alignment.wrap_text is True
-    for i in range(5):
-        r, p = 107 + i, 2 + i
-        assert ws.cell(r, 6).value == (
-            f'=IF(parametros!$H${p}="","",parametros!$H${p})'
-        )
-        assert ws.cell(r, 6).number_format == "mm/yyyy"
-
-
-def test_jargao_antigo_nao_aparece_na_camada_humana(ws):
-    proibidos = ("Delta", "posição física", "posicao fisica", "AUDITORIA INTERNA")
-    achados = []
-    for r in range(90, 167):
-        for c in range(1, 9):
-            v = ws.cell(r, c).value
-            if not isinstance(v, str):
-                continue
-            for termo in proibidos:
-                if termo.lower() in v.lower():
-                    achados.append((ws.cell(r, c).coordinate, termo))
-    assert achados == [], f"jargao antigo visivel: {achados}"
-
-
-def test_aviso_de_revisao_esta_presente_sem_workflow(ws):
-    aviso = ws["A103"].value
-    assert isinstance(aviso, str)
-    assert aviso.startswith("IMPORTANTE")
-    assert "não substitui a revisão do responsável" in aviso
-    # Informativo puro: nada de aceite, trava ou registro de concordancia.
-    validacoes = {str(dv.sqref) for dv in ws.data_validations.dataValidation}
-    assert not any("103" in s for s in validacoes)
-
-
-def test_bloco_de_potencial_e_condicional_e_ambar(ws, wb):
-    for ref in ("A100", "D100", "A101"):
-        assert NOME in ws[ref].value
-        assert 'MEMORIA_RESULTADOS!$B$4="PCs"' in ws[ref].value
-    assert "EM ANÁLISE" in ws["A100"].value
-    assert "Não compõe os valores oficiais" in ws["A101"].value
-    # A guia da formatacao condicional concentra a logica (locale-proof).
-    assert ws["I100"].value.startswith("=IF(AND(")
-
-
-def test_conclusao_reflete_o_potencial_em_analise(ws):
-    """§12: com potencial em analise nao se declara conclusao total."""
-    assert "COM VALOR POTENCIAL EM ANÁLISE" in ws["A113"].value
-    assert "retroativo potencial" in ws["A114"].value
-    assert "não compõe o VTA nem o retroativo oficial" in ws["A114"].value
-
-
-def test_fator_aparece_com_seis_casas_e_so_na_pagina_2(ws):
-    for r in range(138, 143):
-        assert ws.cell(r, 3).number_format == "0.000000"
-    # §9: a pagina 1 nao exibe fatores.
-    for r in range(107, 112):
-        assert ws.cell(r, 3).number_format != "0.000000"
-
-
-# ------------------------------------------- FASE 5.1: acabamento visual
-
-def test_ausencia_de_potencial_nao_desenha_travessao(ws):
-    """Sem potencial material, D100 fica visualmente vazio.
-
-    O monetario homologado usa "—" na 4a secao (texto), o que fazia uma
-    celula condicional que devolve "" desenhar um travessao ambar orfao.
-    """
-    assert ws["D100"].number_format.endswith(";")
-    assert '"—"' not in ws["D100"].number_format
-
-
-def test_conferencia_da_execucao_nao_deixa_linhas_de_travessao(ws):
-    """Fora do Financeiro as cinco linhas ficam visualmente vazias."""
-    for r in range(161, 166):
-        for c in (2, 3, 4):
-            fmt = ws.cell(r, c).number_format
-            assert fmt.endswith(";"), f"{ws.cell(r, c).coordinate}: {fmt}"
-            assert '"—"' not in fmt
-    assert "Não aplicável ao método selecionado" in ws["F160"].value
-
-
-def test_cabecalhos_longos_quebram_em_vez_de_truncar(ws):
-    assert ws["C160"].value == "Execução estimada pelo quantitativo"
-    for c in range(1, 6):
-        assert ws.cell(160, c).alignment.wrap_text is True
-    assert ws.row_dimensions[160].height >= 24
-
-
-def test_camada_humana_nao_expoe_nada_tecnico(ws):
-    """Nem literais nem formulas podem citar aba, endereco ou name tecnico."""
-    proibido = re.compile(
-        r"(MEMORIA(_RESULTADOS)?!|CONTROLE!|parametros!|comparativo_VTA!"
-        r"|itens_PC!|historico_VU!|financeiro!|posicao_\w+!"
-        r"|VTA_FINAL|RETRO_OFICIAL|apuracao|POSICAO|posi[cç][aã]o f[ií]sica)",
-        re.I,
-    )
-    achados = []
-    for r in range(90, 167):
-        for c in range(1, 9):
-            v = ws.cell(r, c).value
-            if not isinstance(v, str):
-                continue
-            # Numa formula so o texto entre aspas chega ao usuario.
-            alvos = re.findall(r'"([^"]*)"', v) if v.startswith("=") else [v]
-            for alvo in alvos:
-                if proibido.search(alvo):
-                    achados.append((ws.cell(r, c).coordinate, alvo[:60]))
-    assert achados == [], f"vazamento tecnico visivel: {achados}"
-
-
-def test_coluna_origem_usa_texto_proprio(ws):
-    assert ws["C121"].value == "Apuração do método selecionado"
-    assert ws["C122"].value == "Ajustes reconhecidos na apuração"
-    assert ws["C123"].value == "Saldo contratual atualizado"
-    assert ws["C124"].value == "Resultado oficial da apuração"
-
-
-# ------------------------------------------------- UX2.1: acabamento e status
-
-def test_a92_status_tem_formato_textual(ws):
-    """O status e texto; nunca pode herdar formato numerico da vizinhanca."""
-    assert ws["A92"].value == "=$B$3"
-    assert ws["A92"].number_format == "General"
-
-
-def test_g98_situacao_tem_cor_semantica_derivada_do_valor(ws):
-    """A cor da SITUACAO vem do valor real, nunca fixa."""
-    assert ws["G98"].value == '=IF($H$33="","",$H$33)'   # formula intacta
-    regras = {}
-    for faixa in ws.conditional_formatting:
-        if str(faixa.sqref) != "G98":
-            continue
-        for regra in faixa.rules:
-            expr = regra.formula[0] if regra.formula else None
-            regras[expr] = (
-                regra.dxf.fill.bgColor.rgb if regra.dxf and regra.dxf.fill else None
-            )
-    assert regras == {
-        '$G$98="VALIDADO"': "FFC6E0B4",   # verde suave
-        '$G$98="ESTIMADO"': "FFFFE699",   # ambar
-        '$G$98="REVISE"': "FFF8CBAD",     # vermelho suave
-    }, regras
-    # Ausente/nao aplicavel fica neutro: nao existe regra para vazio.
-
-
-def test_b124_vta_oficial_tem_destaque_leve_sem_competir(ws):
-    cel = ws["B124"]
-    assert cel.value == '=IF(VTA_FINAL="","",VTA_FINAL)'      # formula intacta
-    assert cel.number_format.startswith('"R$"')               # monetario
-    assert cel.font.b is True                                 # negrito
-    assert cel.font.color.rgb == "FF1F3864"                   # azul escuro
-    assert cel.fill.fgColor.rgb == "FFD9E2F3"                 # azul muito claro
-    # Nao pode competir com o hero da pagina 1 (20pt): fica no corpo da tabela.
-    assert cel.font.size == ws["B123"].font.size
-    assert cel.font.size < ws["A95"].font.size
 
 
 # ------------------------------------------------- UX2.1: status oficial

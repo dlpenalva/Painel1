@@ -141,13 +141,11 @@ FORMULAS_POR_ABA = {
     # prova a reconciliacao das parcelas com o VTA. C5 e B63 sao REPONTADAS
     # para VTA_FINAL (ja eram formulas, nao somam), e o bloco 8 tem suas
     # formulas reescritas com o novo rotulo de ausencia de base (nao somam).
-    # PR 2 (RESULTADOS-UX2): a expectativa de 139 estava defasada — a main
-    # do checkpoint 8bd98ce ja trazia 143 formulas (divergencia
-    # pre-existente, reproduzida em worktree limpa). O PR 2 acrescenta a
-    # camada de apresentacao das linhas 90-166, que e composta de espelhos:
-    # 143 + 144 = 287. A expectativa e atualizada porque foi DIRETAMENTE
-    # atingida por esta mudanca, nao como limpeza oportunista.
-    "RESULTADOS": 282,
+    # RESULTADOS-ROLLBACK-1: a camada de apresentacao das linhas 90-166
+    # (PR 2) foi aposentada e a aba voltou a apresentacao anterior. Restam
+    # as 143 formulas do motor tecnico — o mesmo numero do checkpoint
+    # f8296f7. A expectativa de 139 ja estava defasada antes do PR 2.
+    "RESULTADOS": 143,
 }
 
 
