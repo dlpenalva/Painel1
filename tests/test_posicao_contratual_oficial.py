@@ -156,7 +156,8 @@ class FormulasOficialModeloB(unittest.TestCase):
 
     def test_cabecalho_e_remanescente_real_informado(self):
         # MODELO B: o cabeçalho pede o remanescente real (não "sem aditivo").
-        self.assertIn("QTD_REM_BASE_C1", self.rem["E1"].value)
+        # O rótulo técnico QTD_REM_BASE_C1 deu lugar ao texto lido pelo fiscal.
+        self.assertIn("QTD. REMANESCENTE - C1", self.rem["E1"].value)
         self.assertNotIn("SEM_ADITIVO", self.rem["E1"].value)
 
     def test_delta_assinado(self):

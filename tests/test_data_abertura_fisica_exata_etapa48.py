@@ -203,14 +203,18 @@ def test_template_familias_migradas_e_consumidores_mensais_intactos():
     par = wb["parametros"]
     # superficie runtime: template nasce com I vazio
     assert all(par[f"I{r}"].value in (None, "") for r in range(1, 8))
-    # familias fisicas -> I
+    # familias fisicas -> I. Somente as colunas DIGITADAS pelo fiscal
+    # (QTD. REMANESCENTE) carregam a data da fotografia; as demais declaram-se
+    # calculadas e por isso deixaram de referenciar qualquer data.
     rem = wb["itens_Remanesc"]
-    esperado = {"E1": 3, "F1": 3, "G1": 4, "H1": 4, "I1": 5, "J1": 5, "K1": 6,
-                "L1": 6, "M1": 3, "N1": 3, "O1": 4, "P1": 4, "Q1": 5, "R1": 5,
-                "S1": 6, "T1": 6}
+    esperado = {"E1": 3, "G1": 4, "I1": 5, "K1": 6}
     for coord, linha in esperado.items():
         f = str(rem[coord].value)
         assert f"parametros!$I${linha}" in f and "parametros!$C$" not in f, coord
+    for coord in ("F1", "H1", "J1", "L1", "M1", "N1", "O1", "P1",
+                  "Q1", "R1", "S1", "T1"):
+        f = str(rem[coord].value)
+        assert "automaticamente" in f and "parametros!" not in f, coord
     pc = wb["posicao_contratual"]
     for col, n in zip(("AB", "AC", "AD", "AE", "AF"), range(2, 7)):
         f = str(pc[f"{col}2"].value)

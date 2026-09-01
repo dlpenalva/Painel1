@@ -2344,6 +2344,22 @@ if res:
         # efeitos financeiros (mesma regra do bloco v3 acima).
         fim_efeito_financeiro = (inicio_efeito_financeiro + relativedelta(months=12)) - relativedelta(days=1)
 
+    # ETAPA 48 (unificacao itens_Remanesc) — a fotografia FISICA do ciclo e a
+    # referencia EXATA, com o dia preservado; a competencia mensal permanece
+    # exclusivamente na cadeia financeira (inicio_efeito_financeiro, acima).
+    # Nada e recalculado aqui: as tres datas ja foram apuradas por esta pagina
+    # (dt_aniv, dt_solic e a data pactuada do acordo). Mesma decisao que a
+    # pagina 02 ja tomava em `referencia_exata_efeito`; ate aqui o fluxo
+    # simples nao a transportava e o XLS caia no fallback mensal.
+    if superacao_negocial and data_inicio_efeito_negocial:
+        referencia_exata_efeito = data_inicio_efeito_negocial
+    elif preclusao_sem_efeito:
+        # PRECLUSO sem acordo nao tem efeito financeiro, mas EXISTE
+        # fisicamente: a fotografia e a propria referencia apta (48.4).
+        referencia_exata_efeito = None
+    else:
+        referencia_exata_efeito = dt_solic if dt_solic >= dt_aniv else dt_aniv
+
     ciclo_unico = {
         'ciclo': ciclo_label,
         'data_base': dt_base.strftime('%d/%m/%Y'),
@@ -2368,6 +2384,9 @@ if res:
         'fator_acumulado': float(fator_ciclo_efetivo),
         'periodo_inicio': _formatar_data(periodo_inicio),
         'periodo_fim': _formatar_data(periodo_fim),
+        # Transporte puro da fotografia fisica exata (ETAPA 48): decidida
+        # logo acima, sem mensalizacao. Fallback 48.4 = referencia apta.
+        'data_abertura_fisica_exata': _formatar_data(referencia_exata_efeito or dt_aniv),
         'financeiro_inicio': _formatar_data(inicio_efeito_financeiro),
         'financeiro_fim': _formatar_data(fim_efeito_financeiro),
         # Etapa 4: persiste no XLS a mesma memoria mensal exibida acima

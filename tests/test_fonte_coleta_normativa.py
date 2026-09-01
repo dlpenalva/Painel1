@@ -26,8 +26,9 @@ class FonteColetaNormativa(unittest.TestCase):
         wb = load_workbook(io.BytesIO(obter_coleta_oficial_bytes()), data_only=False)
         self.assertIn("posicao_contratual", wb.sheetnames)
         # marcador do MODELO B: remanescente real (não "sem aditivo" do legado).
+        # O rótulo técnico QTD_REM_BASE_C1 deu lugar ao texto lido pelo fiscal.
         cabecalho = wb["itens_Remanesc"]["E1"].value or ""
-        self.assertIn("QTD_REM_BASE_C1", cabecalho)
+        self.assertIn("QTD. REMANESCENTE - C1", cabecalho)
         self.assertNotIn("SEM_ADITIVO", cabecalho)
 
     def test_template_oficial_ausente_gera_erro_sem_fallback(self):
