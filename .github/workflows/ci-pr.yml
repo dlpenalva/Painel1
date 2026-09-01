@@ -52,4 +52,5 @@ jobs:
             tests/test_preserva_dropdowns_e_colunas_ocultas.py \
             tests/test_seguranca_xlsx.py \
             tests/test_geometria_workbook_p0.py \
-            tests/test_contexto_coleta_perf_arch.py
+            tests/test_contexto_coleta_perf_arch.py \
+            tests/test_alinhamento_template_runtime.py
