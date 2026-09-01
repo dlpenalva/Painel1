@@ -78,6 +78,11 @@ ERROS_EXCEL = {"#REF!", "#VALUE!", "#DIV/0!", "#NAME?", "#N/A", "#NUM!", "#NULL!
 
 COR_TEXTO = "FF595959"
 COR_MARINHO = "FF123B63"
+# Identidade visual oficial das guias: ambar nas abas de entrada (a mesma cor
+# que `_ciclo_em_execucao` aplica a CICLO_EM_EXECUCAO) e vinho na RESULTADOS.
+COR_ABA_ENTRADA = "FFFFC000"
+COR_ABA_RESULTADOS = "FF8A1538"
+PALETA_ABAS_OFICIAL = frozenset({COR_ABA_ENTRADA, COR_ABA_RESULTADOS})
 PREENCHIMENTO_AUTOMATICO = PatternFill("solid", fgColor="FFEDEDED")
 PREENCHIMENTO_ENTRADA = PatternFill("solid", fgColor="FFFFF2CC")
 
@@ -641,9 +646,25 @@ def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
         bloqueios_estruturais.append("Nomes estruturais da aba RESULTADOS ausentes: " + ", ".join(nomes_ausentes[:8]))
     if wb.sheetnames[-1] != "RESULTADOS":
         avisos.append("A aba RESULTADOS deve permanecer como a última aba do arquivo.")
-    abas_coloridas = [ws.title for ws in wb.worksheets if ws.sheet_properties.tabColor is not None]
-    if abas_coloridas != ["RESULTADOS"]:
-        avisos.append("Somente a guia RESULTADOS deve possuir cor de aba.")
+    # PR3B-1: a regra historica exigia que SOMENTE a RESULTADOS tivesse cor.
+    # Ela nasceu do modelo legado (Coleta_Reajuste.xlsx, 1 guia colorida), mas o
+    # modelo oficial adotou a paleta de duas cores: 8 guias de entrada em ambar
+    # mais a RESULTADOS em vinho — e a Coleta entregue ainda recebe a
+    # CICLO_EM_EXECUCAO tambem em ambar. A condicao antiga era verdadeira em
+    # toda apuracao, ou seja, um falso aviso por construcao. O que continua
+    # valendo a pena sinalizar e a cor FORA da identidade visual oficial.
+    fora_da_paleta = sorted(
+        ws.title
+        for ws in wb.worksheets
+        if ws.sheet_properties.tabColor is not None
+        and str(getattr(ws.sheet_properties.tabColor, "rgb", "") or "").upper()
+        not in PALETA_ABAS_OFICIAL
+    )
+    if fora_da_paleta:
+        avisos.append(
+            "Guias com cor fora da identidade visual oficial: "
+            + ", ".join(fora_da_paleta[:5])
+        )
 
     comentarios = []
     observacoes = []
