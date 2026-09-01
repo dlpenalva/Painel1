@@ -133,6 +133,10 @@ def test_cabecalhos_de_itens_remanesc_no_cenario(parametros):
     wb, _ = parametros
     rem = wb["itens_Remanesc"]
     # as formulas leem parametros!I; a prova de valor esta no smoke Excel.
-    for coord, linha in (("M1", 3), ("O1", 4), ("Q1", 5), ("S1", 6)):
+    # A data ficou nas colunas de entrada manual (QTD. REMANESCENTE); as de
+    # execucao passaram a se declarar calculadas.
+    for coord, linha in (("E1", 3), ("G1", 4), ("I1", 5), ("K1", 6)):
         assert f"parametros!$I${linha}" in str(rem[coord].value)
         assert "parametros!$C$" not in str(rem[coord].value)
+    for coord in ("M1", "O1", "Q1", "S1"):
+        assert "automaticamente" in str(rem[coord].value)

@@ -20,7 +20,7 @@ jobs:
   ci-rapido:
     name: CI rapido
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
 
     steps:
       - name: Obter repositorio
@@ -53,4 +53,5 @@ jobs:
             tests/test_seguranca_xlsx.py \
             tests/test_geometria_workbook_p0.py \
             tests/test_contexto_coleta_perf_arch.py \
-            tests/test_alinhamento_template_runtime.py
+            tests/test_alinhamento_template_runtime.py \
+            tests/test_itens_remanesc_fotografia_exata.py
