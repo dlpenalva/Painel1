@@ -49,6 +49,12 @@ ULTIMA_LINHA_UX2 = 166
 ULTIMA_LINHA_TECNICA = 87
 
 LINHAS_OCULTAS = {10, 11, 12, 13, 31, 40, 51}
+# RESULTADOS-FINAL-1: o bloco "5. AJUSTES MANUAIS" (41:50) passou a ser
+# OCULTO por decisao de apresentacao. Ocultar nao e apagar — o conteudo e
+# as validacoes de C43:G50 continuam nas mesmas coordenadas, e quem prova
+# isso e tests/test_resultados_final_1.py.
+LINHAS_OCULTAS_AJUSTES_MANUAIS = set(range(41, 51))
+LINHAS_OCULTAS |= LINHAS_OCULTAS_AJUSTES_MANUAIS
 # openpyxl expoe o grupo <col min="10" max="14" hidden="1"/> sob a chave J.
 GRUPO_OCULTO = ("J", 10, 14)                  # J:N; I volta a ser visivel
 
@@ -58,11 +64,21 @@ MERGES = [
     "D5:E5", "E16:H21", "E23:H23", "E25:H25", "E34:H34", "E35:H38", "F10:G10",
     "F11:G11", "F12:G12", "F13:G13", "F9:G9", "G1:H1", "G2:H2", "G3:H3",
 ]
+# RESULTADOS-FINAL-1: o retroativo potencial ocupa E22:F22 (rotulo) e
+# G22:H22 (valor) — faixa que estava vazia, entre os merges E16:H21 e
+# E23:H23, que seguem intactos.
+MERGES = sorted(MERGES + ["E22:F22", "G22:H22"])
 CF_SQREFS = [
     "A7:H7", "B38", "C4", "D4:D5 D6:E6", "E4", "F4:G4 F5:H6", "G1", "H24",
     "H33", "H4", "H43:H50",
 ]
-TOTAL_FORMULAS = 143
+# RESULTADOS-FINAL-1: uma regra nova pinta E22:H22 de ambar somente quando
+# ha retroativo potencial a mostrar (=$G$22<>""); fora do metodo PCs a
+# faixa some em vez de exibir um bloco colorido vazio.
+CF_SQREFS = sorted(CF_SQREFS + ["E22:H22"])
+# 143 do motor tecnico + E22/G22, as duas unicas formulas de apresentacao
+# acrescentadas pela RESULTADOS-FINAL-1.
+TOTAL_FORMULAS = 145
 
 PRINT_AREA = "'RESULTADOS'!$A$1:$H$50"
 MARGEM_LATERAL = 0.511811024

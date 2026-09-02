@@ -351,7 +351,11 @@ def test_tabela_da_linha_53_tem_bordas(em_branco):
     res = em_branco["RESULTADOS"]
     # Etapa 50: a numeracao 5 passou a ser a dos AJUSTES MANUAIS e o anexo
     # tecnico das medidas de PCs virou a secao 6.
-    assert str(res["A53"].value).startswith("6. TOTAIS CANONICOS DE PCs")
+    # RESULTADOS-FINAL-1: o titulo deixou de anunciar "medidas com nomes
+    # claros" (linguagem de desenvolvimento) e passou a nomear o que a
+    # tabela entrega ao fiscal. As bordas conferidas abaixo continuam
+    # sendo o objeto deste teste.
+    assert str(res["A53"].value).startswith("6. TOTAIS E INDICADORES DE CONFER")
     for linha in range(54, 67):
         for coluna in range(1, 4):
             celula = res.cell(linha, coluna)
