@@ -110,8 +110,18 @@ def test_vta_atualizacao_cheia_continua_fora_da_cadeia_oficial(wb):
 # foi reintroduzida, ou o potencial entrou numa cadeia de calculo.
 
 
-def test_potencial_nao_e_citado_por_nenhuma_formula(wb):
-    """O name existe para ser lido, nunca somado nem exibido pela aba."""
+# RESULTADOS-FINAL-1 estreitou este contrato de proposito. Antes o name nao
+# podia ser NEM somado NEM exibido. A metade "exibido" caiu: a aba passou a
+# mostrar "Retroativo potencial — em analise" em E22:H22, ao lado do
+# retroativo reconhecido, porque o fiscal precisa enxergar a grandeza que
+# esta em analise. A metade que protege o numero continua de pe e e o que
+# este teste guarda agora: o potencial pode ser LIDO por uma unica celula de
+# APRESENTACAO e nunca pode entrar em soma, total ou composicao do VTA.
+CELULA_DE_EXIBICAO_AUTORIZADA = "RESULTADOS!G22"
+
+
+def test_potencial_so_e_citado_pela_celula_de_exibicao(wb):
+    """Uma unica leitura, e ela e visual: nada mais pode tocar o potencial."""
     citacoes = []
     for ws in wb.worksheets:
         for row in ws.iter_rows():
@@ -119,7 +129,32 @@ def test_potencial_nao_e_citado_por_nenhuma_formula(wb):
                 v = cel.value
                 if isinstance(v, str) and v.startswith("=") and NOME in v:
                     citacoes.append(f"{ws.title}!{cel.coordinate}")
-    assert citacoes == [], f"{NOME} citado por {citacoes}"
+    assert citacoes == [CELULA_DE_EXIBICAO_AUTORIZADA], (
+        f"{NOME} citado por {citacoes}"
+    )
+
+
+def test_potencial_nunca_entra_em_soma_ou_total(wb):
+    """Exibir e permitido; somar continua proibido."""
+    formula = str(wb["RESULTADOS"]["G22"].value)
+    # A celula so envelopa o name em IF/IFERROR — nada de aritmetica.
+    for proibido in ("+", "-", "*", "/", "SUM", "SUBTOTAL", "AGGREGATE"):
+        assert proibido not in formula.upper(), formula
+    # E ninguem le a celula de exibicao para compor outro numero.
+    leitores = []
+    for ws in wb.worksheets:
+        for row in ws.iter_rows():
+            for cel in row:
+                v = cel.value
+                if not (isinstance(v, str) and v.startswith("=")):
+                    continue
+                if cel.coordinate == "G22" and ws.title == "RESULTADOS":
+                    continue
+                alvo = v.replace("$", "")
+                if "G22" in alvo and ws.title == "RESULTADOS":
+                    leitores.append(f"{ws.title}!{cel.coordinate}")
+    # E22 e o rotulo: le G22 apenas para decidir se aparece ou nao.
+    assert leitores == ["RESULTADOS!E22"], leitores
 
 
 def test_t38_nao_e_citada_por_nenhuma_formula(wb):

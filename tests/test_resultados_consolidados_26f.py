@@ -59,7 +59,9 @@ def test_quatro_tabelas_e_um_status_global(wb):
     assert str(ws["A33"].value).startswith("=IF(UPPER(CONTROLE!$B$2)=")
     assert "4. CICLO ATUAL EM EXECUÇÃO" in str(ws["A33"].value)
     assert ws["A41"].value == "5. AJUSTES MANUAIS"
-    assert str(ws["A53"].value).startswith("6. TOTAIS CANONICOS DE PCs")
+    # RESULTADOS-FINAL-1: titulo reescrito para o usuario final; a secao
+    # continua sendo a 6 e nas mesmas linhas 53:66.
+    assert str(ws["A53"].value).startswith("6. TOTAIS E INDICADORES DE CONFER")
 
 
 def test_linhas_separadoras_permanecem_visualmente_brancas(wb):

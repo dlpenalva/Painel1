@@ -145,7 +145,13 @@ FORMULAS_POR_ABA = {
     # (PR 2) foi aposentada e a aba voltou a apresentacao anterior. Restam
     # as 143 formulas do motor tecnico — o mesmo numero do checkpoint
     # f8296f7. A expectativa de 139 ja estava defasada antes do PR 2.
-    "RESULTADOS": 143,
+    # RESULTADOS-FINAL-1: +2 (143 -> 145), ambas de APRESENTACAO e ambas na
+    # faixa E22:H22, que estava vazia e fora de merge/CF/validacao: G22 exibe
+    # o retroativo potencial lendo so o nome definido ja existente
+    # RETROATIVO_POTENCIAL_PC, e E22 e o rotulo/observacao que depende de G22.
+    # Nenhuma formula economica foi criada, movida ou recalculada — A70 e B64
+    # foram apenas reescritas (continuam sendo formulas, nao somam).
+    "RESULTADOS": 145,
 }
 
 
