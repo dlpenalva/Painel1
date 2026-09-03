@@ -176,7 +176,7 @@ def test_apostila_estrutura_final_1_a_8_sem_duplicidades():
     assert "FORMALIZA-SE O PRESENTE TERMO DE APOSTILA:" in texto
     assert "1. Dos reajustes concedidos" in texto
     assert "2. Da apuração financeira do retroativo" in texto
-    assert "3. Da composição do Valor Total Atualizado" in texto
+    assert "3. DO VALOR TOTAL ATUALIZADO DO CONTRATO" in texto
     assert "4. Dos valores unitários" in texto
     assert "5. Dos aditivos e supressões considerados" in texto
     assert "6. Permanecem inalteradas e em pleno vigor" in texto
@@ -282,10 +282,10 @@ def test_documentos_usam_corte_canonico_e_excluem_pc_posterior():
 
     assert "SITUAÇÃO DOS VALORES RETROATIVOS" in saneador
     assert "Retroativo reconhecido: R$ 0,00" in saneador
-    assert "Valor atualizado em análise: R$ 44,63" in saneador
+    assert "Valor em análise pela área gestora: R$ 44,63" in saneador
     assert "Retroativo potencial: R$ 44,63" in saneador
     assert "R$ 20,08" not in saneador
-    assert "aceitação dos respectivos Pedidos de Compra pela área gestora" in saneador
+    assert "Pedidos de Compra ainda em análise pela área gestora" in saneador
     assert "eventual pagamento" in saneador
     assert "não integra o valor reconhecido a pagar" in saneador
 
@@ -293,9 +293,9 @@ def test_documentos_usam_corte_canonico_e_excluem_pc_posterior():
     assert "Retroativo reconhecido: R$ 0,00" in termo
     assert "Retroativo potencial: R$ 44,63" in termo
     assert "R$ 20,08" not in termo
-    assert "Pedidos de Compra ainda sujeitos à aceitação pela área gestora" in termo
-    assert "condução do eventual pagamento competem à área gestora" in termo
-    assert "não integra, nesta data, o montante reconhecido a pagar" in termo
+    assert "Pedidos de Compra ainda em análise pela área gestora" in termo
+    assert "confirmação e eventual pagamento competem à área gestora" in termo
+    assert "não integra o valor reconhecido a pagar" in termo
 
 
 def test_documentos_reincluem_reconhecido_quando_pc_pago_esta_antes_do_corte():
@@ -400,7 +400,7 @@ def test_saneador_estrutura_final_1_a_6():
         "2. PEDIDO E PARÂMETROS DA ANÁLISE",
         "3. RESULTADO ESSENCIAL",
         "4. DOCUMENTOS E VERIFICAÇÕES",
-        "5. PENDÊNCIAS",
+        "5. PENDÊNCIAS E PROVIDÊNCIAS",
         "6. CONCLUSÃO",
     ]
 

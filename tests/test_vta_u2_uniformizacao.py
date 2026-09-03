@@ -237,10 +237,7 @@ def test_a6_card_principal_tem_titulo_valor_e_status_do_vta(wb):
 
 def test_a7_titulo_da_secao_1_enuncia_a_identidade_canonica(wb):
     titulo = str(wb["RESULTADOS"]["A9"].value)
-    assert "Executado apurado" in titulo
-    assert "Ajustes ainda devidos" in titulo
-    assert "Remanescente atualizado" in titulo
-    assert "VTA Oficial" in titulo
+    assert titulo == "1. COMO O VTA FOI CALCULADO"
     assert "POSIÇÃO FÍSICA" not in titulo.upper()
     assert "POSICAO FISICA" not in titulo.upper()
 
@@ -249,9 +246,9 @@ def test_a7_titulo_da_secao_1_enuncia_a_identidade_canonica(wb):
 
 def test_b1_bloco_didatico_existe_com_as_quatro_parcelas(wb):
     res = wb["RESULTADOS"]
-    assert str(res["A79"].value).startswith("9. COMO E FORMADO O VTA")
-    assert "ja executado" in str(res["A80"].value)
-    assert "VTA Oficial = Executado apurado" in str(res["A81"].value)
+    assert str(res["A79"].value).startswith("9. VALOR TOTAL ATUALIZADO DO CONTRATO")
+    assert "execução já realizada" in str(res["A80"].value)
+    assert "VTA oficial = execução apurada" in str(res["A81"].value)
     assert [str(res[f"A{linha}"].value) for linha in range(83, 87)] == [
         "Executado apurado",
         "(+) Ajustes ainda devidos",
@@ -295,10 +292,10 @@ def test_b4_bloco_tem_linha_de_conferencia_contra_o_vta_oficial(wb):
 
 def test_c1_conferencia_tem_rotulos_didaticos(wb):
     res = wb["RESULTADOS"]
-    assert str(res["C72"].value) == "Execucao estimada pelo quantitativo"
-    assert str(res["D72"].value) == "Diferenca para o Financeiro informado"
-    assert str(res["E72"].value) == "Conferencia"
-    assert "nao altera o VTA Oficial" in str(res["A78"].value)
+    assert str(res["C72"].value) == "Valor estimado"
+    assert str(res["D72"].value) == "Diferença"
+    assert str(res["E72"].value) == "Resultado"
+    assert res["A78"].value is None
 
 
 def test_c2_sem_base_a_diferenca_fica_vazia_e_o_status_explica(wb):

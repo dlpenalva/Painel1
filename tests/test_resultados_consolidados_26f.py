@@ -53,8 +53,8 @@ def test_quatro_tabelas_e_um_status_global(wb):
     # Titulos das secoes no leiaute final: 1 e 2 coabitam a linha de cabecalho
     # das proprias tabelas (linhas 9 e 15); a secao 4 e formula para exibir o
     # ciclo real em execucao.
-    assert ws["A9"].value == "1. COMPOSIÇÃO DO VTA"
-    assert ws["A15"].value == "2. RETROATIVO POR CICLO"
+    assert ws["A9"].value == "1. COMO O VTA FOI CALCULADO"
+    assert ws["A15"].value == "2. EXECUÇÃO E RETROATIVO POR CICLO"
     assert ws["A24"].value == "3. REMANESCENTE TOTAL POR CICLO"
     assert str(ws["A33"].value).startswith("=IF(UPPER(CONTROLE!$B$2)=")
     assert "4. CICLO ATUAL EM EXECUÇÃO" in str(ws["A33"].value)

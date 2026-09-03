@@ -599,24 +599,32 @@ def _garantir_apresentacao_retroativos_e_aditivos(wb) -> None:
 
     if "itens_PC" in wb.sheetnames:
         ws = wb["itens_PC"]
-        for coord in ("H1", "Q1"):
+        for coord in ("H1", "Q2"):
             ws[coord].value = "RETROATIVO RECONHECIDO"
-        for coord in ("J1", "S1"):
+        for coord in ("J1", "S2"):
             ws[coord].value = "RETROATIVO POTENCIAL"
+        ws["Q11"].value = "Retroativo reconhecido"
+        ws["R11"].value = "Valor em análise (área gest.)"
+        ws["S11"].value = "Retroativo potencial"
 
         estilos = (
             (("H", 1, 1), _VERDE_RETROATIVO_RECONHECIDO),
             (("I", 1, 1), _NEUTRO_VALOR_EM_ANALISE),
             (("J", 1, 1), _AMBAR_RETROATIVO_POTENCIAL),
-            (("Q", 1, 7), _VERDE_RETROATIVO_RECONHECIDO),
-            (("R", 1, 7), _NEUTRO_VALOR_EM_ANALISE),
-            (("S", 1, 7), _AMBAR_RETROATIVO_POTENCIAL),
+            (("Q", 2, 8), _VERDE_RETROATIVO_RECONHECIDO),
+            (("R", 2, 8), _NEUTRO_VALOR_EM_ANALISE),
+            (("S", 2, 8), _AMBAR_RETROATIVO_POTENCIAL),
+            (("Q", 11, 17), _VERDE_RETROATIVO_RECONHECIDO),
+            (("R", 11, 17), _NEUTRO_VALOR_EM_ANALISE),
+            (("S", 11, 17), _AMBAR_RETROATIVO_POTENCIAL),
         )
         for (coluna, inicio, fim), cor in estilos:
             fill = PatternFill("solid", fgColor=cor)
             for linha in range(inicio, fim + 1):
                 ws[f"{coluna}{linha}"].fill = fill
-        for coord in ("H1", "I1", "J1", "Q1", "R1", "S1"):
+        for coord in (
+            "H1", "I1", "J1", "Q2", "R2", "S2", "Q11", "R11", "S11"
+        ):
             fonte = _copy(ws[coord].font)
             fonte.color = "FF1F1F1F"
             fonte.bold = True

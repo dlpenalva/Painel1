@@ -2084,8 +2084,11 @@ def _totais_canonicos_pc(
     def _bloco() -> dict[str, float]:
         return {
             "quantidade": 0,
+            "quantidade_reconhecida": 0,
             "valor_pc": 0.0,
             "valor_considerado": 0.0,
+            "valor_original_reconhecido": 0.0,
+            "valor_atualizado_reconhecido": 0.0,
             "retroativo": 0.0,
             "valor_atualizado_em_analise": 0.0,
             "delta_potencial": 0.0,
@@ -2098,6 +2101,7 @@ def _totais_canonicos_pc(
     )
     blocos = {chave: _bloco() for chave in chaves}
     por_ciclo: dict[str, dict[str, float]] = {}
+    posterior_por_ciclo: dict[str, dict[str, float]] = {}
 
     def _somar(
         bloco: dict[str, float],
@@ -2106,10 +2110,15 @@ def _totais_canonicos_pc(
         retro: float,
         em_analise: float,
         potencial: float,
+        reconhecido: bool,
     ) -> None:
         bloco["quantidade"] += 1
         bloco["valor_pc"] += valor
         bloco["valor_considerado"] += considerado
+        if reconhecido:
+            bloco["quantidade_reconhecida"] += 1
+            bloco["valor_original_reconhecido"] += valor
+            bloco["valor_atualizado_reconhecido"] += considerado
         bloco["retroativo"] += retro
         bloco["valor_atualizado_em_analise"] += em_analise
         bloco["delta_potencial"] += potencial
@@ -2131,11 +2140,15 @@ def _totais_canonicos_pc(
         retro = float(item.get("retroativo_reconhecido_a_pagar") or 0.0)
         em_analise = float(item.get("valor_atualizado_em_analise") or 0.0)
         potencial = float(item.get("delta_potencial") or 0.0)
+        pago_confirmado = str(item.get("pc_pago_a_contratada") or "").strip().lower() in (
+            "sim", "s", "true", "1", "yes"
+        )
         enq = str(item.get("enquadramento") or ENQ_CICLO)
         no_corte = bool(item.get("dentro_do_corte", True))
 
         _somar(
-            blocos["informado"], valor, considerado, retro, em_analise, potencial
+            blocos["informado"], valor, considerado, retro, em_analise, potencial,
+            pago_confirmado,
         )
         if not no_corte:
             _somar(
@@ -2145,10 +2158,23 @@ def _totais_canonicos_pc(
                 retro,
                 em_analise,
                 potencial,
+                pago_confirmado,
             )
+            ciclo_posterior = str(item.get("ciclo") or "").strip().upper()
+            if ciclo_posterior:
+                _somar(
+                    posterior_por_ciclo.setdefault(ciclo_posterior, _bloco()),
+                    valor,
+                    considerado,
+                    retro,
+                    em_analise,
+                    potencial,
+                    pago_confirmado,
+                )
             continue
         _somar(
-            blocos["ate_o_corte"], valor, considerado, retro, em_analise, potencial
+            blocos["ate_o_corte"], valor, considerado, retro, em_analise, potencial,
+            pago_confirmado,
         )
 
         if enq == ENQ_INTERVALO_PRECLUSO:
@@ -2159,6 +2185,7 @@ def _totais_canonicos_pc(
                 retro,
                 em_analise,
                 potencial,
+                pago_confirmado,
             )
             continue
         if enq == ENQ_INDETERMINADO or not item.get("ciclo"):
@@ -2169,6 +2196,7 @@ def _totais_canonicos_pc(
                 retro,
                 em_analise,
                 potencial,
+                pago_confirmado,
             )
             continue
 
@@ -2179,12 +2207,16 @@ def _totais_canonicos_pc(
             retro,
             em_analise,
             potencial,
+            pago_confirmado,
         )
         destino = (
             "com_efeito" if str(item.get("efeito_financeiro_pc") or "").strip()
             == "Sim" else "sem_efeito_ciclo"
         )
-        _somar(blocos[destino], valor, considerado, retro, em_analise, potencial)
+        _somar(
+            blocos[destino], valor, considerado, retro, em_analise, potencial,
+            pago_confirmado,
+        )
         ciclo = str(item["ciclo"]).strip().upper()
         _somar(
             por_ciclo.setdefault(ciclo, _bloco()),
@@ -2193,12 +2225,19 @@ def _totais_canonicos_pc(
             retro,
             em_analise,
             potencial,
+            pago_confirmado,
         )
 
-    for bloco in list(blocos.values()) + list(por_ciclo.values()):
+    for bloco in (
+        list(blocos.values())
+        + list(por_ciclo.values())
+        + list(posterior_por_ciclo.values())
+    ):
         for campo in (
             "valor_pc",
             "valor_considerado",
+            "valor_original_reconhecido",
+            "valor_atualizado_reconhecido",
             "retroativo",
             "valor_atualizado_em_analise",
             "delta_potencial",
@@ -2208,6 +2247,7 @@ def _totais_canonicos_pc(
     return {
         **blocos,
         "por_ciclo": por_ciclo,
+        "posterior_ao_corte_por_ciclo": posterior_por_ciclo,
         "data_corte": _data_corte_valida(data_corte),
         "corte_aplicado": _data_corte_valida(data_corte) is not None,
     }
