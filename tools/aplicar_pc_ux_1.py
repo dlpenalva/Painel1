@@ -128,8 +128,12 @@ def _aplicar_itens_pc(ws, memoria) -> None:
         ws.Cells(8, coluna).Formula = (
             f'=SUM(${fonte}$2:${fonte}$5001)-SUM({letra}3:{letra}7)'
         )
+    # K e coluna de formula ate 5001: nas linhas sem PC ela devolve "", que o
+    # COUNTIFS trata como nao vazia. A ancora e a coluna de entrada A, igual ao
+    # que N8 ja faz; sem ela o residual contava as 5.000 linhas em branco.
     ws.Range("T8").Formula = (
-        '=COUNTIFS($K$2:$K$5001,"<>OK",$K$2:$K$5001,"<>")-SUM(T3:T7)'
+        '=COUNTIFS($A$2:$A$5001,"<>",$K$2:$K$5001,"<>OK",'
+        '$K$2:$K$5001,"<>")-SUM(T3:T7)'
     )
     ws.Range("M9").Value = "TOTAL"
     for coluna in range(14, 21):

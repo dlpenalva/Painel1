@@ -1,6 +1,7 @@
 """PC-UX-1: contrato de apresentação sem alteração da metodologia PC."""
 from __future__ import annotations
 
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import date, datetime
 from io import BytesIO
@@ -181,6 +182,14 @@ def test_h_quadro_itens_pc_le_exclusivamente_colunas_canonicas():
     assert ws["Q8"].value == "=SUM($H$2:$H$5001)-SUM(Q3:Q7)"
     assert ws["R8"].value == "=SUM($I$2:$I$5001)-SUM(R3:R7)"
     assert ws["S8"].value == "=SUM($J$2:$J$5001)-SUM(S3:S7)"
+    # A-01: K e coluna de formula ate 5001 e devolve "" nas linhas sem PC. Sem
+    # ancorar em A (coluna de entrada), o residual contava as 5.000 vazias.
+    assert ws["T8"].value == (
+        '=COUNTIFS($A$2:$A$5001,"<>",$K$2:$K$5001,"<>OK",'
+        '$K$2:$K$5001,"<>")-SUM(T3:T7)'
+    )
+    assert "$A$2:$A$5001" in ws["T8"].value
+    assert ws["T9"].value == "=SUM(T3:T8)"
     assert ws["M9"].value == "TOTAL"
     assert ws["O9"].value == "=SUM(O3:O8)"
     assert ws["M10"].value == "PCs CONSIDERADOS NA APURAÇÃO ATÉ A DATA DE CORTE"
@@ -251,6 +260,12 @@ def test_pipeline_real_entrega_os_tres_blocos_pc_ux_sem_cabecalho_legado():
     ]
     assert ws["M17"].alignment.wrap_text is True
     assert ws.column_dimensions["M"].width >= 20
+    # A-01: o XLS que o fiscal baixa nao pode anunciar alerta de linha vazia.
+    assert ws["T8"].value == (
+        '=COUNTIFS($A$2:$A$5001,"<>",$K$2:$K$5001,"<>OK",'
+        '$K$2:$K$5001,"<>")-SUM(T3:T7)'
+    )
+    assert ws["T9"].value == "=SUM(T3:T8)"
     assert ws["U1"].value == "VALOR_CONSIDERADO"
     assert "M1:T1" in {str(faixa) for faixa in ws.merged_cells.ranges}
     assert ws["U1"].fill.fgColor.rgb != ws["M1"].fill.fgColor.rgb
@@ -379,97 +394,270 @@ def test_resultados_rotulos_sao_condicionais_aos_tres_metodos():
     assert ws["D15"].value == "Diferença"
 
 
-@pytest.mark.skipif(
-    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
-    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
-)
-def test_calculo_originario_excel_percorre_e_f_h_i_j_u_totais_e_resultados(tmp_path):
-    """Prova o motor real sem injetar H/I/J; nao substitui o XLS-fonte ausente."""
+# --------------------------------------------------------------- A-01 / A-02
+# Datas derivadas da regra real de itens_PC!C (ancora = parametros!C2 = 01/2025,
+# n = meses desde a ancora, "Fora dos ciclos" quando n > 59) e conferidas no
+# Excel antes de virarem expectativa. Nao ha data chutada neste fixture:
+#   01/05/2025 -> n=4  -> C0
+#   01/03/2026 -> n=14 -> C1
+#   01/03/2029 -> n=50 -> C4
+#   01/06/2030 -> n=65 -> "Fora dos ciclos"
+DATA_C0 = datetime(2025, 5, 1)
+DATA_C1 = datetime(2026, 3, 1)
+DATA_C1_ANALISE = datetime(2026, 4, 1)
+DATA_C1_POS_CORTE = datetime(2026, 9, 15)
+DATA_C4 = datetime(2029, 3, 1)
+DATA_FORA_DOS_CICLOS = datetime(2030, 6, 1)
+
+
+def _preparar_cenario_pc(wb):
+    """Deixa CONTROLE/parametros no metodo PC com os cinco ciclos abertos."""
+    controle = wb.Worksheets("CONTROLE")
+    parametros = wb.Worksheets("parametros")
+    itens = wb.Worksheets("itens_PC")
+    for planilha in (controle, parametros, itens):
+        if planilha.ProtectContents:
+            planilha.Unprotect()
+    controle.Range("B1").Value = "PC (Pedidos de Compra)"
+    controle.Range("B2").Value = "C1"
+    controle.Range("B3").Value = datetime(2026, 8, 31)
+    parametros.Range("A2:A6").Value = (("Sim",),) * 5
+    parametros.Range("C2:D2").Value = (
+        (datetime(2025, 1, 1), datetime(2025, 12, 31)),
+    )
+    for linha, ano in enumerate(range(2026, 2030), start=3):
+        parametros.Range(f"C{linha}:E{linha}").Value = (
+            (datetime(ano, 1, 1), datetime(ano, 12, 31), 0.10),
+        )
+    # Somente C1 recebe INICIO_EFEITO; C4 fica sem, para gerar alerta real.
+    parametros.Range("H3").Value = datetime(2026, 2, 1)
+    return controle, parametros, itens
+
+
+def _limpar_pcs(itens):
+    """Zera apenas as colunas de ENTRADA; A:L de formula permanece intacta."""
+    for faixa in ("A2:B5001", "D2:D5001", "G2:G5001"):
+        itens.Range(faixa).ClearContents()
+
+
+def _gravar_pc(itens, linha, numero, data, valor, pago):
+    itens.Range(f"A{linha}").Value = numero
+    itens.Range(f"B{linha}").Value = data
+    itens.Range(f"D{linha}").Value = valor
+    itens.Range(f"G{linha}").Value = pago
+
+
+def _alertas(itens):
+    """Quadro 1, coluna QTD. COM ALERTA: C0..C4, residual e TOTAL."""
+    return [int(itens.Range(f"T{linha}").Value) for linha in range(3, 10)]
+
+
+@contextmanager
+def _excel_com(origem, destino):
     client = pytest.importorskip("win32com.client")
     pythoncom = pytest.importorskip("pythoncom")
-    destino = tmp_path / "pc_ux_calculo_originario.xlsx"
-    shutil.copy2(TEMPLATE, destino)
+    shutil.copy2(origem, destino)
     pythoncom.CoInitialize()
     excel = client.DispatchEx("Excel.Application")
     excel.Visible = False
     excel.DisplayAlerts = False
     wb = None
     try:
-        wb = excel.Workbooks.Open(str(destino), UpdateLinks=0, ReadOnly=False, CorruptLoad=0)
-        controle = wb.Worksheets("CONTROLE")
-        parametros = wb.Worksheets("parametros")
-        itens = wb.Worksheets("itens_PC")
-        for planilha in (controle, parametros, itens):
-            if planilha.ProtectContents:
-                planilha.Unprotect()
-        controle.Range("B1").Value = "PC (Pedidos de Compra)"
-        controle.Range("B2").Value = "C1"
-        controle.Range("B3").Value = datetime(2026, 8, 31)
-        parametros.Range("A2:A6").Value = (("Sim",), ("Sim",), ("Sim",), ("Sim",), ("Sim",))
-        parametros.Range("C2:D2").Value = ((datetime(2025, 1, 1), datetime(2025, 12, 31)),)
-        parametros.Range("C3:E3").Value = ((datetime(2026, 1, 1), datetime(2026, 11, 30), 0.10),)
-        parametros.Range("C6:E6").Value = ((datetime(2027, 1, 1), datetime(2027, 12, 31), 0.10),)
-        parametros.Range("H3").Value = datetime(2026, 2, 1)
-        # NOVO-02: primeiro prova isoladamente C1 + fora dos ciclos.
-        itens.Range("A2:B2").Value = (("C1-PAGO", datetime(2026, 3, 1)),)
-        itens.Range("D2").Value = 200.0
-        itens.Range("G2").Value = "Sim"
-        itens.Range("A3:B3").Value = (("FORA-CORTE", datetime(2026, 12, 1)),)
-        itens.Range("D3").Value = 999_999.99
-        itens.Range("G3").Value = "Sim"
-        excel.CalculateFullRebuild()
-        assert float(itens.Range("O4").Value) == pytest.approx(200.0)
-        assert float(itens.Range("O8").Value) == pytest.approx(999_999.99)
-        assert float(itens.Range("O9").Value) == pytest.approx(1_000_199.99)
-        assert float(wb.Worksheets("RESULTADOS").Range("B55").Value) == pytest.approx(1_000_199.99)
-
-        # Acrescenta C0, C1 em análise, C4 e PC posterior ao corte.
-        itens.Range("A4:B4").Value = (("C1-ANALISE", datetime(2026, 3, 1)),)
-        itens.Range("D4").Value = 100.0
-        itens.Range("G4").Value = "Nao"
-        itens.Range("A5:B5").Value = (("C1-POS-CORTE", datetime(2026, 9, 1)),)
-        itens.Range("D5").Value = 100.01
-        itens.Range("G5").Value = "Sim"
-        itens.Range("A6:B6").Value = (("C0-PAGO", datetime(2025, 3, 1)),)
-        itens.Range("D6").Value = 50.0
-        itens.Range("G6").Value = "Sim"
-        itens.Range("A7:B7").Value = (("C4-POS-CORTE", datetime(2027, 3, 1)),)
-        itens.Range("D7").Value = 400.0
-        itens.Range("G7").Value = "Sim"
-        excel.CalculateFullRebuild()
-        assert itens.Range("C3").Value == "Fora dos ciclos"
-        assert itens.Range("C6").Value == "C0"
-        assert itens.Range("C7").Value == "C4"
-        assert float(itens.Range("E4").Value) == pytest.approx(1.1)
-        assert float(itens.Range("F4").Value) == pytest.approx(110.0)
-        assert float(itens.Range("H4").Value) == 0.0
-        assert float(itens.Range("I4").Value) == pytest.approx(110.0)
-        assert float(itens.Range("J4").Value) == pytest.approx(10.0)
-        assert float(itens.Range("U4").Value) == pytest.approx(100.0)
-        assert float(itens.Range("O3").Value) == pytest.approx(50.0)
-        assert float(itens.Range("O4").Value) == pytest.approx(400.01)
-        assert float(itens.Range("O7").Value) == pytest.approx(400.0)
-        assert float(itens.Range("O8").Value) == pytest.approx(999_999.99)
-        assert float(itens.Range("O9").Value) == pytest.approx(1_000_850.00)
-        assert float(itens.Range("T18").Value) == pytest.approx(1_000_500.00)
-        resultados = wb.Worksheets("RESULTADOS")
-        assert float(resultados.Range("B17").Value) == pytest.approx(200.0)
-        assert float(resultados.Range("C17").Value) == pytest.approx(220.0)
-        assert float(resultados.Range("D17").Value) == pytest.approx(20.0)
-        assert float(resultados.Range("B55").Value) == pytest.approx(1_000_850.00)
-        wb.Save()
-        wb.Close(False)
-        wb = excel.Workbooks.Open(str(destino), UpdateLinks=0, ReadOnly=True, CorruptLoad=0)
-        assert float(wb.Worksheets("itens_PC").Range("O9").Value) == pytest.approx(1_000_850.00)
-        assert float(wb.Worksheets("itens_PC").Range("T18").Value) == pytest.approx(1_000_500.00)
+        wb = excel.Workbooks.Open(
+            str(destino), UpdateLinks=0, ReadOnly=False, CorruptLoad=0
+        )
+        yield excel, wb
     finally:
         if wb is not None:
-            wb.Close(False)
+            try:
+                wb.Close(False)
+            except Exception:  # noqa: BLE001 - encerramento best-effort
+                pass
         excel.Quit()
         del wb
         del excel
         gc.collect()
         pythoncom.CoUninitialize()
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
+def test_a01_qtd_com_alerta_conta_apenas_linhas_com_pc(tmp_path):
+    """A-01: as 5.000 linhas vazias nao podem virar alerta no Quadro 1."""
+    destino = tmp_path / "pc_ux_alertas.xlsx"
+    with _excel_com(TEMPLATE, destino) as (excel, wb):
+        _, _, itens = _preparar_cenario_pc(wb)
+
+        # CENARIO A - nenhum PC cadastrado.
+        excel.CalculateFullRebuild()
+        assert _alertas(itens) == [0, 0, 0, 0, 0, 0, 0]
+        assert int(itens.Range("N9").Value) == 0
+        assert float(itens.Range("O9").Value) == 0.0
+
+        # CENARIO B - PCs validos, nenhum alerta.
+        _limpar_pcs(itens)
+        _gravar_pc(itens, 2, "C0-PAGO", DATA_C0, 50.0, "Sim")
+        _gravar_pc(itens, 3, "C1-PAGO", DATA_C1, 200.0, "Sim")
+        excel.CalculateFullRebuild()
+        assert (itens.Range("C2").Value, itens.Range("C3").Value) == ("C0", "C1")
+        assert itens.Range("K2").Value == "OK"
+        assert itens.Range("K3").Value == "OK"
+        assert _alertas(itens) == [0, 0, 0, 0, 0, 0, 0]
+
+        # CENARIO C - um alerta dentro de C0:C4 (C4 sem INICIO_EFEITO).
+        _limpar_pcs(itens)
+        _gravar_pc(itens, 2, "C4-ALERTA", DATA_C4, 400.0, "Sim")
+        excel.CalculateFullRebuild()
+        assert itens.Range("C2").Value == "C4"
+        assert str(itens.Range("K2").Value).startswith("INICIO_EFEITO ausente")
+        assert _alertas(itens) == [0, 0, 0, 0, 1, 0, 1]
+
+        # CENARIO D - um alerta fora dos ciclos.
+        _limpar_pcs(itens)
+        _gravar_pc(
+            itens, 2, "FORA-ALERTA", DATA_FORA_DOS_CICLOS, 999_999.99, "Sim"
+        )
+        excel.CalculateFullRebuild()
+        assert itens.Range("C2").Value == "Fora dos ciclos"
+        assert itens.Range("K2").Value == "CICLO_PC nao identificado"
+        assert _alertas(itens) == [0, 0, 0, 0, 0, 1, 1]
+
+        # CENARIO E - mistura; as 4.995 linhas vazias continuam de fora.
+        _gravar_pc(itens, 3, "C1-PAGO", DATA_C1, 200.0, "Sim")
+        _gravar_pc(itens, 4, "C0-PAGO", DATA_C0, 50.0, "Sim")
+        _gravar_pc(itens, 5, "C4-ALERTA", DATA_C4, 400.0, "Sim")
+        _gravar_pc(itens, 6, "C1-ANALISE", DATA_C1_ANALISE, 100.0, "Nao")
+        excel.CalculateFullRebuild()
+        assert _alertas(itens) == [0, 0, 0, 0, 1, 1, 2]
+        assert int(itens.Range("N9").Value) == 5
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
+def test_a01_pipeline_real_nao_anuncia_alerta_em_linha_vazia(tmp_path):
+    """A-01 no artefato que o fiscal baixa, nao apenas no template versionado."""
+    payload = {
+        "origem": "Reajustes Múltiplos",
+        "indice": "IPCA",
+        "data_base_original": "01/01/2025",
+        "variacao_acumulada": 0.10,
+        "fator_acumulado": 1.10,
+        "ciclos": [{
+            "ciclo": "C1",
+            "data_inicio": "01/01/2026",
+            "data_pedido": "15/03/2026",
+            "percentual_aplicado": 0.10,
+            "financeiro_inicio": "01/02/2026",
+            "objeto_analise_atual": True,
+            "situacao": "TEMPESTIVO",
+        }],
+    }
+    origem = tmp_path / "coleta_pipeline.xlsx"
+    origem.write_bytes(gerar_coleta_oficial_preenchida(payload))
+    destino = tmp_path / "coleta_pipeline_excel.xlsx"
+    with _excel_com(origem, destino) as (excel, wb):
+        _, _, itens = _preparar_cenario_pc(wb)
+        excel.CalculateFullRebuild()
+        assert _alertas(itens) == [0, 0, 0, 0, 0, 0, 0]
+
+        _gravar_pc(itens, 2, "C1-PAGO", DATA_C1, 200.0, "Sim")
+        _gravar_pc(itens, 3, "C4-ALERTA", DATA_C4, 400.0, "Sim")
+        _gravar_pc(
+            itens, 4, "FORA-ALERTA", DATA_FORA_DOS_CICLOS, 999_999.99, "Sim"
+        )
+        excel.CalculateFullRebuild()
+        assert _alertas(itens) == [0, 0, 0, 0, 1, 1, 2]
+        assert int(itens.Range("N9").Value) == 3
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
+def test_calculo_originario_excel_percorre_e_f_h_i_j_u_totais_e_resultados(tmp_path):
+    """Prova o motor real sem injetar H/I/J; nao substitui o XLS-fonte ausente."""
+    destino = tmp_path / "pc_ux_calculo_originario.xlsx"
+    with _excel_com(TEMPLATE, destino) as (excel, wb):
+        _, _, itens = _preparar_cenario_pc(wb)
+        resultados = wb.Worksheets("RESULTADOS")
+
+        # NOVO-02: C1 + um PC realmente fora dos ciclos fecham o universo.
+        _gravar_pc(itens, 2, "C1-PAGO", DATA_C1, 200.0, "Sim")
+        _gravar_pc(
+            itens, 3, "FORA-CICLOS", DATA_FORA_DOS_CICLOS, 999_999.99, "Sim"
+        )
+        excel.CalculateFullRebuild()
+        assert itens.Range("C3").Value == "Fora dos ciclos"
+        assert float(itens.Range("O4").Value) == pytest.approx(200.0)
+        assert float(itens.Range("O8").Value) == pytest.approx(999_999.99)
+        assert float(itens.Range("O9").Value) == pytest.approx(1_000_199.99)
+        assert float(resultados.Range("B55").Value) == pytest.approx(1_000_199.99)
+
+        # Acrescenta C0, C4, C1 em analise e C1 posterior a data de corte.
+        _gravar_pc(itens, 4, "C0-PAGO", DATA_C0, 50.0, "Sim")
+        _gravar_pc(itens, 5, "C4-ALERTA", DATA_C4, 400.0, "Sim")
+        _gravar_pc(itens, 6, "C1-ANALISE", DATA_C1_ANALISE, 100.0, "Nao")
+        _gravar_pc(itens, 7, "C1-POS-CORTE", DATA_C1_POS_CORTE, 100.01, "Sim")
+        excel.CalculateFullRebuild()
+
+        assert [itens.Range(f"C{linha}").Value for linha in range(2, 8)] == [
+            "C1", "Fora dos ciclos", "C0", "C4", "C1", "C1",
+        ]
+        # C1 em analise: E/F/H/I/J/U saem do motor, sem injecao.
+        assert float(itens.Range("E6").Value) == pytest.approx(1.1)
+        assert float(itens.Range("F6").Value) == pytest.approx(110.0)
+        assert float(itens.Range("H6").Value) == 0.0
+        assert float(itens.Range("I6").Value) == pytest.approx(110.0)
+        assert float(itens.Range("J6").Value) == pytest.approx(10.0)
+        assert float(itens.Range("U6").Value) == pytest.approx(100.0)
+        # PC pago com efeito: retroativo reconhecido, nada em analise.
+        assert float(itens.Range("H2").Value) == pytest.approx(20.0)
+        assert float(itens.Range("U2").Value) == pytest.approx(220.0)
+        # Fora dos ciclos nao recebe fator; C4 recebe fator mas nao tem efeito.
+        assert str(itens.Range("F3").Value) == ""
+        assert float(itens.Range("E5").Value) == pytest.approx(1.4641)
+        assert float(itens.Range("F5").Value) == pytest.approx(585.64)
+
+        # Quadro 1 - universo integral, inclusive o posterior ao corte.
+        assert float(itens.Range("O3").Value) == pytest.approx(50.0)
+        assert float(itens.Range("O4").Value) == pytest.approx(400.01)
+        assert float(itens.Range("O7").Value) == pytest.approx(400.0)
+        assert float(itens.Range("O8").Value) == pytest.approx(999_999.99)
+        assert float(itens.Range("O9").Value) == pytest.approx(1_000_850.00)
+        assert float(itens.Range("Q9").Value) == pytest.approx(30.0)
+        assert float(itens.Range("R9").Value) == pytest.approx(110.0)
+        assert float(itens.Range("S9").Value) == pytest.approx(10.0)
+        # A-01: dois PCs com alerta, nunca as linhas vazias.
+        assert _alertas(itens) == [0, 0, 0, 0, 1, 1, 2]
+
+        # Quadro 2 - so o que foi pago ate a data de corte.
+        assert float(itens.Range("O18").Value) == pytest.approx(250.0)
+        assert float(itens.Range("T18").Value) == pytest.approx(1_000_500.00)
+        assert float(resultados.Range("B17").Value) == pytest.approx(200.0)
+        assert float(resultados.Range("C17").Value) == pytest.approx(220.0)
+        assert float(resultados.Range("D17").Value) == pytest.approx(20.0)
+        assert float(resultados.Range("B55").Value) == pytest.approx(1_000_850.00)
+
+        wb.Save()
+        wb.Close(False)
+        reaberto = excel.Workbooks.Open(
+            str(destino), UpdateLinks=0, ReadOnly=True, CorruptLoad=0
+        )
+        try:
+            itens_reaberto = reaberto.Worksheets("itens_PC")
+            assert float(itens_reaberto.Range("O9").Value) == pytest.approx(
+                1_000_850.00
+            )
+            assert float(itens_reaberto.Range("T18").Value) == pytest.approx(
+                1_000_500.00
+            )
+            assert int(itens_reaberto.Range("T9").Value) == 2
+        finally:
+            reaberto.Close(False)
 
 
 @pytest.mark.parametrize("metodo", ["financeiro", "consumido"])
