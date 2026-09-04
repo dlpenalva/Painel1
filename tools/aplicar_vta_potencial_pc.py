@@ -106,29 +106,19 @@ F_C84 = (
     '"Nao aplicavel: o reajuste ja esta dentro da execucao atualizada.","")))'
 )
 
-# Bloco 10 — demonstracao explicita exigida pela regra de negocio.
-F_A89 = (
-    f'=IF({E_PC},"10. COMPOSIÇÃO PRUDENCIAL DO VTA — PARCELA POTENCIAL","")'
-)
-F_B90 = f'=IF({E_PC},IF(MEMORIA_RESULTADOS!$T$40="","",MEMORIA_RESULTADOS!$T$40),"")'
-F_B91 = (
-    f'=IF({E_PC},'
-    'IF(MEMORIA_RESULTADOS!$T$25="CALCULO MANUAL REQUERIDO","",'
-    'MEMORIA_RESULTADOS!$T$39),"")'
-)
-F_B92 = f'=IF({E_PC},IF(VTA_FINAL="","",VTA_FINAL),"")'
-F_C92 = (
-    f'=IF({E_PC},IF(OR($B$90="",$B$92=""),"Aguardando base para conferir.",'
-    'IF(ABS(ROUND($B$92-($B$90+N($B$91)),2))<=MEMORIA_RESULTADOS!$D$4,'
-    '"VTA = valor sem a parcela potencial + parcela potencial",'
-    '"VERIFICAR DIFERENÇA")),"")'
-)
-F_A93 = (
-    f'=IF(AND({E_PC},N($B$91)<>0),'
-    '"O VTA inclui R$ "&TEXT($B$91,"#.##0,00")&" de retroativo potencial, '
-    'incorporado por critério prudencial. Essa parcela permanece sujeita à '
-    'confirmação pela área gestora e não representa, nesta data, retroativo '
-    'reconhecido a pagar.","")'
+# Quadro 9 — C86 passa a DEMONSTRAR a decomposicao prudencial sem criar
+# nenhuma linha nova: a aba RESULTADOS termina na linha 87 por contrato
+# homologado (rollback da camada UX2), e 90:166 fica vazia.
+F_C86 = (
+    f'=IF(AND({E_PC},ISNUMBER(MEMORIA_RESULTADOS!$T$40),'
+    'ISNUMBER(MEMORIA_RESULTADOS!$T$39),MEMORIA_RESULTADOS!$T$39<>0),'
+    '"VTA antes da parcela potencial: R$ "&TEXT(MEMORIA_RESULTADOS!$T$40,'
+    '"#.##0,00")&"  +  Retroativo potencial — POTENCIAL: R$ "&'
+    'TEXT(MEMORIA_RESULTADOS!$T$39,"#.##0,00")&"  =  VALOR TOTAL ATUALIZADO "&'
+    '"— VTA. O VTA inclui essa parcela por critério prudencial; ela permanece "&'
+    '"sujeita à confirmação pela área gestora e não representa, nesta data, "&'
+    '"retroativo reconhecido a pagar.",'
+    '"Resultado final do método de apuração selecionado.")'
 )
 
 
@@ -226,18 +216,6 @@ def _aplicar_itens_pc(ws) -> None:
         raise RuntimeError("A faixa operacional itens_PC!A:L foi alterada.")
 
 
-def _titulo(ws, endereco: str, formula: str, tamanho: int = 11) -> None:
-    rng = ws.Range(endereco)
-    if not rng.MergeCells:
-        rng.Merge()
-    ws.Range(endereco.split(":")[0]).Formula = formula
-    rng.Font.Color = _bgr(BRANCO)
-    rng.Font.Bold = True
-    rng.Font.Size = tamanho
-    rng.HorizontalAlignment = XL_LEFT
-    rng.VerticalAlignment = XL_VCENTER
-
-
 def _aplicar_resultados(ws) -> None:
     # --- Quadro do VTA (bloco 9): a linha "(+)" vira a parcela do metodo. ---
     ws.Range("A84").Formula = F_A84
@@ -255,46 +233,11 @@ def _aplicar_resultados(ws) -> None:
         "método + saldo remanescente atualizado."
     )
 
-    # --- Bloco 10: demonstracao explicita da composicao prudencial (PC). ---
-    for linha in (89, 93):
-        rng = ws.Range(f"A{linha}:H{linha}")
-        if not rng.MergeCells:
-            rng.Merge()
-    _titulo(ws, "A89:H89", F_A89, tamanho=12)
-    _cf(ws.Range("A89:H89"), f"={E_PC_CF}", AZUL_ESCURO, BRANCO)
-    ws.Rows("89:89").RowHeight = 24
-
-    rotulos = {
-        90: ("VTA antes da parcela potencial",
-             "Execução apurada + saldo remanescente atualizado, sem a parcela potencial."),
-        91: ("(+) Retroativo potencial — POTENCIAL",
-             "Sujeito à confirmação pela área gestora. Não é retroativo reconhecido a pagar."),
-        92: ("(=) VALOR TOTAL ATUALIZADO — VTA", ""),
-    }
-    for linha, (rotulo, explicacao) in rotulos.items():
-        ws.Range(f"A{linha}").Formula = f'=IF({E_PC},"{rotulo}","")'
-        if explicacao:
-            ws.Range(f"C{linha}").Formula = f'=IF({E_PC},"{explicacao}","")'
-    ws.Range("B90").Formula = F_B90
-    ws.Range("B91").Formula = F_B91
-    ws.Range("B92").Formula = F_B92
-    ws.Range("C92").Formula = F_C92
-    _moeda(ws.Range("B90:B92"))
-    ws.Range("B90:B92").HorizontalAlignment = XL_RIGHT
-    ws.Range("A92:C92").Font.Bold = True
-    # Fundo neutro do bloco; a linha POTENCIAL recebe o amarelo-palha por
-    # regra propria, aplicada depois (prevalece na ordem das condicoes).
-    _cf(ws.Range("A90:C92"), f"={E_PC_CF}", AZUL_MUITO_CLARO, TEXTO_PADRAO)
-    _cf(ws.Range("A91:C91"), f"={E_PC_CF}", POTENCIAL_BG, POTENCIAL_TEXTO)
-    _bordas(ws.Range("A90:C92"))
-
-    ws.Range("A93").Formula = F_A93
-    ws.Range("A93:H93").WrapText = True
-    ws.Range("A93:H93").VerticalAlignment = XL_VCENTER
-    ws.Range("A93:H93").Font.Size = 9
-    _cf(ws.Range("A93:H93"), _cf_e(E_PC_CF, "N($B$91)<>0"),
+    # --- Demonstracao da composicao prudencial DENTRO do quadro 9. ---
+    ws.Range("C86").Formula = F_C86
+    ws.Range("C86").WrapText = True
+    _cf(ws.Range("C86"), _cf_e(E_PC_CF, "N($B$84)<>0"),
         POTENCIAL_BG, POTENCIAL_TEXTO)
-    ws.Rows("93:93").RowHeight = 30
 
 
 def _aplicar_nomes(wb) -> None:

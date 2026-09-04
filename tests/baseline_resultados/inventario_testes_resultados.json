@@ -1,13 +1,13 @@
 {
  "resumo": {
-  "arquivos": 49,
-  "ocorrencias": 372,
+  "arquivos": 53,
+  "ocorrencias": 415,
   "por_classificacao": {
-   "A": 61,
-   "B": 37,
-   "C": 9,
-   "D": 52,
-   "E": 213
+   "A": 75,
+   "B": 41,
+   "C": 14,
+   "D": 56,
+   "E": 229
   },
   "arquivos_que_tocam_a_aba_executiva": [
    "tests/test_26j1_bloqueadores.py",
@@ -16,6 +16,7 @@
    "tests/test_ajustes_finais_layout.py",
    "tests/test_ajustes_integrados_ux_comunicacao_vta.py",
    "tests/test_ajustes_ux_homologacao.py",
+   "tests/test_alinhamento_template_runtime.py",
    "tests/test_blindagem_w48_aplicadores_legados.py",
    "tests/test_ciclo_em_execucao_itemizado_29c1.py",
    "tests/test_ciclo_em_execucao_opcionalidade_29c2.py",
@@ -38,11 +39,13 @@
    "tests/test_integridade_template_xlsx.py",
    "tests/test_metodo_apuracao.py",
    "tests/test_modelo_temporal_etapa31.py",
+   "tests/test_pc_ux_1.py",
    "tests/test_posicao_referencia_template.py",
    "tests/test_referencias_vta_documentos.py",
    "tests/test_resultado_consolidado.py",
    "tests/test_resultados_51a_retroativo.py",
    "tests/test_resultados_consolidados_26f.py",
+   "tests/test_resultados_final_1.py",
    "tests/test_status_canonico_resultados.py",
    "tests/test_sumario_executivo.py",
    "tests/test_templates_documentos.py",
@@ -52,6 +55,7 @@
    "tests/test_vta_m2_financeiro_condicional.py",
    "tests/test_vta_m5_previa_especifica.py",
    "tests/test_vta_posicoes_resultados.py",
+   "tests/test_vta_potencial_pc.py",
    "tests/test_vta_u2_uniformizacao.py"
   ],
   "arquivos_so_de_memoria": [
@@ -254,7 +258,7 @@
    "teste": "test_casos_a_b_c_e_sem_pcs",
    "referencia": "mem = book.Worksheets(\"MEMORIA_RESULTADOS\")",
    "coordenadas": [
-    "P2"
+    "P3"
    ],
    "aba": "MEMORIA_RESULTADOS",
    "classificacao": "E",
@@ -512,6 +516,18 @@
    "justificativa": "cita a aba em texto, sem endereco"
   },
   {
+   "arquivo": "tests/test_acabamento_visual_coleta_ui.py",
+   "linha": 354,
+   "teste": "test_tabela_da_linha_53_tem_bordas",
+   "referencia": "# RESULTADOS-FINAL-1: o titulo deixou de anunciar \"medidas com nomes",
+   "coordenadas": [],
+   "aba": "RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "cita a aba em texto, sem endereco"
+  },
+  {
    "arquivo": "tests/test_aditivos_dropdown_h.py",
    "linha": 126,
    "teste": "test_h_funcao_nao_altera_formulas_de_resultados_memoria_e_vta",
@@ -654,7 +670,7 @@
   },
   {
    "arquivo": "tests/test_ajustes_integrados_ux_comunicacao_vta.py",
-   "linha": 67,
+   "linha": 68,
    "teste": "resultados_ws",
    "referencia": "return wb[\"RESULTADOS\"]",
    "coordenadas": [],
@@ -666,7 +682,7 @@
   },
   {
    "arquivo": "tests/test_ajustes_integrados_ux_comunicacao_vta.py",
-   "linha": 71,
+   "linha": 72,
    "teste": "<modulo>",
    "referencia": "# TESTE A — RESULTADOS: quais ciclos foram apurados",
    "coordenadas": [],
@@ -678,7 +694,7 @@
   },
   {
    "arquivo": "tests/test_ajustes_integrados_ux_comunicacao_vta.py",
-   "linha": 77,
+   "linha": 78,
    "teste": "test_a1_rodape_do_retroativo_le_a_fonte_canonica_dos_ciclos",
    "referencia": "E a MESMA fonte que RESULTADOS!H14 ja usa para validar o card. Nenhuma",
    "coordenadas": [
@@ -693,7 +709,7 @@
   },
   {
    "arquivo": "tests/test_ajustes_integrados_ux_comunicacao_vta.py",
-   "linha": 131,
+   "linha": 132,
    "teste": "test_a4_com_lista_os_ciclos_realmente_computados",
    "referencia": "res, ctrl = wb.Worksheets(\"RESULTADOS\"), wb.Worksheets(\"CONTROLE\")",
    "coordenadas": [],
@@ -705,7 +721,7 @@
   },
   {
    "arquivo": "tests/test_ajustes_integrados_ux_comunicacao_vta.py",
-   "linha": 173,
+   "linha": 174,
    "teste": "<modulo>",
    "referencia": "# TESTE B — RESULTADOS: posicao do remanescente",
    "coordenadas": [],
@@ -717,7 +733,7 @@
   },
   {
    "arquivo": "tests/test_ajustes_integrados_ux_comunicacao_vta.py",
-   "linha": 225,
+   "linha": 226,
    "teste": "test_b4_com_posicao_em_ddmmaaaa",
    "referencia": "res, ctrl = wb.Worksheets(\"RESULTADOS\"), wb.Worksheets(\"CONTROLE\")",
    "coordenadas": [],
@@ -729,7 +745,7 @@
   },
   {
    "arquivo": "tests/test_ajustes_integrados_ux_comunicacao_vta.py",
-   "linha": 811,
+   "linha": 857,
    "teste": "test_l3_a_frente_nao_altera_formula_financeira_do_template",
    "referencia": "ws = openpyxl.load_workbook(TEMPLATE, data_only=False)[\"RESULTADOS\"]",
    "coordenadas": [
@@ -790,6 +806,296 @@
    "sobrevive_ao_pr1": false,
    "atualizar_no_pr2": false,
    "justificativa": "toca apenas MEMORIA_RESULTADOS (aba tecnica, nao a executiva)"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 8,
+   "teste": "<modulo>",
+   "referencia": "A. fator historico     - RESULTADOS!H5/H8/C12 e comparativo_VTA!B208",
+   "coordenadas": [
+    "B208",
+    "C0",
+    "C12",
+    "H5",
+    "H8",
+    "T27",
+    "W41",
+    "W45"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "C",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "endereca coordenada fora do leiaute atual (A1:J87): B208"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 9,
+   "teste": "<modulo>",
+   "referencia": "B. completude abertura - MEMORIA_RESULTADOS!W41:W45",
+   "coordenadas": [
+    "A1",
+    "B208",
+    "C0",
+    "C12",
+    "H5",
+    "H8",
+    "M2",
+    "M200",
+    "T27",
+    "W41",
+    "W45"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "toca apenas MEMORIA_RESULTADOS (aba tecnica, nao a executiva)"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 10,
+   "teste": "<modulo>",
+   "referencia": "C. base fisica C0      - MEMORIA_RESULTADOS!T27",
+   "coordenadas": [
+    "A1",
+    "C0",
+    "M2",
+    "M200",
+    "T27",
+    "W41",
+    "W45"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "toca apenas MEMORIA_RESULTADOS (aba tecnica, nao a executiva)"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 37,
+   "teste": "<modulo>",
+   "referencia": "\"RESULTADOS\": (\"H5\", \"H8\", \"C12\"),",
+   "coordenadas": [
+    "B208",
+    "C12",
+    "H5",
+    "H8",
+    "T27",
+    "W41",
+    "W42",
+    "W43",
+    "W44",
+    "W45"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "C",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "endereca coordenada fora do leiaute atual (A1:J87): B208"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 39,
+   "teste": "<modulo>",
+   "referencia": "\"MEMORIA_RESULTADOS\": (\"W41\", \"W42\", \"W43\", \"W44\", \"W45\", \"T27\"),",
+   "coordenadas": [
+    "A1",
+    "B208",
+    "T27",
+    "W41",
+    "W42",
+    "W43",
+    "W44",
+    "W45"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "toca apenas MEMORIA_RESULTADOS (aba tecnica, nao a executiva)"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 45,
+   "teste": "<modulo>",
+   "referencia": "(\"RESULTADOS\", \"H5\"): \"CONTROLE!$B$11\",",
+   "coordenadas": [
+    "B11",
+    "C12",
+    "H5",
+    "H8"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "A",
+   "sobrevive_ao_pr1": true,
+   "atualizar_no_pr2": false,
+   "justificativa": "endereca coordenada lida pelo runtime de producao"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 46,
+   "teste": "<modulo>",
+   "referencia": "(\"RESULTADOS\", \"H8\"): \"CONTROLE!$B$11\",",
+   "coordenadas": [
+    "B11",
+    "B208",
+    "C12",
+    "H5",
+    "H8"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "A",
+   "sobrevive_ao_pr1": true,
+   "atualizar_no_pr2": false,
+   "justificativa": "endereca coordenada lida pelo runtime de producao"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 47,
+   "teste": "<modulo>",
+   "referencia": "(\"RESULTADOS\", \"C12\"): \"CONTROLE!B11\",",
+   "coordenadas": [
+    "B11",
+    "B208",
+    "C12",
+    "H8",
+    "W41"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "A",
+   "sobrevive_ao_pr1": true,
+   "atualizar_no_pr2": false,
+   "justificativa": "endereca coordenada lida pelo runtime de producao"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 49,
+   "teste": "<modulo>",
+   "referencia": "(\"MEMORIA_RESULTADOS\", \"W41\"): \"posicao_contratual!$Y$2:$Y$201\",",
+   "coordenadas": [
+    "B208",
+    "W41",
+    "W45"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "toca apenas MEMORIA_RESULTADOS (aba tecnica, nao a executiva)"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 50,
+   "teste": "<modulo>",
+   "referencia": "(\"MEMORIA_RESULTADOS\", \"W45\"): \"posicao_contratual!$Y$2:$Y$201\",",
+   "coordenadas": [
+    "W41",
+    "W45"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "toca apenas MEMORIA_RESULTADOS (aba tecnica, nao a executiva)"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 89,
+   "teste": "test_fator_historico_do_template_e_fail_closed_por_parametros",
+   "referencia": "h5 = str(_template()[\"RESULTADOS\"][\"H5\"].value or \"\")",
+   "coordenadas": [
+    "B11",
+    "H5"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "A",
+   "sobrevive_ao_pr1": true,
+   "atualizar_no_pr2": false,
+   "justificativa": "endereca coordenada lida pelo runtime de producao"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 100,
+   "teste": "test_migracao_de_compatibilidade_segue_valendo_para_arquivo_antigo",
+   "referencia": "antigo[\"RESULTADOS\"][\"H5\"] = '=IF(CONTROLE!$B$11=\"\",\"\",CONTROLE!$B$11)'",
+   "coordenadas": [
+    "B208",
+    "H5"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "C",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "endereca coordenada fora do leiaute atual (A1:J87): B208"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 108,
+   "teste": "test_migracao_de_compatibilidade_segue_valendo_para_arquivo_antigo",
+   "referencia": "h5 = str(antigo[\"RESULTADOS\"][\"H5\"].value or \"\")",
+   "coordenadas": [
+    "B208",
+    "H5"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "C",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "endereca coordenada fora do leiaute atual (A1:J87): B208"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 112,
+   "teste": "test_migracao_de_compatibilidade_segue_valendo_para_arquivo_antigo",
+   "referencia": "assert \"RESULTADOS!$H$5\" in b208",
+   "coordenadas": [],
+   "aba": "RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "cita a aba em texto, sem endereco"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 117,
+   "teste": "test_migracao_de_abertura_temporal_segue_valendo_para_arquivo_antigo",
+   "referencia": "antigo[\"MEMORIA_RESULTADOS\"][\"W41\"] = (",
+   "coordenadas": [
+    "W41"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "toca apenas MEMORIA_RESULTADOS (aba tecnica, nao a executiva)"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 126,
+   "teste": "test_migracao_de_abertura_temporal_segue_valendo_para_arquivo_antigo",
+   "referencia": "w41 = str(antigo[\"MEMORIA_RESULTADOS\"][\"W41\"].value or \"\")",
+   "coordenadas": [
+    "W41"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "toca apenas MEMORIA_RESULTADOS (aba tecnica, nao a executiva)"
+  },
+  {
+   "arquivo": "tests/test_alinhamento_template_runtime.py",
+   "linha": 149,
+   "teste": "test_paleta_oficial_cobre_as_guias_do_template_e_do_ciclo_em_execucao",
+   "referencia": "assert coloridas[\"RESULTADOS\"] == CR.COR_ABA_RESULTADOS",
+   "coordenadas": [],
+   "aba": "RESULTADOS",
+   "classificacao": "B",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "verifica apresentacao (formato, cor, geometria ou visibilidade)"
   },
   {
    "arquivo": "tests/test_blindagem_w48_aplicadores_legados.py",
@@ -1943,7 +2249,7 @@
   },
   {
    "arquivo": "tests/test_escala_pcs_26g.py",
-   "linha": 122,
+   "linha": 123,
    "teste": "test_memoria_fail_closed_vta",
    "referencia": "mem = wb_template[\"MEMORIA_RESULTADOS\"]",
    "coordenadas": [
@@ -1958,7 +2264,7 @@
   },
   {
    "arquivo": "tests/test_escala_pcs_26g.py",
-   "linha": 138,
+   "linha": 139,
    "teste": "test_memoria_helpers_pcs_sem_efeito",
    "referencia": "mem = wb_template[\"MEMORIA_RESULTADOS\"]",
    "coordenadas": [
@@ -1972,7 +2278,7 @@
   },
   {
    "arquivo": "tests/test_escala_pcs_26g.py",
-   "linha": 148,
+   "linha": 149,
    "teste": "test_resultados_linha_executiva_pcs_sem_efeito",
    "referencia": "res = wb_template[\"RESULTADOS\"]",
    "coordenadas": [
@@ -1987,7 +2293,7 @@
   },
   {
    "arquivo": "tests/test_escala_pcs_26g.py",
-   "linha": 150,
+   "linha": 151,
    "teste": "test_resultados_linha_executiva_pcs_sem_efeito",
    "referencia": "assert \"MEMORIA_RESULTADOS!$T$29\" in res[\"B23\"].value",
    "coordenadas": [
@@ -2004,7 +2310,7 @@
   },
   {
    "arquivo": "tests/test_escala_pcs_26g.py",
-   "linha": 151,
+   "linha": 152,
    "teste": "test_resultados_linha_executiva_pcs_sem_efeito",
    "referencia": "assert \"MEMORIA_RESULTADOS!$T$30\" in res[\"D23\"].value",
    "coordenadas": [
@@ -2021,7 +2327,7 @@
   },
   {
    "arquivo": "tests/test_escala_pcs_26g.py",
-   "linha": 154,
+   "linha": 155,
    "teste": "test_resultados_linha_executiva_pcs_sem_efeito",
    "referencia": "# caso contrario a RESULTADOS permanece limpa.",
    "coordenadas": [
@@ -2040,7 +2346,7 @@
   },
   {
    "arquivo": "tests/test_escala_pcs_26g.py",
-   "linha": 157,
+   "linha": 158,
    "teste": "test_resultados_linha_executiva_pcs_sem_efeito",
    "referencia": "'=IF(OR(MEMORIA_RESULTADOS!$B$4<>\"PCs\",MEMORIA_RESULTADOS!$T$28=0),'",
    "coordenadas": [],
@@ -2052,7 +2358,7 @@
   },
   {
    "arquivo": "tests/test_escala_pcs_26g.py",
-   "linha": 162,
+   "linha": 163,
    "teste": "test_resultados_tabelas_cobrem_toda_faixa",
    "referencia": "res = wb_template[\"RESULTADOS\"]",
    "coordenadas": [
@@ -2712,15 +3018,33 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 106,
+   "linha": 111,
    "teste": "<modulo>",
-   "referencia": "\"MEMORIA_RESULTADOS\": 4411,",
+   "referencia": "# subtotal demonstrado em RESULTADOS!C86). T25 e REESCRITA (passa a somar",
+   "coordenadas": [
+    "C86",
+    "T25",
+    "T39",
+    "T40"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "D",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "endereca celula do leiaute atual que nao e contrato vivo nem verificacao de apresentacao"
+  },
+  {
+   "arquivo": "tests/test_integridade_template_xlsx.py",
+   "linha": 113,
+   "teste": "<modulo>",
+   "referencia": "\"MEMORIA_RESULTADOS\": 4413,",
    "coordenadas": [
     "H14",
     "H24",
     "H33",
     "H8",
-    "J4"
+    "J4",
+    "T39"
    ],
    "aba": "MEMORIA_RESULTADOS",
    "classificacao": "E",
@@ -2730,7 +3054,7 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 135,
+   "linha": 142,
    "teste": "<modulo>",
    "referencia": "# texto fixo e passam a FORMULA condicional a MEMORIA_RESULTADOS!$B$4,",
    "coordenadas": [
@@ -2746,7 +3070,7 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 136,
+   "linha": 143,
    "teste": "<modulo>",
    "referencia": "# para RESULTADOS nao explicar o metodo Financeiro quando o metodo",
    "coordenadas": [
@@ -2760,23 +3084,37 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 144,
+   "linha": 151,
    "teste": "<modulo>",
-   "referencia": "# PR 2 (RESULTADOS-UX2): a expectativa de 139 estava defasada — a main",
-   "coordenadas": [
-    "UX2"
-   ],
+   "referencia": "# RESULTADOS-ROLLBACK-1: a camada de apresentacao das linhas 90-166",
+   "coordenadas": [],
    "aba": "RESULTADOS",
-   "classificacao": "D",
+   "classificacao": "E",
    "sobrevive_ao_pr1": false,
-   "atualizar_no_pr2": true,
-   "justificativa": "endereca celula do leiaute atual que nao e contrato vivo nem verificacao de apresentacao"
+   "atualizar_no_pr2": false,
+   "justificativa": "cita a aba em texto, sem endereco"
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 150,
+   "linha": 155,
    "teste": "<modulo>",
-   "referencia": "\"RESULTADOS\": 282,",
+   "referencia": "# RESULTADOS-FINAL-1: +2 (143 -> 145), ambas de APRESENTACAO e ambas na",
+   "coordenadas": [
+    "E22",
+    "G22",
+    "H22"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "B",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "verifica apresentacao (formato, cor, geometria ou visibilidade)"
+  },
+  {
+   "arquivo": "tests/test_integridade_template_xlsx.py",
+   "linha": 172,
+   "teste": "<modulo>",
+   "referencia": "\"RESULTADOS\": 150,",
    "coordenadas": [],
    "aba": "RESULTADOS",
    "classificacao": "E",
@@ -2944,6 +3282,101 @@
     "B2",
     "C2",
     "H5"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "D",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "endereca celula do leiaute atual que nao e contrato vivo nem verificacao de apresentacao"
+  },
+  {
+   "arquivo": "tests/test_pc_ux_1.py",
+   "linha": 208,
+   "teste": "test_h_quadro_itens_pc_le_exclusivamente_colunas_canonicas",
+   "referencia": "assert 'MEMORIA_RESULTADOS!$T$31' in ws.cell(linha, 20).value",
+   "coordenadas": [
+    "M17"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "B",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "verifica apresentacao (formato, cor, geometria ou visibilidade)"
+  },
+  {
+   "arquivo": "tests/test_pc_ux_1.py",
+   "linha": 280,
+   "teste": "test_i_j_resultados_preserva_formulas_e_vta",
+   "referencia": "ws = load_workbook(TEMPLATE, data_only=False)[\"RESULTADOS\"]",
+   "coordenadas": [
+    "A15",
+    "A9"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "D",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "endereca celula do leiaute atual que nao e contrato vivo nem verificacao de apresentacao"
+  },
+  {
+   "arquivo": "tests/test_pc_ux_1.py",
+   "linha": 292,
+   "teste": "test_o_formulas_e_referencias_foram_reancoradas_sem_tocar_a_l",
+   "referencia": "ws, mem = wb[\"itens_PC\"], wb[\"MEMORIA_RESULTADOS\"]",
+   "coordenadas": [],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "toca apenas MEMORIA_RESULTADOS (aba tecnica, nao a executiva)"
+  },
+  {
+   "arquivo": "tests/test_pc_ux_1.py",
+   "linha": 304,
+   "teste": "test_o_formulas_e_referencias_foram_reancoradas_sem_tocar_a_l",
+   "referencia": "assert wb.defined_names[\"VTA_FINAL\"].value == \"MEMORIA_RESULTADOS!$B$26\"",
+   "coordenadas": [
+    "W67"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "A",
+   "sobrevive_ao_pr1": true,
+   "atualizar_no_pr2": false,
+   "justificativa": "cita intervalo nomeado do contrato vivo ou API do consolidado"
+  },
+  {
+   "arquivo": "tests/test_pc_ux_1.py",
+   "linha": 305,
+   "teste": "test_o_formulas_e_referencias_foram_reancoradas_sem_tocar_a_l",
+   "referencia": "assert wb.defined_names[\"EXECUTADO_APURADO\"].value == \"RESULTADOS!$B$83\"",
+   "coordenadas": [],
+   "aba": "RESULTADOS",
+   "classificacao": "A",
+   "sobrevive_ao_pr1": true,
+   "atualizar_no_pr2": false,
+   "justificativa": "cita intervalo nomeado do contrato vivo ou API do consolidado"
+  },
+  {
+   "arquivo": "tests/test_pc_ux_1.py",
+   "linha": 385,
+   "teste": "test_resultados_rotulos_sao_condicionais_aos_tres_metodos",
+   "referencia": "ws = load_workbook(TEMPLATE, data_only=False)[\"RESULTADOS\"]",
+   "coordenadas": [
+    "B15"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "D",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "endereca celula do leiaute atual que nao e contrato vivo nem verificacao de apresentacao"
+  },
+  {
+   "arquivo": "tests/test_pc_ux_1.py",
+   "linha": 586,
+   "teste": "test_calculo_originario_excel_percorre_e_f_h_i_j_u_totais_e_resultados",
+   "referencia": "resultados = wb.Worksheets(\"RESULTADOS\")",
+   "coordenadas": [
+    "C1"
    ],
    "aba": "RESULTADOS",
    "classificacao": "D",
@@ -3342,7 +3775,22 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 73,
+   "linha": 62,
+   "teste": "test_quatro_tabelas_e_um_status_global",
+   "referencia": "# RESULTADOS-FINAL-1: titulo reescrito para o usuario final; a secao",
+   "coordenadas": [
+    "A41",
+    "A53"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "D",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "endereca celula do leiaute atual que nao e contrato vivo nem verificacao de apresentacao"
+  },
+  {
+   "arquivo": "tests/test_resultados_consolidados_26f.py",
+   "linha": 75,
    "teste": "test_linhas_separadoras_permanecem_visualmente_brancas",
    "referencia": "ws = wb[\"RESULTADOS\"]",
    "coordenadas": [],
@@ -3354,7 +3802,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 90,
+   "linha": 92,
    "teste": "test_linhas_separadoras_permanecem_visualmente_brancas",
    "referencia": "assert str(ws[\"A23\"].value).startswith(\"=IF(OR(MEMORIA_RESULTADOS!$B$4\")",
    "coordenadas": [
@@ -3370,7 +3818,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 91,
+   "linha": 93,
    "teste": "test_linhas_separadoras_permanecem_visualmente_brancas",
    "referencia": "assert str(ws[\"A39\"].value).startswith(\"=IF(MEMORIA_RESULTADOS!$W$49\")",
    "coordenadas": [
@@ -3386,7 +3834,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 98,
+   "linha": 100,
    "teste": "test_tabelas_usam_fontes_homologadas_sem_ref_quebrada",
    "referencia": "ws = wb[\"RESULTADOS\"]",
    "coordenadas": [
@@ -3401,7 +3849,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 102,
+   "linha": 104,
    "teste": "test_tabelas_usam_fontes_homologadas_sem_ref_quebrada",
    "referencia": "assert ws[\"B10\"].value == '=IF(MEMORIA_RESULTADOS!$W$50=\"\",\"\",MEMORIA_RESULTADOS!$W$50)'",
    "coordenadas": [
@@ -3417,7 +3865,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 103,
+   "linha": 105,
    "teste": "test_tabelas_usam_fontes_homologadas_sem_ref_quebrada",
    "referencia": "assert ws[\"B11\"].value == '=IF(MEMORIA_RESULTADOS!$W$48=\"\",\"\",MEMORIA_RESULTADOS!$W$48)'",
    "coordenadas": [
@@ -3434,7 +3882,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 123,
+   "linha": 125,
    "teste": "test_nomes_definidos_apontam_para_memoria_absoluta",
    "referencia": "\"RETRO_OFICIAL\": \"MEMORIA_RESULTADOS!$B$16\",",
    "coordenadas": [],
@@ -3446,7 +3894,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 124,
+   "linha": 126,
    "teste": "test_nomes_definidos_apontam_para_memoria_absoluta",
    "referencia": "\"VTA_FINAL\": \"MEMORIA_RESULTADOS!$B$26\",",
    "coordenadas": [],
@@ -3458,7 +3906,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 125,
+   "linha": 127,
    "teste": "test_nomes_definidos_apontam_para_memoria_absoluta",
    "referencia": "\"REM_BASE_OFICIAL\": \"MEMORIA_RESULTADOS!$C$35\",",
    "coordenadas": [],
@@ -3470,7 +3918,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 126,
+   "linha": 128,
    "teste": "test_nomes_definidos_apontam_para_memoria_absoluta",
    "referencia": "\"REM_ATUALIZADO_OFICIAL\": \"MEMORIA_RESULTADOS!$D$35\",",
    "coordenadas": [],
@@ -3482,7 +3930,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 130,
+   "linha": 132,
    "teste": "test_nomes_definidos_apontam_para_memoria_absoluta",
    "referencia": "assert wb.defined_names[\"STATUS_RESULTADOS\"].attr_text == \"RESULTADOS!$B$3\"",
    "coordenadas": [],
@@ -3494,7 +3942,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 134,
+   "linha": 136,
    "teste": "test_tabela_manual_unica_governa_entradas_da_memoria",
    "referencia": "ws = wb[\"RESULTADOS\"]",
    "coordenadas": [],
@@ -3506,7 +3954,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 149,
+   "linha": 151,
    "teste": "test_tabela_manual_unica_governa_entradas_da_memoria",
    "referencia": "memoria = wb[\"MEMORIA_RESULTADOS\"]",
    "coordenadas": [
@@ -3520,7 +3968,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 151,
+   "linha": 153,
    "teste": "test_tabela_manual_unica_governa_entradas_da_memoria",
    "referencia": "'=IF(AND(RESULTADOS!$G$43=\"Sim\",RESULTADOS!$C$43<>\"\"),'",
    "coordenadas": [
@@ -3534,7 +3982,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 152,
+   "linha": 154,
    "teste": "test_tabela_manual_unica_governa_entradas_da_memoria",
    "referencia": "'RESULTADOS!$C$43,\"\")'",
    "coordenadas": [
@@ -3548,7 +3996,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 155,
+   "linha": 157,
    "teste": "test_tabela_manual_unica_governa_entradas_da_memoria",
    "referencia": "'=IF(AND(RESULTADOS!$G$44=\"Sim\",RESULTADOS!$C$44<>\"\"),'",
    "coordenadas": [
@@ -3562,7 +4010,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 156,
+   "linha": 158,
    "teste": "test_tabela_manual_unica_governa_entradas_da_memoria",
    "referencia": "'RESULTADOS!$C$44,\"\")'",
    "coordenadas": [
@@ -3576,7 +4024,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 159,
+   "linha": 161,
    "teste": "test_tabela_manual_unica_governa_entradas_da_memoria",
    "referencia": "'=IF(AND(RESULTADOS!$G$45=\"Sim\",RESULTADOS!$C$45<>\"\"),'",
    "coordenadas": [
@@ -3590,7 +4038,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 160,
+   "linha": 162,
    "teste": "test_tabela_manual_unica_governa_entradas_da_memoria",
    "referencia": "'RESULTADOS!$C$45,\"\")'",
    "coordenadas": [
@@ -3604,7 +4052,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 163,
+   "linha": 165,
    "teste": "test_tabela_manual_unica_governa_entradas_da_memoria",
    "referencia": "'=IF(AND(RESULTADOS!$G$50=\"Sim\",ISNUMBER(RESULTADOS!$C$50),'",
    "coordenadas": [
@@ -3618,7 +4066,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 164,
+   "linha": 166,
    "teste": "test_tabela_manual_unica_governa_entradas_da_memoria",
    "referencia": "'RESULTADOS!$C$50>=0),RESULTADOS!$C$50,\"\")'",
    "coordenadas": [],
@@ -3630,7 +4078,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 170,
+   "linha": 172,
    "teste": "test_achado_a_override_nao_materializa_zero",
    "referencia": "memoria = wb[\"MEMORIA_RESULTADOS\"]",
    "coordenadas": [
@@ -3645,7 +4093,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 178,
+   "linha": 180,
    "teste": "test_achado_a_override_nao_materializa_zero",
    "referencia": "assert f'RESULTADOS!{valor}<>\"\"' in formula, f\"{celula} sem guarda\"",
    "coordenadas": [],
@@ -3657,7 +4105,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 188,
+   "linha": 190,
    "teste": "test_achado_a_override_nao_materializa_zero",
    "referencia": "assert f'ISNUMBER(RESULTADOS!{valor})' in formula, f\"{celula} sem ISNUMBER\"",
    "coordenadas": [],
@@ -3669,7 +4117,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 189,
+   "linha": 191,
    "teste": "test_achado_a_override_nao_materializa_zero",
    "referencia": "assert f'RESULTADOS!{valor}>=0' in formula, f\"{celula} sem >=0\"",
    "coordenadas": [],
@@ -3681,7 +4129,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 194,
+   "linha": 196,
    "teste": "test_achado_b_tabela3_nao_fabrica_zero_para_ciclo_futuro",
    "referencia": "ws = wb[\"RESULTADOS\"]",
    "coordenadas": [],
@@ -3693,7 +4141,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 202,
+   "linha": 204,
    "teste": "test_achado_c_selos_por_tabela_e_premissa",
    "referencia": "ws = wb[\"RESULTADOS\"]",
    "coordenadas": [
@@ -3707,7 +4155,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 203,
+   "linha": 205,
    "teste": "test_achado_c_selos_por_tabela_e_premissa",
    "referencia": "assert 'SEARCH(\"CALCULADO\",MEMORIA_RESULTADOS!$E$26)' in str(ws[\"H8\"].value)",
    "coordenadas": [
@@ -3722,7 +4170,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 204,
+   "linha": 206,
    "teste": "test_achado_c_selos_por_tabela_e_premissa",
    "referencia": "assert 'SEARCH(\"MANUAL VALIDADO\",MEMORIA_RESULTADOS!$F$16)' in str(",
    "coordenadas": [
@@ -3737,7 +4185,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 207,
+   "linha": 209,
    "teste": "test_achado_c_selos_por_tabela_e_premissa",
    "referencia": "assert 'SEARCH(\"CONFERIR\",MEMORIA_RESULTADOS!$F$36)' in str(ws[\"H24\"].value)",
    "coordenadas": [
@@ -3752,7 +4200,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 228,
+   "linha": 230,
    "teste": "test_26f1_h14_completude_por_ciclo_obrigatorio",
    "referencia": "formula = str(wb[\"RESULTADOS\"][\"H14\"].value)",
    "coordenadas": [
@@ -3766,7 +4214,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 230,
+   "linha": 232,
    "teste": "test_26f1_h14_completude_por_ciclo_obrigatorio",
    "referencia": "'=IF(ISNUMBER(SEARCH(\"MANUAL VALIDADO\",MEMORIA_RESULTADOS!$F$16)),'",
    "coordenadas": [],
@@ -3778,7 +4226,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 239,
+   "linha": 241,
    "teste": "test_26f1_h14_completude_por_ciclo_obrigatorio",
    "referencia": "assert 'SEARCH(\"CALCULADO\",MEMORIA_RESULTADOS!$F$16)' in formula",
    "coordenadas": [],
@@ -3790,7 +4238,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 244,
+   "linha": 246,
    "teste": "test_26f2_tabela2_tristate_estrutura",
    "referencia": "ws = wb[\"RESULTADOS\"]",
    "coordenadas": [],
@@ -3802,7 +4250,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 265,
+   "linha": 267,
    "teste": "test_26f1_b35_data_ausente_permanece_vazia",
    "referencia": "formula = str(wb[\"RESULTADOS\"][\"B35\"].value)",
    "coordenadas": [
@@ -3816,7 +4264,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 276,
+   "linha": 278,
    "teste": "test_26f1_validacao_complemento_historico_nao_negativo",
    "referencia": "ws = wb[\"RESULTADOS\"]",
    "coordenadas": [],
@@ -3828,7 +4276,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 295,
+   "linha": 297,
    "teste": "test_26f4_resultados_sem_painel_congelado",
    "referencia": "pane = wb[\"RESULTADOS\"].sheet_view.pane",
    "coordenadas": [],
@@ -3840,7 +4288,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 342,
+   "linha": 344,
    "teste": "test_com_26f1_fail_closed_no_excel_real",
    "referencia": "r = wb.Worksheets(\"RESULTADOS\")",
    "coordenadas": [],
@@ -3852,7 +4300,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 343,
+   "linha": 345,
    "teste": "test_com_26f1_fail_closed_no_excel_real",
    "referencia": "mem = wb.Worksheets(\"MEMORIA_RESULTADOS\")",
    "coordenadas": [],
@@ -3864,7 +4312,7 @@
   },
   {
    "arquivo": "tests/test_resultados_consolidados_26f.py",
-   "linha": 446,
+   "linha": 448,
    "teste": "test_com_26f2_zero_confirmado_vs_fonte_ausente",
    "referencia": "r = wb.Worksheets(\"RESULTADOS\")",
    "coordenadas": [],
@@ -3875,12 +4323,152 @@
    "justificativa": "cita a aba em texto, sem endereco"
   },
   {
-   "arquivo": "tests/test_status_canonico_resultados.py",
-   "linha": 1,
+   "arquivo": "tests/test_resultados_final_1.py",
+   "linha": 2,
    "teste": "<modulo>",
-   "referencia": "\"\"\"STATUS-CANON-1 — a aba RESULTADOS e a fonte canonica do status da apuracao.",
+   "referencia": "\"\"\"RESULTADOS-FINAL-1: acabamento da aba RESULTADOS restaurada.",
    "coordenadas": [],
    "aba": "RESULTADOS",
+   "classificacao": "C",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "referencia aplicador historico de template"
+  },
+  {
+   "arquivo": "tests/test_resultados_final_1.py",
+   "linha": 36,
+   "teste": "<modulo>",
+   "referencia": "\"STATUS_RESULTADOS\": \"RESULTADOS!$B$3\",",
+   "coordenadas": [],
+   "aba": "RESULTADOS",
+   "classificacao": "A",
+   "sobrevive_ao_pr1": true,
+   "atualizar_no_pr2": false,
+   "justificativa": "cita intervalo nomeado do contrato vivo ou API do consolidado"
+  },
+  {
+   "arquivo": "tests/test_resultados_final_1.py",
+   "linha": 37,
+   "teste": "<modulo>",
+   "referencia": "\"RETROATIVO_POTENCIAL_PC\": \"MEMORIA_RESULTADOS!$T$38\",",
+   "coordenadas": [],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "A",
+   "sobrevive_ao_pr1": true,
+   "atualizar_no_pr2": false,
+   "justificativa": "cita intervalo nomeado do contrato vivo ou API do consolidado"
+  },
+  {
+   "arquivo": "tests/test_resultados_final_1.py",
+   "linha": 38,
+   "teste": "<modulo>",
+   "referencia": "\"VTA_FINAL\": \"MEMORIA_RESULTADOS!$B$26\",",
+   "coordenadas": [],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "A",
+   "sobrevive_ao_pr1": true,
+   "atualizar_no_pr2": false,
+   "justificativa": "cita intervalo nomeado do contrato vivo ou API do consolidado"
+  },
+  {
+   "arquivo": "tests/test_resultados_final_1.py",
+   "linha": 39,
+   "teste": "<modulo>",
+   "referencia": "\"RETRO_OFICIAL\": \"MEMORIA_RESULTADOS!$B$16\",",
+   "coordenadas": [],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "A",
+   "sobrevive_ao_pr1": true,
+   "atualizar_no_pr2": false,
+   "justificativa": "cita intervalo nomeado do contrato vivo ou API do consolidado"
+  },
+  {
+   "arquivo": "tests/test_resultados_final_1.py",
+   "linha": 40,
+   "teste": "<modulo>",
+   "referencia": "\"EXECUTADO_APURADO\": \"RESULTADOS!$B$83\",",
+   "coordenadas": [],
+   "aba": "RESULTADOS",
+   "classificacao": "A",
+   "sobrevive_ao_pr1": true,
+   "atualizar_no_pr2": false,
+   "justificativa": "cita intervalo nomeado do contrato vivo ou API do consolidado"
+  },
+  {
+   "arquivo": "tests/test_resultados_final_1.py",
+   "linha": 41,
+   "teste": "<modulo>",
+   "referencia": "\"AJUSTES_DEVIDOS\": \"RESULTADOS!$B$84\",",
+   "coordenadas": [],
+   "aba": "RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "cita a aba em texto, sem endereco"
+  },
+  {
+   "arquivo": "tests/test_resultados_final_1.py",
+   "linha": 42,
+   "teste": "<modulo>",
+   "referencia": "\"CONFERENCIA_FORMACAO_VTA\": \"RESULTADOS!$B$87\",",
+   "coordenadas": [],
+   "aba": "RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "cita a aba em texto, sem endereco"
+  },
+  {
+   "arquivo": "tests/test_resultados_final_1.py",
+   "linha": 56,
+   "teste": "res",
+   "referencia": "return wb[\"RESULTADOS\"]",
+   "coordenadas": [],
+   "aba": "RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "cita a aba em texto, sem endereco"
+  },
+  {
+   "arquivo": "tests/test_resultados_final_1.py",
+   "linha": 191,
+   "teste": "test_b83_b87_seguem_compondo_o_vta",
+   "referencia": "assert str(res[\"B83\"].value).startswith(\"=IF(MEMORIA_RESULTADOS!$B$4=\")",
+   "coordenadas": [
+    "B83",
+    "B85"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "toca apenas MEMORIA_RESULTADOS (aba tecnica, nao a executiva)"
+  },
+  {
+   "arquivo": "tests/test_resultados_final_1.py",
+   "linha": 193,
+   "teste": "test_b83_b87_seguem_compondo_o_vta",
+   "referencia": "'=IF(MEMORIA_RESULTADOS!$D$35=\"\",\"\",MEMORIA_RESULTADOS!$D$35)'",
+   "coordenadas": [
+    "B85",
+    "B87"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "toca apenas MEMORIA_RESULTADOS (aba tecnica, nao a executiva)"
+  },
+  {
+   "arquivo": "tests/test_resultados_final_1.py",
+   "linha": 199,
+   "teste": "test_memoria_resultados_permanece_oculta_e_intocada",
+   "referencia": "memoria = wb[\"MEMORIA_RESULTADOS\"]",
+   "coordenadas": [
+    "T38"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
    "classificacao": "B",
    "sobrevive_ao_pr1": false,
    "atualizar_no_pr2": true,
@@ -3904,7 +4492,7 @@
    "arquivo": "tests/test_status_canonico_resultados.py",
    "linha": 18,
    "teste": "<modulo>",
-   "referencia": "* STATUS DA APURACAO   -> espelha RESULTADOS!B3 (VALIDADO/ESTIMADO/REVISE);",
+   "referencia": "* STATUS DA APURACAO   -> usa RESULTADOS!B3 quando cacheado; sem esse cache,",
    "coordenadas": [
     "B3"
    ],
@@ -3916,8 +4504,8 @@
   },
   {
    "arquivo": "tests/test_status_canonico_resultados.py",
-   "linha": 191,
-   "teste": "test_sem_status_oficial_o_painel_nao_fabrica_validado",
+   "linha": 233,
+   "teste": "test_status_desconhecido_no_xls_nao_usa_fallback_python",
    "referencia": "assert \"aba RESULTADOS\" in consolidado[\"mensagem_status\"]",
    "coordenadas": [],
    "aba": "RESULTADOS",
@@ -4598,7 +5186,7 @@
   {
    "arquivo": "tests/test_vta_m2_financeiro_condicional.py",
    "linha": 161,
-   "teste": "test_e_status_so_gera_revisar_quando_ambas_comparaveis",
+   "teste": "test_e_status_so_gera_alerta_quando_ambas_comparaveis",
    "referencia": "res = wb[\"RESULTADOS\"]",
    "coordenadas": [],
    "aba": "RESULTADOS",
@@ -4609,7 +5197,7 @@
   },
   {
    "arquivo": "tests/test_vta_m2_financeiro_condicional.py",
-   "linha": 179,
+   "linha": 182,
    "teste": "test_h_nome_definido_vta_final_aponta_para_b26",
    "referencia": "assert aba == \"MEMORIA_RESULTADOS\"",
    "coordenadas": [
@@ -4623,7 +5211,7 @@
   },
   {
    "arquivo": "tests/test_vta_m2_financeiro_condicional.py",
-   "linha": 185,
+   "linha": 188,
    "teste": "test_i_template_abre_estruturalmente_via_openpyxl",
    "referencia": "assert \"MEMORIA_RESULTADOS\" in wb_local.sheetnames",
    "coordenadas": [],
@@ -4635,7 +5223,7 @@
   },
   {
    "arquivo": "tests/test_vta_m2_financeiro_condicional.py",
-   "linha": 186,
+   "linha": 189,
    "teste": "test_i_template_abre_estruturalmente_via_openpyxl",
    "referencia": "assert \"RESULTADOS\" in wb_local.sheetnames",
    "coordenadas": [],
@@ -4647,7 +5235,7 @@
   },
   {
    "arquivo": "tests/test_vta_m2_financeiro_condicional.py",
-   "linha": 204,
+   "linha": 207,
    "teste": "test_j_excel_real_recalcula_e_reabre_sem_reparo",
    "referencia": "mem = wb_com.Worksheets(\"MEMORIA_RESULTADOS\")",
    "coordenadas": [
@@ -4661,7 +5249,7 @@
   },
   {
    "arquivo": "tests/test_vta_m2_financeiro_condicional.py",
-   "linha": 206,
+   "linha": 209,
    "teste": "test_j_excel_real_recalcula_e_reabre_sem_reparo",
    "referencia": "res = wb_com.Worksheets(\"RESULTADOS\")",
    "coordenadas": [
@@ -5035,6 +5623,20 @@
    "justificativa": "cita intervalo nomeado do contrato vivo ou API do consolidado"
   },
   {
+   "arquivo": "tests/test_vta_potencial_pc.py",
+   "linha": 307,
+   "teste": "<modulo>",
+   "referencia": "# pronto, sem depender do selo do XLS (RESULTADOS!H8), cuja indisponibilidade",
+   "coordenadas": [
+    "H8"
+   ],
+   "aba": "RESULTADOS",
+   "classificacao": "D",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "endereca celula do leiaute atual que nao e contrato vivo nem verificacao de apresentacao"
+  },
+  {
    "arquivo": "tests/test_vta_u2_uniformizacao.py",
    "linha": 16,
    "teste": "<modulo>",
@@ -5217,7 +5819,7 @@
   },
   {
    "arquivo": "tests/test_vta_u2_uniformizacao.py",
-   "linha": 251,
+   "linha": 248,
    "teste": "test_b1_bloco_didatico_existe_com_as_quatro_parcelas",
    "referencia": "res = wb[\"RESULTADOS\"]",
    "coordenadas": [
@@ -5232,7 +5834,19 @@
   },
   {
    "arquivo": "tests/test_vta_u2_uniformizacao.py",
-   "linha": 265,
+   "linha": 264,
+   "teste": "test_b1_bloco_didatico_existe_com_as_quatro_parcelas",
+   "referencia": "assert 'MEMORIA_RESULTADOS!$B$4=\"PCs\"' in a84",
+   "coordenadas": [],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "E",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": false,
+   "justificativa": "toca apenas MEMORIA_RESULTADOS (aba tecnica, nao a executiva)"
+  },
+  {
+   "arquivo": "tests/test_vta_u2_uniformizacao.py",
+   "linha": 269,
    "teste": "test_b2_parcelas_derivam_das_fontes_reais_sem_digitacao",
    "referencia": "res = wb[\"RESULTADOS\"]",
    "coordenadas": [],
@@ -5244,35 +5858,59 @@
   },
   {
    "arquivo": "tests/test_vta_u2_uniformizacao.py",
-   "linha": 279,
+   "linha": 290,
    "teste": "test_b3_consumido_e_pc_nao_recontam_o_ajuste_ja_embutido",
    "referencia": "formula = str(wb[\"RESULTADOS\"][\"B84\"].value)",
    "coordenadas": [
-    "B84"
+    "B21",
+    "B84",
+    "T22",
+    "T39"
    ],
    "aba": "RESULTADOS",
-   "classificacao": "D",
-   "sobrevive_ao_pr1": false,
-   "atualizar_no_pr2": true,
-   "justificativa": "endereca celula do leiaute atual que nao e contrato vivo nem verificacao de apresentacao"
-  },
-  {
-   "arquivo": "tests/test_vta_u2_uniformizacao.py",
-   "linha": 281,
-   "teste": "test_b3_consumido_e_pc_nao_recontam_o_ajuste_ja_embutido",
-   "referencia": "'IF(OR(MEMORIA_RESULTADOS!$B$4=\"Itens\",'",
-   "coordenadas": [],
-   "aba": "MEMORIA_RESULTADOS",
-   "classificacao": "E",
-   "sobrevive_ao_pr1": false,
+   "classificacao": "A",
+   "sobrevive_ao_pr1": true,
    "atualizar_no_pr2": false,
-   "justificativa": "toca apenas MEMORIA_RESULTADOS (aba tecnica, nao a executiva)"
+   "justificativa": "cita intervalo nomeado do contrato vivo ou API do consolidado"
   },
   {
    "arquivo": "tests/test_vta_u2_uniformizacao.py",
-   "linha": 282,
+   "linha": 291,
    "teste": "test_b3_consumido_e_pc_nao_recontam_o_ajuste_ja_embutido",
-   "referencia": "'MEMORIA_RESULTADOS!$B$4=\"PCs\"),0,\"\")'",
+   "referencia": "assert 'IF(MEMORIA_RESULTADOS!$B$4=\"Itens\",0,\"\")' in formula",
+   "coordenadas": [
+    "B21",
+    "B84",
+    "T22",
+    "T39"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "A",
+   "sobrevive_ao_pr1": true,
+   "atualizar_no_pr2": false,
+   "justificativa": "cita intervalo nomeado do contrato vivo ou API do consolidado"
+  },
+  {
+   "arquivo": "tests/test_vta_u2_uniformizacao.py",
+   "linha": 293,
+   "teste": "test_b3_consumido_e_pc_nao_recontam_o_ajuste_ja_embutido",
+   "referencia": "assert \"MEMORIA_RESULTADOS!$T$39\" in formula",
+   "coordenadas": [
+    "B21",
+    "T22",
+    "T39"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "A",
+   "sobrevive_ao_pr1": true,
+   "atualizar_no_pr2": false,
+   "justificativa": "cita intervalo nomeado do contrato vivo ou API do consolidado"
+  },
+  {
+   "arquivo": "tests/test_vta_u2_uniformizacao.py",
+   "linha": 294,
+   "teste": "test_b3_consumido_e_pc_nao_recontam_o_ajuste_ja_embutido",
+   "referencia": "assert \"MEMORIA_RESULTADOS!$B$16\" not in formula",
    "coordenadas": [
     "C84"
    ],
@@ -5284,7 +5922,21 @@
   },
   {
    "arquivo": "tests/test_vta_u2_uniformizacao.py",
-   "linha": 284,
+   "linha": 295,
+   "teste": "test_b3_consumido_e_pc_nao_recontam_o_ajuste_ja_embutido",
+   "referencia": "assert \"MEMORIA_RESULTADOS!$T$22\" not in formula",
+   "coordenadas": [
+    "C84"
+   ],
+   "aba": "MEMORIA_RESULTADOS",
+   "classificacao": "B",
+   "sobrevive_ao_pr1": false,
+   "atualizar_no_pr2": true,
+   "justificativa": "verifica apresentacao (formato, cor, geometria ou visibilidade)"
+  },
+  {
+   "arquivo": "tests/test_vta_u2_uniformizacao.py",
+   "linha": 296,
    "teste": "test_b3_consumido_e_pc_nao_recontam_o_ajuste_ja_embutido",
    "referencia": "fonte = str(wb[\"RESULTADOS\"][\"C84\"].value)",
    "coordenadas": [
@@ -5298,7 +5950,7 @@
   },
   {
    "arquivo": "tests/test_vta_u2_uniformizacao.py",
-   "linha": 290,
+   "linha": 302,
    "teste": "test_b4_bloco_tem_linha_de_conferencia_contra_o_vta_oficial",
    "referencia": "conf = str(wb[\"RESULTADOS\"][\"B87\"].value)",
    "coordenadas": [
@@ -5312,7 +5964,7 @@
   },
   {
    "arquivo": "tests/test_vta_u2_uniformizacao.py",
-   "linha": 297,
+   "linha": 309,
    "teste": "test_c1_conferencia_tem_rotulos_didaticos",
    "referencia": "res = wb[\"RESULTADOS\"]",
    "coordenadas": [
@@ -5327,7 +5979,7 @@
   },
   {
    "arquivo": "tests/test_vta_u2_uniformizacao.py",
-   "linha": 305,
+   "linha": 317,
    "teste": "test_c2_sem_base_a_diferenca_fica_vazia_e_o_status_explica",
    "referencia": "res = wb[\"RESULTADOS\"]",
    "coordenadas": [],
@@ -5339,7 +5991,7 @@
   },
   {
    "arquivo": "tests/test_vta_u2_uniformizacao.py",
-   "linha": 315,
+   "linha": 327,
    "teste": "test_c3_conferencia_nao_alimenta_o_vta_oficial",
    "referencia": "b26 = str(wb[\"MEMORIA_RESULTADOS\"][\"B26\"].value)",
    "coordenadas": [
@@ -5353,7 +6005,7 @@
   },
   {
    "arquivo": "tests/test_vta_u2_uniformizacao.py",
-   "linha": 317,
+   "linha": 329,
    "teste": "test_c3_conferencia_nao_alimenta_o_vta_oficial",
    "referencia": "assert f\"RESULTADOS!$B${linha}\" not in b26",
    "coordenadas": [],
@@ -5365,7 +6017,7 @@
   },
   {
    "arquivo": "tests/test_vta_u2_uniformizacao.py",
-   "linha": 318,
+   "linha": 330,
    "teste": "test_c3_conferencia_nao_alimenta_o_vta_oficial",
    "referencia": "assert f\"RESULTADOS!$C${linha}\" not in b26",
    "coordenadas": [],
