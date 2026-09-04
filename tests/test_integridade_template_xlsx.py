@@ -57,7 +57,9 @@ FORMULAS_POR_ABA = {
     # x 8 colunas de formula) + resumo lateral N2:T6.
     # 45042 = 40042 anteriores + 5000 da coluna U (VALOR_CONSIDERADO, U2:U5001).
     # PC-UX-1: sete formulas residuais fecham os universos ate/apos o corte.
-    "itens_PC": 45091,
+    # Reauditoria NOVO-02: +7 formulas para o residual do universo integral
+    # no Quadro 1; o TOTAL apenas muda da linha 8 para a 9.
+    "itens_PC": 45098,
     "aditivos": 1393,
     # Fonte unica da posicao fisica: +199 de QTD_REM_ATUAL (B2:B200), que deixou
     # de ser digitada e passou a buscar CICLO_EM_EXECUCAO por ITEM, e +3 do

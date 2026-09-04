@@ -112,12 +112,31 @@ def _aplicar_itens_pc(ws, memoria) -> None:
     for coluna, valor in enumerate(novos_headers, start=13):
         ws.Cells(2, coluna).Value = valor
     _cabecalho(ws.Range("M2:T2"))
-    _bordas(ws.Range("M2:T8"))
+    _bordas(ws.Range("M2:T9"))
     ws.Rows("1:2").RowHeight = 30
-    ws.Range("M3:M8").HorizontalAlignment = XL_CENTER
-    ws.Range("N3:N8").HorizontalAlignment = XL_CENTER
-    _moeda(ws.Range("O3:S8"))
-    ws.Range("O3:S8").HorizontalAlignment = XL_RIGHT
+    ws.Range("M3:M9").HorizontalAlignment = XL_CENTER
+    ws.Range("N3:N9").HorizontalAlignment = XL_CENTER
+    _moeda(ws.Range("O3:S9"))
+    ws.Range("O3:S9").HorizontalAlignment = XL_RIGHT
+
+    # O titulo do Quadro 1 promete o universo integral. C0:C4 ocupam as
+    # linhas 3:7; a linha 8 fecha exclusivamente o que ficou fora delas.
+    ws.Range("M8").Value = "Outras situações / fora dos ciclos"
+    ws.Range("N8").Formula = '=COUNTIF($A$2:$A$5001,"<>")-SUM(N3:N7)'
+    for coluna, fonte in ((15, "D"), (16, "F"), (17, "H"), (18, "I"), (19, "J")):
+        letra = chr(64 + coluna)
+        ws.Cells(8, coluna).Formula = (
+            f'=SUM(${fonte}$2:${fonte}$5001)-SUM({letra}3:{letra}7)'
+        )
+    ws.Range("T8").Formula = (
+        '=COUNTIFS($K$2:$K$5001,"<>OK",$K$2:$K$5001,"<>")-SUM(T3:T7)'
+    )
+    ws.Range("M9").Value = "TOTAL"
+    for coluna in range(14, 21):
+        letra = chr(64 + coluna)
+        ws.Cells(9, coluna).Formula = f"=SUM({letra}3:{letra}8)"
+    ws.Range("M9:T9").Font.Bold = True
+    ws.Range("M8:T9").Interior.Color = _bgr(AZUL_MUITO_CLARO)
 
     # O deslocamento do quadro atualiza endereços, mas não a constante aritmética
     # do ROW(...)-2. Reancorar -3 preserva exatamente o significado anterior.

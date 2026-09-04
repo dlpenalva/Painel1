@@ -1922,6 +1922,16 @@ def _ds_secao3_resultado(doc: Document, dados: dict, cm: dict) -> None:
             ["Ciclo", "Valor original", "Valor atualizado", "Retroativo reconhecido"],
             linhas_pc,
         )
+        _adicionar_tabela(
+            doc,
+            ["Resultado", "Valor"],
+            [[
+                "Valor Total Atualizado do Contrato",
+                vta or PREENCHER_TAG.format("Valor Total Atualizado do Contrato"),
+            ]],
+            destacar_placeholders=True,
+            destacar_placeholders_embutidos=True,
+        )
     else:
         _adicionar_tabela(
             doc, ["Resultado", "Valor"], linhas,

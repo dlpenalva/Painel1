@@ -86,7 +86,8 @@ def test_resumo_lateral_cobre_toda_faixa(wb_template):
     assert ws["Q7"].value == f"=SUMIF($C$2:$C${CAP},M7,$H$2:$H${CAP})"
     assert ws["R7"].value == f"=SUMIF($C$2:$C${CAP},M7,$I$2:$I${CAP})"
     assert ws["S7"].value == f"=SUMIF($C$2:$C${CAP},M7,$J$2:$J${CAP})"
-    assert ws["N8"].value == "=SUM(N3:N7)"
+    assert ws["N8"].value == '=COUNTIF($A$2:$A$5001,"<>")-SUM(N3:N7)'
+    assert ws["N9"].value == "=SUM(N3:N8)"
 
 
 def test_cobertura_b14_cobre_toda_faixa(wb_template):

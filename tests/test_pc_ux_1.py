@@ -15,7 +15,9 @@ from openpyxl import load_workbook
 
 from _leitor_masterfile_v10 import _totais_canonicos_pc
 from _templates_documentos import (
+    _extrair_dados,
     _situacao_retroativos_pc,
+    _vta_texto_doc,
     gerar_despacho_saneador,
     gerar_termo_apostila,
 )
@@ -170,6 +172,15 @@ def test_g_ausencia_nao_vira_zero_no_payload_documental():
 
 def test_h_quadro_itens_pc_le_exclusivamente_colunas_canonicas():
     ws = load_workbook(TEMPLATE, data_only=False)["itens_PC"]
+    assert ws["M1"].value == "TODOS OS PCs CADASTRADOS POR CICLO"
+    assert ws["M8"].value == "Outras situações / fora dos ciclos"
+    assert ws["O8"].value == "=SUM($D$2:$D$5001)-SUM(O3:O7)"
+    assert ws["P8"].value == "=SUM($F$2:$F$5001)-SUM(P3:P7)"
+    assert ws["Q8"].value == "=SUM($H$2:$H$5001)-SUM(Q3:Q7)"
+    assert ws["R8"].value == "=SUM($I$2:$I$5001)-SUM(R3:R7)"
+    assert ws["S8"].value == "=SUM($J$2:$J$5001)-SUM(S3:S7)"
+    assert ws["M9"].value == "TOTAL"
+    assert ws["O9"].value == "=SUM(O3:O8)"
     assert ws["M10"].value == "PCs CONSIDERADOS NA APURAÇÃO ATÉ A DATA DE CORTE"
     assert [ws.cell(11, c).value for c in range(13, 21)] == [
         "Ciclo", "PCs pagos/reconhecidos", "Valor original reconhecido",
@@ -260,6 +271,26 @@ def test_k_l_q_r_apostila_e_saneador_usam_os_mesmos_valores_e_abrem():
     assert "PROVIDÊNCIA DA ÁREA GESTORA" in texto_saneador
 
 
+def test_saneador_pc_restaura_vta_canonico_sem_duplicar_e_outros_metodos_preservam():
+    esperado = "R$ 12.345,67"
+    for metodo, leitura in (
+        ("PC", _leitura_documental(_caso_sintetico_consolidacao())),
+        ("SIMPLES", leitura_simples_financeiro()),
+        ("D", leitura_simples_financeiro()),
+    ):
+        leitura = deepcopy(leitura)
+        leitura["controle"]["modo"] = metodo
+        leitura["resultados_xls"] = {
+            "disponivel": True,
+            "valores": {"VTA_FINAL": 12_345.67, "RETRO_OFICIAL": 0.0},
+        }
+        canonico = _vta_texto_doc(_extrair_dados(leitura, None))
+        assert canonico == f"{esperado} — PRÉVIA"
+        texto = _texto_docx(gerar_despacho_saneador(leitura))
+        assert texto.count("Valor Total Atualizado do Contrato") == 1
+        assert texto.count(canonico) == 1
+
+
 @pytest.mark.parametrize("enquadramento", ["INTERVALO_PRECLUSO", "INDETERMINADO"])
 def test_documentos_exibem_residual_e_total_fecha(enquadramento):
     residual = _pc(
@@ -313,39 +344,63 @@ def test_calculo_originario_excel_percorre_e_f_h_i_j_u_totais_e_resultados(tmp_p
         controle.Range("B1").Value = "PC (Pedidos de Compra)"
         controle.Range("B2").Value = "C1"
         controle.Range("B3").Value = datetime(2026, 8, 31)
-        parametros.Range("A2:A3").Value = (("Sim",), ("Sim",))
+        parametros.Range("A2:A6").Value = (("Sim",), ("Sim",), ("Sim",), ("Sim",), ("Sim",))
         parametros.Range("C2:D2").Value = ((datetime(2025, 1, 1), datetime(2025, 12, 31)),)
         parametros.Range("C3:E3").Value = ((datetime(2026, 1, 1), datetime(2026, 11, 30), 0.10),)
+        parametros.Range("C6:E6").Value = ((datetime(2027, 1, 1), datetime(2027, 12, 31), 0.10),)
         parametros.Range("H3").Value = datetime(2026, 2, 1)
-        itens.Range("A2:B2").Value = (("C1-ANALISE", datetime(2026, 3, 1)),)
-        itens.Range("D2").Value = 100.0
-        itens.Range("G2").Value = "Nao"
+        # NOVO-02: primeiro prova isoladamente C1 + fora dos ciclos.
+        itens.Range("A2:B2").Value = (("C1-PAGO", datetime(2026, 3, 1)),)
+        itens.Range("D2").Value = 200.0
+        itens.Range("G2").Value = "Sim"
         itens.Range("A3:B3").Value = (("FORA-CORTE", datetime(2026, 12, 1)),)
         itens.Range("D3").Value = 999_999.99
         itens.Range("G3").Value = "Sim"
-        itens.Range("A4:B4").Value = (("C1-PAGO", datetime(2026, 3, 1)),)
-        itens.Range("D4").Value = 200.0
-        itens.Range("G4").Value = "Sim"
+        excel.CalculateFullRebuild()
+        assert float(itens.Range("O4").Value) == pytest.approx(200.0)
+        assert float(itens.Range("O8").Value) == pytest.approx(999_999.99)
+        assert float(itens.Range("O9").Value) == pytest.approx(1_000_199.99)
+        assert float(wb.Worksheets("RESULTADOS").Range("B55").Value) == pytest.approx(1_000_199.99)
+
+        # Acrescenta C0, C1 em análise, C4 e PC posterior ao corte.
+        itens.Range("A4:B4").Value = (("C1-ANALISE", datetime(2026, 3, 1)),)
+        itens.Range("D4").Value = 100.0
+        itens.Range("G4").Value = "Nao"
         itens.Range("A5:B5").Value = (("C1-POS-CORTE", datetime(2026, 9, 1)),)
         itens.Range("D5").Value = 100.01
         itens.Range("G5").Value = "Sim"
+        itens.Range("A6:B6").Value = (("C0-PAGO", datetime(2025, 3, 1)),)
+        itens.Range("D6").Value = 50.0
+        itens.Range("G6").Value = "Sim"
+        itens.Range("A7:B7").Value = (("C4-POS-CORTE", datetime(2027, 3, 1)),)
+        itens.Range("D7").Value = 400.0
+        itens.Range("G7").Value = "Sim"
         excel.CalculateFullRebuild()
         assert itens.Range("C3").Value == "Fora dos ciclos"
-        assert float(itens.Range("E2").Value) == pytest.approx(1.1)
-        assert float(itens.Range("F2").Value) == pytest.approx(110.0)
-        assert float(itens.Range("H2").Value) == 0.0
-        assert float(itens.Range("I2").Value) == pytest.approx(110.0)
-        assert float(itens.Range("J2").Value) == pytest.approx(10.0)
-        assert float(itens.Range("U2").Value) == pytest.approx(100.0)
-        assert float(itens.Range("T18").Value) == pytest.approx(1_000_100.00)
+        assert itens.Range("C6").Value == "C0"
+        assert itens.Range("C7").Value == "C4"
+        assert float(itens.Range("E4").Value) == pytest.approx(1.1)
+        assert float(itens.Range("F4").Value) == pytest.approx(110.0)
+        assert float(itens.Range("H4").Value) == 0.0
+        assert float(itens.Range("I4").Value) == pytest.approx(110.0)
+        assert float(itens.Range("J4").Value) == pytest.approx(10.0)
+        assert float(itens.Range("U4").Value) == pytest.approx(100.0)
+        assert float(itens.Range("O3").Value) == pytest.approx(50.0)
+        assert float(itens.Range("O4").Value) == pytest.approx(400.01)
+        assert float(itens.Range("O7").Value) == pytest.approx(400.0)
+        assert float(itens.Range("O8").Value) == pytest.approx(999_999.99)
+        assert float(itens.Range("O9").Value) == pytest.approx(1_000_850.00)
+        assert float(itens.Range("T18").Value) == pytest.approx(1_000_500.00)
         resultados = wb.Worksheets("RESULTADOS")
         assert float(resultados.Range("B17").Value) == pytest.approx(200.0)
         assert float(resultados.Range("C17").Value) == pytest.approx(220.0)
         assert float(resultados.Range("D17").Value) == pytest.approx(20.0)
+        assert float(resultados.Range("B55").Value) == pytest.approx(1_000_850.00)
         wb.Save()
         wb.Close(False)
         wb = excel.Workbooks.Open(str(destino), UpdateLinks=0, ReadOnly=True, CorruptLoad=0)
-        assert float(wb.Worksheets("itens_PC").Range("T18").Value) == pytest.approx(1_000_100.00)
+        assert float(wb.Worksheets("itens_PC").Range("O9").Value) == pytest.approx(1_000_850.00)
+        assert float(wb.Worksheets("itens_PC").Range("T18").Value) == pytest.approx(1_000_500.00)
     finally:
         if wb is not None:
             wb.Close(False)
