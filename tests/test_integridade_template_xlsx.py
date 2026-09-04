@@ -56,7 +56,10 @@ FORMULAS_POR_ABA = {
     # Etapa 26G: grade escalada para a capacidade canonica (5.000 PCs
     # x 8 colunas de formula) + resumo lateral N2:T6.
     # 45042 = 40042 anteriores + 5000 da coluna U (VALOR_CONSIDERADO, U2:U5001).
-    "itens_PC": 45042,
+    # PC-UX-1: sete formulas residuais fecham os universos ate/apos o corte.
+    # Reauditoria NOVO-02: +7 formulas para o residual do universo integral
+    # no Quadro 1; o TOTAL apenas muda da linha 8 para a 9.
+    "itens_PC": 45098,
     "aditivos": 1393,
     # Fonte unica da posicao fisica: +199 de QTD_REM_ATUAL (B2:B200), que deixou
     # de ser digitada e passou a buscar CICLO_EM_EXECUCAO por ITEM, e +3 do
@@ -151,7 +154,9 @@ FORMULAS_POR_ABA = {
     # RETROATIVO_POTENCIAL_PC, e E22 e o rotulo/observacao que depende de G22.
     # Nenhuma formula economica foi criada, movida ou recalculada — A70 e B64
     # foram apenas reescritas (continuam sendo formulas, nao somam).
-    "RESULTADOS": 145,
+    # PC-UX-1 libera A70 para criar o respiro entre os blocos 7 e 8.
+    # PC-UX-1: A70 e B15/C15 voltam a ser condicionais; A71 segue condicional.
+    "RESULTADOS": 148,
 }
 
 
@@ -277,7 +282,7 @@ def test_itens_pc_efeito_financeiro_aplicado():
     par = wb["parametros"]
     assert par["H1"].value == "INICIO_EFEITO_FINANCEIRO"
     assert {par.cell(r, 8).number_format for r in range(2, 7)} == {
-        "dd/mm/yyyy;@"
+        "mm/yyyy;@"
     }
 
 

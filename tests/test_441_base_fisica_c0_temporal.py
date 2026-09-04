@@ -216,7 +216,7 @@ def test_casos_a_b_c_e_sem_pcs(excel, tmp_path):
     try:
         mem = book.Worksheets("MEMORIA_RESULTADOS")
         pc = book.Worksheets("posicao_contratual")
-        assert book.Worksheets("itens_PC").Range("P2").Value in (0, 0.0, None)
+        assert book.Worksheets("itens_PC").Range("P3").Value in (0, 0.0, None)
 
         # CASO A — ITEM-01 existia em C0 e tem base completa.
         assert pc.Range("AL2").Value == 0

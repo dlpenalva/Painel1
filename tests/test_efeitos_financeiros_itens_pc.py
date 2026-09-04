@@ -158,10 +158,12 @@ def test_template_usa_l_sem_deslocar_resumos_metadados_e_limite():
     wb = load_workbook(TEMPLATE, data_only=False)
     ws = wb["itens_PC"]
     assert ws["L1"].value == "EFEITO_FINANCEIRO_PC"
-    assert [ws.cell(1, c).value for c in range(13, 21)] == [
-        "CICLO", "QTD_PC", "VALOR_PC_TOTAL", "VALOR_ATUALIZADO_TOTAL",
-        "RETROATIVO_RECONHECIDO_A_PAGAR", "VALOR_ATUALIZADO_EM_ANALISE",
-        "DELTA_POTENCIAL", "QTD_COM_CHECK",
+    assert ws["M1"].value == "TODOS OS PCs CADASTRADOS POR CICLO"
+    assert [ws.cell(2, c).value for c in range(13, 21)] == [
+        "CICLO", "QTD. DE PCs", "VALOR ORIGINAL TOTAL",
+        "VALOR DOS PCs COM FATOR DO CICLO", "RETROATIVO RECONHECIDO",
+        "VALOR EM ANÁLISE (ÁREA GEST.)", "RETROATIVO POTENCIAL",
+        "QTD. COM ALERTA",
     ]
     assert ws["V1"].value == "COMPUTA_VTA"
     assert ws["AC1"].value == "JUSTIFICATIVA_VTA"
@@ -192,9 +194,9 @@ def test_formulas_pc_separam_nominal_reconhecido_analise_e_delta():
     assert 'AND(G2<>"Sim",G2<>"Nao",G2<>"")' in ws["K2"].value
     assert "B2>=" in ws["L2"].value
     # M:T: Q soma H; R soma I; S soma J. Valor integral nao vira retroativo.
-    assert "$H$2:$H$5001" in ws["Q2"].value
-    assert "$I$2:$I$5001" in ws["R2"].value
-    assert "$J$2:$J$5001" in ws["S2"].value
+    assert "$H$2:$H$5001" in ws["Q3"].value
+    assert "$I$2:$I$5001" in ws["R3"].value
+    assert "$J$2:$J$5001" in ws["S3"].value
 
 
 def _workbook_upload(

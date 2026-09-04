@@ -83,11 +83,12 @@ def test_validacoes_dos_ajustes_manuais_sobrevivem(res):
 
 # --------------------------------------------------- 2. TABELA 6
 def test_tabela_6_titulo_e_cabecalho(res):
+    # Preserva o contrato anterior: PC-UX-1 nao precisa substituir este titulo.
     assert res["A53"].value == "6. TOTAIS E INDICADORES DE CONFERÊNCIA"
     assert res["A53"].fill.fgColor.rgb == AZUL_ESCURO
     assert res["A53"].font.color.rgb == "FFFFFFFF"
     assert res["A53"].font.b is True
-    assert res["C54"].value == "REFERÊNCIA PARA CONFERÊNCIA"
+    assert res["C54"].value == "O QUE ESTE VALOR REPRESENTA"
 
 
 def test_tabela_6_nao_expoe_nomes_tecnicos(res):
@@ -114,11 +115,10 @@ def test_tabela_6_valores_em_moeda_e_destaques_em_negrito(res):
 # --------------------------------------------------- 3. TABELA 7
 def test_tabela_7_bloco_explicativo(res):
     assert res["A68"].fill.fgColor.rgb == AZUL_ESCURO
-    assert str(res["A69"].value).startswith("COMPOSIÇÃO ADOTADA")
-    assert "ajustes ainda devidos" in str(res["A69"].value)
-    assert "acertos ainda devidos" not in str(res["A69"].value)
+    assert "COMO O VTA É CALCULADO" in str(res["A69"].value)
+    assert "ajustes aplicáveis" in str(res["A69"].value)
     assert "saldo remanescente atualizado" in str(res["A69"].value)
-    assert str(res["A70"].value).startswith('="MÉTODO APLICADO — "&')
+    assert "Esta conferência não altera o VTA Oficial" in str(res["A70"].value)
 
 
 # --------------------------------------------------- 4. TABELA 8
@@ -129,7 +129,7 @@ def test_tabela_8_padronizada(res):
         for coluna in "BCD":
             endereco = "%s%d" % (coluna, linha)
             assert res[endereco].number_format == MOEDA_CANONICA, endereco
-    assert str(res["A78"].value).startswith("Esta conferencia compara")
+    assert res["A78"].value is None
 
 
 # --------------------------------------------------- 5. TABELA 9

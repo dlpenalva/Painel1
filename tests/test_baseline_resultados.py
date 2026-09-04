@@ -186,11 +186,19 @@ def test_as_entradas_de_ajuste_manual_sao_contrato_dentro_do_excel():
         # VTA e VTA substitutivo); os complementos historicos nao a usam.
         if not (coluna == "D" and linha >= 46)
     }
+    # Contrato vigente em origin/main: comparativo_VTA também consome o fator
+    # histórico exibido em RESULTADOS!H5. PC-UX-1 preserva essa referência.
+    esperadas.add("H5")
     assert set(referencias) == esperadas, (
         "mudou o conjunto de celulas da RESULTADOS consumidas por formulas de "
         "outras abas"
     )
-    assert all(abas == ["MEMORIA_RESULTADOS"] for abas in referencias.values())
+    assert referencias["H5"] == ["comparativo_VTA"]
+    assert all(
+        abas == ["MEMORIA_RESULTADOS"]
+        for coordenada, abas in referencias.items()
+        if coordenada != "H5"
+    )
 
 
 def test_o_titulo_da_aba_e_o_gate_de_integridade():

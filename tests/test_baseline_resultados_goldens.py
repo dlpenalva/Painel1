@@ -38,6 +38,7 @@ import pytest
 
 from _baseline_fotografia import fotografar_cenario
 from _leitor_masterfile_v10 import ler_masterfile_v10
+from _templates_documentos import formatar_moeda
 
 DIRETORIO_SNAPSHOTS = Path(__file__).resolve().parent / "baseline_resultados" / "goldens"
 REGRAVAR = os.environ.get("RESULTADOS_BASELINE_REGRAVAR") == "1"
@@ -234,3 +235,14 @@ def test_metodo_pc_apura_retroativo_no_arquivo_real():
     web = _fotografar("pc_com_retroativo_revise")["web"]
     assert web["metodo"]["codigo"] == "pc"
     assert web["retroativo_total"] is not None and web["retroativo_total"] > 0
+
+
+def test_saneador_pc_golden_exibe_vta_canonico_uma_vez():
+    """NOVO-01: o detalhamento PC nunca pode ocultar ou duplicar o VTA."""
+    fotografia = _fotografar("pc_com_retroativo_revise")
+    vta = fotografia["web"]["vta_oficial"]
+    linhas = fotografia["documentos"]["despacho_saneador"]["linhas_negociais"]
+    corpo = "\n".join(linhas)
+    assert vta == 15_586.02
+    assert corpo.count("Valor Total Atualizado do Contrato") == 1
+    assert corpo.count(formatar_moeda(vta)) == 1

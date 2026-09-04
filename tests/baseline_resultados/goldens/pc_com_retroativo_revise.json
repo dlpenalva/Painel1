@@ -345,13 +345,16 @@
   "despacho_saneador": {
    "linhas_negociais": [
     "Em razão da data do pedido, os efeitos financeiros do reajuste do ciclo C2 iniciam-se em 12/2025, não alcançando as competências de outubro e novembro de 2025.",
-    "SITUAÇÃO DOS VALORES RETROATIVOS\nRetroativo reconhecido: R$ 1.387,15\nValor atualizado em análise: R$ 21.780,29\nRetroativo potencial: R$ 1.780,29\n\nA apuração identificou retroativo reconhecido no valor de R$ 1.387,15. Foram identificados, ainda, Pedidos de Compra com valores sujeitos à confirmação, correspondentes a retroativo potencial de até R$ 1.780,29.\n\nA conversão do retroativo potencial em valor reconhecido dependerá da aceitação dos respectivos Pedidos de Compra pela área gestora do contrato, a quem compete conduzir a validação desses eventos e os procedimentos relacionados ao eventual pagamento.\n\nEnquanto não houver essa confirmação, o retroativo potencial não integra o valor reconhecido a pagar.",
+    "Metodologia utilizada: Pedidos de Compra (PC). Data de corte: 30/09/2026. Integram a execução considerada os PCs pagos com data até o corte. PCs não pagos e com data do PC até o corte permanecem como valor em análise pela área gestora. C0 não recebe reajuste; de C1 em diante, o reajuste observa os efeitos financeiros. PCs posteriores ao corte não integram esta apuração.",
+    "SITUAÇÃO DOS VALORES RETROATIVOS\nRetroativo reconhecido: R$ 1.387,15\nValor em análise pela área gestora: R$ 21.780,29\nRetroativo potencial: R$ 1.780,29\n\nO retroativo reconhecido integra a apuração corrente. O retroativo potencial está associado aos Pedidos de Compra ainda em análise pela área gestora, a quem competem a confirmação e os procedimentos relacionados ao eventual pagamento.\n\nEnquanto não houver confirmação, o retroativo potencial não integra o valor reconhecido a pagar.",
+    "PROVIDÊNCIA DA ÁREA GESTORA: Há Pedidos de Compra em análise pela área gestora. O retroativo potencial associado é de R$ 1.780,29 e não integra o retroativo reconhecido nesta apuração.",
     "Ciclo | Data-base | Data do pedido | Situação | Efeito financeiro | Percentual",
     "C1 | 01/10/2024 | 10/10/2024 | TEMPESTIVO | A partir de 10/2024 | 4,88%",
     "C2 | 01/10/2025 | 20/12/2025 | TEMPESTIVO* | A partir de 12/2025 | 3,83%",
-    "Valor pago no período analisado | R$ 39.000,00",
-    "Valor devido após a atualização contratual | R$ 40.387,15",
-    "Retroativo a pagar | R$ 1.387,15",
+    "Ciclo | Valor original | Valor atualizado | Retroativo reconhecido",
+    "C1 | R$ 12.000,00 | R$ 12.586,02 | R$ 586,02",
+    "C2 | R$ 27.000,00 | R$ 27.801,13 | R$ 801,13",
+    "Total | R$ 39.000,00 | R$ 40.387,15 | R$ 1.387,15",
     "Valor Total Atualizado do Contrato | R$ 15.586,02 — PRÉVIA"
    ]
   },
@@ -511,16 +514,15 @@
     "7. O índice contratual utilizado na análise, qual seja IST (Anatel), e o percentual acumulado apurado de 8,90%;",
     "Em razão da data do pedido, os efeitos financeiros do reajuste do ciclo C2 iniciam-se em 12/2025, não alcançando as competências de outubro e novembro de 2025.",
     "2. Da apuração financeira do retroativo",
-    "2.1. A apuração financeira consolidada indicou valor pago efetivo de R$ 39.000,00 e valor devido após o reajuste de R$ 40.387,15, resultando em valor retroativo a pagar de R$ 1.387,15, conforme Quadro 2.",
-    "3.1. Para fins de consolidação contratual, a composição do Valor Total Atualizado foi organizada de forma evolutiva, demonstrando a execução por ciclo, os remanescentes intermediários, o saldo remanescente final e os aditivos/supressões computáveis, quando aplicáveis.",
-    "SITUAÇÃO DOS VALORES RETROATIVOS\nRetroativo reconhecido: R$ 1.387,15\nRetroativo potencial: R$ 1.780,29\n\nNo âmbito da apuração, foi reconhecido retroativo de R$ 1.387,15. Adicionalmente, foi identificado retroativo potencial de até R$ 1.780,29, relacionado a Pedidos de Compra ainda sujeitos à aceitação pela área gestora do contrato.\n\nA confirmação desses valores e a condução do eventual pagamento competem à área gestora, observados os critérios, o índice, o percentual e o período de efeitos formalizados nesta Apostila.\n\nO retroativo potencial não integra, nesta data, o montante reconhecido a pagar.",
+    "2.1. No método Pedidos de Compra (PC), a data de corte adotada é 30/09/2026. Os PCs pagos com data até o corte integram a execução considerada; os PCs não pagos e com data do PC até o corte permanecem como valor em análise pela área gestora. C0 não recebe reajuste e não gera retroativo. De C1 em diante, havendo efeito financeiro, a diferença dos PCs pagos constitui retroativo reconhecido e a diferença dos PCs não pagos constitui retroativo potencial. PCs posteriores à data de corte não integram esta apuração.",
+    "SITUAÇÃO DOS VALORES RETROATIVOS\nRetroativo reconhecido: R$ 1.387,15\nRetroativo potencial: R$ 1.780,29\n\nO retroativo reconhecido integra a apuração corrente. O retroativo potencial está associado aos Pedidos de Compra ainda em análise pela área gestora. Sua confirmação e eventual pagamento competem à área gestora.\n\nEnquanto não confirmado, o retroativo potencial não integra o valor reconhecido a pagar.",
     "HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO",
     "5.2. Os aditivos e supressões computáveis integram o Valor Total Atualizado quando não estiverem refletidos na execução atualizada, no saldo remanescente ou no valor formalizado anterior, vedada a dupla contagem.",
     "Ref. | Ciclo | Percentual aplicado | Efeitos financeiros | Situação",
     "A | C1 | 4,88% | A partir de 10/2024 | TEMPESTIVO",
     "B | C2 | 3,83% | A partir de 12/2025 | TEMPESTIVO*",
     "C | Acumulado | 8,90% | Conforme composição dos ciclos | Percentual acumulado apurado",
-    "Ciclo | Valor pago efetivo | Valor devido após o reajuste | Diferença/retroativo",
+    "Ciclo | Valor original | Valor atualizado | Retroativo reconhecido",
     "C1 | R$ 12.000,00 | R$ 12.586,02 | R$ 586,02",
     "C2 | R$ 27.000,00 | R$ 27.801,13 | R$ 801,13",
     "Total | R$ 39.000,00 | R$ 40.387,15 | R$ 1.387,15",
@@ -577,7 +579,6 @@
  },
  "web": {
   "avisos_da_leitura": [
-   "Somente a guia RESULTADOS deve possuir cor de aba.",
    "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 10: 'COMPUTA?'.",
    "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 11: 'NAO'.",
    "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 12: 'SIM'.",
@@ -1051,17 +1052,23 @@
    "ate_o_corte": {
     "delta_potencial": 1780.29,
     "quantidade": 4,
+    "quantidade_reconhecida": 3,
     "retroativo": 1387.15,
     "valor_atualizado_em_analise": 21780.29,
+    "valor_atualizado_reconhecido": 40387.15,
     "valor_considerado": 60387.15,
+    "valor_original_reconhecido": 39000.0,
     "valor_pc": 59000.0
    },
    "com_efeito": {
     "delta_potencial": 1780.29,
     "quantidade": 3,
+    "quantidade_reconhecida": 2,
     "retroativo": 1387.15,
     "valor_atualizado_em_analise": 21780.29,
+    "valor_atualizado_reconhecido": 22387.15,
     "valor_considerado": 42387.15,
+    "valor_original_reconhecido": 21000.0,
     "valor_pc": 41000.0
    },
    "corte_aplicado": true,
@@ -1069,67 +1076,92 @@
    "enquadrado_ciclos": {
     "delta_potencial": 1780.29,
     "quantidade": 4,
+    "quantidade_reconhecida": 3,
     "retroativo": 1387.15,
     "valor_atualizado_em_analise": 21780.29,
+    "valor_atualizado_reconhecido": 40387.15,
     "valor_considerado": 60387.15,
+    "valor_original_reconhecido": 39000.0,
     "valor_pc": 59000.0
    },
    "indeterminado": {
     "delta_potencial": 0.0,
     "quantidade": 0,
+    "quantidade_reconhecida": 0,
     "retroativo": 0.0,
     "valor_atualizado_em_analise": 0.0,
+    "valor_atualizado_reconhecido": 0.0,
     "valor_considerado": 0.0,
+    "valor_original_reconhecido": 0.0,
     "valor_pc": 0.0
    },
    "informado": {
     "delta_potencial": 1780.29,
     "quantidade": 4,
+    "quantidade_reconhecida": 3,
     "retroativo": 1387.15,
     "valor_atualizado_em_analise": 21780.29,
+    "valor_atualizado_reconhecido": 40387.15,
     "valor_considerado": 60387.15,
+    "valor_original_reconhecido": 39000.0,
     "valor_pc": 59000.0
    },
    "intervalo_precluso": {
     "delta_potencial": 0.0,
     "quantidade": 0,
+    "quantidade_reconhecida": 0,
     "retroativo": 0.0,
     "valor_atualizado_em_analise": 0.0,
+    "valor_atualizado_reconhecido": 0.0,
     "valor_considerado": 0.0,
+    "valor_original_reconhecido": 0.0,
     "valor_pc": 0.0
    },
    "por_ciclo": {
     "C1": {
      "delta_potencial": 0.0,
      "quantidade": 1,
+     "quantidade_reconhecida": 1,
      "retroativo": 586.02,
      "valor_atualizado_em_analise": 0.0,
+     "valor_atualizado_reconhecido": 12586.02,
      "valor_considerado": 12586.02,
+     "valor_original_reconhecido": 12000.0,
      "valor_pc": 12000.0
     },
     "C2": {
      "delta_potencial": 1780.29,
      "quantidade": 3,
+     "quantidade_reconhecida": 2,
      "retroativo": 801.13,
      "valor_atualizado_em_analise": 21780.29,
+     "valor_atualizado_reconhecido": 27801.13,
      "valor_considerado": 47801.13,
+     "valor_original_reconhecido": 27000.0,
      "valor_pc": 47000.0
     }
    },
    "posterior_ao_corte": {
     "delta_potencial": 0.0,
     "quantidade": 0,
+    "quantidade_reconhecida": 0,
     "retroativo": 0.0,
     "valor_atualizado_em_analise": 0.0,
+    "valor_atualizado_reconhecido": 0.0,
     "valor_considerado": 0.0,
+    "valor_original_reconhecido": 0.0,
     "valor_pc": 0.0
    },
+   "posterior_ao_corte_por_ciclo": {},
    "sem_efeito_ciclo": {
     "delta_potencial": 0.0,
     "quantidade": 1,
+    "quantidade_reconhecida": 1,
     "retroativo": 0.0,
     "valor_atualizado_em_analise": 0.0,
+    "valor_atualizado_reconhecido": 18000.0,
     "valor_considerado": 18000.0,
+    "valor_original_reconhecido": 18000.0,
     "valor_pc": 18000.0
    }
   },
