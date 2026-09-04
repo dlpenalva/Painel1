@@ -458,6 +458,17 @@ if validade_sem_garantia:
 # ------------------------------------------------------------
 # 2) Alterações posteriores — contrato e garantia na mesma linha
 # ------------------------------------------------------------
+# VTA-POT-1: orientação, não acoplamento. A página segue 100% manual e sem ler
+# o VTA; apenas avisa que, em contratos apurados por Pedidos de Compra, o valor
+# atualizado do contrato já embute a parcela potencial incorporada por critério
+# prudencial — para que o fiscal não digite um valor sem ela.
+st.caption(
+    "Em contratos apurados por Pedidos de Compra, o Valor Total Atualizado "
+    "informado pela apuração já inclui o retroativo potencial incorporado por "
+    "critério prudencial. Ao digitar aqui o valor atualizado do contrato, "
+    "considere essa parcela."
+)
+
 st.subheader("Alterações posteriores à assinatura")
 st.caption(
     "Informe, em ordem cronológica, o que aconteceu depois da assinatura e como ficou a garantia "

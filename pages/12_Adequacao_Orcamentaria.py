@@ -289,9 +289,16 @@ with tab_base:
     ])
     render_leitura(linhas_base)
     if medidas_pc:
+        # VTA-POT-1: a adequação NÃO parte do VTA — ela soma retroativo
+        # reconhecido + diferença futura projetada. Por isso o potencial, que
+        # agora integra o VTA por critério prudencial, continua entrando aqui
+        # apenas como cenário de planejamento: não há soma dupla possível.
         st.caption("O retroativo potencial ainda não é reconhecido: entra apenas como "
                    "cenário de planejamento e não integra a complementação confirmada. "
-                   "O valor atualizado em análise é exposição — não é somado à adequação.")
+                   "O valor atualizado em análise é exposição — não é somado à adequação. "
+                   "Essa mesma parcela já integra o Valor Total Atualizado por critério "
+                   "prudencial; a adequação parte do retroativo reconhecido e da projeção, "
+                   "nunca do VTA, de modo que ela não é contada duas vezes.")
 
     st.markdown("**Data final da vigência contratual**")
     data_final_vigencia = st.text_input(
@@ -968,7 +975,9 @@ with tab_siga:
         f"{programacao_txt}\n\n"
         "4. Informações complementares:\n\n"
         f"Retroativo reconhecido considerado: {retroativo_txt}\n\n"
-        f"Retroativo potencial, ainda em aceitação e não incluído nesta adequação: {potencial_txt}\n\n"
+        "Retroativo potencial, ainda em aceitação pela área gestora e não incluído "
+        f"nesta adequação (já considerado no Valor Total Atualizado por critério "
+        f"prudencial): {potencial_txt}\n\n"
         f"Diferença futura projetada para {qtd_meses} meses: {diferenca_txt}\n\n"
         "Cenário de planejamento considerando eventual reconhecimento do retroativo potencial: "
         f"{cenario_txt}\n"

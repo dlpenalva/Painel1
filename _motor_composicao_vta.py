@@ -255,7 +255,14 @@ def _composicao_vta_pc(
     """Composicao automatica do VTA pelo metodo Pedidos de Compra (PC).
 
     VTA_PC = execucao historica atualizada pelo metodo PC
-             + remanescente fisico atualizado no MESMO corte de referencia.
+             + remanescente fisico atualizado no MESMO corte de referencia
+             + retroativo POTENCIAL dos PCs em analise (criterio prudencial).
+
+    VTA-POT-1: a terceira parcela e nova e vale SO para o metodo PC. Ela evita
+    subdimensionar o valor do contrato enquanto houver PC sujeito a confirmacao
+    pela area gestora, mas permanece identificada como POTENCIAL em todas as
+    saidas — nao vira retroativo reconhecido, valor a pagar nem PC pago. Ela e
+    exposta separadamente em `vta_sem_potencial` / `retroativo_potencial_vta`.
 
     - C0 executado: quando nao ha PC confiavel para C0, deriva da movimentacao
       fisica (QTD_REM_AJUSTADA_C0 - QTD_REM_AJUSTADA_C1) valorada ao VU_C0.
@@ -269,6 +276,15 @@ def _composicao_vta_pc(
     mesmo corte. PCs no ciclo vigente ou posteriores NAO entram na execucao
     (seriam dupla contagem contra o remanescente integral daquele corte).
     Base insuficiente -> CALCULO MANUAL REQUERIDO (nunca fabrica resultado).
+
+    Elegibilidade da parcela POTENCIAL (VTA-POT-1) — reaproveita a regra ja
+    homologada, sem criar criterio novo: e o DELTA_POTENCIAL (itens_PC!J) dos
+    PCs que JA compoem a execucao acima (entra no calculo, dentro da data de
+    corte e ciclo anterior ao vigente). Como itens_PC!H (reconhecido) e
+    itens_PC!J (potencial) sao mutuamente exclusivos por construcao, para cada
+    PC vale base + reconhecido + potencial = valor atualizado, uma unica vez.
+    PC posterior a data de corte, PC do ciclo vigente/posterior e PC sem efeito
+    financeiro continuam fora — exatamente como ja estavam.
     """
     controle = leitura.get("controle") or {}
     vigente = str(controle.get("ciclo_vigente") or "").strip().upper()
@@ -294,6 +310,12 @@ def _composicao_vta_pc(
     # original, nunca pelo fator integral.
     pc_atual: dict[int, float] = {}
     pc_base: dict[int, float] = {}
+    # VTA-POT-1: retroativo POTENCIAL dos MESMOS PCs que compoem a execucao.
+    # Acumulado no proprio laco de elegibilidade para que, por construcao, so
+    # entre o potencial de um PC cuja base ja esta no VTA — a garantia
+    # aritmetica contra dupla contagem (base + reconhecido + potencial = valor
+    # atualizado do PC, exatamente uma vez).
+    pc_potencial: dict[int, float] = {}
     posteriores = 0
     fora_do_corte = 0
     for it in itens_pc:
@@ -318,6 +340,7 @@ def _composicao_vta_pc(
             continue
         pc_atual[n] = pc_atual.get(n, 0.0) + considerado
         pc_base[n] = pc_base.get(n, 0.0) + _tofl(it.get("valor_pc"))
+        pc_potencial[n] = pc_potencial.get(n, 0.0) + _tofl(it.get("delta_potencial"))
     if posteriores:
         alertas.append(
             f"Composicao VTA-PC: {posteriores} PC(s) no ciclo vigente ({vigente}) "
@@ -471,6 +494,34 @@ def _composicao_vta_pc(
     total_exec = round(sum(l["valor_atualizado"] for l in execucao), 2)
     total_base = round(sum(l["valor_base"] for l in execucao), 2)
     valor_saldo = saldo["valor_atualizado"] if saldo else 0.0
+
+    # VTA-POT-1 — parcela POTENCIAL incorporada por criterio prudencial.
+    # So entra o potencial dos ciclos cuja execucao ja esta no VTA (mesmas
+    # chaves de `pc_atual`), portanto para cada PC vale exatamente uma vez:
+    #     valor_pc + retroativo_reconhecido + retroativo_potencial
+    #   = valor_pc + (F - D se pago) + (F - D se em analise)
+    #   = VALOR_ATUALIZADO do PC.
+    potencial_por_ciclo = [
+        {"ciclo": f"C{n}", "valor": round(pc_potencial[n], 2)}
+        for n in sorted(pc_potencial)
+        if round(pc_potencial[n], 2)
+    ]
+    total_potencial = round(sum(p["valor"] for p in potencial_por_ciclo), 2)
+    parcela_potencial = {
+        "descricao": "Retroativo potencial de PCs em analise (POTENCIAL)",
+        "valor_base": 0.0,
+        "fator_acumulado": None,
+        "valor_atualizado": total_potencial,
+        "ciclo": ", ".join(p["ciclo"] for p in potencial_por_ciclo),
+        "fonte": "potencial",
+        "natureza": "POTENCIAL",
+        "observacao": (
+            "Parcela incorporada ao VTA por criterio prudencial. Permanece "
+            "sujeita a confirmacao pela area gestora e nao representa, nesta "
+            "data, retroativo reconhecido a pagar."
+        ),
+    } if total_potencial else None
+    vta_sem_potencial = round(total_exec + valor_saldo, 2)
     return {
         "disponivel": True,
         "motivo": "",
@@ -483,7 +534,12 @@ def _composicao_vta_pc(
         "total_execucao_base": total_base,
         "retroativo_implicito": round(total_exec - total_base, 2),
         "total_aditivos_atualizados": 0.0,
-        "vta_composicao": round(total_exec + valor_saldo, 2),
+        "parcela_potencial": parcela_potencial,
+        "potencial_por_ciclo": potencial_por_ciclo,
+        "retroativo_potencial_vta": total_potencial,
+        "tem_parcela_potencial": bool(total_potencial),
+        "vta_sem_potencial": vta_sem_potencial,
+        "vta_composicao": round(vta_sem_potencial + total_potencial, 2),
     }
 
 
@@ -721,6 +777,11 @@ def montar_composicao_vta(leitura: dict[str, Any]) -> dict[str, Any]:
             linhas = [dict(l, tipo="execucao") for l in execucao]
             if saldo:
                 linhas.append(dict(saldo, tipo="saldo_remanescente"))
+            # VTA-POT-1: a parcela potencial entra como LINHA PROPRIA, sempre
+            # depois das parcelas economicas, marcada como POTENCIAL. Nunca se
+            # mistura com execucao nem com remanescente.
+            if pc.get("parcela_potencial"):
+                linhas.append(dict(pc["parcela_potencial"], tipo="potencial"))
             for idx, linha in enumerate(linhas):
                 linha["ref"] = chr(ord("A") + idx) if idx < 26 else str(idx + 1)
             return {
@@ -735,6 +796,11 @@ def montar_composicao_vta(leitura: dict[str, Any]) -> dict[str, Any]:
                 "total_execucao_base": pc["total_execucao_base"],
                 "retroativo_implicito": pc["retroativo_implicito"],
                 "total_aditivos_atualizados": 0.0,
+                "parcela_potencial": pc.get("parcela_potencial"),
+                "potencial_por_ciclo": pc.get("potencial_por_ciclo") or [],
+                "retroativo_potencial_vta": pc.get("retroativo_potencial_vta") or 0.0,
+                "tem_parcela_potencial": bool(pc.get("tem_parcela_potencial")),
+                "vta_sem_potencial": pc.get("vta_sem_potencial"),
                 "vta_composicao": pc["vta_composicao"],
                 "cenario_teorico": _cenario_teorico(leitura, por_ciclo),
                 "bloqueia_formalizacao": False,
@@ -754,6 +820,11 @@ def montar_composicao_vta(leitura: dict[str, Any]) -> dict[str, Any]:
             "total_execucao_base": 0.0,
             "retroativo_implicito": 0.0,
             "total_aditivos_atualizados": 0.0,
+            "parcela_potencial": None,
+            "potencial_por_ciclo": [],
+            "retroativo_potencial_vta": None,
+            "tem_parcela_potencial": False,
+            "vta_sem_potencial": None,
             "vta_composicao": None,
             "cenario_teorico": _cenario_teorico(leitura, por_ciclo),
             "bloqueia_formalizacao": False,

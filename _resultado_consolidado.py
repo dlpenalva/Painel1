@@ -92,6 +92,15 @@ def _normalizar_metodo(valor: Any) -> str | None:
     return texto
 
 
+def _moeda_br(valor: Any) -> str:
+    """Formata um numero ja apurado em Real brasileiro. Nao calcula nada."""
+    numero = _numero(valor)
+    if numero is None:
+        return "—"
+    texto = f"{float(numero):,.2f}".replace(",", "\x00").replace(".", ",")
+    return "R$ " + texto.replace("\x00", ".")
+
+
 def _unicos(valores: list[Any]) -> list[str]:
     saida: list[str] = []
     for valor in valores:
@@ -318,9 +327,13 @@ def montar_resultado_consolidado(
 
     potencial_num = _numero(retroativo_potencial)
     if potencial_num is not None and potencial_num != 0:
+        # VTA-POT-1: a parcela potencial passou a compor o VTA por critério
+        # prudencial, mas continua sendo POTENCIAL — a ressalva diz as duas
+        # coisas para que ninguém a leia como valor reconhecido a pagar.
         ressalvas.append(
             "Há valor potencial sujeito à aceitação pela área gestora e à condução "
-            "do eventual pagamento por essa área."
+            "do eventual pagamento por essa área; ele integra o VTA por critério "
+            "prudencial e não é retroativo reconhecido a pagar."
         )
 
     qtd_fora = _numero(fora_do_corte.get("quantidade"))
@@ -487,9 +500,41 @@ def montar_resultado_consolidado(
         ),
     }
 
+    # ------------------------------------------------------------------
+    # VTA-POT-1 — PARCELA POTENCIAL INCORPORADA AO VTA (metodo PC)
+    # ------------------------------------------------------------------
+    # Regra prudencial: no metodo PC o retroativo potencial passa a compor o
+    # VTA. A decomposicao vem PRONTA da fonte canonica (composicao_vta); aqui
+    # ela e apenas selecionada e rotulada — nenhuma soma nova, nenhum recalculo.
+    potencial_vta = (
+        _numero(composicao_origem.get("retroativo_potencial_vta"))
+        if metodo_pc else None
+    )
+    vta_sem_potencial = (
+        _numero(composicao_origem.get("vta_sem_potencial")) if metodo_pc else None
+    )
+    tem_parcela_potencial = bool(
+        metodo_pc and potencial_vta is not None and round(potencial_vta, 2) != 0
+    )
+    if tem_parcela_potencial and vta is not None:
+        frase_potencial = (
+            f"O VTA inclui {_moeda_br(potencial_vta)} de retroativo potencial, "
+            "incorporado por critério prudencial. Essa parcela permanece "
+            "sujeita à confirmação pela área gestora e não representa, nesta "
+            "data, retroativo reconhecido a pagar."
+        )
+    else:
+        frase_potencial = ""
+
     return {
         "vta": vta,
         "vta_origem": vta_origem,
+        # VTA-POT-1: os tres conceitos verificaveis do VTA no metodo PC.
+        # vta == vta_sem_potencial + retroativo_potencial_vta.
+        "vta_sem_potencial": vta_sem_potencial,
+        "retroativo_potencial_vta": potencial_vta,
+        "tem_parcela_potencial": tem_parcela_potencial,
+        "frase_parcela_potencial": frase_potencial,
         # Compatibilidade: o fallback pela ultima posicao de abertura deixou de
         # existir (VTA-U2, achado A), entao esta chave e sempre False. Mantida
         # porque integra o contrato publico ja consumido por testes.

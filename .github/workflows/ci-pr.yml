@@ -55,4 +55,6 @@ jobs:
             tests/test_contexto_coleta_perf_arch.py \
             tests/test_alinhamento_template_runtime.py \
             tests/test_itens_remanesc_fotografia_exata.py \
-            tests/test_resultados_final_1.py
+            tests/test_resultados_final_1.py \
+            tests/test_vta_pc_composicao.py \
+            tests/test_vta_potencial_pc.py

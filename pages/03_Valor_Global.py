@@ -4876,6 +4876,46 @@ _CSS_RESULTADO_CONSOLIDADO = """
     margin-top:0.28rem;
 }
 .resultado-valor-potencial { color:#9A6700; }
+/* VTA-POT-1: amarelo-palha muito claro, o mesmo do XLS (#FFF4CC). Destaca a
+   parcela POTENCIAL sem alarmar e sem colorir o VTA inteiro. */
+.resultado-potencial-inclusao {
+    background:#FFF4CC;
+    border-left:3px solid #D69E00;
+    border-radius:4px;
+    color:#7F6000;
+    font-size:0.8rem;
+    line-height:1.35;
+    margin-top:0.35rem;
+    padding:0.4rem 0.6rem;
+}
+.resultado-potencial-inclusao strong { font-weight:800; }
+.resultado-potencial-quadro {
+    border:1px solid #E2E8F0;
+    border-radius:5px;
+    font-size:0.86rem;
+    margin-top:0.55rem;
+    padding:0.5rem 0.7rem;
+}
+.resultado-potencial-quadro div {
+    display:flex;
+    gap:0.75rem;
+    justify-content:space-between;
+    padding:0.18rem 0.3rem;
+}
+.resultado-potencial-quadro .linha-potencial {
+    background:#FFF4CC;
+    border-radius:3px;
+    color:#7F6000;
+    font-weight:700;
+}
+.resultado-potencial-quadro .linha-total {
+    border-top:1px solid #CBD5E1;
+    color:#17324D;
+    font-weight:800;
+    margin-top:0.18rem;
+    padding-top:0.3rem;
+}
+.resultado-potencial-quadro span { font-variant-numeric:tabular-nums; }
 .resultado-status {
     border-left:4px solid;
     border-radius:5px;
@@ -5027,6 +5067,16 @@ def render_resultado_consolidado(resultado, diagnostico):
                     if vta_indisponivel else None
                 ),
             )
+            # VTA-POT-1: o VTA nunca aparece sem dizer que carrega uma parcela
+            # potencial. A faixa fica logo abaixo do proprio valor, no mesmo
+            # amarelo-palha do XLS, sem colorir o VTA.
+            if consolidado.get("tem_parcela_potencial"):
+                st.markdown(
+                    '<div class="resultado-potencial-inclusao">inclui '
+                    f'{html.escape(_moeda_resultado(consolidado.get("retroativo_potencial_vta")))}'
+                    ' de retroativo <strong>POTENCIAL</strong></div>',
+                    unsafe_allow_html=True,
+                )
         with col_reconhecido:
             _celula_resultado(
                 "Retroativo reconhecido",
@@ -5039,9 +5089,13 @@ def render_resultado_consolidado(resultado, diagnostico):
                     _moeda_resultado(_potencial),
                     potencial=True,
                     nota=(
+                        # VTA-POT-1: o card continua sendo o do potencial em
+                        # analise. O que mudou e o destino dele no VTA — dito
+                        # aqui para nao restar a leitura de "valor a pagar".
                         "Valor potencial relacionado a PCs ainda em análise. "
-                        "Não compõe os valores oficiais enquanto permanecer "
-                        "em análise."
+                        "Integra o VTA por critério prudencial, mas não é "
+                        "retroativo reconhecido a pagar enquanto a área "
+                        "gestora não confirmar."
                     ),
                 )
 
@@ -5150,6 +5204,21 @@ def render_resultado_consolidado(resultado, diagnostico):
         st.dataframe(pd.DataFrame(linhas_ui), hide_index=True, use_container_width=True)
     else:
         st.info(composicao.get("mensagem") or "A composição detalhada do VTA não está disponível.")
+    # VTA-POT-1: demonstracao explicita da composicao prudencial. Os tres
+    # numeros vem prontos da fonte canonica; a tela nao soma nada.
+    if consolidado.get("tem_parcela_potencial"):
+        st.markdown(
+            '<div class="resultado-potencial-quadro">'
+            '<div><span>Valor do contrato sem a parcela potencial</span>'
+            f'<span>{html.escape(_moeda_resultado(consolidado.get("vta_sem_potencial")))}</span></div>'
+            '<div class="linha-potencial"><span>Retroativo potencial — POTENCIAL</span>'
+            f'<span>{html.escape(_moeda_resultado(consolidado.get("retroativo_potencial_vta")))}</span></div>'
+            '<div class="linha-total"><span>VALOR TOTAL ATUALIZADO — VTA</span>'
+            f'<span>{html.escape(_moeda_resultado(consolidado.get("vta")))}</span></div>'
+            '</div>',
+            unsafe_allow_html=True,
+        )
+        st.caption(consolidado.get("frase_parcela_potencial") or "")
     st.markdown(
         '<div class="resultado-rodape-vta">VALOR TOTAL ATUALIZADO — VTA OFICIAL · '
         f'{html.escape(_moeda_resultado(consolidado.get("vta")))}</div>',

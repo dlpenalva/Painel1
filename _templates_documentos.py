@@ -207,6 +207,21 @@ def _titulo_quadro(doc: Document, texto: str) -> None:
     _adicionar_run(p, texto, negrito=True, tamanho=10)
 
 
+# VTA-POT-1: amarelo-palha muito claro, o mesmo do XLS, da web e do PDF.
+# Destaca APENAS a linha da parcela POTENCIAL — nunca o total, nunca vermelho.
+COR_SHADING_POTENCIAL = "FFF4CC"
+
+
+def _sombrear_linha(row, cor: str) -> None:
+    """Aplica sombreamento suave a uma linha de tabela (somente apresentacao)."""
+    for celula in row.cells:
+        shd = OxmlElement("w:shd")
+        shd.set(qn("w:val"), "clear")
+        shd.set(qn("w:color"), "auto")
+        shd.set(qn("w:fill"), cor)
+        celula._tc.get_or_add_tcPr().append(shd)
+
+
 def _configurar_box_discreto(paragrafo) -> None:
     ppr = paragrafo._p.get_or_add_pPr()
     shd = OxmlElement("w:shd")
@@ -369,7 +384,13 @@ def _adicionar_tabela(
     repetir_cabecalho: bool = True,
     destacar_placeholders: bool = False,
     destacar_placeholders_embutidos: bool = False,
+    linhas_destaque: set[int] | None = None,
 ) -> Any:
+    """Monta a tabela do documento.
+
+    ``linhas_destaque`` recebe indices de ``linhas`` (base 0, sem contar o
+    cabecalho) que saem no amarelo-palha da parcela POTENCIAL (VTA-POT-1).
+    """
     n_cols = len(cabecalho)
     tabela = doc.add_table(rows=1, cols=n_cols)
     tabela.style = "Table Grid"
@@ -384,10 +405,13 @@ def _adicionar_tabela(
         run.font.size = Pt(10)
     if repetir_cabecalho:
         _repetir_cabecalho(tabela)
-    for linha in linhas:
+    destaque = linhas_destaque or set()
+    for indice_linha, linha in enumerate(linhas):
         row = tabela.add_row()
         row.height = Pt(16)
         row.height_rule = WD_ROW_HEIGHT_RULE.AT_LEAST
+        if indice_linha in destaque:
+            _sombrear_linha(row, COR_SHADING_POTENCIAL)
         for i, celula_texto in enumerate(linha):
             row.cells[i].text = ""
             texto = remover_emojis_leve(celula_texto)
@@ -491,6 +515,12 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
         "vta_execucao_atualizada": sintese.get("vta_execucao_atualizada"),
         "vta_saldo_remanescente_atualizado": sintese.get(
             "vta_saldo_remanescente_atualizado"
+        ),
+        # VTA-POT-1: parcela prudencial lida pronta da sintese canonica.
+        "vta_sem_potencial": sintese.get("vta_sem_potencial"),
+        "vta_retroativo_potencial": sintese.get("vta_retroativo_potencial"),
+        "vta_tem_parcela_potencial": bool(
+            sintese.get("vta_tem_parcela_potencial")
         ),
         "fin_por_ciclo": fin_por_ciclo,
         "pc_por_ciclo": pc_por_ciclo,
@@ -743,12 +773,45 @@ def _descricao_vta_humana(parcela: dict) -> str:
     return "Parcela de composição do Valor Total Atualizado"
 
 
+ROTULO_PARCELA_POTENCIAL = "Retroativo potencial — POTENCIAL"
+
+
+def _texto_parcela_potencial(dados: dict) -> str:
+    """Frase unica da regra prudencial. Vazia quando nao ha parcela potencial."""
+    if not dados.get("vta_tem_parcela_potencial"):
+        return ""
+    potencial = _num_ou_none(dados.get("vta_retroativo_potencial"))
+    if potencial is None or not round(potencial, 2):
+        return ""
+    return (
+        f"O Valor Total Atualizado inclui {formatar_moeda(potencial)} de "
+        "retroativo potencial, considerado por critério prudencial. A parcela "
+        "permanece sujeita à confirmação pela área gestora e não representa, "
+        "nesta data, retroativo reconhecido a pagar."
+    )
+
+
+def _paragrafo_parcela_potencial(doc: Document, dados: dict) -> None:
+    texto = _texto_parcela_potencial(dados)
+    if not texto:
+        return
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    _adicionar_run(p, texto)
+
+
 def _composicao_didatica_vta(dados: dict) -> list[tuple[str, float | None]]:
     """Agrupa as parcelas em componentes didaticos (execucao por ciclo, saldo,
     aditivos), somando por rubrica. Nunca inventa; apenas soma o que existe.
+
+    VTA-POT-1: no metodo PC o VTA passa a carregar o retroativo POTENCIAL. Ele
+    entra como PARCELA PROPRIA e identificada — nunca diluido na execucao nem
+    no saldo —, e a conferencia de fechamento passa a considerar as tres
+    parcelas. O valor vem pronto da cadeia canonica; aqui nada e recalculado.
     """
     executado = _num_ou_none(dados.get("vta_execucao_atualizada"))
     saldo = _num_ou_none(dados.get("vta_saldo_remanescente_atualizado"))
+    potencial = _num_ou_none(dados.get("vta_retroativo_potencial")) or 0.0
     vta = _num_ou_none(dados.get("vta"))
     if vta is None:
         vta = _num_ou_none(dados.get("vta_previa"))
@@ -756,12 +819,15 @@ def _composicao_didatica_vta(dados: dict) -> list[tuple[str, float | None]]:
         executado is not None
         and saldo is not None
         and vta is not None
-        and abs(round(executado + saldo, 2) - round(vta, 2)) <= 0.01
+        and abs(round(executado + saldo + potencial, 2) - round(vta, 2)) <= 0.01
     ):
-        return [
+        linhas: list[tuple[str, float | None]] = [
             ("Execução atualizada anterior ao corte", round(executado, 2)),
             ("Saldo remanescente atualizado no corte", round(saldo, 2)),
         ]
+        if round(potencial, 2):
+            linhas.append((ROTULO_PARCELA_POTENCIAL, round(potencial, 2)))
+        return linhas
 
     parcelas = dados.get("parcelas_vta") or []
     grupos: dict[str, float | None] = {}
@@ -1366,7 +1432,10 @@ def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
     _titulo_quadro(doc, "Quadro 3 — Formação do Valor Total Atualizado")
     cabecalho = ["Ref.", "Descrição", "Valor"]
     linhas: list[list[str]] = []
+    destaque_potencial: set[int] = set()
     for i, (desc, valor) in enumerate(_composicao_didatica_vta(dados)):
+        if desc == ROTULO_PARCELA_POTENCIAL:
+            destaque_potencial.add(i)
         linhas.append([
             _LETRAS[i] if i < len(_LETRAS) else str(i + 1),
             desc,
@@ -1377,7 +1446,10 @@ def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
         "Valor Total Atualizado do Contrato",
         _vta_texto_doc(dados),
     ])
-    _adicionar_tabela(doc, cabecalho, linhas)
+    _adicionar_tabela(doc, cabecalho, linhas, linhas_destaque=destaque_potencial)
+    # VTA-POT-1: a parcela potencial nunca aparece sem dizer o que ela e — e o
+    # que ela NAO e. O valor vem pronto do payload canonico.
+    _paragrafo_parcela_potencial(doc, dados)
     doc.add_paragraph()
     # No método PC, o quadro de retroativos já acompanha o Quadro 2, onde a
     # separação entre reconhecido e potencial é explicada. Evita repetir a
@@ -1903,11 +1975,20 @@ def _ds_secao3_resultado(doc: Document, dados: dict, cm: dict) -> None:
             formatar_moeda(retro) if retro is not None
             else PREENCHER_TAG.format("Valor retroativo a pagar"),
         ],
-        [
-            "Valor Total Atualizado do Contrato",
-            vta or PREENCHER_TAG.format("Valor Total Atualizado do Contrato"),
-        ],
     ]
+    # VTA-POT-1: a parcela potencial entra ANTES do total, identificada como
+    # POTENCIAL e com shading suave. O VTA continua aparecendo UMA unica vez.
+    destaque_sintese: set[int] = set()
+    potencial_vta = _num_ou_none(dados.get("vta_retroativo_potencial"))
+    if dados.get("vta_tem_parcela_potencial") and potencial_vta:
+        destaque_sintese.add(len(linhas))
+        linhas.append([
+            ROTULO_PARCELA_POTENCIAL, formatar_moeda(potencial_vta),
+        ])
+    linhas.append([
+        "Valor Total Atualizado do Contrato",
+        vta or PREENCHER_TAG.format("Valor Total Atualizado do Contrato"),
+    ])
     _ds_titulo_quadro(doc, "Quadro 2 - Síntese financeira")
     if dados.get("metodo_pc") and situacao_pc:
         linhas_pc = _linhas_pc_documentais(dados)
@@ -1922,22 +2003,36 @@ def _ds_secao3_resultado(doc: Document, dados: dict, cm: dict) -> None:
             ["Ciclo", "Valor original", "Valor atualizado", "Retroativo reconhecido"],
             linhas_pc,
         )
+        # VTA-POT-1: no metodo PC o quadro de resultado mostra a parcela
+        # POTENCIAL separada, com shading suave, e so depois o VTA — que
+        # continua aparecendo UMA unica vez.
+        linhas_resultado: list[list[str]] = []
+        destaque_resultado: set[int] = set()
+        if dados.get("vta_tem_parcela_potencial") and potencial_vta:
+            destaque_resultado.add(len(linhas_resultado))
+            linhas_resultado.append([
+                ROTULO_PARCELA_POTENCIAL, formatar_moeda(potencial_vta),
+            ])
+        linhas_resultado.append([
+            "Valor Total Atualizado do Contrato",
+            vta or PREENCHER_TAG.format("Valor Total Atualizado do Contrato"),
+        ])
         _adicionar_tabela(
             doc,
             ["Resultado", "Valor"],
-            [[
-                "Valor Total Atualizado do Contrato",
-                vta or PREENCHER_TAG.format("Valor Total Atualizado do Contrato"),
-            ]],
+            linhas_resultado,
             destacar_placeholders=True,
             destacar_placeholders_embutidos=True,
+            linhas_destaque=destaque_resultado,
         )
     else:
         _adicionar_tabela(
             doc, ["Resultado", "Valor"], linhas,
             destacar_placeholders=True,
             destacar_placeholders_embutidos=True,
+            linhas_destaque=destaque_sintese,
         )
+    _paragrafo_parcela_potencial(doc, dados)
     doc.add_paragraph()
     _adicionar_box_retroativos(doc, dados, saneador=True)
 
