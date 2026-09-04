@@ -129,8 +129,9 @@ def _aplicar_itens_pc(ws, memoria) -> None:
 
     _titulo(ws, "M10:T10", TITULO_CONSIDERADOS)
     headers_considerados = (
-        "Ciclo", "PCs pagos/reconhecidos", "Valor original", "Valor atualizado",
-        "Retroativo reconhecido", "Valor em análise (área gest.)",
+        "Ciclo", "PCs pagos/reconhecidos", "Valor original reconhecido",
+        "Valor atualizado reconhecido", "Retroativo reconhecido",
+        "Valor em análise (regra vigente)",
         "Retroativo potencial", "Fora da data de corte",
     )
     for coluna, valor in enumerate(headers_considerados, start=13):
@@ -164,38 +165,75 @@ def _aplicar_itens_pc(ws, memoria) -> None:
             f'$B$2:$B$5001,">"&{corte}))'
         )
 
-    ws.Range("M17").Value = "TOTAL"
+    # A linha residual fecha visualmente tanto o universo ate o corte quanto o
+    # universo posterior. Ela inclui intervalos preclusos, indeterminados e
+    # qualquer CICLO_PC fora de C0:C4, sem alterar a classificacao operacional.
+    ws.Range("M17").Value = "Outras situações / fora dos ciclos"
+    corte = 'MEMORIA_RESULTADOS!$T$31'
+    ws.Range("N17").Formula = (
+        f'=IF({corte}="",COUNTIF($G$2:$G$5001,"Sim")-SUM(N12:N16),'
+        f'COUNTIFS($G$2:$G$5001,"Sim",$B$2:$B$5001,"<="&{corte})-SUM(N12:N16))'
+    )
+    for coluna, fonte in ((15, "D"), (16, "U"), (17, "H")):
+        letra = chr(64 + coluna)
+        ws.Cells(17, coluna).Formula = (
+            f'=IF({corte}="",SUMIFS(${fonte}$2:${fonte}$5001,$G$2:$G$5001,"Sim")'
+            f'-SUM({letra}12:{letra}16),SUMIFS(${fonte}$2:${fonte}$5001,'
+            f'$G$2:$G$5001,"Sim",$B$2:$B$5001,"<="&{corte})'
+            f'-SUM({letra}12:{letra}16))'
+        )
+    for coluna, fonte in ((18, "I"), (19, "J")):
+        letra = chr(64 + coluna)
+        ws.Cells(17, coluna).Formula = (
+            f'=IF({corte}="",SUM(${fonte}$2:${fonte}$5001)-SUM({letra}12:{letra}16),'
+            f'SUMIFS(${fonte}$2:${fonte}$5001,$B$2:$B$5001,"<="&{corte})'
+            f'-SUM({letra}12:{letra}16))'
+        )
+    ws.Range("T17").Formula = (
+        f'=IF({corte}="",0,SUMIFS($D$2:$D$5001,$B$2:$B$5001,">"&{corte})'
+        '-SUM(T12:T16))'
+    )
+
+    ws.Range("M18").Value = "TOTAL"
     for coluna in range(14, 21):
         letra = chr(64 + coluna)
-        ws.Cells(17, coluna).Formula = f"=SUM({letra}12:{letra}16)"
-    ws.Range("M12:N17").HorizontalAlignment = XL_CENTER
-    _moeda(ws.Range("O12:T17"))
-    ws.Range("O12:T17").HorizontalAlignment = XL_RIGHT
-    ws.Range("M17:T17").Font.Bold = True
-    ws.Range("M17:T17").Interior.Color = _bgr(AZUL_MUITO_CLARO)
-    _bordas(ws.Range("M11:T17"))
+        ws.Cells(18, coluna).Formula = f"=SUM({letra}12:{letra}17)"
+    ws.Range("M12:N18").HorizontalAlignment = XL_CENTER
+    _moeda(ws.Range("O12:T18"))
+    ws.Range("O12:T18").HorizontalAlignment = XL_RIGHT
+    ws.Range("M18:T18").Font.Bold = True
+    ws.Range("M17:T18").Interior.Color = _bgr(AZUL_MUITO_CLARO)
+    _bordas(ws.Range("M11:T18"))
 
     explicacoes = (
         "COMO OS PCs SÃO TRATADOS",
         "PC pago e dentro da data de corte: integra a execução considerada.",
-        "PC não pago e dentro da data de corte: permanece como valor em análise pela área gestora.",
+        "PC não pago e com data do PC até o corte: permanece em análise pela área gestora.",
         "C0: não recebe reajuste e não gera retroativo.",
         "C1 em diante: pode receber reajuste conforme os efeitos financeiros.",
         "PC pago + efeito financeiro: retroativo reconhecido.",
         "PC não pago + efeito financeiro: retroativo potencial.",
+        "PC não pago + sem efeito financeiro: permanece em análise; só há retroativo potencial quando houver efeito financeiro.",
+        "Valor original = PC reconhecido antes do reajuste; valor em análise = registro vigente dos PCs ainda em análise.",
         "PC posterior à data de corte: não participa desta apuração.",
     )
-    for linha, texto in enumerate(explicacoes, start=19):
+    for linha in range(19, 30):
+        rng = ws.Range(f"M{linha}:T{linha}")
+        if rng.MergeCells:
+            rng.UnMerge()
+        rng.ClearContents()
+        rng.Interior.Pattern = XL_NONE
+    for linha, texto in enumerate(explicacoes, start=20):
         ws.Range(f"M{linha}:T{linha}").Merge()
         ws.Range(f"M{linha}").Value = texto
         ws.Range(f"M{linha}:T{linha}").WrapText = True
         ws.Range(f"M{linha}:T{linha}").VerticalAlignment = XL_VCENTER
         ws.Range(f"M{linha}:T{linha}").HorizontalAlignment = XL_LEFT
         ws.Rows(f"{linha}:{linha}").RowHeight = 28
-    _titulo(ws, "M19:T19", explicacoes[0])
-    ws.Range("M20:T26").Interior.Color = _bgr(AZUL_MUITO_CLARO)
-    ws.Range("M20:T26").Font.Color = _bgr(TEXTO_PADRAO)
-    ws.Range("M20:T26").Font.Size = 9
+    _titulo(ws, "M20:T20", explicacoes[0])
+    ws.Range("M21:T29").Interior.Color = _bgr(AZUL_MUITO_CLARO)
+    ws.Range("M21:T29").Font.Color = _bgr(TEXTO_PADRAO)
+    ws.Range("M21:T29").Font.Size = 9
 
     larguras = {"M": 10, "N": 18, "O": 16, "P": 17, "Q": 18,
                 "R": 20, "S": 18, "T": 18}
@@ -249,21 +287,34 @@ def _aplicar_resultados(ws) -> None:
     ws.Range("H13").Formula = "=MEMORIA_RESULTADOS!$W$52"
 
     ws.Range("A15").Value = "2. EXECUÇÃO E RETROATIVO POR CICLO"
-    ws.Range("B15").Value = "Valor original"
-    ws.Range("C15").Value = "Valor atualizado"
-    ws.Range("D15").Value = "Retroativo"
-    ws.Range("A24").Value = "3. SALDO REMANESCENTE POR CICLO"
+    ws.Range("B15").Formula = (
+        '=IF($B$5="Financeiro","Valor pago",IF($B$5="PCs","Valor original",'
+        'IF($B$5="Itens","Valor consumido original","Valor de referência")))'
+    )
+    ws.Range("C15").Formula = (
+        '=IF($B$5="Financeiro","Valor devido atualizado",IF($B$5="PCs",'
+        '"Valor atualizado",IF($B$5="Itens","Valor consumido atualizado",'
+        '"Valor atualizado")))'
+    )
+    ws.Range("D15").Value = "Diferença"
+    ws.Range("A24").Value = "3. REMANESCENTE TOTAL POR CICLO"
     ws.Range("B25").Value = "Saldo sem reajuste"
     ws.Range("C25").Value = "Saldo atualizado"
     ws.Range("D25").Value = "Diferença"
     ws.Range("E23").Formula = (
-        '=IF($A$23="","","PCs anteriores ao início dos efeitos financeiros "'
-        '&"não geram retroativo.")'
+        '=IF(OR(MEMORIA_RESULTADOS!$B$4<>"PCs",MEMORIA_RESULTADOS!$T$28=0),'
+        '"","A diferença sem efeito financeiro não constitui "'
+        '&"retroativo. Consulte itens_PC -> EFEITO_FINANCEIRO_PC = Nao.")'
+    )
+    ws.Range("E16").Formula = (
+        '=IF($A$23="","",$A$23&CHAR(10)&IF($B$5="Financeiro","Valor pago: R$ ",'
+        '"Valor original: R$ ")&ROUND($B$23,2)&"  ·  Valor atualizado: R$ "&'
+        'ROUND($C$23,2)&"  ·  Diferença: R$ "&ROUND($D$23,2)&CHAR(10)&$E$23)'
     )
 
     if ws.Range("A53:H53").MergeCells:
         ws.Range("A53:H53").UnMerge()
-    _titulo(ws, "A53:H53", "6. RESUMO DOS PRINCIPAIS VALORES DA APURAÇÃO")
+    _titulo(ws, "A53:H53", "6. TOTAIS E INDICADORES DE CONFERÊNCIA")
     for linha in range(54, 67):
         rng = ws.Range(f"C{linha}:H{linha}")
         if rng.MergeCells:
@@ -312,21 +363,36 @@ def _aplicar_resultados(ws) -> None:
     ws.Rows("69:69").RowHeight = 34
     ws.Range("A70:H70").ClearContents()
     _limpar_bordas(ws.Range("A70:H70"))
+    ws.Range("A70:H70").Interior.Pattern = XL_NONE
+    ws.Range("A70").Formula = (
+        '=IF(MEMORIA_RESULTADOS!$B$4="Financeiro",'
+        '"Metodo Financeiro: a conferência abaixo compara o informado com a "&'
+        '"estimativa quantitativa. Esta conferência não altera o VTA Oficial.",'
+        'IF(MEMORIA_RESULTADOS!$B$4="PCs","Metodo PCs: o bloco 8 não se aplica "&'
+        '"ao método selecionado. Esta conferência não altera o VTA Oficial.",'
+        'IF(MEMORIA_RESULTADOS!$B$4="Itens","Metodo Consumido: o bloco 8 não se "&'
+        '"aplica ao método selecionado. Esta conferência não altera o VTA Oficial.",'
+        '"Selecione o método na aba CONTROLE.")))'
+    )
 
     if ws.Range("A71:H71").MergeCells:
         ws.Range("A71:H71").UnMerge()
-    _titulo(ws, "A71:H71", "8. DIFERENÇA ENTRE AS FORMAS DE CÁLCULO (FINANCEIRO)")
+    _titulo(ws, "A71:H71", "")
+    ws.Range("A71").Formula = (
+        '=IF(MEMORIA_RESULTADOS!$B$4="Financeiro",'
+        '"8. CONFERÊNCIA DA EXECUÇÃO (Financeiro) — não altera o VTA Oficial",'
+        '"8. CONFERÊNCIA DA EXECUÇÃO — Nao aplicavel ao metodo selecionado")'
+    )
     ws.Range("B72").Value = "Valor informado"
     ws.Range("C72").Value = "Valor estimado"
     ws.Range("D72").Value = "Diferença"
     ws.Range("E72").Value = "Resultado"
     for linha in range(73, 78):
         formula = str(ws.Range(f"E{linha}").Formula)
-        ws.Range(f"E{linha}").Formula = formula.replace('"OK"', '"SEM DIFERENÇA"').replace(
-            '"REVISAR"', '"VERIFICAR DIFERENÇA"'
-        )
+        ws.Range(f"E{linha}").Formula = formula
     ws.Range("A78:H78").ClearContents()
     _limpar_bordas(ws.Range("A78:H78"))
+    ws.Range("A78:H78").Interior.Pattern = XL_NONE
 
     if ws.Range("A79:H79").MergeCells:
         ws.Range("A79:H79").UnMerge()
@@ -350,7 +416,10 @@ def _aplicar_resultados(ws) -> None:
     ws.Range("C87").Formula = (
         '=IF($B$87="","Aguardando base para conferir.",'
         'IF(ABS($B$87)<=MEMORIA_RESULTADOS!$D$4,"SEM DIFERENÇA",'
-        '"VERIFICAR DIFERENÇA"))'
+        'IF(OR(ISNUMBER(MEMORIA_RESULTADOS!$B$24),'
+        'ISNUMBER(MEMORIA_RESULTADOS!$B$25)),'
+        '"Diferença corresponde ao ajuste manual registrado na seção 5.",'
+        '"VERIFICAR DIFERENÇA")))'
     )
 
 

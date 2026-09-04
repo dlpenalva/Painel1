@@ -2,9 +2,12 @@
 from __future__ import annotations
 
 from copy import deepcopy
-from datetime import date
+from datetime import date, datetime
 from io import BytesIO
+import gc
+import os
 from pathlib import Path
+import shutil
 
 import pytest
 from docx import Document
@@ -37,6 +40,7 @@ def _pc(
     analise: float = 0.0,
     potencial: float = 0.0,
     dentro: bool = True,
+    enquadramento: str = "CICLO",
 ) -> dict:
     return {
         "numero_pc": numero,
@@ -49,6 +53,7 @@ def _pc(
         "pc_pago_a_contratada": "Sim" if pago else "Nao",
         "efeito_financeiro_pc": "Sim" if efeito else "Nao",
         "dentro_do_corte": dentro,
+        "enquadramento": enquadramento,
         "entra_no_calculo": "Sim",
         "campos_vta": {"status_consolidacao": "COMPUTADO"},
     }
@@ -68,9 +73,9 @@ def _casos_basicos() -> list[dict]:
     ]
 
 
-def _caso_real_referencia() -> list[dict]:
-    # Entradas decomponíveis que reproduzem o benchmark; os totais são sempre
-    # produzidos por _totais_canonicos_pc, nunca gravados na implementação.
+def _caso_sintetico_consolidacao() -> list[dict]:
+    # Valores intermediarios ja calculados exercitam apenas a consolidacao e a
+    # apresentacao. Nao representam prova do calculo originario do XLS-fonte.
     return [
         _pc("C0-PAGO", "C0", 13_559_396.46, pago=True, efeito=False),
         _pc(
@@ -131,6 +136,27 @@ def test_a_f_regras_pc_permanecem_separadas_por_estado_e_corte():
     assert totais["posterior_ao_corte_por_ciclo"]["C1"]["valor_pc"] == 70.0
 
 
+def test_b_fora_do_corte_inclui_pc_fora_dos_ciclos_e_fecha_o_total():
+    fora = _pc(
+        "FORA-999999", "Fora dos ciclos", 999_999.99,
+        pago=True, efeito=False, dentro=False,
+    )
+    totais = _totais_canonicos_pc([fora], CORTE)
+    assert totais["posterior_ao_corte"]["valor_pc"] == 999_999.99
+    assert totais["informado"]["valor_pc"] - totais["ate_o_corte"]["valor_pc"] == 999_999.99
+
+
+def test_c_fora_do_corte_soma_c1_posterior_e_fora_dos_ciclos():
+    itens = [
+        _pc("C1-FORA", "C1", 100.01, pago=True, efeito=True, dentro=False),
+        _pc("SEM-CICLO-FORA", "Fora dos ciclos", 999_999.99,
+            pago=True, efeito=False, dentro=False),
+    ]
+    totais = _totais_canonicos_pc(itens, CORTE)
+    assert totais["posterior_ao_corte_por_ciclo"]["C1"]["valor_pc"] == 100.01
+    assert totais["posterior_ao_corte"]["valor_pc"] == 1_000_100.00
+
+
 def test_g_ausencia_nao_vira_zero_no_payload_documental():
     ausente = {"controle": {"modo": "PC"}, "totais_canonicos_pc": {
         "ate_o_corte": {"quantidade": 1, "retroativo": None},
@@ -146,8 +172,9 @@ def test_h_quadro_itens_pc_le_exclusivamente_colunas_canonicas():
     ws = load_workbook(TEMPLATE, data_only=False)["itens_PC"]
     assert ws["M10"].value == "PCs CONSIDERADOS NA APURAÇÃO ATÉ A DATA DE CORTE"
     assert [ws.cell(11, c).value for c in range(13, 21)] == [
-        "Ciclo", "PCs pagos/reconhecidos", "Valor original", "Valor atualizado",
-        "Retroativo reconhecido", "Valor em análise (área gest.)",
+        "Ciclo", "PCs pagos/reconhecidos", "Valor original reconhecido",
+        "Valor atualizado reconhecido", "Retroativo reconhecido",
+        "Valor em análise (regra vigente)",
         "Retroativo potencial", "Fora da data de corte",
     ]
     for linha in range(12, 17):
@@ -157,6 +184,9 @@ def test_h_quadro_itens_pc_le_exclusivamente_colunas_canonicas():
         assert "$I$2:$I$5001" in ws.cell(linha, 18).value
         assert "$J$2:$J$5001" in ws.cell(linha, 19).value
         assert 'MEMORIA_RESULTADOS!$T$31' in ws.cell(linha, 20).value
+    assert ws["M17"].value == "Outras situações / fora dos ciclos"
+    assert "SUMIFS($D$2:$D$5001" in ws["T17"].value
+    assert ws["T18"].value == "=SUM(T12:T17)"
 
 
 def test_i_j_resultados_preserva_formulas_e_vta():
@@ -166,7 +196,8 @@ def test_i_j_resultados_preserva_formulas_e_vta():
     assert ws["B22"].value == '=IF(COUNT(B16:B20)=0,"",ROUND(SUM(B16:B20),2))'
     assert ws["B38"].value == '=IF(OR(B36="",B37=""),"",ROUND(B37-B36,2))'
     assert ws["B86"].value == '=IF(VTA_FINAL="","",VTA_FINAL)'
-    assert ws["A70"].value is None and ws["A78"].value is None
+    assert "Esta conferência não altera o VTA Oficial" in ws["A70"].value
+    assert ws["A78"].value is None
 
 
 def test_o_formulas_e_referencias_foram_reancoradas_sem_tocar_a_l():
@@ -187,8 +218,9 @@ def test_o_formulas_e_referencias_foram_reancoradas_sem_tocar_a_l():
     assert wb.defined_names["EXECUTADO_APURADO"].value == "RESULTADOS!$B$83"
 
 
-def test_caso_real_de_referencia_fecha_sem_hardcode_na_implementacao():
-    totais = _totais_canonicos_pc(_caso_real_referencia(), CORTE)
+def test_consolidacao_sintetica_do_benchmark_fecha_sem_hardcode():
+    """Prova a consolidacao; homologacao do XLS-fonte original segue pendente."""
+    totais = _totais_canonicos_pc(_caso_sintetico_consolidacao(), CORTE)
     c0, c1 = totais["por_ciclo"]["C0"], totais["por_ciclo"]["C1"]
     assert c0["valor_pc"] == 13_802_204.37
     assert c0["valor_atualizado_reconhecido"] == 13_559_396.46
@@ -207,7 +239,7 @@ def test_caso_real_de_referencia_fecha_sem_hardcode_na_implementacao():
 
 
 def test_k_l_q_r_apostila_e_saneador_usam_os_mesmos_valores_e_abrem():
-    leitura = _leitura_documental(_caso_real_referencia())
+    leitura = _leitura_documental(_caso_sintetico_consolidacao())
     termo = gerar_termo_apostila(leitura)
     saneador = gerar_despacho_saneador(leitura)
     for conteudo in (termo, saneador):
@@ -226,6 +258,102 @@ def test_k_l_q_r_apostila_e_saneador_usam_os_mesmos_valores_e_abrem():
     texto_saneador = _texto_docx(saneador)
     assert "PENDÊNCIA TÉCNICA" in texto_saneador
     assert "PROVIDÊNCIA DA ÁREA GESTORA" in texto_saneador
+
+
+@pytest.mark.parametrize("enquadramento", ["INTERVALO_PRECLUSO", "INDETERMINADO"])
+def test_documentos_exibem_residual_e_total_fecha(enquadramento):
+    residual = _pc(
+        "RESIDUAL", "", 25.0, pago=True, efeito=False,
+        enquadramento=enquadramento,
+    )
+    leitura = _leitura_documental(_casos_basicos()[:3] + [residual])
+    for gerador in (gerar_termo_apostila, gerar_despacho_saneador):
+        doc = Document(BytesIO(gerador(leitura)))
+        tabelas = [[c.text for c in linha.cells] for t in doc.tables for linha in t.rows]
+        assert any(linha[0] == "Outras situações até a data de corte" for linha in tabelas)
+        assert any(linha[0] == "Total" and "R$ 325,00" in linha for linha in tabelas)
+
+
+def test_resultados_rotulos_sao_condicionais_aos_tres_metodos():
+    ws = load_workbook(TEMPLATE, data_only=False)["RESULTADOS"]
+    for celula, textos in {
+        "B15": ("Financeiro", "Valor pago", "PCs", "Valor original", "Itens", "Valor consumido original"),
+        "C15": ("Financeiro", "Valor devido atualizado", "PCs", "Valor atualizado", "Itens", "Valor consumido atualizado"),
+    }.items():
+        formula = str(ws[celula].value)
+        assert formula.startswith("=IF(")
+        for texto in textos:
+            assert texto in formula
+    assert ws["D15"].value == "Diferença"
+
+
+@pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar Excel COM",
+)
+def test_calculo_originario_excel_percorre_e_f_h_i_j_u_totais_e_resultados(tmp_path):
+    """Prova o motor real sem injetar H/I/J; nao substitui o XLS-fonte ausente."""
+    client = pytest.importorskip("win32com.client")
+    pythoncom = pytest.importorskip("pythoncom")
+    destino = tmp_path / "pc_ux_calculo_originario.xlsx"
+    shutil.copy2(TEMPLATE, destino)
+    pythoncom.CoInitialize()
+    excel = client.DispatchEx("Excel.Application")
+    excel.Visible = False
+    excel.DisplayAlerts = False
+    wb = None
+    try:
+        wb = excel.Workbooks.Open(str(destino), UpdateLinks=0, ReadOnly=False, CorruptLoad=0)
+        controle = wb.Worksheets("CONTROLE")
+        parametros = wb.Worksheets("parametros")
+        itens = wb.Worksheets("itens_PC")
+        for planilha in (controle, parametros, itens):
+            if planilha.ProtectContents:
+                planilha.Unprotect()
+        controle.Range("B1").Value = "PC (Pedidos de Compra)"
+        controle.Range("B2").Value = "C1"
+        controle.Range("B3").Value = datetime(2026, 8, 31)
+        parametros.Range("A2:A3").Value = (("Sim",), ("Sim",))
+        parametros.Range("C2:D2").Value = ((datetime(2025, 1, 1), datetime(2025, 12, 31)),)
+        parametros.Range("C3:E3").Value = ((datetime(2026, 1, 1), datetime(2026, 11, 30), 0.10),)
+        parametros.Range("H3").Value = datetime(2026, 2, 1)
+        itens.Range("A2:B2").Value = (("C1-ANALISE", datetime(2026, 3, 1)),)
+        itens.Range("D2").Value = 100.0
+        itens.Range("G2").Value = "Nao"
+        itens.Range("A3:B3").Value = (("FORA-CORTE", datetime(2026, 12, 1)),)
+        itens.Range("D3").Value = 999_999.99
+        itens.Range("G3").Value = "Sim"
+        itens.Range("A4:B4").Value = (("C1-PAGO", datetime(2026, 3, 1)),)
+        itens.Range("D4").Value = 200.0
+        itens.Range("G4").Value = "Sim"
+        itens.Range("A5:B5").Value = (("C1-POS-CORTE", datetime(2026, 9, 1)),)
+        itens.Range("D5").Value = 100.01
+        itens.Range("G5").Value = "Sim"
+        excel.CalculateFullRebuild()
+        assert itens.Range("C3").Value == "Fora dos ciclos"
+        assert float(itens.Range("E2").Value) == pytest.approx(1.1)
+        assert float(itens.Range("F2").Value) == pytest.approx(110.0)
+        assert float(itens.Range("H2").Value) == 0.0
+        assert float(itens.Range("I2").Value) == pytest.approx(110.0)
+        assert float(itens.Range("J2").Value) == pytest.approx(10.0)
+        assert float(itens.Range("U2").Value) == pytest.approx(100.0)
+        assert float(itens.Range("T18").Value) == pytest.approx(1_000_100.00)
+        resultados = wb.Worksheets("RESULTADOS")
+        assert float(resultados.Range("B17").Value) == pytest.approx(200.0)
+        assert float(resultados.Range("C17").Value) == pytest.approx(220.0)
+        assert float(resultados.Range("D17").Value) == pytest.approx(20.0)
+        wb.Save()
+        wb.Close(False)
+        wb = excel.Workbooks.Open(str(destino), UpdateLinks=0, ReadOnly=True, CorruptLoad=0)
+        assert float(wb.Worksheets("itens_PC").Range("T18").Value) == pytest.approx(1_000_100.00)
+    finally:
+        if wb is not None:
+            wb.Close(False)
+        excel.Quit()
+        del wb
+        del excel
+        gc.collect()
+        pythoncom.CoUninitialize()
 
 
 @pytest.mark.parametrize("metodo", ["financeiro", "consumido"])

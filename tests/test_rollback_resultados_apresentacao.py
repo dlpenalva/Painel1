@@ -16,6 +16,9 @@ DIFERENCA PERMITIDA CONTRA O DOADOR (allowlist explicita, item 4 do gate):
   RESULTADOS!H5/H8/C12  fator historico canonico do PR #139;
   defined names         os 14 do PR #135 + RETROATIVO_POTENCIAL_PC, todos
                         invisiveis e apontando para celulas tecnicas;
+  camada PC-UX-1       substitui somente os merges de titulos/secoes e amplia
+                        C54:H66 para explicacoes visiveis; o motor e seus pinos
+                        permanecem nas coordenadas historicas;
   pageSetup/@scale      cache derivado: com fitToPage ligado o Excel recalcula
                         esse atributo a cada gravacao (68 no doador, 65 aqui) e
                         o ignora ao imprimir. O que vale — fitToPage, ajuste a
@@ -59,11 +62,14 @@ LINHAS_OCULTAS |= LINHAS_OCULTAS_AJUSTES_MANUAIS
 GRUPO_OCULTO = ("J", 10, 14)                  # J:N; I volta a ser visivel
 
 MERGES = [
-    "A1:F1", "A2:F2", "A39:H39", "B7:H7", "C10:E10", "C11:E11", "C12:E12",
-    "C13:E13", "C34:D34", "C35:D35", "C36:D36", "C37:D37", "C38:D38", "C9:E9",
-    "D5:E5", "E16:H21", "E23:H23", "E25:H25", "E34:H34", "E35:H38", "F10:G10",
-    "F11:G11", "F12:G12", "F13:G13", "F9:G9", "G1:H1", "G2:H2", "G3:H3",
+    "A1:F1", "A2:F2", "A39:H39", "A53:H53", "A68:H68", "A69:H69",
+    "A71:H71", "A79:H79", "A80:H80", "A81:H81", "A9:H9", "B7:H7",
+    "C10:E10", "C11:E11", "C12:E12", "C13:E13", "C34:D34", "C35:D35",
+    "C36:D36", "C37:D37", "C38:D38", "D5:E5", "E16:H21", "E23:H23",
+    "E25:H25", "E34:H34", "E35:H38", "F10:G10", "F11:G11", "F12:G12",
+    "F13:G13", "G1:H1", "G2:H2", "G3:H3",
 ]
+MERGES += [f"C{linha}:H{linha}" for linha in range(54, 67)]
 # RESULTADOS-FINAL-1: o retroativo potencial ocupa E22:F22 (rotulo) e
 # G22:H22 (valor) — faixa que estava vazia, entre os merges E16:H21 e
 # E23:H23, que seguem intactos.
@@ -78,7 +84,9 @@ CF_SQREFS = [
 CF_SQREFS = sorted(CF_SQREFS + ["E22:H22"])
 # 143 do motor tecnico + E22/G22, as duas unicas formulas de apresentacao
 # acrescentadas pela RESULTADOS-FINAL-1.
-TOTAL_FORMULAS = 145
+# 145 do checkpoint + B64 da sintese + B15/C15 condicionais do PC-UX-1 +
+# a linha metodologica A70 restaurada. A71 continua formula, como no checkpoint.
+TOTAL_FORMULAS = 148
 
 PRINT_AREA = "'RESULTADOS'!$A$1:$H$50"
 MARGEM_LATERAL = 0.511811024

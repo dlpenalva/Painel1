@@ -71,6 +71,28 @@ ALERTA_COMP = (
 )
 
 
+def _validar_layout_itens_pc(wb) -> None:
+    """Falha fechado se o quadro lateral nao estiver no layout PC-UX-1."""
+    ws = wb.Worksheets("itens_PC")
+    esperado = (
+        "TODOS OS PCs CADASTRADOS POR CICLO",
+        "CICLO",
+        "C0",
+        "VALOR DOS PCs COM FATOR DO CICLO",
+    )
+    obtido = (
+        ws.Range("M1").Value,
+        ws.Range("M2").Value,
+        ws.Range("M3").Value,
+        ws.Range("P2").Value,
+    )
+    if obtido != esperado:
+        raise RuntimeError(
+            "Layout itens_PC incompativel com PC-UX-1; aplicacao cancelada "
+            f"antes de regravar o template: {obtido!r}"
+        )
+
+
 def _dv_lista(cel, itens: list[str], sep: str) -> None:
     val = cel.Validation
     try:
@@ -120,7 +142,7 @@ def _resultados_vta_pc(wb) -> None:
     MANUAL REQUERIDO (nao fabrica zero como VTA valido).
 
     Componentes (mesmo corte temporal; sem dupla contagem):
-      C0  = PC C0 (itens_PC!P2) se houver; senao movimentacao fisica
+      C0  = PC C0 (itens_PC!P3) se houver; senao movimentacao fisica
             (QTD_REM_AJUSTADA_C0 - _C1) x VU_C0.
       PCn = itens_PC.VALOR_ATUALIZADO_TOTAL por ciclo (col P), ciclos
             1 <= n < vigente (exclui vigente/posterior).
@@ -146,11 +168,11 @@ def _resultados_vta_pc(wb) -> None:
         ("S20", "Ciclo vigente (numero)"),
         ("T20", '=IFERROR(VALUE(MID(CONTROLE!$B$2,2,3)),"")'),
         ("S21", "C0 executado (PC C0 ou movimentacao fisica x VU_C0)"),
-        # PC C0 se houver (itens_PC!P2); senao soma dos C0 fisicos por item.
-        ("T21", '=IF(itens_PC!$P$2>0,itens_PC!$P$2,SUM($X$2:$X$201))'),
+        # PC C0 se houver (itens_PC!P3); senao soma dos C0 fisicos por item.
+        ("T21", '=IF(itens_PC!$P$3>0,itens_PC!$P$3,SUM($X$2:$X$201))'),
         ("S22", "Execucao PC (ciclos 1..vigente-1, VALOR_ATUALIZADO)"),
-        # ROW(P2:P6)-2 = numero do ciclo (0..4); soma P dos ciclos 1..vigente-1.
-        ("T22", '=SUMPRODUCT((ROW(itens_PC!$P$2:$P$6)-2>=1)*(ROW(itens_PC!$P$2:$P$6)-2<$T$20)*itens_PC!$P$2:$P$6)'),
+        # ROW(P3:P7)-3 = numero do ciclo (0..4); soma P dos ciclos 1..vigente-1.
+        ("T22", '=SUMPRODUCT((ROW(itens_PC!$P$3:$P$7)-3>=1)*(ROW(itens_PC!$P$3:$P$7)-3<$T$20)*itens_PC!$P$3:$P$7)'),
         ("S23", "Remanescente fisico atualizado (item a item, ciclo vigente)"),
         ("T23", '=SUM($Y$2:$Y$201)'),
         ("S24", "Base itemizada presente?"),
@@ -295,6 +317,7 @@ def aplicar(origem: Path, destino: Path) -> None:
         excel.Calculation = XL_CALC_MANUAL
         aba_ativa = wb.ActiveSheet.Name
         COB._validar_layout(wb)
+        _validar_layout_itens_pc(wb)
         _controle(wb, excel)
         _resultados(wb)
         _resultados_vta_pc(wb)

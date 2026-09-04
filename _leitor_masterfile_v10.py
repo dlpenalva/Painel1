@@ -2141,7 +2141,7 @@ def _totais_canonicos_pc(
         em_analise = float(item.get("valor_atualizado_em_analise") or 0.0)
         potencial = float(item.get("delta_potencial") or 0.0)
         pago_confirmado = str(item.get("pc_pago_a_contratada") or "").strip().lower() in (
-            "sim", "s", "true", "1", "yes"
+            "sim", "s", "true", "1"
         )
         enq = str(item.get("enquadramento") or ENQ_CICLO)
         no_corte = bool(item.get("dentro_do_corte", True))
@@ -3005,7 +3005,7 @@ def _ler_itens_pc_v10(
         )
         # Etapa 27B: G="Sim" -> reconhecido; G="Nao" OU vazio -> potencial
         # (vazio = pagamento nao confirmado; nunca zera silenciosamente).
-        pago_confirmado_fb = pago_norm in {"sim", "s", "true", "1", "yes"}
+        pago_confirmado_fb = pago_norm in {"sim", "s", "true", "1"}
         if retro_lido is None and pago_confirmado_fb:
             retro_lido = incremento_retroativo
         if analise_lida is None and not pago_confirmado_fb and valor not in (None, ""):

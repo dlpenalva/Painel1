@@ -83,7 +83,8 @@ def test_validacoes_dos_ajustes_manuais_sobrevivem(res):
 
 # --------------------------------------------------- 2. TABELA 6
 def test_tabela_6_titulo_e_cabecalho(res):
-    assert res["A53"].value == "6. RESUMO DOS PRINCIPAIS VALORES DA APURAÇÃO"
+    # Preserva o contrato anterior: PC-UX-1 nao precisa substituir este titulo.
+    assert res["A53"].value == "6. TOTAIS E INDICADORES DE CONFERÊNCIA"
     assert res["A53"].fill.fgColor.rgb == AZUL_ESCURO
     assert res["A53"].font.color.rgb == "FFFFFFFF"
     assert res["A53"].font.b is True
@@ -117,7 +118,7 @@ def test_tabela_7_bloco_explicativo(res):
     assert "COMO O VTA É CALCULADO" in str(res["A69"].value)
     assert "ajustes aplicáveis" in str(res["A69"].value)
     assert "saldo remanescente atualizado" in str(res["A69"].value)
-    assert res["A70"].value is None
+    assert "Esta conferência não altera o VTA Oficial" in str(res["A70"].value)
 
 
 # --------------------------------------------------- 4. TABELA 8

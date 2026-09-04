@@ -574,7 +574,6 @@
     "7. O índice contratual utilizado na análise, qual seja ICTI (Ipeadata), e o percentual acumulado apurado de 2,89%;",
     "2. Da apuração financeira do retroativo",
     "2.1. A apuração financeira consolidada indicou valor pago efetivo de R$ 7.300.890,27 e valor devido após o reajuste de R$ 7.325.569,19, resultando em valor retroativo a pagar de R$ 24.678,92, conforme Quadro 2.",
-    "3.1. Para fins de consolidação contratual, a composição do Valor Total Atualizado foi organizada de forma evolutiva, demonstrando a execução por ciclo, os remanescentes intermediários, o saldo remanescente final e os aditivos/supressões computáveis, quando aplicáveis.",
     "HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO",
     "5.2. Os aditivos e supressões computáveis integram o Valor Total Atualizado quando não estiverem refletidos na execução atualizada, no saldo remanescente ou no valor formalizado anterior, vedada a dupla contagem.",
     "Ref. | Ciclo | Percentual aplicado | Efeitos financeiros | Situação",
@@ -647,7 +646,6 @@
  },
  "web": {
   "avisos_da_leitura": [
-   "Somente a guia RESULTADOS deve possuir cor de aba.",
    "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 10: 'COMPUTA?'.",
    "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 11: 'NAO'.",
    "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 12: 'SIM'.",

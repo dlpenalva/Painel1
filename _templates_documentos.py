@@ -544,6 +544,8 @@ def _situacao_retroativos_pc(dados_operacionais: dict) -> dict[str, Any] | None:
         "em_analise": _valor("valor_atualizado_em_analise"),
         "potencial": _valor("delta_potencial"),
         "por_ciclo": totais_pc.get("por_ciclo") or {},
+        "intervalo_precluso": totais_pc.get("intervalo_precluso") or {},
+        "indeterminado": totais_pc.get("indeterminado") or {},
         "posterior_ao_corte": totais_pc.get("posterior_ao_corte") or {},
         "posterior_ao_corte_por_ciclo": (
             totais_pc.get("posterior_ao_corte_por_ciclo") or {}
@@ -1179,7 +1181,8 @@ def _texto_metodo_pc(dados: dict, *, objetivo: bool) -> str:
         return (
             "Metodologia utilizada: Pedidos de Compra (PC). Data de corte: "
             f"{corte}. Integram a execução considerada os PCs pagos com data até "
-            "o corte. PCs não pagos até o corte permanecem como valor em análise "
+            "o corte. PCs não pagos e com data do PC até o corte permanecem como "
+            "valor em análise "
             "pela área gestora. C0 não recebe reajuste; de C1 em diante, o "
             "reajuste observa os efeitos financeiros. PCs posteriores ao corte "
             "não integram esta apuração."
@@ -1187,7 +1190,8 @@ def _texto_metodo_pc(dados: dict, *, objetivo: bool) -> str:
     return (
         "No método Pedidos de Compra (PC), a data de corte adotada é "
         f"{corte}. Os PCs pagos com data até o corte integram a execução "
-        "considerada; os PCs não pagos permanecem como valor em análise pela "
+        "considerada; os PCs não pagos e com data do PC até o corte permanecem "
+        "como valor em análise pela "
         "área gestora. C0 não recebe reajuste e não gera retroativo. De C1 em "
         "diante, havendo efeito financeiro, a diferença dos PCs pagos constitui "
         "retroativo reconhecido e a diferença dos PCs não pagos constitui "
@@ -1212,6 +1216,38 @@ def _linhas_pc_documentais(dados: dict) -> list[list[str]]:
             formatar_moeda(original),
             formatar_moeda(atualizado),
             formatar_moeda(retro),
+        ])
+    totais = {
+        "valor_original_reconhecido": _num_ou_none(
+            situacao.get("original_reconhecido")
+        ),
+        "valor_atualizado_reconhecido": _num_ou_none(
+            situacao.get("atualizado_reconhecido")
+        ),
+        "retroativo": _num_ou_none(situacao.get("reconhecido")),
+    }
+    residuais = {}
+    for chave, total in totais.items():
+        if total is None:
+            residuais[chave] = None
+            continue
+        exibido = sum(
+            _num_ou_none((por_ciclo.get(ciclo) or {}).get(chave)) or 0.0
+            for ciclo in ("C0", "C1", "C2", "C3", "C4")
+        )
+        residuais[chave] = round(total - exibido, 2)
+    quantidade_residual = sum(
+        int((situacao.get(chave) or {}).get("quantidade") or 0)
+        for chave in ("intervalo_precluso", "indeterminado")
+    )
+    if quantidade_residual or any(
+        valor is not None and abs(valor) > 0.004 for valor in residuais.values()
+    ):
+        linhas.append([
+            "Outras situações até a data de corte",
+            formatar_moeda(residuais["valor_original_reconhecido"]),
+            formatar_moeda(residuais["valor_atualizado_reconhecido"]),
+            formatar_moeda(residuais["retroativo"]),
         ])
     return linhas
 
@@ -1310,20 +1346,22 @@ def _ta_secao2_retroativo(doc: Document, dados: dict, cm: dict) -> None:
 
 
 def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
-    _titulo_secao(doc, "3. DO VALOR TOTAL ATUALIZADO DO CONTRATO")
+    _titulo_secao(doc, "3. Do Valor Total Atualizado do Contrato")
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     if dados.get("_modo_branco"):
         # Etapa 29C.1.2: descreve a organizacao a ser dada, nao a ja realizada.
         _adicionar_run(p,
             "3.1. O Valor Total Atualizado do Contrato deverá considerar a "
-            "execução já realizada em valor atualizado, o saldo ainda a executar "
-            "em valor atualizado e os ajustes contratuais aplicáveis, quando houver.")
+            "execução já realizada em valor atualizado, os saldos ainda a executar "
+            "em valor atualizado, inclusive intermediários quando existirem, e os "
+            "ajustes contratuais aplicáveis, quando houver.")
     else:
         _adicionar_run(p,
             "3.1. O Valor Total Atualizado do Contrato considera a execução já "
-            "realizada em valor atualizado, o saldo ainda a executar em valor "
-            "atualizado e os ajustes contratuais aplicáveis, quando houver.")
+            "realizada em valor atualizado, os saldos ainda a executar em valor "
+            "atualizado, inclusive intermediários quando existirem, e os ajustes "
+            "contratuais aplicáveis, quando houver.")
 
     _titulo_quadro(doc, "Quadro 3 — Formação do Valor Total Atualizado")
     cabecalho = ["Ref.", "Descrição", "Valor"]
@@ -1871,11 +1909,25 @@ def _ds_secao3_resultado(doc: Document, dados: dict, cm: dict) -> None:
         ],
     ]
     _ds_titulo_quadro(doc, "Quadro 2 - Síntese financeira")
-    _adicionar_tabela(
-        doc, ["Resultado", "Valor"], linhas,
-        destacar_placeholders=True,
-        destacar_placeholders_embutidos=True,
-    )
+    if dados.get("metodo_pc") and situacao_pc:
+        linhas_pc = _linhas_pc_documentais(dados)
+        linhas_pc.append([
+            "Total",
+            formatar_moeda(situacao_pc.get("original_reconhecido")),
+            formatar_moeda(situacao_pc.get("atualizado_reconhecido")),
+            formatar_moeda(situacao_pc.get("reconhecido")),
+        ])
+        _adicionar_tabela(
+            doc,
+            ["Ciclo", "Valor original", "Valor atualizado", "Retroativo reconhecido"],
+            linhas_pc,
+        )
+    else:
+        _adicionar_tabela(
+            doc, ["Resultado", "Valor"], linhas,
+            destacar_placeholders=True,
+            destacar_placeholders_embutidos=True,
+        )
     doc.add_paragraph()
     _adicionar_box_retroativos(doc, dados, saneador=True)
 
@@ -1987,11 +2039,15 @@ def _ds_secao5_pendencias(doc: Document, dados: dict, cm: dict) -> None:
         _adicionar_run(p_gestora, "PROVIDÊNCIA DA ÁREA GESTORA: ", negrito=True)
         _adicionar_run(
             p_gestora,
-            "Permanecem sujeitos à confirmação pela área gestora os Pedidos de "
-            "Compra ainda não reconhecidos, aos quais está associado retroativo "
-            f"potencial de {formatar_moeda(potencial)}. Esse valor não integra o "
-            "retroativo reconhecido nesta apuração.",
+            "Há Pedidos de Compra em análise pela área gestora.",
         )
+        if potencial is not None:
+            _adicionar_run(
+                p_gestora,
+                " O retroativo potencial associado é de "
+                f"{formatar_moeda(potencial)} e não integra o retroativo "
+                "reconhecido nesta apuração.",
+            )
 
 
 def _ds_ha_pendencia_documental(dados: dict, cm: dict) -> bool:

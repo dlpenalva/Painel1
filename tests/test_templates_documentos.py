@@ -176,7 +176,7 @@ def test_apostila_estrutura_final_1_a_8_sem_duplicidades():
     assert "FORMALIZA-SE O PRESENTE TERMO DE APOSTILA:" in texto
     assert "1. Dos reajustes concedidos" in texto
     assert "2. Da apuração financeira do retroativo" in texto
-    assert "3. DO VALOR TOTAL ATUALIZADO DO CONTRATO" in texto
+    assert "3. Do Valor Total Atualizado do Contrato" in texto
     assert "4. Dos valores unitários" in texto
     assert "5. Dos aditivos e supressões considerados" in texto
     assert "6. Permanecem inalteradas e em pleno vigor" in texto

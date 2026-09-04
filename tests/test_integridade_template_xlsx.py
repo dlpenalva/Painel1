@@ -56,7 +56,8 @@ FORMULAS_POR_ABA = {
     # Etapa 26G: grade escalada para a capacidade canonica (5.000 PCs
     # x 8 colunas de formula) + resumo lateral N2:T6.
     # 45042 = 40042 anteriores + 5000 da coluna U (VALOR_CONSIDERADO, U2:U5001).
-    "itens_PC": 45084,
+    # PC-UX-1: sete formulas residuais fecham os universos ate/apos o corte.
+    "itens_PC": 45091,
     "aditivos": 1393,
     # Fonte unica da posicao fisica: +199 de QTD_REM_ATUAL (B2:B200), que deixou
     # de ser digitada e passou a buscar CICLO_EM_EXECUCAO por ITEM, e +3 do
@@ -152,7 +153,8 @@ FORMULAS_POR_ABA = {
     # Nenhuma formula economica foi criada, movida ou recalculada — A70 e B64
     # foram apenas reescritas (continuam sendo formulas, nao somam).
     # PC-UX-1 libera A70 para criar o respiro entre os blocos 7 e 8.
-    "RESULTADOS": 144,
+    # PC-UX-1: A70 e B15/C15 voltam a ser condicionais; A71 segue condicional.
+    "RESULTADOS": 148,
 }
 
 

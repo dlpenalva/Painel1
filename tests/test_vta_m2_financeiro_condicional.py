@@ -155,7 +155,7 @@ def test_g_c4_sempre_nao_comparavel_sem_checkpoint_de_fechamento(wb):
     )
 
 
-def test_e_status_so_gera_revisar_quando_ambas_comparaveis(wb):
+def test_e_status_so_gera_alerta_quando_ambas_comparaveis(wb):
     """VTA-M2.2 item 13.E: o status so pode ser REVISAR/OK quando a
     execucao teorica (coluna C) nao for NAO COMPARAVEL nem vazia."""
     res = wb["RESULTADOS"]
@@ -167,8 +167,11 @@ def test_e_status_so_gera_revisar_quando_ambas_comparaveis(wb):
         assert f"NOT(ISNUMBER(C{linha}))" in formula
         # a ramificacao REVISAR/OK so e alcancada depois desse guard-clause.
         indice_guard = formula.index(f"NOT(ISNUMBER(C{linha}))")
-        indice_revisar = formula.index("REVISAR")
-        assert indice_guard < indice_revisar
+        # PC-UX-1 substitui conscientemente apenas os textos de status; o gate
+        # quantitativo e a ordem do guard herdados do checkpoint permanecem.
+        indice_alerta = formula.index("VERIFICAR DIFERENÇA")
+        assert "SEM DIFERENÇA" in formula
+        assert indice_guard < indice_alerta
 
 
 def test_h_nome_definido_vta_final_aponta_para_b26(wb):
