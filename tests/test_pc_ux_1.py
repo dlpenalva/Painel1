@@ -13,6 +13,7 @@ import pytest
 from docx import Document
 from openpyxl import load_workbook
 
+from _coleta_oficial import gerar_coleta_oficial_preenchida
 from _leitor_masterfile_v10 import _totais_canonicos_pc
 from _templates_documentos import (
     _extrair_dados,
@@ -174,6 +175,7 @@ def test_h_quadro_itens_pc_le_exclusivamente_colunas_canonicas():
     ws = load_workbook(TEMPLATE, data_only=False)["itens_PC"]
     assert ws["M1"].value == "TODOS OS PCs CADASTRADOS POR CICLO"
     assert ws["M8"].value == "Outras situações / fora dos ciclos"
+    assert ws.column_dimensions["M"].width >= 20
     assert ws["O8"].value == "=SUM($D$2:$D$5001)-SUM(O3:O7)"
     assert ws["P8"].value == "=SUM($F$2:$F$5001)-SUM(P3:P7)"
     assert ws["Q8"].value == "=SUM($H$2:$H$5001)-SUM(Q3:Q7)"
@@ -196,8 +198,67 @@ def test_h_quadro_itens_pc_le_exclusivamente_colunas_canonicas():
         assert "$J$2:$J$5001" in ws.cell(linha, 19).value
         assert 'MEMORIA_RESULTADOS!$T$31' in ws.cell(linha, 20).value
     assert ws["M17"].value == "Outras situações / fora dos ciclos"
+    assert ws["M17"].alignment.wrap_text is True
     assert "SUMIFS($D$2:$D$5001" in ws["T17"].value
     assert ws["T18"].value == "=SUM(T12:T17)"
+
+
+def test_pipeline_real_entrega_os_tres_blocos_pc_ux_sem_cabecalho_legado():
+    payload = {
+        "origem": "Reajustes Múltiplos",
+        "indice": "IPCA",
+        "data_base_original": "01/01/2025",
+        "variacao_acumulada": 0.05,
+        "fator_acumulado": 1.05,
+        "ciclos": [{
+            "ciclo": "C1",
+            "data_inicio": "01/01/2026",
+            "data_pedido": "15/03/2026",
+            "percentual_aplicado": 0.05,
+            "financeiro_inicio": "01/03/2026",
+            "objeto_analise_atual": True,
+            "situacao": "TEMPESTIVO",
+        }],
+    }
+    wb = load_workbook(
+        BytesIO(gerar_coleta_oficial_preenchida(payload)), data_only=False
+    )
+    ws = wb["itens_PC"]
+    assert (ws["M1"].value, ws["M10"].value, ws["M20"].value) == (
+        "TODOS OS PCs CADASTRADOS POR CICLO",
+        "PCs CONSIDERADOS NA APURAÇÃO ATÉ A DATA DE CORTE",
+        "COMO OS PCs SÃO TRATADOS",
+    )
+    assert [ws.cell(2, coluna).value for coluna in range(13, 21)] == [
+        "CICLO", "QTD. DE PCs", "VALOR ORIGINAL TOTAL",
+        "VALOR DOS PCs COM FATOR DO CICLO", "RETROATIVO RECONHECIDO",
+        "VALOR EM ANÁLISE (ÁREA GEST.)", "RETROATIVO POTENCIAL",
+        "QTD. COM ALERTA",
+    ]
+    assert [ws.cell(11, coluna).value for coluna in range(13, 21)] == [
+        "Ciclo", "PCs pagos/reconhecidos", "Valor original reconhecido",
+        "Valor atualizado reconhecido", "Retroativo reconhecido",
+        "Valor em análise (regra vigente)", "Retroativo potencial",
+        "Fora da data de corte",
+    ]
+    assert [ws.cell(linha, 13).value for linha in range(3, 10)] == [
+        "C0", "C1", "C2", "C3", "C4",
+        "Outras situações / fora dos ciclos", "TOTAL",
+    ]
+    assert [ws.cell(linha, 13).value for linha in range(12, 19)] == [
+        "C0", "C1", "C2", "C3", "C4",
+        "Outras situações / fora dos ciclos", "TOTAL",
+    ]
+    assert ws["M17"].alignment.wrap_text is True
+    assert ws.column_dimensions["M"].width >= 20
+    assert ws["U1"].value == "VALOR_CONSIDERADO"
+    assert "M1:T1" in {str(faixa) for faixa in ws.merged_cells.ranges}
+    assert ws["U1"].fill.fgColor.rgb != ws["M1"].fill.fgColor.rgb
+    assert ws.column_dimensions["V"].hidden is True
+    assert not {
+        "QTD_PC", "VALOR_PC_TOTAL", "VALOR_ATUALIZADO_TOTAL",
+        "VALOR_ATUALIZADO_EM_ANALISE", "QTD_COM_CHECK",
+    } & {ws.cell(2, coluna).value for coluna in range(13, 21)}
 
 
 def test_i_j_resultados_preserva_formulas_e_vta():

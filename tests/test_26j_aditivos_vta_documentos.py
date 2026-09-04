@@ -41,7 +41,7 @@ def test_itens_pc_apresenta_reconhecido_e_potencial_com_cores_opostas(wb_runtime
     assert ws["R2"].value == "VALOR EM ANÁLISE (ÁREA GEST.)"
     assert ws["S2"].value == "RETROATIVO POTENCIAL"
     assert ws["Q11"].value == "Retroativo reconhecido"
-    assert ws["R11"].value == "Valor em análise (área gest.)"
+    assert ws["R11"].value == "Valor em análise (regra vigente)"
     assert ws["S11"].value == "Retroativo potencial"
     assert ws["Q2"].fill.fgColor.rgb == "FFC6EFCE"
     assert ws["R2"].fill.fgColor.rgb == "FFF2F2F2"
