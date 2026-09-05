@@ -106,7 +106,13 @@ FORMULAS_POR_ABA = {
     # formula nova. B26/B28/C33/D33 sao reescritas no ramo Itens, nao
     # acrescentadas. Financeiro/PC intactos).
     # PR 2: +1 formula publicada (name RETROATIVO_POTENCIAL_PC).
-    "MEMORIA_RESULTADOS": 4411,
+    # VTA-POT-1: +3 (4411 -> 4414) — T41 (retroativo potencial APURADO, que
+    # pode ser negativo), T39 = MAX(T41,0) (piso prudencial: o potencial
+    # elegivel ao VTA,
+    # espelho do motor Python) e T40 (VTA-PC antes da parcela potencial, o
+    # subtotal demonstrado em RESULTADOS!C86). T25 e REESCRITA (passa a somar
+    # T39), nao acrescentada; Financeiro/Itens e todo o resto ficam intactos.
+    "MEMORIA_RESULTADOS": 4414,
     # 57 do prototipo + 4 selos por tabela + 1 premissa da estimativa - 1
     # helper J4 removido (status global agora agrega os selos H8/H14/H24/H33).
     # 26G: +5 (linha executiva A23:E23 dos PCs sem efeito financeiro).
@@ -156,7 +162,16 @@ FORMULAS_POR_ABA = {
     # foram apenas reescritas (continuam sendo formulas, nao somam).
     # PC-UX-1 libera A70 para criar o respiro entre os blocos 7 e 8.
     # PC-UX-1: A70 e B15/C15 voltam a ser condicionais; A71 segue condicional.
-    "RESULTADOS": 148,
+    # VTA-POT-1: +2 (148 -> 150), ambas de APRESENTACAO e ambas dentro do
+    # quadro 9 (a aba continua terminando na linha 87 — o contrato do rollback
+    # da camada UX2 segue intacto). A84 deixa de ser texto fixo e vira formula
+    # method-aware: a parcela "(+)" passa a ser o retroativo POTENCIAL no
+    # metodo PC. C86 deixa de ser texto fixo e demonstra, so no metodo PC com
+    # potencial, "VTA antes da parcela potencial + POTENCIAL = VTA". B84/C84
+    # sao REESCRITAS, nunca acrescentadas; as ancoras EXECUTADO_APURADO (B83),
+    # AJUSTES_DEVIDOS (B84), VTA_FINAL (B86) e CONFERENCIA_FORMACAO_VTA (B87)
+    # ficam nas mesmas coordenadas.
+    "RESULTADOS": 150,
 }
 
 

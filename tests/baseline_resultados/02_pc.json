@@ -147,10 +147,10 @@
    "A77": "C4",
    "A79": "9. VALOR TOTAL ATUALIZADO DO CONTRATO",
    "A80": "O VTA reúne a execução já realizada, os ajustes contratuais aplicáveis e o saldo que ainda falta executar, todos nos valores correspondentes.",
-   "A81": "Para conferir: VTA oficial = execução apurada + ajustes aplicáveis + saldo remanescente atualizado.",
+   "A81": "Para conferir: VTA oficial = execução apurada + parcela adicional do método + saldo remanescente atualizado.",
    "A82": "Parcela",
    "A83": "Executado apurado",
-   "A84": "(+) Ajustes ainda devidos",
+   "A84": "=IF(MEMORIA_RESULTADOS!$B$4=\"PCs\",\"(+) Retroativo potencial — POTENCIAL\",\"(+) Ajustes ainda devidos\")",
    "A85": "(+) Remanescente atualizado",
    "A86": "(=) VTA Oficial",
    "A87": "Diferença entre as formas de cálculo (deve ser R$ 0,00)",
@@ -212,7 +212,7 @@
    "B77": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",IF(COUNTIFS(financeiro!$B$2:$B$73,\"c4\",financeiro!$C$2:$C$73,\"<>\")=0,\"\",ROUND(SUMIFS(financeiro!$C$2:$C$73,financeiro!$B$2:$B$73,\"c4\"),2)))",
    "B82": "Valor",
    "B83": "=IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",IF(MEMORIA_RESULTADOS!$D$20=\"\",\"\",MEMORIA_RESULTADOS!$D$20),IF(MEMORIA_RESULTADOS!$B$4=\"Itens\",IF(MEMORIA_RESULTADOS!$F$20=\"\",\"\",MEMORIA_RESULTADOS!$F$20),IF(MEMORIA_RESULTADOS!$B$4=\"PCs\",IF(MEMORIA_RESULTADOS!$T$25=\"CALCULO MANUAL REQUERIDO\",\"\",ROUND(MEMORIA_RESULTADOS!$T$21+MEMORIA_RESULTADOS!$T$22,2)),\"\")))",
-   "B84": "=IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",IF(MEMORIA_RESULTADOS!$B$21=\"\",\"\",MEMORIA_RESULTADOS!$B$21),IF(OR(MEMORIA_RESULTADOS!$B$4=\"Itens\",MEMORIA_RESULTADOS!$B$4=\"PCs\"),0,\"\"))",
+   "B84": "=IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",IF(MEMORIA_RESULTADOS!$B$21=\"\",\"\",MEMORIA_RESULTADOS!$B$21),IF(MEMORIA_RESULTADOS!$B$4=\"PCs\",IF(MEMORIA_RESULTADOS!$T$25=\"CALCULO MANUAL REQUERIDO\",\"\",MEMORIA_RESULTADOS!$T$39),IF(MEMORIA_RESULTADOS!$B$4=\"Itens\",0,\"\")))",
    "B85": "=IF(MEMORIA_RESULTADOS!$D$35=\"\",\"\",MEMORIA_RESULTADOS!$D$35)",
    "B86": "=IF(VTA_FINAL=\"\",\"\",VTA_FINAL)",
    "B87": "=IF(OR($B$83=\"\",$B$85=\"\",$B$86=\"\"),\"\",ROUND($B$86-($B$83+N($B$84)+$B$85),2))",
@@ -263,9 +263,9 @@
    "C77": "=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",\"Nao aplicavel ao metodo selecionado\",\"Sem historico quantitativo suficiente\")",
    "C82": "De onde vem",
    "C83": "=IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",\"Valores efetivamente pagos, conforme informados na aba Financeiro.\",IF(MEMORIA_RESULTADOS!$B$4=\"Itens\",\"Quantidades consumidas x valores unitarios aplicaveis, ja atualizados.\",IF(MEMORIA_RESULTADOS!$B$4=\"PCs\",\"Valor considerado dos Pedidos de Compra anteriores ao ciclo vigente.\",\"Selecione o metodo em CONTROLE!B1.\")))",
-   "C84": "=IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",\"Reajuste ja reconhecido e ainda nao contido no valor pago.\",IF(MEMORIA_RESULTADOS!$B$4=\"Itens\",\"Nao aplicavel: o reajuste ja esta dentro da execucao atualizada.\",IF(MEMORIA_RESULTADOS!$B$4=\"PCs\",\"Nao aplicavel: o retroativo ja esta dentro do valor considerado dos PCs.\",\"\")))",
+   "C84": "=IF(MEMORIA_RESULTADOS!$B$4=\"Financeiro\",\"Reajuste ja reconhecido e ainda nao contido no valor pago.\",IF(MEMORIA_RESULTADOS!$B$4=\"PCs\",IF(MEMORIA_RESULTADOS!$T$41<0,\"POTENCIAL — NAO INCORPORADO AO VTA. Parcela potencial apurada: R$ \"&TEXT(MEMORIA_RESULTADOS!$T$41,\"#.##0,00\")&\". Por criterio prudencial, valores potenciais negativos nao reduzem o VTA.\",\"Retroativo POTENCIAL dos PCs ainda em analise pela area gestora, incorporado ao VTA por criterio prudencial. Nao e retroativo reconhecido a pagar.\"),IF(MEMORIA_RESULTADOS!$B$4=\"Itens\",\"Nao aplicavel: o reajuste ja esta dentro da execucao atualizada.\",\"\")))",
    "C85": "Saldo que ainda falta executar, já atualizado.",
-   "C86": "Resultado final do método de apuração selecionado.",
+   "C86": "=IF(AND(MEMORIA_RESULTADOS!$B$4=\"PCs\",ISNUMBER(MEMORIA_RESULTADOS!$T$40),ISNUMBER(MEMORIA_RESULTADOS!$T$41),MEMORIA_RESULTADOS!$T$41<>0),\"VTA antes da parcela potencial: R$ \"&TEXT(MEMORIA_RESULTADOS!$T$40,\"#.##0,00\")&\"  +  Parcela potencial no VTA: R$ \"&TEXT(MEMORIA_RESULTADOS!$T$39,\"#.##0,00\")&\"  =  VALOR TOTAL ATUALIZADO \"&\"— VTA.\"&IF(MEMORIA_RESULTADOS!$T$41<0,\"  Parcela potencial apurada: R$ \"&TEXT(MEMORIA_RESULTADOS!$T$41,\"#.##0,00\")&\". Por critério prudencial, valores potenciais negativos não \"&\"reduzem o VTA.\",\"  O VTA inclui essa parcela por critério prudencial; ela permanece \"&\"sujeita à confirmação pela área gestora e não representa, nesta data, \"&\"retroativo reconhecido a pagar.\"),\"Resultado final do método de apuração selecionado.\")",
    "C87": "=IF($B$87=\"\",\"Aguardando base para conferir.\",IF(ABS($B$87)<=MEMORIA_RESULTADOS!$D$4,\"SEM DIFERENÇA\",IF(OR(ISNUMBER(MEMORIA_RESULTADOS!$B$24),ISNUMBER(MEMORIA_RESULTADOS!$B$25)),\"Diferença corresponde ao ajuste manual registrado na seção 5.\",\"VERIFICAR DIFERENÇA\")))",
    "D15": "Diferença",
    "D16": "=IF(B16=\"\",\"\",IF(MEMORIA_RESULTADOS!$E$10=\"\",0,MEMORIA_RESULTADOS!$E$10))",
@@ -388,7 +388,9 @@
    "QTD_REM_OFICIAL": "MEMORIA_RESULTADOS!$B$35",
    "REM_ATUALIZADO_OFICIAL": "MEMORIA_RESULTADOS!$D$35",
    "REM_BASE_OFICIAL": "MEMORIA_RESULTADOS!$C$35",
+   "RETROATIVO_POTENCIAL_APURADO": "MEMORIA_RESULTADOS!$T$41",
    "RETROATIVO_POTENCIAL_PC": "MEMORIA_RESULTADOS!$T$38",
+   "RETROATIVO_POTENCIAL_VTA": "MEMORIA_RESULTADOS!$T$39",
    "RETRO_FIN": "MEMORIA_RESULTADOS!$B$15",
    "RETRO_ITENS": "MEMORIA_RESULTADOS!$D$15",
    "RETRO_OFICIAL": "MEMORIA_RESULTADOS!$B$16",
@@ -400,7 +402,8 @@
    "VTA_ATUALIZACAO_CHEIA": "RESULTADOS!$B$12",
    "VTA_CALCULADO": "MEMORIA_RESULTADOS!$B$23",
    "VTA_FINAL": "MEMORIA_RESULTADOS!$B$26",
-   "VTA_MANUAL_OFICIAL": "MEMORIA_RESULTADOS!$B$25"
+   "VTA_MANUAL_OFICIAL": "MEMORIA_RESULTADOS!$B$25",
+   "VTA_SEM_POTENCIAL": "MEMORIA_RESULTADOS!$T$40"
   },
   "quantidade_celulas_preenchidas": 271,
   "titulo_a1": "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL",
@@ -568,7 +571,12 @@
     "vta_execucao_atualizada": null,
     "vta_motivo": "VTA pelo metodo PC requer a composicao canonica (PCs validos anteriores a linha de corte + remanescente do mesmo corte); sem essa base o VTA nao e fabricado a partir de PCs pagos (fail-closed).",
     "vta_natureza": "INDETERMINADO",
-    "vta_saldo_remanescente_atualizado": null
+    "vta_retroativo_potencial": null,
+    "vta_retroativo_potencial_apurado": null,
+    "vta_saldo_remanescente_atualizado": null,
+    "vta_sem_potencial": null,
+    "vta_tem_parcela_potencial": false,
+    "vta_tem_potencial_apurado": false
    },
    "status_vta": null
   },
@@ -629,7 +637,9 @@
    "QTD_REM_OFICIAL": null,
    "REM_ATUALIZADO_OFICIAL": null,
    "REM_BASE_OFICIAL": null,
+   "RETROATIVO_POTENCIAL_APURADO": null,
    "RETROATIVO_POTENCIAL_PC": null,
+   "RETROATIVO_POTENCIAL_VTA": null,
    "RETRO_FIN": null,
    "RETRO_ITENS": null,
    "RETRO_OFICIAL": null,
@@ -641,7 +651,8 @@
    "VTA_ATUALIZACAO_CHEIA": null,
    "VTA_CALCULADO": null,
    "VTA_FINAL": null,
-   "VTA_MANUAL_OFICIAL": null
+   "VTA_MANUAL_OFICIAL": null,
+   "VTA_SEM_POTENCIAL": null
   }
  },
  "web": {
@@ -885,7 +896,7 @@
    "O ciclo do PC esta sem FATOR_ACUMULADO numerico na aba parametros; o valor devido nao pode ser calculado.",
    "VU por ciclo nao localizado no Objeto Processo; nao foi estimado.",
    "Remanescentes não demonstrados; o valor futuro e o VTA permanecem indisponíveis.",
-   "Há valor potencial sujeito à aceitação pela área gestora e à condução do eventual pagamento por essa área.",
+   "Há valor potencial sujeito à aceitação pela área gestora e à condução do eventual pagamento por essa área; ele integra o VTA por critério prudencial e não é retroativo reconhecido a pagar.",
    "Parte das conferências automáticas está indisponível.",
    "A leitura da Coleta registrou informações insuficientes em parte dos blocos."
   ],

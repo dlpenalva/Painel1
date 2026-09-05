@@ -82,11 +82,19 @@ CF_SQREFS = [
 # ha retroativo potencial a mostrar (=$G$22<>""); fora do metodo PCs a
 # faixa some em vez de exibir um bloco colorido vazio.
 CF_SQREFS = sorted(CF_SQREFS + ["E22:H22"])
+# VTA-POT-1: duas regras novas, ambas dentro do quadro 9 e ambas condicionadas
+# a METODO_RETROATIVO="PCs" com potencial diferente de zero — pintam de
+# amarelo-palha (#FFF4CC) so a parcela POTENCIAL (A84:C84) e a demonstracao
+# "sem potencial + potencial = VTA" (C86). Financeiro e Itens nao ganham cor.
+CF_SQREFS = sorted(CF_SQREFS + ["A84:C84", "C86"])
 # 143 do motor tecnico + E22/G22, as duas unicas formulas de apresentacao
 # acrescentadas pela RESULTADOS-FINAL-1.
 # 145 do checkpoint + B64 da sintese + B15/C15 condicionais do PC-UX-1 +
 # a linha metodologica A70 restaurada. A71 continua formula, como no checkpoint.
-TOTAL_FORMULAS = 148
+# VTA-POT-1: +2 (148 -> 150) — A84 e C86 viram formulas de APRESENTACAO
+# dentro do quadro 9. A aba segue terminando na linha 87 e 90:166 continua
+# vazia: nenhuma linha, merge ou altura foi criada.
+TOTAL_FORMULAS = 150
 
 PRINT_AREA = "'RESULTADOS'!$A$1:$H$50"
 MARGEM_LATERAL = 0.511811024

@@ -249,12 +249,19 @@ def test_b1_bloco_didatico_existe_com_as_quatro_parcelas(wb):
     assert str(res["A79"].value).startswith("9. VALOR TOTAL ATUALIZADO DO CONTRATO")
     assert "execução já realizada" in str(res["A80"].value)
     assert "VTA oficial = execução apurada" in str(res["A81"].value)
-    assert [str(res[f"A{linha}"].value) for linha in range(83, 87)] == [
+    # VTA-POT-1: a linha "(+)" passou a ser a PARCELA DO METODO. Fora do PC ela
+    # continua sendo "(+) Ajustes ainda devidos", exatamente como antes; no PC
+    # ela e o retroativo POTENCIAL incorporado ao VTA por criterio prudencial.
+    # As outras tres parcelas seguem intocadas.
+    assert [str(res[f"A{linha}"].value) for linha in (83, 85, 86)] == [
         "Executado apurado",
-        "(+) Ajustes ainda devidos",
         "(+) Remanescente atualizado",
         "(=) VTA Oficial",
     ]
+    a84 = str(res["A84"].value)
+    assert '"(+) Ajustes ainda devidos"' in a84
+    assert '"(+) Retroativo potencial — POTENCIAL"' in a84
+    assert 'MEMORIA_RESULTADOS!$B$4="PCs"' in a84
 
 
 def test_b2_parcelas_derivam_das_fontes_reais_sem_digitacao(wb):
@@ -271,16 +278,24 @@ def test_b2_parcelas_derivam_das_fontes_reais_sem_digitacao(wb):
 
 
 def test_b3_consumido_e_pc_nao_recontam_o_ajuste_ja_embutido(wb):
-    """Item 7 da tarefa: no Consumido e no PC o reajuste ja esta dentro da
-    execucao — a linha de ajustes tem de ser zero, nunca o retroativo."""
+    """Item 7 da VTA-U2: o reajuste JA RECONHECIDO nao pode ser recontado.
+
+    VTA-POT-1 preserva integralmente essa regra e so acrescenta o que ela
+    nunca cobriu. No Consumido a linha "(+)" continua zero, porque o reajuste
+    ja esta dentro da execucao atualizada. No PC ela deixa de ser zero, mas o
+    que entra NAO e o retroativo reconhecido (esse continua dentro do valor
+    considerado, em B83): e o retroativo POTENCIAL, grandeza disjunta que
+    ainda nao estava em parcela nenhuma. Nao ha, portanto, recontagem.
+    """
     formula = str(wb["RESULTADOS"]["B84"].value)
-    assert (
-        'IF(OR(MEMORIA_RESULTADOS!$B$4="Itens",'
-        'MEMORIA_RESULTADOS!$B$4="PCs"),0,"")'
-    ) in formula
+    assert 'IF(MEMORIA_RESULTADOS!$B$4="Itens",0,"")' in formula
+    # PC: le T39 (potencial elegivel), jamais RETRO_OFICIAL/B21/T22.
+    assert "MEMORIA_RESULTADOS!$T$39" in formula
+    assert "MEMORIA_RESULTADOS!$B$16" not in formula
+    assert "MEMORIA_RESULTADOS!$T$22" not in formula
     fonte = str(wb["RESULTADOS"]["C84"].value)
     assert "ja esta dentro da execucao atualizada" in fonte
-    assert "ja esta dentro do valor considerado dos PCs" in fonte
+    assert "Nao e retroativo reconhecido a pagar" in fonte
 
 
 def test_b4_bloco_tem_linha_de_conferencia_contra_o_vta_oficial(wb):

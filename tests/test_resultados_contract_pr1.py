@@ -93,7 +93,15 @@ def test_names_antigos_preservados_t35_sem_nome_e_zero_vinculo_externo():
         # PR 2 (RESULTADOS-UX2) acrescentou o 15o name publicado,
         # RETROATIVO_POTENCIAL_PC -> MEMORIA_RESULTADOS!$T$38, com
         # autorizacao expressa. Os 14 do PR #135 seguem intactos acima.
-        assert len(names) == len(NOMES_PREEXISTENTES) + 14 + 1
+        # VTA-POT-1 publica mais dois, tambem com autorizacao expressa, para
+        # que a decomposicao prudencial do VTA seja auditavel pelo NOME e nao
+        # por coordenada: RETROATIVO_POTENCIAL_VTA -> MEMORIA_RESULTADOS!$T$39
+        # (a parcela que entra no VTA) e VTA_SEM_POTENCIAL -> $T$40 (o VTA
+        # antes dela). Nenhum name preexistente foi movido ou repontuado.
+        assert names["RETROATIVO_POTENCIAL_VTA"] == "MEMORIA_RESULTADOS!$T$39"
+        assert names["VTA_SEM_POTENCIAL"] == "MEMORIA_RESULTADOS!$T$40"
+        assert names["RETROATIVO_POTENCIAL_APURADO"] == "MEMORIA_RESULTADOS!$T$41"
+        assert len(names) == len(NOMES_PREEXISTENTES) + 14 + 1 + 3
         assert "MEMORIA_RESULTADOS!$T$35" not in names.values()
         assert not wb._external_links
     finally:
@@ -190,8 +198,21 @@ def test_as_28_celulas_e_b83_b84_b87_nao_mudaram():
     wb = load_workbook(TEMPLATE, data_only=False)
     try:
         result = wb["RESULTADOS"]
-        for address in runtime | internal | {"B83", "B84", "B87"}:
+        # VTA-POT-1: B84 e a UNICA celula deste contrato que muda, e ela muda
+        # por decisao de negocio expressa — a parcela "(+)" do quadro do VTA
+        # passa a ser o retroativo POTENCIAL no metodo PC. Qualquer
+        # implementacao correta teria de tocar este quadro: sem somar o
+        # potencial em alguma parcela, B87 (a conferencia que prova a formacao
+        # do VTA) deixaria de fechar em R$ 0,00. Preservar B84 e mexer em B87
+        # seria estritamente pior. B83/B87 seguem intactos, e o name
+        # AJUSTES_DEVIDOS continua apontando para $B$84.
+        for address in runtime | internal | {"B83", "B87"}:
             assert result[address].value == expected.get(address)
+        b84 = str(result["B84"].value)
+        assert b84.startswith('=IF(MEMORIA_RESULTADOS!$B$4="Financeiro",')
+        assert 'IF(MEMORIA_RESULTADOS!$B$21="","",MEMORIA_RESULTADOS!$B$21)' in b84
+        assert "MEMORIA_RESULTADOS!$T$39" in b84
+        assert 'IF(MEMORIA_RESULTADOS!$B$4="Itens",0,"")' in b84
         assert wb.sheetnames[-1] == "RESULTADOS"
         assert wb["MEMORIA_RESULTADOS"].sheet_state == "hidden"
     finally:

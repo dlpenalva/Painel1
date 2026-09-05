@@ -369,6 +369,15 @@ def _montar_sintese(
         ),
         "vta_natureza": vta.get("natureza"),
         "vta_motivo": vta.get("motivo"),
+        # VTA-POT-1: decomposicao prudencial, lida pronta da cadeia canonica.
+        # O documento nunca soma nem recalcula VTA.
+        "vta_sem_potencial": vta.get("vta_sem_potencial"),
+        "vta_retroativo_potencial": vta.get("retroativo_potencial_vta"),
+        "vta_retroativo_potencial_apurado": vta.get(
+            "retroativo_potencial_apurado"
+        ),
+        "vta_tem_parcela_potencial": bool(vta.get("tem_parcela_potencial")),
+        "vta_tem_potencial_apurado": bool(vta.get("tem_potencial_apurado")),
         "variacao_acumulada": acumulado.get("indice_acumulado"),
         "ciclo_referencia_acumulado": acumulado.get("ciclo_referencia"),
         "retroativo_total": retro.get("total"),
@@ -425,7 +434,13 @@ def _montar_composicao_vta(
         valor = _num_ou_none(linha.get("valor_atualizado"))
         if not descricao or valor is None:
             return indisponivel
-        componentes.append({"descricao": descricao, "valor": round(valor, 2)})
+        componentes.append({
+            "descricao": descricao,
+            "valor": round(valor, 2),
+            # VTA-POT-1: o motor marca a linha da parcela prudencial. O
+            # documento so propaga o rotulo — nao classifica nada por conta.
+            "potencial": str(linha.get("natureza") or "") == "POTENCIAL",
+        })
     if not componentes:
         return indisponivel
 
@@ -441,6 +456,13 @@ def _montar_composicao_vta(
         "metodo": comp.get("metodo"),
         "componentes": componentes,
         "total": vta_arredondado,
+        "sem_potencial": _num_ou_none(comp.get("vta_sem_potencial")),
+        "retroativo_potencial": _num_ou_none(comp.get("retroativo_potencial_vta")),
+        "retroativo_potencial_apurado": _num_ou_none(
+            comp.get("retroativo_potencial_apurado")
+        ),
+        "tem_parcela_potencial": bool(comp.get("tem_parcela_potencial")),
+        "tem_potencial_apurado": bool(comp.get("tem_potencial_apurado")),
     }
 
 
@@ -939,6 +961,9 @@ _COR_TEXTO_SUAVE = "#52697D"
 _COR_AZUL = "#1F5F8B"
 _COR_BORDA = "#CBD8E2"
 _COR_FUNDO_ALT = "#F8FAFC"
+# VTA-POT-1: amarelo-palha muito claro, o mesmo do XLS e da web. Destaca APENAS
+# a linha da parcela POTENCIAL — nunca o VTA inteiro, nunca vermelho.
+_COR_POTENCIAL = "#FFF4CC"
 
 
 def gerar_sumario_executivo_pdf(dados: dict[str, Any]) -> bytes:
@@ -1078,11 +1103,15 @@ def _tabela(
     permitir_quebra: bool = True,
     alturas: list[float] | None = None,
     linha_total: bool = False,
+    linhas_destaque: set[int] | None = None,
 ) -> Any:
     """LongTable com cabecalho repetido nas quebras de pagina.
 
     `linha_total` destaca a ultima linha (negrito e fundo suave) para quadros
     cuja ultima linha e o total — destaque discreto, sem exagero grafico.
+
+    `linhas_destaque` recebe indices de linha (base 0, contando o cabecalho) que
+    devem sair no amarelo-palha da parcela POTENCIAL (VTA-POT-1).
     """
     from reportlab.lib import colors
     from reportlab.platypus import LongTable, Paragraph, Table, TableStyle
@@ -1130,6 +1159,12 @@ def _tabela(
             ("LINEABOVE", (0, ultima), (-1, ultima), 0.9,
              colors.HexColor(_COR_AZUL)),
         ]))
+    for indice in sorted(linhas_destaque or ()):
+        if 0 < indice <= ultima:
+            tabela.setStyle(TableStyle([
+                ("BACKGROUND", (0, indice), (-1, indice),
+                 colors.HexColor(_COR_POTENCIAL)),
+            ]))
     return tabela
 
 
@@ -1204,7 +1239,10 @@ def _bloco_sintese(historia, dados, estilos) -> None:
             "Composição do Valor Total Atualizado — VTA", estilos["subsecao"],
         ))
         linhas_composicao = [["Componente", "Valor"]]
+        destaque_potencial: set[int] = set()
         for componente in composicao.get("componentes") or []:
+            if componente.get("potencial"):
+                destaque_potencial.add(len(linhas_composicao))
             linhas_composicao.append([
                 componente.get("descricao"),
                 formatar_moeda(componente.get("valor")),
@@ -1215,7 +1253,29 @@ def _bloco_sintese(historia, dados, estilos) -> None:
         historia.append(_tabela(
             linhas_composicao, [largura * 0.62, largura * 0.38], estilos,
             alinhamentos_direita={1}, linha_total=True,
+            linhas_destaque=destaque_potencial,
         ))
+        # VTA-POT-1: a parcela potencial nunca aparece sem a frase que diz o
+        # que ela e — e o que ela NAO e.
+        apurado = composicao.get("retroativo_potencial_apurado")
+        if composicao.get("tem_parcela_potencial"):
+            historia.append(_paragrafo(
+                "O Valor Total Atualizado inclui "
+                f"{formatar_moeda(composicao.get('retroativo_potencial'))} de "
+                "retroativo potencial, considerado por critério prudencial. "
+                "A parcela permanece sujeita à confirmação pela área gestora e "
+                "não representa, nesta data, retroativo reconhecido a pagar.",
+                estilos["normal"],
+            ))
+        elif isinstance(apurado, (int, float)) and apurado < 0:
+            # PISO PRUDENCIAL: informa o apurado sem soma-lo — o VTA acima
+            # nao foi reduzido por ele.
+            historia.append(_paragrafo(
+                "POTENCIAL — NÃO INCORPORADO AO VTA. Parcela potencial "
+                f"apurada: {formatar_moeda(apurado)}. Por critério prudencial, "
+                "valores potenciais negativos não reduzem o VTA.",
+                estilos["normal"],
+            ))
 
 
 def _bloco_ciclos(historia, dados, estilos) -> None:
