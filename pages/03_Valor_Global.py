@@ -5101,7 +5101,17 @@ def render_resultado_consolidado(resultado, diagnostico):
                         # VTA-POT-1: o card continua sendo o do potencial em
                         # analise. O que mudou e o destino dele no VTA — dito
                         # aqui para nao restar a leitura de "valor a pagar".
+                        #
+                        # HOTFIX: a nota tem de acompanhar o SINAL. Com potencial
+                        # negativo o piso prudencial mantem 0,00 no VTA, entao
+                        # dizer que ele "integra o VTA" seria falso. O valor
+                        # exibido nao muda; so o texto.
                         "Valor potencial relacionado a PCs ainda em análise. "
+                        "Permanece registrado como valor potencial em análise, "
+                        "mas não reduz nem integra o VTA por critério "
+                        "prudencial enquanto negativo."
+                        if consolidado.get("potencial_negativo_nao_incorporado")
+                        else "Valor potencial relacionado a PCs ainda em análise. "
                         "Integra o VTA por critério prudencial, mas não é "
                         "retroativo reconhecido a pagar enquanto a área "
                         "gestora não confirmar."
