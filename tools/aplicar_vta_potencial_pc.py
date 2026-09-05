@@ -65,12 +65,18 @@ def _cf_e(*condicoes: str) -> str:
 # potencial dos PCs que JA compoem a execucao do VTA — quadro itens_PC!S12:S16,
 # ja filtrado pela data de corte, restrito aos ciclos C1..C(vigente-1).
 # Construcao identica a T22 (execucao dos mesmos ciclos), so que sobre S.
-F_T39 = (
+# T41 = potencial APURADO (pode ser negativo em ciclo com variacao negativa).
+F_T41 = (
     '=IF($T$20="",0,ROUND(SUMPRODUCT('
     '(ROW(itens_PC!$S$12:$S$16)-12>=1)*'
     '(ROW(itens_PC!$S$12:$S$16)-12<$T$20)*'
     '(itens_PC!$S$12:$S$16)),2))'
 )
+# T39 = parcela EFETIVAMENTE incorporada ao VTA. PISO ZERO (decisao de
+# negocio): a regra prudencial existe para evitar subdimensionamento, entao um
+# potencial ainda nao reconhecido nunca REDUZ o VTA. O apurado segue visivel
+# em T41 e e apresentado como informacao — nao e escondido, so nao e somado.
+F_T39 = '=MAX($T$41,0)'
 F_T40 = (
     '=IF(OR($T$24=0,$T$20="",$T$26>0,AND(NOT(itens_PC!$P$3>0),$T$27>0)),'
     '"",ROUND($T$21+$T$22+$T$23,2))'
@@ -99,9 +105,13 @@ F_C84 = (
     f'=IF({METODO}="Financeiro",'
     '"Reajuste ja reconhecido e ainda nao contido no valor pago.",'
     f'IF({E_PC},'
+    'IF(MEMORIA_RESULTADOS!$T$41<0,'
+    '"POTENCIAL — NAO INCORPORADO AO VTA. Parcela potencial apurada: R$ "&'
+    'TEXT(MEMORIA_RESULTADOS!$T$41,"#.##0,00")&". Por criterio prudencial, '
+    'valores potenciais negativos nao reduzem o VTA.",'
     '"Retroativo POTENCIAL dos PCs ainda em analise pela area gestora, '
     'incorporado ao VTA por criterio prudencial. Nao e retroativo reconhecido '
-    'a pagar.",'
+    'a pagar."),'
     f'IF({METODO}="Itens",'
     '"Nao aplicavel: o reajuste ja esta dentro da execucao atualizada.","")))'
 )
@@ -111,13 +121,17 @@ F_C84 = (
 # homologado (rollback da camada UX2), e 90:166 fica vazia.
 F_C86 = (
     f'=IF(AND({E_PC},ISNUMBER(MEMORIA_RESULTADOS!$T$40),'
-    'ISNUMBER(MEMORIA_RESULTADOS!$T$39),MEMORIA_RESULTADOS!$T$39<>0),'
+    'ISNUMBER(MEMORIA_RESULTADOS!$T$41),MEMORIA_RESULTADOS!$T$41<>0),'
     '"VTA antes da parcela potencial: R$ "&TEXT(MEMORIA_RESULTADOS!$T$40,'
-    '"#.##0,00")&"  +  Retroativo potencial — POTENCIAL: R$ "&'
+    '"#.##0,00")&"  +  Parcela potencial no VTA: R$ "&'
     'TEXT(MEMORIA_RESULTADOS!$T$39,"#.##0,00")&"  =  VALOR TOTAL ATUALIZADO "&'
-    '"— VTA. O VTA inclui essa parcela por critério prudencial; ela permanece "&'
+    '"— VTA."&IF(MEMORIA_RESULTADOS!$T$41<0,'
+    '"  Parcela potencial apurada: R$ "&TEXT(MEMORIA_RESULTADOS!$T$41,'
+    '"#.##0,00")&". Por critério prudencial, valores potenciais negativos não "&'
+    '"reduzem o VTA.",'
+    '"  O VTA inclui essa parcela por critério prudencial; ela permanece "&'
     '"sujeita à confirmação pela área gestora e não representa, nesta data, "&'
-    '"retroativo reconhecido a pagar.",'
+    '"retroativo reconhecido a pagar."),'
     '"Resultado final do método de apuração selecionado.")'
 )
 
@@ -189,8 +203,12 @@ def _aplicar_memoria(mem) -> None:
     mem.Range("T39").Formula = F_T39
     mem.Range("S40").Value = "VTA-PC antes da parcela potencial"
     mem.Range("T40").Formula = F_T40
+    mem.Range("S41").Value = (
+        "Retroativo potencial APURADO (pode ser negativo; nao reduz o VTA)"
+    )
+    mem.Range("T41").Formula = F_T41
     mem.Range("T25").Formula = F_T25
-    _moeda(mem.Range("T39:T40"))
+    _moeda(mem.Range("T39:T41"))
 
 
 def _aplicar_itens_pc(ws) -> None:
@@ -224,7 +242,7 @@ def _aplicar_resultados(ws) -> None:
     # Destaque suave somente quando ha parcela potencial de fato.
     _cf(
         ws.Range("A84:C84"),
-        _cf_e(E_PC_CF, "N($B$84)<>0"),
+        _cf_e(E_PC_CF, "N(RETROATIVO_POTENCIAL_APURADO)<>0"),
         POTENCIAL_BG,
         POTENCIAL_TEXTO,
     )
@@ -236,7 +254,7 @@ def _aplicar_resultados(ws) -> None:
     # --- Demonstracao da composicao prudencial DENTRO do quadro 9. ---
     ws.Range("C86").Formula = F_C86
     ws.Range("C86").WrapText = True
-    _cf(ws.Range("C86"), _cf_e(E_PC_CF, "N($B$84)<>0"),
+    _cf(ws.Range("C86"), _cf_e(E_PC_CF, "N(RETROATIVO_POTENCIAL_APURADO)<>0"),
         POTENCIAL_BG, POTENCIAL_TEXTO)
 
 
@@ -244,6 +262,7 @@ def _aplicar_nomes(wb) -> None:
     nomes = {
         "RETROATIVO_POTENCIAL_VTA": "=MEMORIA_RESULTADOS!$T$39",
         "VTA_SEM_POTENCIAL": "=MEMORIA_RESULTADOS!$T$40",
+        "RETROATIVO_POTENCIAL_APURADO": "=MEMORIA_RESULTADOS!$T$41",
     }
     existentes = {n.Name for n in wb.Names}
     for nome, refere in nomes.items():
@@ -270,9 +289,11 @@ def aplicar(caminho: Path) -> None:
             for nome in ("RESULTADOS", "itens_PC", "MEMORIA_RESULTADOS")
         }
         _aplicar_memoria(wb.Worksheets("MEMORIA_RESULTADOS"))
+        # Os names entram ANTES da formatacao condicional: as regras de CF os
+        # referenciam (CF nao aceita referencia direta a outra aba).
+        _aplicar_nomes(wb)
         _aplicar_itens_pc(wb.Worksheets("itens_PC"))
         _aplicar_resultados(wb.Worksheets("RESULTADOS"))
-        _aplicar_nomes(wb)
         for nome, antes in cf_antes.items():
             depois = wb.Worksheets(nome).Cells.FormatConditions.Count
             if depois < antes:

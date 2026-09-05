@@ -326,7 +326,7 @@ def montar_resultado_consolidado(
     ressalvas: list[Any] = list(pendencias_politica)
 
     potencial_num = _numero(retroativo_potencial)
-    if potencial_num is not None and potencial_num != 0:
+    if potencial_num is not None and potencial_num > 0:
         # VTA-POT-1: a parcela potencial passou a compor o VTA por critério
         # prudencial, mas continua sendo POTENCIAL — a ressalva diz as duas
         # coisas para que ninguém a leia como valor reconhecido a pagar.
@@ -334,6 +334,13 @@ def montar_resultado_consolidado(
             "Há valor potencial sujeito à aceitação pela área gestora e à condução "
             "do eventual pagamento por essa área; ele integra o VTA por critério "
             "prudencial e não é retroativo reconhecido a pagar."
+        )
+    elif potencial_num is not None and potencial_num < 0:
+        # Piso prudencial: o apurado negativo é dito, mas sem afirmar que
+        # integra o VTA — porque não integra.
+        ressalvas.append(
+            "Há valor potencial negativo apurado, sujeito à aceitação pela área "
+            "gestora; por critério prudencial ele não reduz o VTA."
         )
 
     qtd_fora = _numero(fora_do_corte.get("quantidade"))
@@ -510,11 +517,23 @@ def montar_resultado_consolidado(
         _numero(composicao_origem.get("retroativo_potencial_vta"))
         if metodo_pc else None
     )
+    potencial_apurado = (
+        _numero(composicao_origem.get("retroativo_potencial_apurado"))
+        if metodo_pc else None
+    )
     vta_sem_potencial = (
         _numero(composicao_origem.get("vta_sem_potencial")) if metodo_pc else None
     )
     tem_parcela_potencial = bool(
         metodo_pc and potencial_vta is not None and round(potencial_vta, 2) != 0
+    )
+    # PISO PRUDENCIAL: potencial apurado negativo NAO reduz o VTA e nao entra
+    # no quadro como parcela aditiva — mas tambem nao e escondido. Ele sai como
+    # informacao, com o rotulo que diz exatamente o que aconteceu.
+    potencial_negativo_nao_incorporado = bool(
+        metodo_pc
+        and potencial_apurado is not None
+        and round(potencial_apurado, 2) < 0
     )
     if tem_parcela_potencial and vta is not None:
         frase_potencial = (
@@ -522,6 +541,12 @@ def montar_resultado_consolidado(
             "incorporado por critério prudencial. Essa parcela permanece "
             "sujeita à confirmação pela área gestora e não representa, nesta "
             "data, retroativo reconhecido a pagar."
+        )
+    elif potencial_negativo_nao_incorporado:
+        frase_potencial = (
+            f"Parcela potencial apurada: {_moeda_br(potencial_apurado)}. "
+            "Por critério prudencial, valores potenciais negativos não "
+            "reduzem o VTA."
         )
     else:
         frase_potencial = ""
@@ -533,7 +558,11 @@ def montar_resultado_consolidado(
         # vta == vta_sem_potencial + retroativo_potencial_vta.
         "vta_sem_potencial": vta_sem_potencial,
         "retroativo_potencial_vta": potencial_vta,
+        # O valor que a regra normal apurou — pode ser negativo. Nunca e o que
+        # entra no VTA; existe para nao esconder o que foi apurado.
+        "retroativo_potencial_apurado": potencial_apurado,
         "tem_parcela_potencial": tem_parcela_potencial,
+        "potencial_negativo_nao_incorporado": potencial_negativo_nao_incorporado,
         "frase_parcela_potencial": frase_potencial,
         # Compatibilidade: o fallback pela ultima posicao de abertura deixou de
         # existir (VTA-U2, achado A), entao esta chave e sempre False. Mantida

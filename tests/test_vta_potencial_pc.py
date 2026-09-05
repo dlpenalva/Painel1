@@ -362,6 +362,94 @@ def test_apostila_e_saneador_quebram_o_vta_em_tres_parcelas():
     assert "retroativo reconhecido a pagar" in frase
 
 
+# ================= PISO PRUDENCIAL — POTENCIAL NEGATIVO ===================
+# Decisao de negocio: potencial_incorporado_ao_vta = max(potencial_apurado, 0).
+# A regra e prudencial "para cima"; uma parcela ainda POTENCIAL nao pode
+# REDUZIR o VTA antes de ser reconhecida. O apurado nao e escondido.
+def test_piso_potencial_positivo_entra_integralmente():
+    pcs = [_pc("C0", 1000.0), _pc("C1", 500.0, potencial=40.0)]
+    comp = C.montar_composicao_vta(_leitura(pcs))
+    base = round(1000.0 + 500.0 + REMANESCENTE_C2, 2)
+    assert comp["retroativo_potencial_apurado"] == 40.0
+    assert comp["retroativo_potencial_vta"] == 40.0
+    assert comp["vta_composicao"] == round(base + 40.0, 2)
+    _provar_composicao(comp)
+
+
+def test_piso_potencial_zero_nao_altera_o_vta():
+    pcs = [_pc("C0", 1000.0), _pc("C1", 500.0)]
+    comp = C.montar_composicao_vta(_leitura(pcs))
+    base = round(1000.0 + 500.0 + REMANESCENTE_C2, 2)
+    assert comp["retroativo_potencial_apurado"] == 0.0
+    assert comp["retroativo_potencial_vta"] == 0.0
+    assert comp["tem_potencial_apurado"] is False
+    assert comp["vta_composicao"] == base
+    _provar_composicao(comp)
+
+
+def test_piso_potencial_negativo_nao_reduz_o_vta_e_permanece_visivel():
+    """-40 apurado -> 0,00 no VTA; o VTA fica igual ao de potencial zero."""
+    pcs = [_pc("C0", 1000.0), _pc("C1", 500.0, potencial=-40.0)]
+    comp = C.montar_composicao_vta(_leitura(pcs))
+    base = round(1000.0 + 500.0 + REMANESCENTE_C2, 2)
+    # 1. o apurado permanece visivel, com o sinal original
+    assert comp["retroativo_potencial_apurado"] == -40.0
+    assert comp["tem_potencial_apurado"] is True
+    assert comp["potencial_por_ciclo"] == [{"ciclo": "C1", "valor": -40.0}]
+    # 2. o que entra no VTA e zero
+    assert comp["retroativo_potencial_vta"] == 0.0
+    assert comp["tem_parcela_potencial"] is False
+    # 3. o VTA NAO e reduzido: base, nunca base - 40
+    assert comp["vta_composicao"] == base
+    assert comp["vta_composicao"] != round(base - 40.0, 2)
+    assert comp["vta_sem_potencial"] == base
+    # 4. nenhuma linha aditiva negativa no quadro de composicao
+    assert not [l for l in comp["linhas"] if l.get("natureza") == "POTENCIAL"]
+    _provar_composicao(comp)
+    # 5. o fato e dito em alerta, nao escondido
+    assert any("nao reduzem o VTA" in a for a in comp["alertas"])
+
+
+def test_piso_potencial_negativo_no_consolidado_e_informativo():
+    pcs = [_pc("C0", 1000.0), _pc("C1", 500.0, potencial=-40.0)]
+    comp = C.montar_composicao_vta(_leitura(pcs))
+    resultado = _resultado(comp)
+    resultado["totais_canonicos_pc"]["ate_o_corte"]["delta_potencial"] = -40.0
+    consolidado = montar_resultado_consolidado(resultado, {})
+    assert consolidado["retroativo_potencial_apurado"] == -40.0
+    assert consolidado["retroativo_potencial_vta"] == 0.0
+    assert consolidado["tem_parcela_potencial"] is False
+    assert consolidado["potencial_negativo_nao_incorporado"] is True
+    frase = consolidado["frase_parcela_potencial"]
+    assert "Parcela potencial apurada" in frase
+    assert "não reduzem o VTA" in frase
+    # a ressalva nao pode afirmar que o valor integra o VTA
+    assert not any("integra o VTA" in r for r in consolidado["ressalvas"])
+    assert any("não reduz o VTA" in r for r in consolidado["ressalvas"])
+
+
+def test_piso_nao_altera_retroativo_reconhecido_negativo():
+    """Reconhecido negativo segue exatamente como na main: entra no VTA."""
+    pcs = [_pc("C0", 1000.0), _pc("C1", 500.0, reconhecido=-50.0)]
+    comp = C.montar_composicao_vta(_leitura(pcs))
+    execucao_c1 = next(l for l in comp["linhas"] if l["ciclo"] == "C1")
+    assert execucao_c1["valor_atualizado"] == 450.0      # 500 + (-50)
+    assert comp["retroativo_potencial_apurado"] == 0.0
+    assert comp["vta_composicao"] == round(1000.0 + 450.0 + REMANESCENTE_C2, 2)
+    _provar_composicao(comp)
+
+
+def test_piso_nao_vaza_para_financeiro_nem_consumidos():
+    for modo in ("principal", "d"):
+        comp = C.montar_composicao_vta(_leitura_outro_metodo(modo))
+        assert "retroativo_potencial_apurado" not in comp
+        assert "retroativo_potencial_vta" not in comp
+        # Financeiro sem base completa nesta fixture fica fail-closed (VTA
+        # None); quando ha VTA, ele continua sendo a soma das parcelas.
+        if comp.get("vta_composicao") is not None:
+            assert comp["vta_composicao"] == _soma_linhas(comp)
+
+
 def test_documentos_sem_potencial_mantem_duas_parcelas():
     from _templates_documentos import _composicao_didatica_vta
 

@@ -3018,7 +3018,7 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 111,
+   "linha": 113,
    "teste": "<modulo>",
    "referencia": "# subtotal demonstrado em RESULTADOS!C86). T25 e REESCRITA (passa a somar",
    "coordenadas": [
@@ -3035,9 +3035,9 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 113,
+   "linha": 115,
    "teste": "<modulo>",
-   "referencia": "\"MEMORIA_RESULTADOS\": 4413,",
+   "referencia": "\"MEMORIA_RESULTADOS\": 4414,",
    "coordenadas": [
     "H14",
     "H24",
@@ -3054,7 +3054,7 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 142,
+   "linha": 144,
    "teste": "<modulo>",
    "referencia": "# texto fixo e passam a FORMULA condicional a MEMORIA_RESULTADOS!$B$4,",
    "coordenadas": [
@@ -3070,7 +3070,7 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 143,
+   "linha": 145,
    "teste": "<modulo>",
    "referencia": "# para RESULTADOS nao explicar o metodo Financeiro quando o metodo",
    "coordenadas": [
@@ -3084,7 +3084,7 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 151,
+   "linha": 153,
    "teste": "<modulo>",
    "referencia": "# RESULTADOS-ROLLBACK-1: a camada de apresentacao das linhas 90-166",
    "coordenadas": [],
@@ -3096,7 +3096,7 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 155,
+   "linha": 157,
    "teste": "<modulo>",
    "referencia": "# RESULTADOS-FINAL-1: +2 (143 -> 145), ambas de APRESENTACAO e ambas na",
    "coordenadas": [
@@ -3112,7 +3112,7 @@
   },
   {
    "arquivo": "tests/test_integridade_template_xlsx.py",
-   "linha": 172,
+   "linha": 174,
    "teste": "<modulo>",
    "referencia": "\"RESULTADOS\": 150,",
    "coordenadas": [],

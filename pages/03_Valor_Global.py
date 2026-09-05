@@ -5077,6 +5077,15 @@ def render_resultado_consolidado(resultado, diagnostico):
                     ' de retroativo <strong>POTENCIAL</strong></div>',
                     unsafe_allow_html=True,
                 )
+            elif consolidado.get("potencial_negativo_nao_incorporado"):
+                # Piso prudencial: o apurado negativo aparece, mas NUNCA como
+                # parcela aditiva — o VTA acima não foi reduzido por ele.
+                st.markdown(
+                    '<div class="resultado-potencial-inclusao">parcela potencial '
+                    f'apurada de {html.escape(_moeda_resultado(consolidado.get("retroativo_potencial_apurado")))}'
+                    ' — <strong>POTENCIAL — NÃO INCORPORADO AO VTA</strong></div>',
+                    unsafe_allow_html=True,
+                )
         with col_reconhecido:
             _celula_resultado(
                 "Retroativo reconhecido",
@@ -5206,12 +5215,17 @@ def render_resultado_consolidado(resultado, diagnostico):
         st.info(composicao.get("mensagem") or "A composição detalhada do VTA não está disponível.")
     # VTA-POT-1: demonstracao explicita da composicao prudencial. Os tres
     # numeros vem prontos da fonte canonica; a tela nao soma nada.
-    if consolidado.get("tem_parcela_potencial"):
+    # O quadro fecha sempre que houver potencial APURADO — inclusive negativo,
+    # caso em que a parcela no VTA é 0,00 e o quadro prova que o VTA não foi
+    # reduzido. Nunca "3.362 − 40 = 3.322".
+    if consolidado.get("tem_parcela_potencial") or consolidado.get(
+        "potencial_negativo_nao_incorporado"
+    ):
         st.markdown(
             '<div class="resultado-potencial-quadro">'
             '<div><span>Valor do contrato sem a parcela potencial</span>'
             f'<span>{html.escape(_moeda_resultado(consolidado.get("vta_sem_potencial")))}</span></div>'
-            '<div class="linha-potencial"><span>Retroativo potencial — POTENCIAL</span>'
+            '<div class="linha-potencial"><span>Parcela potencial no VTA — POTENCIAL</span>'
             f'<span>{html.escape(_moeda_resultado(consolidado.get("retroativo_potencial_vta")))}</span></div>'
             '<div class="linha-total"><span>VALOR TOTAL ATUALIZADO — VTA</span>'
             f'<span>{html.escape(_moeda_resultado(consolidado.get("vta")))}</span></div>'

@@ -519,8 +519,14 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
         # VTA-POT-1: parcela prudencial lida pronta da sintese canonica.
         "vta_sem_potencial": sintese.get("vta_sem_potencial"),
         "vta_retroativo_potencial": sintese.get("vta_retroativo_potencial"),
+        "vta_retroativo_potencial_apurado": sintese.get(
+            "vta_retroativo_potencial_apurado"
+        ),
         "vta_tem_parcela_potencial": bool(
             sintese.get("vta_tem_parcela_potencial")
+        ),
+        "vta_tem_potencial_apurado": bool(
+            sintese.get("vta_tem_potencial_apurado")
         ),
         "fin_por_ciclo": fin_por_ciclo,
         "pc_por_ciclo": pc_por_ciclo,
@@ -777,18 +783,28 @@ ROTULO_PARCELA_POTENCIAL = "Retroativo potencial — POTENCIAL"
 
 
 def _texto_parcela_potencial(dados: dict) -> str:
-    """Frase unica da regra prudencial. Vazia quando nao ha parcela potencial."""
-    if not dados.get("vta_tem_parcela_potencial"):
-        return ""
+    """Frase unica da regra prudencial.
+
+    Potencial incorporado (> 0) -> frase da parcela somada ao VTA.
+    Potencial apurado negativo  -> frase informativa: o valor e dito, mas o
+    VTA NAO foi reduzido por ele (piso prudencial).
+    """
     potencial = _num_ou_none(dados.get("vta_retroativo_potencial"))
-    if potencial is None or not round(potencial, 2):
-        return ""
-    return (
-        f"O Valor Total Atualizado inclui {formatar_moeda(potencial)} de "
-        "retroativo potencial, considerado por critério prudencial. A parcela "
-        "permanece sujeita à confirmação pela área gestora e não representa, "
-        "nesta data, retroativo reconhecido a pagar."
-    )
+    if dados.get("vta_tem_parcela_potencial") and potencial and round(potencial, 2):
+        return (
+            f"O Valor Total Atualizado inclui {formatar_moeda(potencial)} de "
+            "retroativo potencial, considerado por critério prudencial. A parcela "
+            "permanece sujeita à confirmação pela área gestora e não representa, "
+            "nesta data, retroativo reconhecido a pagar."
+        )
+    apurado = _num_ou_none(dados.get("vta_retroativo_potencial_apurado"))
+    if apurado is not None and round(apurado, 2) < 0:
+        return (
+            "POTENCIAL — NÃO INCORPORADO AO VTA. Parcela potencial apurada: "
+            f"{formatar_moeda(apurado)}. Por critério prudencial, valores "
+            "potenciais negativos não reduzem o VTA."
+        )
+    return ""
 
 
 def _paragrafo_parcela_potencial(doc: Document, dados: dict) -> None:

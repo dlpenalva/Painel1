@@ -373,7 +373,11 @@ def _montar_sintese(
         # O documento nunca soma nem recalcula VTA.
         "vta_sem_potencial": vta.get("vta_sem_potencial"),
         "vta_retroativo_potencial": vta.get("retroativo_potencial_vta"),
+        "vta_retroativo_potencial_apurado": vta.get(
+            "retroativo_potencial_apurado"
+        ),
         "vta_tem_parcela_potencial": bool(vta.get("tem_parcela_potencial")),
+        "vta_tem_potencial_apurado": bool(vta.get("tem_potencial_apurado")),
         "variacao_acumulada": acumulado.get("indice_acumulado"),
         "ciclo_referencia_acumulado": acumulado.get("ciclo_referencia"),
         "retroativo_total": retro.get("total"),
@@ -454,7 +458,11 @@ def _montar_composicao_vta(
         "total": vta_arredondado,
         "sem_potencial": _num_ou_none(comp.get("vta_sem_potencial")),
         "retroativo_potencial": _num_ou_none(comp.get("retroativo_potencial_vta")),
+        "retroativo_potencial_apurado": _num_ou_none(
+            comp.get("retroativo_potencial_apurado")
+        ),
         "tem_parcela_potencial": bool(comp.get("tem_parcela_potencial")),
+        "tem_potencial_apurado": bool(comp.get("tem_potencial_apurado")),
     }
 
 
@@ -1249,6 +1257,7 @@ def _bloco_sintese(historia, dados, estilos) -> None:
         ))
         # VTA-POT-1: a parcela potencial nunca aparece sem a frase que diz o
         # que ela e — e o que ela NAO e.
+        apurado = composicao.get("retroativo_potencial_apurado")
         if composicao.get("tem_parcela_potencial"):
             historia.append(_paragrafo(
                 "O Valor Total Atualizado inclui "
@@ -1256,6 +1265,15 @@ def _bloco_sintese(historia, dados, estilos) -> None:
                 "retroativo potencial, considerado por critério prudencial. "
                 "A parcela permanece sujeita à confirmação pela área gestora e "
                 "não representa, nesta data, retroativo reconhecido a pagar.",
+                estilos["normal"],
+            ))
+        elif isinstance(apurado, (int, float)) and apurado < 0:
+            # PISO PRUDENCIAL: informa o apurado sem soma-lo — o VTA acima
+            # nao foi reduzido por ele.
+            historia.append(_paragrafo(
+                "POTENCIAL — NÃO INCORPORADO AO VTA. Parcela potencial "
+                f"apurada: {formatar_moeda(apurado)}. Por critério prudencial, "
+                "valores potenciais negativos não reduzem o VTA.",
                 estilos["normal"],
             ))
 

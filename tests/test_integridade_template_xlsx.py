@@ -106,11 +106,13 @@ FORMULAS_POR_ABA = {
     # formula nova. B26/B28/C33/D33 sao reescritas no ramo Itens, nao
     # acrescentadas. Financeiro/PC intactos).
     # PR 2: +1 formula publicada (name RETROATIVO_POTENCIAL_PC).
-    # VTA-POT-1: +2 (4411 -> 4413) — T39 (retroativo potencial elegivel ao VTA,
+    # VTA-POT-1: +3 (4411 -> 4414) — T41 (retroativo potencial APURADO, que
+    # pode ser negativo), T39 = MAX(T41,0) (piso prudencial: o potencial
+    # elegivel ao VTA,
     # espelho do motor Python) e T40 (VTA-PC antes da parcela potencial, o
     # subtotal demonstrado em RESULTADOS!C86). T25 e REESCRITA (passa a somar
     # T39), nao acrescentada; Financeiro/Itens e todo o resto ficam intactos.
-    "MEMORIA_RESULTADOS": 4413,
+    "MEMORIA_RESULTADOS": 4414,
     # 57 do prototipo + 4 selos por tabela + 1 premissa da estimativa - 1
     # helper J4 removido (status global agora agrega os selos H8/H14/H24/H33).
     # 26G: +5 (linha executiva A23:E23 dos PCs sem efeito financeiro).

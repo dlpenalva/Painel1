@@ -513,6 +513,8 @@ def _montar_vta_composicao(leitura: dict[str, Any]) -> dict[str, Any]:
         "retroativo_implicito": comp.get("retroativo_implicito"),
         "valor_sem_potencial": comp.get("vta_sem_potencial"),
         "retroativo_potencial": comp.get("retroativo_potencial_vta"),
+        "retroativo_potencial_apurado": comp.get("retroativo_potencial_apurado"),
+        "tem_potencial_apurado": bool(comp.get("tem_potencial_apurado")),
         "tem_parcela_potencial": bool(comp.get("tem_parcela_potencial")),
         "bloqueia_formalizacao": bool(comp.get("bloqueia_formalizacao")),
         "origem": "motor de composicao do VTA (quadro das apostilas)",
@@ -1113,7 +1115,12 @@ def _montar_memoria_por_ciclo(
             # VTA-POT-1: decomposicao prudencial exposta aqui para que web, XLS
             # e documentos LEIAM o mesmo numero em vez de recalcular.
             "vta_sem_potencial": composicao.get("vta_sem_potencial"),
+            # Apurado (pode ser < 0) x incorporado ao VTA (piso zero).
+            "retroativo_potencial_apurado": composicao.get(
+                "retroativo_potencial_apurado"
+            ),
             "retroativo_potencial_vta": composicao.get("retroativo_potencial_vta"),
+            "tem_potencial_apurado": bool(composicao.get("tem_potencial_apurado")),
             "tem_parcela_potencial": bool(composicao.get("tem_parcela_potencial")),
             "potencial_por_ciclo": list(composicao.get("potencial_por_ciclo") or []),
             "prioridade": 2,

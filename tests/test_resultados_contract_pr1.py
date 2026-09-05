@@ -100,7 +100,8 @@ def test_names_antigos_preservados_t35_sem_nome_e_zero_vinculo_externo():
         # antes dela). Nenhum name preexistente foi movido ou repontuado.
         assert names["RETROATIVO_POTENCIAL_VTA"] == "MEMORIA_RESULTADOS!$T$39"
         assert names["VTA_SEM_POTENCIAL"] == "MEMORIA_RESULTADOS!$T$40"
-        assert len(names) == len(NOMES_PREEXISTENTES) + 14 + 1 + 2
+        assert names["RETROATIVO_POTENCIAL_APURADO"] == "MEMORIA_RESULTADOS!$T$41"
+        assert len(names) == len(NOMES_PREEXISTENTES) + 14 + 1 + 3
         assert "MEMORIA_RESULTADOS!$T$35" not in names.values()
         assert not wb._external_links
     finally:
