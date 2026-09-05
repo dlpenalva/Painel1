@@ -439,6 +439,52 @@ def test_piso_nao_altera_retroativo_reconhecido_negativo():
     _provar_composicao(comp)
 
 
+# ====== HOTFIX: a nota do card do potencial acompanha o SINAL ==============
+# O card "Retroativo potencial — em análise" continua exibindo o valor com o
+# sinal original. O que nao pode e a NOTA afirmar que um potencial negativo
+# "integra o VTA": com o piso prudencial ele nao integra nem reduz.
+def _fonte_pagina() -> str:
+    from pathlib import Path
+    return (
+        Path(__file__).resolve().parents[1] / "pages" / "03_Valor_Global.py"
+    ).read_text(encoding="utf-8")
+
+
+def _nota_do_card_potencial() -> tuple[str, str]:
+    """Extrai os dois ramos da nota do card, direto do fonte da pagina."""
+    fonte = _fonte_pagina()
+    trecho = fonte[fonte.index('"Retroativo potencial — em análise"'):]
+    trecho = trecho[:trecho.index("st.markdown")]
+    negativo, positivo = trecho.split("else", 1)
+    return negativo, positivo
+
+
+def test_nota_do_card_positivo_preserva_a_redacao_atual():
+    _, positivo = _nota_do_card_potencial()
+    assert "Integra o VTA por critério prudencial" in positivo
+    assert "retroativo reconhecido a pagar" in positivo
+
+
+def test_nota_do_card_negativo_nao_afirma_que_integra_o_vta():
+    negativo, _ = _nota_do_card_potencial()
+    assert "Integra o VTA" not in negativo
+    assert "não reduz nem integra o VTA" in negativo
+    assert "potencial_negativo_nao_incorporado" in negativo
+
+
+def test_flag_do_sinal_chega_ao_consolidado_nos_dois_casos():
+    """A nota depende da flag; a flag depende do sinal do potencial apurado."""
+    for potencial, esperado in ((40.0, False), (-40.0, True)):
+        pcs = [_pc("C0", 1000.0), _pc("C1", 500.0, potencial=potencial)]
+        comp = C.montar_composicao_vta(_leitura(pcs))
+        resultado = _resultado(comp)
+        resultado["totais_canonicos_pc"]["ate_o_corte"]["delta_potencial"] = potencial
+        consolidado = montar_resultado_consolidado(resultado, {})
+        assert consolidado["potencial_negativo_nao_incorporado"] is esperado
+        # o valor exibido no card conserva o sinal original nos dois casos
+        assert consolidado["retroativo_potencial"] == potencial
+
+
 def test_piso_nao_vaza_para_financeiro_nem_consumidos():
     for modo in ("principal", "d"):
         comp = C.montar_composicao_vta(_leitura_outro_metodo(modo))
