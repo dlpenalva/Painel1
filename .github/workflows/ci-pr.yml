@@ -57,4 +57,5 @@ jobs:
             tests/test_itens_remanesc_fotografia_exata.py \
             tests/test_resultados_final_1.py \
             tests/test_vta_pc_composicao.py \
-            tests/test_vta_potencial_pc.py
+            tests/test_vta_potencial_pc.py \
+            tests/test_xls_pc_vta_align_1.py

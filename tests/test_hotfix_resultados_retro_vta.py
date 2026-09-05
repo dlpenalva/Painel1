@@ -116,7 +116,9 @@ def test_textos_auditaveis_method_aware(wb_template):
 
 def test_card_retroativo_valor_sob_o_rotulo(wb_template):
     res = wb_template["RESULTADOS"]
-    assert res["D4"].value == "RETROATIVO TOTAL A PAGAR"
+    # XLS-PC-VTA-ALIGN-1: o rotulo passou a ser preciso — o card publica
+    # o retroativo RECONHECIDO, nunca reconhecido + POTENCIAL.
+    assert res["D4"].value == "RETROATIVO RECONHECIDO A PAGAR"
     assert res["D5"].value == "=$D$22"
     assert "D5:E5" in {str(m) for m in res.merged_cells.ranges}
     assert res["J8"].value == "=UPPER(CONTROLE!$B$2)"

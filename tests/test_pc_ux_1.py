@@ -196,7 +196,7 @@ def test_h_quadro_itens_pc_le_exclusivamente_colunas_canonicas():
     assert [ws.cell(11, c).value for c in range(13, 21)] == [
         "Ciclo", "PCs pagos/reconhecidos", "Valor original reconhecido",
         "Valor atualizado reconhecido", "Retroativo reconhecido",
-        "Valor em análise (regra vigente)",
+        "Valor em análise — não pagos (regra vigente)",
         "Retroativo potencial", "Fora da data de corte",
     ]
     for linha in range(12, 17):
@@ -241,13 +241,13 @@ def test_pipeline_real_entrega_os_tres_blocos_pc_ux_sem_cabecalho_legado():
     assert [ws.cell(2, coluna).value for coluna in range(13, 21)] == [
         "CICLO", "QTD. DE PCs", "VALOR ORIGINAL TOTAL",
         "VALOR DOS PCs COM FATOR DO CICLO", "RETROATIVO RECONHECIDO",
-        "VALOR EM ANÁLISE (ÁREA GEST.)", "RETROATIVO POTENCIAL",
+        "VALOR EM ANÁLISE - NÃO PAGOS (ÁREA GEST.)", "RETROATIVO POTENCIAL",
         "QTD. COM ALERTA",
     ]
     assert [ws.cell(11, coluna).value for coluna in range(13, 21)] == [
         "Ciclo", "PCs pagos/reconhecidos", "Valor original reconhecido",
         "Valor atualizado reconhecido", "Retroativo reconhecido",
-        "Valor em análise (regra vigente)", "Retroativo potencial",
+        "Valor em análise — não pagos (regra vigente)", "Retroativo potencial",
         "Fora da data de corte",
     ]
     assert [ws.cell(linha, 13).value for linha in range(3, 10)] == [

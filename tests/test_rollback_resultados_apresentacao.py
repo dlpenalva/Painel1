@@ -69,7 +69,10 @@ MERGES = [
     "E25:H25", "E34:H34", "E35:H38", "F10:G10", "F11:G11", "F12:G12",
     "F13:G13", "G1:H1", "G2:H2", "G3:H3",
 ]
-MERGES += [f"C{linha}:H{linha}" for linha in range(54, 67)]
+# XLS-PC-VTA-ALIGN-1: o bloco 6 passou a ter 13 medidas (55:67) — as
+# medidas 7 e 8 decompoem o retroativo em reconhecido / POTENCIAL /
+# considerado no VTA. A linha 67 estava vazia e o bloco 7 segue na 68.
+MERGES += [f"C{linha}:H{linha}" for linha in range(54, 68)]
 # RESULTADOS-FINAL-1: o retroativo potencial ocupa E22:F22 (rotulo) e
 # G22:H22 (valor) — faixa que estava vazia, entre os merges E16:H21 e
 # E23:H23, que seguem intactos.
@@ -87,6 +90,12 @@ CF_SQREFS = sorted(CF_SQREFS + ["E22:H22"])
 # amarelo-palha (#FFF4CC) so a parcela POTENCIAL (A84:C84) e a demonstracao
 # "sem potencial + potencial = VTA" (C86). Financeiro e Itens nao ganham cor.
 CF_SQREFS = sorted(CF_SQREFS + ["A84:C84", "C86"])
+# XLS-PC-VTA-ALIGN-1: tres regras novas, todas condicionadas a haver
+# parcela a mostrar (o gate esta na propria formula da celula, que sai
+# vazia fora do metodo PC): A8:C8 e A61:B61 pintam de amarelo-palha
+# (#FFF4CC) so o que e especificamente POTENCIAL; D8:E8 recebe o cinza
+# claro dos cards, porque "considerado no VTA" NAO e so potencial.
+CF_SQREFS = sorted(CF_SQREFS + ["A8:C8", "A61:B61", "D8:E8"])
 # 143 do motor tecnico + E22/G22, as duas unicas formulas de apresentacao
 # acrescentadas pela RESULTADOS-FINAL-1.
 # 145 do checkpoint + B64 da sintese + B15/C15 condicionais do PC-UX-1 +
@@ -94,7 +103,9 @@ CF_SQREFS = sorted(CF_SQREFS + ["A84:C84", "C86"])
 # VTA-POT-1: +2 (148 -> 150) — A84 e C86 viram formulas de APRESENTACAO
 # dentro do quadro 9. A aba segue terminando na linha 87 e 90:166 continua
 # vazia: nenhuma linha, merge ou altura foi criada.
-TOTAL_FORMULAS = 150
+# XLS-PC-VTA-ALIGN-1: +8 (150 -> 158) — A4, A6, A8, C8, D8, E8, A81 e a
+# 13a medida do bloco 6. Todas de APRESENTACAO e todas method-aware.
+TOTAL_FORMULAS = 158
 
 PRINT_AREA = "'RESULTADOS'!$A$1:$H$50"
 MARGEM_LATERAL = 0.511811024
