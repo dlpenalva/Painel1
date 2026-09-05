@@ -339,12 +339,19 @@ def test_status_da_tabela1_fica_legivel(em_branco):
 def test_titulo_da_tabela1_ocupa_a8_d8_sem_mesclagem(em_branco):
     res = em_branco["RESULTADOS"]
     assert res["A8"].alignment.wrap_text in (False, None)
-    assert [res[c].value for c in ("B8", "C8", "D8")] == [None, None, None]
+    assert res["B8"].value is None
     assert not [m for m in res.merged_cells.ranges if m.min_row <= 8 <= m.max_row]
-    # Leiaute final (50.2): a linha 8 e o separador branco entre o topo e o
-    # bloco 1; o titulo coabita a linha de cabecalho da tabela (A9).
-    assert res["A8"].value is None
-    assert res["A9"].value == "1. COMPOSIÇÃO DO VTA"
+    # Leiaute final (50.2): a linha 8 e o separador entre o topo e o bloco 1;
+    # o titulo coabita a linha de cabecalho da tabela (A9).
+    # XLS-PC-VTA-ALIGN-1: a linha 8 passou a hospedar o card ambar do
+    # retroativo POTENCIAL e o fechamento "RETROATIVO CONSIDERADO NO VTA".
+    # Fora do metodo PC toda a faixa devolve "" e o separador continua
+    # visualmente vazio — e por isso que cada formula comeca pelo gate.
+    for endereco in ("A8", "C8", "D8", "E8"):
+        formula = str(res[endereco].value or "")
+        assert formula.startswith('=IF(MEMORIA_RESULTADOS!$B$4<>"PCs",""') or             formula.startswith('=IF(OR(MEMORIA_RESULTADOS!$B$4<>"PCs"'), endereco
+    # PC-UX-1 renomeou o titulo do bloco 1.
+    assert res["A9"].value == "1. COMO O VTA FOI CALCULADO"
 
 
 def test_tabela_da_linha_53_tem_bordas(em_branco):
@@ -356,7 +363,8 @@ def test_tabela_da_linha_53_tem_bordas(em_branco):
     # tabela entrega ao fiscal. As bordas conferidas abaixo continuam
     # sendo o objeto deste teste.
     assert str(res["A53"].value).startswith("6. TOTAIS E INDICADORES DE CONFER")
-    for linha in range(54, 67):
+    # XLS-PC-VTA-ALIGN-1: a tabela 6 passou a ter 13 medidas (55:67).
+    for linha in range(54, 68):
         for coluna in range(1, 4):
             celula = res.cell(linha, coluna)
             for lado in ("left", "right", "top", "bottom"):

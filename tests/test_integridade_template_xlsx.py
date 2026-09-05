@@ -59,7 +59,11 @@ FORMULAS_POR_ABA = {
     # PC-UX-1: sete formulas residuais fecham os universos ate/apos o corte.
     # Reauditoria NOVO-02: +7 formulas para o residual do universo integral
     # no Quadro 1; o TOTAL apenas muda da linha 8 para a 9.
-    "itens_PC": 45098,
+    # XLS-PC-VTA-ALIGN-1: +2 (45098 -> 45100) — o fechamento do Quadro 2 na
+    # linha 19, que ja existia VAZIA logo antes de "COMO OS PCs SAO
+    # TRATADOS": M19 (rotulo com a decomposicao) e S19 (o total
+    # considerado no VTA). Nenhuma linha foi inserida e A:L ficou intacta.
+    "itens_PC": 45100,
     "aditivos": 1393,
     # Fonte unica da posicao fisica: +199 de QTD_REM_ATUAL (B2:B200), que deixou
     # de ser digitada e passou a buscar CICLO_EM_EXECUCAO por ITEM, e +3 do
@@ -171,7 +175,14 @@ FORMULAS_POR_ABA = {
     # sao REESCRITAS, nunca acrescentadas; as ancoras EXECUTADO_APURADO (B83),
     # AJUSTES_DEVIDOS (B84), VTA_FINAL (B86) e CONFERENCIA_FORMACAO_VTA (B87)
     # ficam nas mesmas coordenadas.
-    "RESULTADOS": 150,
+    # XLS-PC-VTA-ALIGN-1: +8 (150 -> 158), TODAS de apresentacao e todas
+    # method-aware (fora do metodo PC devolvem ""): A4 (titulo do card do
+    # VTA) e A81 (texto de conferencia do quadro 9) deixam de ser texto
+    # fixo; A6 (rodape do card do VTA) e A8/C8/D8/E8 (card ambar do
+    # POTENCIAL e fechamento "RETROATIVO CONSIDERADO NO VTA") ocupam faixa
+    # que estava vazia; e o bloco 6 ganha uma medida (12 -> 13 linhas,
+    # 55:67). B84/C86 e as ancoras B83/B87 seguem intactas.
+    "RESULTADOS": 158,
 }
 
 

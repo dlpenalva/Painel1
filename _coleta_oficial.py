@@ -604,7 +604,7 @@ def _garantir_apresentacao_retroativos_e_aditivos(wb) -> None:
         for coord in ("J1", "S2"):
             ws[coord].value = "RETROATIVO POTENCIAL"
         ws["Q11"].value = "Retroativo reconhecido"
-        ws["R11"].value = "Valor em análise (regra vigente)"
+        ws["R11"].value = "Valor em análise — não pagos (regra vigente)"
         ws["S11"].value = "Retroativo potencial"
 
         estilos = (

@@ -95,21 +95,25 @@ def test_tabela_6_nao_expoe_nomes_tecnicos(res):
     """O fiscal nao deve ler abas, celulas nem nomes definidos."""
     proibidos = ("MEMORIA", "itens_PC", "CONTROLE!", "VTA_FINAL", "!B", "!T",
                  "posicao_contratual", "CICLO_EM_EXECUCAO")
-    for linha in range(55, 67):
+    # XLS-PC-VTA-ALIGN-1: a tabela passou a ter 13 medidas (55:67) — as
+    # medidas 7 e 8 decompoem o retroativo em reconhecido / POTENCIAL /
+    # considerado no VTA, e a antiga medida 10 ("Informacoes para
+    # conferencia"), que nao tinha valor apuravel, cedeu a linha.
+    for linha in range(55, 68):
         texto = str(res["C%d" % linha].value or "")
         for termo in proibidos:
             assert termo not in texto, "C%d expoe %r: %r" % (linha, termo, texto)
-    assert "Linhas 10 a 13" not in str(res["B64"].value)
+    assert "Disponíveis para consulta" not in str(res["B64"].value)
 
 
 def test_tabela_6_valores_em_moeda_e_destaques_em_negrito(res):
-    for linha in (55, 56, 57, 58, 59, 60, 61, 62, 63, 65):
+    for linha in range(55, 67):
         assert res["B%d" % linha].number_format == MOEDA_CANONICA, linha
-    # B64 e B66 sao textuais: mascara monetaria neles seria mentira visual.
-    assert res["B64"].number_format != MOEDA_CANONICA
-    assert res["B66"].number_format != MOEDA_CANONICA
-    assert res["B63"].font.b is True   # VTA Oficial
-    assert res["B66"].font.b is True   # Status
+    # B67 (resultado da apuracao) e textual: mascara monetaria seria mentira
+    # visual. A medida textual antiga (B64) deixou de existir.
+    assert res["B67"].number_format != MOEDA_CANONICA
+    assert res["B65"].font.b is True   # VTA Oficial (medida 11)
+    assert res["B67"].font.b is True   # Status (medida 13)
 
 
 # --------------------------------------------------- 3. TABELA 7

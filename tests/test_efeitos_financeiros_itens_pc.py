@@ -162,7 +162,7 @@ def test_template_usa_l_sem_deslocar_resumos_metadados_e_limite():
     assert [ws.cell(2, c).value for c in range(13, 21)] == [
         "CICLO", "QTD. DE PCs", "VALOR ORIGINAL TOTAL",
         "VALOR DOS PCs COM FATOR DO CICLO", "RETROATIVO RECONHECIDO",
-        "VALOR EM ANÁLISE (ÁREA GEST.)", "RETROATIVO POTENCIAL",
+        "VALOR EM ANÁLISE - NÃO PAGOS (ÁREA GEST.)", "RETROATIVO POTENCIAL",
         "QTD. COM ALERTA",
     ]
     assert ws["V1"].value == "COMPUTA_VTA"
