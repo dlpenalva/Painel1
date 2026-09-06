@@ -196,15 +196,23 @@ def test_cenario4_pc_posterior_ao_corte_fora_do_potencial():
     _provar_composicao(comp)
 
 
-def test_cenario4_pc_do_ciclo_vigente_fora_do_potencial():
-    """Regra petrea do mesmo corte: se a base nao entra, o potencial tambem nao."""
+def test_cenario4_pc_do_ciclo_vigente_integra_o_potencial():
+    """PC-VTA-POT-TOTAL-1 (regra patria): o ciclo do PC nao limita mais.
+
+    A BASE do PC do ciclo vigente continua fora da execucao (regra petrea do
+    mesmo corte, contra o remanescente integral), mas a parcela POTENCIAL dele
+    passa a integrar o VTA — o objetivo prudencial e nao subdimensionar.
+    """
     pcs = [
         _pc("C0", 1000.0),
         _pc("C2", 700.0, potencial=70.0),   # C2 e o ciclo vigente
     ]
     comp = C.montar_composicao_vta(_leitura(pcs))
-    assert comp["retroativo_potencial_vta"] == 0.0
+    assert comp["retroativo_potencial_vta"] == 70.0
+    assert comp["potencial_por_ciclo"] == [{"ciclo": "C2", "valor": 70.0}]
+    # a base de 700,00 NAO entrou na execucao: o VTA sem potencial nao mudou.
     assert comp["vta_sem_potencial"] == round(1000.0 + REMANESCENTE_C2, 2)
+    assert comp["vta_composicao"] == round(1000.0 + REMANESCENTE_C2 + 70.0, 2)
     _provar_composicao(comp)
 
 
@@ -407,7 +415,8 @@ def test_piso_potencial_negativo_nao_reduz_o_vta_e_permanece_visivel():
     assert not [l for l in comp["linhas"] if l.get("natureza") == "POTENCIAL"]
     _provar_composicao(comp)
     # 5. o fato e dito em alerta, nao escondido
-    assert any("nao reduzem o VTA" in a for a in comp["alertas"])
+    assert any("nao reduz o VTA" in a for a in comp["alertas"])
+    assert comp["retroativo_potencial_negativo"] == -40.0
 
 
 def test_piso_potencial_negativo_no_consolidado_e_informativo():
@@ -450,26 +459,41 @@ def _fonte_pagina() -> str:
     ).read_text(encoding="utf-8")
 
 
-def _nota_do_card_potencial() -> tuple[str, str]:
-    """Extrai os dois ramos da nota do card, direto do fonte da pagina."""
+def _nota_potencial():
+    """Extrai `_nota_potencial` do fonte da pagina e a executa isolada.
+
+    A funcao so consulta o dicionario do consolidado, entao roda fora do
+    Streamlit — o teste passa a exercitar o COMPORTAMENTO, e nao a redacao
+    de um ternario inline.
+    """
     fonte = _fonte_pagina()
-    trecho = fonte[fonte.index('"Retroativo potencial — em análise"'):]
-    trecho = trecho[:trecho.index("st.markdown")]
-    negativo, positivo = trecho.split("else", 1)
-    return negativo, positivo
+    inicio = fonte.index("def _nota_potencial(")
+    fim = fonte.index(chr(10) + "def ", inicio + 1)
+    espaco: dict = {}
+    exec(compile(fonte[inicio:fim], "<pagina>", "exec"), espaco)
+    return espaco["_nota_potencial"]
 
 
 def test_nota_do_card_positivo_preserva_a_redacao_atual():
-    _, positivo = _nota_do_card_potencial()
-    assert "Integra o VTA por critério prudencial" in positivo
-    assert "retroativo reconhecido a pagar" in positivo
+    nota = _nota_potencial()({"tem_parcela_potencial": True})
+    assert "Integra o VTA por critério prudencial" in nota
+    assert "retroativo reconhecido a pagar" in nota
 
 
 def test_nota_do_card_negativo_nao_afirma_que_integra_o_vta():
-    negativo, _ = _nota_do_card_potencial()
-    assert "Integra o VTA" not in negativo
-    assert "não reduz nem integra o VTA" in negativo
-    assert "potencial_negativo_nao_incorporado" in negativo
+    nota = _nota_potencial()({"potencial_negativo_nao_incorporado": True})
+    assert "Integra o VTA" not in nota
+    assert "não reduz nem integra o VTA" in nota
+
+
+def test_nota_do_card_misto_diz_as_duas_coisas():
+    """PC-VTA-POT-TOTAL-1: incorporado e negativo coexistem no caso misto."""
+    nota = _nota_potencial()({
+        "tem_parcela_potencial": True,
+        "potencial_negativo_nao_incorporado": True,
+    })
+    assert "A parcela positiva integra o VTA" in nota
+    assert "não reduz o VTA e não compensa a positiva" in nota
 
 
 def test_flag_do_sinal_chega_ao_consolidado_nos_dois_casos():
@@ -512,3 +536,104 @@ def test_documentos_sem_potencial_mantem_duas_parcelas():
     })
     assert len(linhas) == 2                      # == comportamento main
     assert round(sum(v for _, v in linhas), 2) == comp["vta_composicao"]
+
+
+# ==================== PC-VTA-POT-TOTAL-1 — REGRA PATRIA =====================
+# Os tres cenarios focais exigidos pela tarefa. Nada alem deles.
+# ---------------------------------------------------------------------------
+def test_regra_patria_cenario_a_todo_potencial_positivo_integra_o_vta():
+    """CENARIO A — VTA = VTA sem potencial + TODO o potencial positivo.
+
+    Inclusive o do ciclo VIGENTE, que a regra anterior excluia. Este e o caso
+    real observado: potencial visivel no XLS que nao chegava ao VTA.
+    """
+    pcs = [
+        _pc("C0", 1000.0),
+        _pc("C1", 500.0, potencial=30.0),    # ciclo encerrado
+        _pc("C2", 700.0, potencial=90.0),    # ciclo VIGENTE (antes: ignorado)
+    ]
+    comp = C.montar_composicao_vta(_leitura(pcs))
+    sem_potencial = round(1000.0 + 500.0 + REMANESCENTE_C2, 2)
+    assert comp["vta_sem_potencial"] == sem_potencial
+    assert comp["retroativo_potencial_vta"] == 120.0          # 30 + 90
+    assert comp["retroativo_potencial_apurado"] == 120.0
+    assert comp["vta_composicao"] == round(sem_potencial + 120.0, 2)
+    _provar_composicao(comp)
+
+
+def test_regra_patria_cenario_b_potencial_negativo_visivel_e_nao_reduz():
+    """CENARIO B — negativo permanece visivel; incorporado = 0; VTA nao cai."""
+    pcs = [_pc("C0", 1000.0), _pc("C1", 500.0, potencial=-40.0)]
+    comp = C.montar_composicao_vta(_leitura(pcs))
+    base = round(1000.0 + 500.0 + REMANESCENTE_C2, 2)
+    assert comp["retroativo_potencial_apurado"] == -40.0      # visivel
+    assert comp["retroativo_potencial_negativo"] == -40.0
+    assert comp["retroativo_potencial_vta"] == 0.0            # incorporado
+    assert comp["vta_composicao"] == base                     # nao diminui
+    _provar_composicao(comp)
+
+
+def test_regra_patria_cenario_c_misto_negativo_nao_compensa_positivo():
+    """CENARIO C — +100 e -40 no MESMO ciclo: incorporado = +100, nao +60."""
+    pcs = [
+        _pc("C0", 1000.0),
+        _pc("C1", 500.0, potencial=100.0),
+        _pc("C1", 300.0, potencial=-40.0),
+    ]
+    comp = C.montar_composicao_vta(_leitura(pcs))
+    sem_potencial = round(1000.0 + 500.0 + 300.0 + REMANESCENTE_C2, 2)
+    assert comp["retroativo_potencial_vta"] == 100.0          # NAO 60,00
+    assert comp["retroativo_potencial_apurado"] == 60.0       # liquido visivel
+    assert comp["retroativo_potencial_negativo"] == -40.0
+    assert comp["vta_sem_potencial"] == sem_potencial
+    assert comp["vta_composicao"] == round(sem_potencial + 100.0, 2)
+    _provar_composicao(comp)
+
+
+def test_regra_patria_cenario_c_consolidado_publica_as_duas_medidas():
+    """O consolidado (fonte da web e dos documentos) nao recalcula nada."""
+    pcs = [
+        _pc("C0", 1000.0),
+        _pc("C1", 500.0, potencial=100.0),
+        _pc("C1", 300.0, potencial=-40.0),
+    ]
+    comp = C.montar_composicao_vta(_leitura(pcs))
+    resultado = _resultado(comp)
+    resultado["totais_canonicos_pc"]["ate_o_corte"]["delta_potencial"] = 60.0
+    consolidado = montar_resultado_consolidado(resultado, {})
+    assert consolidado["retroativo_potencial_vta"] == 100.0
+    assert consolidado["retroativo_potencial_apurado"] == 60.0
+    assert consolidado["retroativo_potencial_negativo"] == -40.0
+    assert consolidado["tem_parcela_potencial"] is True
+    assert consolidado["potencial_negativo_nao_incorporado"] is True
+    assert consolidado["vta"] == round(
+        consolidado["vta_sem_potencial"] + consolidado["retroativo_potencial_vta"], 2
+    )
+    frase = consolidado["frase_parcela_potencial"]
+    assert "critério prudencial" in frase
+    assert "não reduz o VTA nem compensa parcela potencial positiva" in frase
+
+
+# --------- AUSENCIA DE DUPLA CONTAGEM (secao 16) -----------------------------
+def test_regra_patria_potencial_entra_exatamente_uma_vez():
+    """VTA_TOTAL = VTA_SEM_POTENCIAL + POTENCIAL_POSITIVO_INCORPORADO.
+
+    Nenhuma parcela economica carrega o potencial: a soma das linhas que NAO
+    sao POTENCIAL fecha exatamente com vta_sem_potencial.
+    """
+    pcs = [
+        _pc("C0", 1000.0, potencial=10.0),
+        _pc("C1", 500.0, reconhecido=50.0),
+        _pc("C1", 400.0, potencial=40.0),
+        _pc("C2", 700.0, potencial=90.0),
+        _pc("C1", 999.0, potencial=99.0, dentro_do_corte=False),
+        _pc("C1", 800.0, potencial=80.0, entra="Nao"),
+    ]
+    comp = C.montar_composicao_vta(_leitura(pcs))
+    # 10 (C0) + 40 (C1) + 90 (C2 vigente); 99 fora do corte e 80 excluido ficam fora.
+    assert comp["retroativo_potencial_vta"] == 140.0
+    linhas_potencial = [l for l in comp["linhas"] if l.get("natureza") == "POTENCIAL"]
+    assert len(linhas_potencial) == 1
+    assert linhas_potencial[0]["valor_atualizado"] == 140.0
+    assert comp["vta_composicao"] == round(comp["vta_sem_potencial"] + 140.0, 2)
+    _provar_composicao(comp)

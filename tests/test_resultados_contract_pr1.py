@@ -101,7 +101,12 @@ def test_names_antigos_preservados_t35_sem_nome_e_zero_vinculo_externo():
         assert names["RETROATIVO_POTENCIAL_VTA"] == "MEMORIA_RESULTADOS!$T$39"
         assert names["VTA_SEM_POTENCIAL"] == "MEMORIA_RESULTADOS!$T$40"
         assert names["RETROATIVO_POTENCIAL_APURADO"] == "MEMORIA_RESULTADOS!$T$41"
-        assert len(names) == len(NOMES_PREEXISTENTES) + 14 + 1 + 3
+        # PC-VTA-POT-TOTAL-1 publica o 4o name da decomposicao prudencial, com
+        # autorizacao expressa: RETROATIVO_POTENCIAL_NEGATIVO -> $T$47, a
+        # parcela potencial NEGATIVA que ficou de fora do VTA. Existe para que
+        # nenhum consumidor precise deduzi-la por subtracao de coordenadas.
+        assert names["RETROATIVO_POTENCIAL_NEGATIVO"] == "MEMORIA_RESULTADOS!$T$47"
+        assert len(names) == len(NOMES_PREEXISTENTES) + 14 + 1 + 4
         assert "MEMORIA_RESULTADOS!$T$35" not in names.values()
         assert not wb._external_links
     finally:

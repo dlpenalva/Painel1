@@ -4993,6 +4993,34 @@ def _celula_resultado(
     )
 
 
+def _nota_potencial(consolidado: dict) -> str:
+    """Nota do card do potencial, coerente com o que foi (ou nao) incorporado.
+
+    PC-VTA-POT-TOTAL-1: incorporado e negativo sao INDEPENDENTES — o VTA soma
+    as parcelas positivas uma a uma, entao pode haver as duas coisas ao mesmo
+    tempo. A nota diz exatamente o que vale em cada combinacao.
+    """
+    base = "Valor potencial relacionado a PCs ainda em análise. "
+    incorporado = bool(consolidado.get("tem_parcela_potencial"))
+    negativo = bool(consolidado.get("potencial_negativo_nao_incorporado"))
+    if incorporado and negativo:
+        return (
+            base + "A parcela positiva integra o VTA por critério prudencial; "
+            "a parcela negativa permanece visível, não reduz o VTA e não "
+            "compensa a positiva. Nada aqui é retroativo reconhecido a pagar."
+        )
+    if negativo:
+        return (
+            base + "Permanece registrado como valor potencial em análise, "
+            "mas não reduz nem integra o VTA por critério prudencial "
+            "enquanto negativo."
+        )
+    return (
+        base + "Integra o VTA por critério prudencial, mas não é retroativo "
+        "reconhecido a pagar enquanto a área gestora não confirmar."
+    )
+
+
 def render_resultado_consolidado(resultado, diagnostico):
     """Apresenta somente o contrato consolidado; não calcula grandezas."""
     consolidado = resultado.get("resultado_consolidado")
@@ -5102,19 +5130,11 @@ def render_resultado_consolidado(resultado, diagnostico):
                         # analise. O que mudou e o destino dele no VTA — dito
                         # aqui para nao restar a leitura de "valor a pagar".
                         #
-                        # HOTFIX: a nota tem de acompanhar o SINAL. Com potencial
-                        # negativo o piso prudencial mantem 0,00 no VTA, entao
-                        # dizer que ele "integra o VTA" seria falso. O valor
-                        # exibido nao muda; so o texto.
-                        "Valor potencial relacionado a PCs ainda em análise. "
-                        "Permanece registrado como valor potencial em análise, "
-                        "mas não reduz nem integra o VTA por critério "
-                        "prudencial enquanto negativo."
-                        if consolidado.get("potencial_negativo_nao_incorporado")
-                        else "Valor potencial relacionado a PCs ainda em análise. "
-                        "Integra o VTA por critério prudencial, mas não é "
-                        "retroativo reconhecido a pagar enquanto a área "
-                        "gestora não confirmar."
+                        # PC-VTA-POT-TOTAL-1: a nota acompanha o SINAL de cada
+                        # parcela, e nao mais o sinal do liquido. No caso MISTO
+                        # o positivo integra o VTA E existe negativo a declarar
+                        # — as duas coisas sao ditas, sem que uma anule a outra.
+                        _nota_potencial(consolidado)
                     ),
                 )
 
@@ -5237,6 +5257,12 @@ def render_resultado_consolidado(resultado, diagnostico):
             f'<span>{html.escape(_moeda_resultado(consolidado.get("vta_sem_potencial")))}</span></div>'
             '<div class="linha-potencial"><span>Parcela potencial no VTA — POTENCIAL</span>'
             f'<span>{html.escape(_moeda_resultado(consolidado.get("retroativo_potencial_vta")))}</span></div>'
+            + (
+                '<div class="linha-potencial">'
+                '<span>Parcela potencial negativa — POTENCIAL, não reduz o VTA</span>'
+                f'<span>{html.escape(_moeda_resultado(consolidado.get("retroativo_potencial_negativo")))}</span></div>'
+                if consolidado.get("potencial_negativo_nao_incorporado") else ""
+            ) +
             '<div class="linha-total"><span>VALOR TOTAL ATUALIZADO — VTA</span>'
             f'<span>{html.escape(_moeda_resultado(consolidado.get("vta")))}</span></div>'
             '</div>',

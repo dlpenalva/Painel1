@@ -245,9 +245,18 @@ def _adicionar_box_retroativos(doc: Document, dados: dict, *, saneador: bool) ->
     reconhecido = _num_ou_none(situacao.get("reconhecido"))
     em_analise = _num_ou_none(situacao.get("em_analise"))
     potencial = _num_ou_none(situacao.get("potencial"))
+    # PC-VTA-POT-TOTAL-1: o apurado LIQUIDO (`potencial`) e o INCORPORADO ao
+    # VTA sao medidas diferentes quando ha parcela potencial negativa.
+    # Publicar as duas sob o mesmo rotulo produziria dois numeros distintos
+    # chamados "retroativo potencial" no mesmo documento.
+    incorporado = _num_ou_none(dados.get("vta_retroativo_potencial"))
+    discriminar = (
+        incorporado is not None and potencial is not None
+        and round(incorporado, 2) != round(potencial, 2)
+    )
     valores_exibidos = (
-        (reconhecido, em_analise, potencial)
-        if saneador else (reconhecido, potencial)
+        (reconhecido, em_analise, potencial, incorporado)
+        if saneador else (reconhecido, potencial, incorporado)
     )
     if not any(
         valor is not None and abs(valor) > 0.004
@@ -269,7 +278,24 @@ def _adicionar_box_retroativos(doc: Document, dados: dict, *, saneador: bool) ->
             tamanho=10,
         )
     p.add_run().add_break()
-    _adicionar_run(p, f"Retroativo potencial: {formatar_moeda(potencial)}", tamanho=10)
+    if discriminar:
+        _adicionar_run(
+            p,
+            "Retroativo potencial incorporado ao VTA: "
+            + formatar_moeda(incorporado),
+            tamanho=10,
+        )
+        p.add_run().add_break()
+        _adicionar_run(
+            p,
+            "Retroativo potencial apurado (líquido, informativo): "
+            + formatar_moeda(potencial),
+            tamanho=10,
+        )
+    else:
+        _adicionar_run(
+            p, f"Retroativo potencial: {formatar_moeda(potencial)}", tamanho=10
+        )
     p.add_run().add_break()
     p.add_run().add_break()
 
@@ -289,6 +315,14 @@ def _adicionar_box_retroativos(doc: Document, dados: dict, *, saneador: bool) ->
             "área gestora. Sua confirmação e eventual pagamento competem à área "
             "gestora.\n\nEnquanto não confirmado, o retroativo potencial não "
             "integra o valor reconhecido a pagar."
+        )
+    if discriminar:
+        # Regra 2 (PC-VTA-POT-TOTAL-1): o negativo permanece visivel, nao
+        # reduz o VTA e nao compensa parcela potencial positiva.
+        texto += (
+            " O valor apurado é líquido: parcelas potenciais negativas "
+            "permanecem visíveis, não reduzem o Valor Total Atualizado e "
+            "não compensam as parcelas potenciais positivas."
         )
     partes = texto.split("\n")
     for indice, parte in enumerate(partes):
