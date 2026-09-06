@@ -527,29 +527,41 @@ def montar_resultado_consolidado(
     tem_parcela_potencial = bool(
         metodo_pc and potencial_vta is not None and round(potencial_vta, 2) != 0
     )
-    # PISO PRUDENCIAL: potencial apurado negativo NAO reduz o VTA e nao entra
-    # no quadro como parcela aditiva — mas tambem nao e escondido. Ele sai como
-    # informacao, com o rotulo que diz exatamente o que aconteceu.
+    # PC-VTA-POT-TOTAL-1: parcela potencial NEGATIVA nao reduz o VTA e nao
+    # compensa parcela positiva — mas tambem nao e escondida. Ela sai como
+    # informacao, com o rotulo que diz exatamente o que aconteceu. O
+    # discriminante e "apurado liquido < incorporado", que cobre tanto o caso
+    # puramente negativo quanto o MISTO (+100 e -40: incorporado 100, apurado
+    # 60, negativo -40).
+    potencial_negativo = (
+        _numero(composicao_origem.get("retroativo_potencial_negativo"))
+        if metodo_pc else None
+    )
     potencial_negativo_nao_incorporado = bool(
         metodo_pc
-        and potencial_apurado is not None
-        and round(potencial_apurado, 2) < 0
+        and potencial_negativo is not None
+        and round(potencial_negativo, 2) < 0
     )
+    frases: list[str] = []
     if tem_parcela_potencial and vta is not None:
-        frase_potencial = (
+        frases.append(
             f"O VTA inclui {_moeda_br(potencial_vta)} de retroativo potencial, "
             "incorporado por critério prudencial. Essa parcela permanece "
             "sujeita à confirmação pela área gestora e não representa, nesta "
             "data, retroativo reconhecido a pagar."
         )
-    elif potencial_negativo_nao_incorporado:
-        frase_potencial = (
+    if potencial_negativo_nao_incorporado:
+        frases.append(
+            "Há também "
+            f"{_moeda_br(abs(round(potencial_negativo, 2)))} de parcela "
+            "potencial negativa apurada. Por critério prudencial ela não "
+            "reduz o VTA nem compensa parcela potencial positiva."
+            if tem_parcela_potencial else
             f"Parcela potencial apurada: {_moeda_br(potencial_apurado)}. "
             "Por critério prudencial, valores potenciais negativos não "
             "reduzem o VTA."
         )
-    else:
-        frase_potencial = ""
+    frase_potencial = " ".join(frases)
 
     return {
         "vta": vta,
@@ -561,6 +573,9 @@ def montar_resultado_consolidado(
         # O valor que a regra normal apurou — pode ser negativo. Nunca e o que
         # entra no VTA; existe para nao esconder o que foi apurado.
         "retroativo_potencial_apurado": potencial_apurado,
+        # A parcela potencial NEGATIVA que ficou de fora (<= 0). Publicada para
+        # que nenhum consumidor precise recalcula-la a partir da diferenca.
+        "retroativo_potencial_negativo": potencial_negativo,
         "tem_parcela_potencial": tem_parcela_potencial,
         "potencial_negativo_nao_incorporado": potencial_negativo_nao_incorporado,
         "frase_parcela_potencial": frase_potencial,

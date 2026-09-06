@@ -14,8 +14,9 @@ Invariantes que sustentam a auditoria:
   ``MEMORIA_RESULTADOS!T25``; todas as demais ocorrencias apenas LEEM o
   name canonico ``RETROATIVO_POTENCIAL_VTA``;
 * nenhuma area visivel recalcula o potencial por conta propria;
-* piso prudencial intacto (``T39 = MAX(T41,0)``): potencial negativo nao
-  reduz o VTA;
+* regra patria (PC-VTA-POT-TOTAL-1): ``T39`` soma as parcelas POSITIVAS PC a
+  PC (``T42:T46``), de todos os ciclos ate o corte — potencial negativo nao
+  reduz o VTA nem compensa parcela positiva;
 * fora do metodo PC toda celula nova devolve "" — Financeiro e Itens
   Consumidos nao ganham linha, cor nem valor.
 """
@@ -51,6 +52,9 @@ REFERENCIAS_POTENCIAL_VTA = {
     "RESULTADOS!A6", "RESULTADOS!C8", "RESULTADOS!E8",
     "RESULTADOS!B61", "RESULTADOS!B62",
     "RESULTADOS!B84", "RESULTADOS!C86",
+    # Decomposicao, nao soma: T47 = T41 - T39 e a parcela potencial NEGATIVA
+    # que ficou de fora. Existe para que nenhum consumidor precise deduzi-la.
+    "MEMORIA_RESULTADOS!T47",
 }
 
 ROTULOS_BLOCO6 = [
@@ -111,12 +115,13 @@ def test_linha_19_fecha_o_retroativo_sem_inserir_linha(wb):
     assert rotulo.startswith('="RETROATIVO CONSIDERADO NO VTA = RECONHECIDO')
     assert "N($Q$18)" in rotulo                      # reconhecido (Quadro 2)
     assert "MEMORIA_RESULTADOS!$T$39" in rotulo      # potencial incorporado
-    assert "POTENCIAL INCORPORADO" in rotulo
+    assert "POTENCIAL POSITIVO INCORPORADO" in rotulo
 
-    # O fechamento soma o potencial CANONICO, nunca S18: S18 e o potencial de
-    # TODOS os ciclos ate o corte (inclusive o vigente e o residual), e o VTA
-    # so incorpora o dos ciclos ja encerrados. Fechar por S18 publicaria um
-    # total que nao existe em lugar nenhum do VTA.
+    # O fechamento soma o potencial CANONICO, nunca S18: S18 e a soma LIQUIDA
+    # por ciclo, em que um PC negativo compensaria um positivo. A regra patria
+    # (PC-VTA-POT-TOTAL-1) incorpora as parcelas POSITIVAS PC a PC — o que so
+    # T39 sabe fazer. Fechar por S18 publicaria um total que nao existe em
+    # lugar nenhum do VTA.
     assert ws["S19"].value == (
         "=ROUND(N($Q$18)+N(MEMORIA_RESULTADOS!$T$39),2)"
     )
@@ -263,10 +268,32 @@ def test_o_potencial_e_somado_ao_vta_exatamente_uma_vez(wb):
     )
 
 
-def test_piso_prudencial_do_potencial_negativo_permanece(wb):
+def test_regra_patria_incorpora_as_parcelas_positivas_pc_a_pc(wb):
+    """PC-VTA-POT-TOTAL-1: nada de ``MAX(soma_liquida, 0)``.
+
+    T42:T46 somam SOMENTE ``itens_PC!J > 0``, ciclo a ciclo e PC a PC, ate a
+    data de corte — inclusive o ciclo vigente. Assim um potencial negativo
+    nunca compensa um positivo, e T39 nunca fica abaixo de zero.
+    """
     mem = wb["MEMORIA_RESULTADOS"]
-    assert mem["T39"].value == "=MAX($T$41,0)"
-    assert str(mem["T41"].value).startswith("=IF($T$20=")
+    assert mem["T39"].value == "=ROUND(SUM($T$42:$T$46),2)"
+    for indice, ciclo in enumerate(("C0", "C1", "C2", "C3", "C4")):
+        formula = str(mem.cell(42 + indice, 20).value)
+        assert formula.startswith("=ROUND(SUMIFS(itens_PC!$J$2:$J$5001,")
+        assert f'itens_PC!$C$2:$C$5001,"{ciclo}"' in formula
+        assert 'itens_PC!$J$2:$J$5001,">0"' in formula      # so o POSITIVO
+        assert 'itens_PC!$B$2:$B$5001,"<="&$T$31' in formula  # data de corte
+    # O apurado LIQUIDO segue publicado (pode ser negativo) e nao entra no VTA.
+    assert mem["T41"].value == "=ROUND(SUM(itens_PC!$S$12:$S$16),2)"
+    # A parcela negativa fica explicita, sem que ninguem precise deduzi-la.
+    assert mem["T47"].value == "=ROUND($T$41-$T$39,2)"
+
+
+def test_potencial_negativo_nao_reduz_o_vta(wb):
+    """T39 e soma de parcelas positivas: por construcao nunca e negativo."""
+    mem = wb["MEMORIA_RESULTADOS"]
+    assert "MAX(" not in str(mem["T39"].value)
+    assert str(mem["T25"].value).endswith("ROUND($T$21+$T$22+$T$23+$T$39,2))")
 
 
 def test_financeiro_e_consumidos_nao_herdam_a_parcela(wb):

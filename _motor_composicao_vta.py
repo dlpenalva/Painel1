@@ -264,11 +264,13 @@ def _composicao_vta_pc(
     saidas — nao vira retroativo reconhecido, valor a pagar nem PC pago. Ela e
     exposta separadamente em `vta_sem_potencial` / `retroativo_potencial_vta`.
 
-    A parcela incorporada tem PISO ZERO: `max(potencial_apurado, 0)`. A regra
-    e prudencial "para cima", entao um potencial ainda nao reconhecido nunca
-    REDUZ o VTA. O valor apurado (que pode ser negativo em ciclo com variacao
-    negativa aplicada) continua publicado em `retroativo_potencial_apurado`
-    para apresentacao informativa — nao e escondido, so nao e somado.
+    PC-VTA-POT-TOTAL-1 (regra patria): a parcela incorporada e a SOMA DAS
+    PARCELAS POTENCIAIS POSITIVAS, PC a PC. Nao ha piso sobre a soma liquida:
+    um potencial negativo nunca compensa um positivo (PC A +100 e PC B -40
+    incorporam +100, e nao +60). O apurado liquido (que pode ser negativo em
+    ciclo com variacao negativa aplicada) continua publicado em
+    `retroativo_potencial_apurado` para apresentacao informativa — nao e
+    escondido, so nao e somado.
 
     - C0 executado: quando nao ha PC confiavel para C0, deriva da movimentacao
       fisica (QTD_REM_AJUSTADA_C0 - QTD_REM_AJUSTADA_C1) valorada ao VU_C0.
@@ -283,14 +285,21 @@ def _composicao_vta_pc(
     (seriam dupla contagem contra o remanescente integral daquele corte).
     Base insuficiente -> CALCULO MANUAL REQUERIDO (nunca fabrica resultado).
 
-    Elegibilidade da parcela POTENCIAL (VTA-POT-1) — reaproveita a regra ja
-    homologada, sem criar criterio novo: e o DELTA_POTENCIAL (itens_PC!J) dos
-    PCs que JA compoem a execucao acima (entra no calculo, dentro da data de
-    corte e ciclo anterior ao vigente). Como itens_PC!H (reconhecido) e
-    itens_PC!J (potencial) sao mutuamente exclusivos por construcao, para cada
-    PC vale base + reconhecido + potencial = valor atualizado, uma unica vez.
-    PC posterior a data de corte, PC do ciclo vigente/posterior e PC sem efeito
-    financeiro continuam fora — exatamente como ja estavam.
+    Elegibilidade da parcela POTENCIAL (PC-VTA-POT-TOTAL-1): e o
+    DELTA_POTENCIAL (itens_PC!J) de TODO PC validamente apurado pela
+    metodologia PC — entra no calculo, dentro da data de corte unica e com
+    ciclo identificado (C0..C4). O ciclo do PC deixou de limitar a
+    incorporacao: o potencial do ciclo VIGENTE tambem integra o VTA, porque o
+    objetivo prudencial e nao SUBdimensionar o valor do contrato. Continuam
+    fora, sem alteracao: PC posterior a data de corte, PC excluido do calculo
+    e PC sem ciclo identificavel (itens_PC!J = 0 por construcao, pois
+    EFEITO_FINANCEIRO_PC fica vazio/"Nao").
+
+    A base do PC do ciclo vigente permanece FORA da execucao (regra petrea do
+    mesmo corte, item acima): so a parcela POTENCIAL dele entra, e uma unica
+    vez, na linha propria de potencial. Como itens_PC!H (reconhecido) e
+    itens_PC!J (potencial) sao mutuamente exclusivos por construcao, nenhuma
+    parcela economica ja carrega esse potencial.
     """
     controle = leitura.get("controle") or {}
     vigente = str(controle.get("ciclo_vigente") or "").strip().upper()
@@ -316,12 +325,14 @@ def _composicao_vta_pc(
     # original, nunca pelo fator integral.
     pc_atual: dict[int, float] = {}
     pc_base: dict[int, float] = {}
-    # VTA-POT-1: retroativo POTENCIAL dos MESMOS PCs que compoem a execucao.
-    # Acumulado no proprio laco de elegibilidade para que, por construcao, so
-    # entre o potencial de um PC cuja base ja esta no VTA — a garantia
-    # aritmetica contra dupla contagem (base + reconhecido + potencial = valor
-    # atualizado do PC, exatamente uma vez).
+    # PC-VTA-POT-TOTAL-1: retroativo POTENCIAL de TODOS os PCs validamente
+    # apurados ate o corte, inclusive os do ciclo vigente. Acumulado no proprio
+    # laco de elegibilidade, em duas medidas distintas:
+    #   pc_potencial          -> apurado LIQUIDO por ciclo (informativo);
+    #   pc_potencial_positivo -> soma das parcelas POSITIVAS, PC a PC, que e a
+    #                            unica medida somada ao VTA.
     pc_potencial: dict[int, float] = {}
+    pc_potencial_positivo: dict[int, float] = {}
     posteriores = 0
     fora_do_corte = 0
     for it in itens_pc:
@@ -339,6 +350,16 @@ def _composicao_vta_pc(
         n = _ciclo_num(it.get("ciclo"))
         if n is None:
             continue
+        # O potencial e apurado ANTES do corte de elegibilidade da execucao:
+        # a regra patria manda incorpora-lo mesmo quando o PC pertence ao ciclo
+        # vigente (a base dele continua fora da execucao, logo nao ha dupla
+        # contagem entre base e potencial).
+        potencial_item = _tofl(it.get("delta_potencial"))
+        pc_potencial[n] = pc_potencial.get(n, 0.0) + potencial_item
+        if potencial_item > 0:
+            pc_potencial_positivo[n] = (
+                pc_potencial_positivo.get(n, 0.0) + potencial_item
+            )
         if n >= n_vig:
             # PC no corte vigente ou posterior: cobertura posterior e projecao,
             # nao desloca silenciosamente o corte oficial do VTA.
@@ -346,7 +367,6 @@ def _composicao_vta_pc(
             continue
         pc_atual[n] = pc_atual.get(n, 0.0) + considerado
         pc_base[n] = pc_base.get(n, 0.0) + _tofl(it.get("valor_pc"))
-        pc_potencial[n] = pc_potencial.get(n, 0.0) + _tofl(it.get("delta_potencial"))
     if posteriores:
         alertas.append(
             f"Composicao VTA-PC: {posteriores} PC(s) no ciclo vigente ({vigente}) "
@@ -501,31 +521,31 @@ def _composicao_vta_pc(
     total_base = round(sum(l["valor_base"] for l in execucao), 2)
     valor_saldo = saldo["valor_atualizado"] if saldo else 0.0
 
-    # VTA-POT-1 — parcela POTENCIAL incorporada por criterio prudencial.
-    # So entra o potencial dos ciclos cuja execucao ja esta no VTA (mesmas
-    # chaves de `pc_atual`), portanto para cada PC vale exatamente uma vez:
-    #     valor_pc + retroativo_reconhecido + retroativo_potencial
-    #   = valor_pc + (F - D se pago) + (F - D se em analise)
-    #   = VALOR_ATUALIZADO do PC.
-    # PISO PRUDENCIAL (decisao de negocio): o potencial APURADO pode ser
-    # negativo — basta um ciclo com variacao negativa APLICADA, em que o fator
-    # fica abaixo de 1 e itens_PC!J = D x (fator - 1) < 0. A regra do VTA-POT-1
-    # e prudencial "para cima": existe para evitar SUBdimensionamento. Uma
-    # parcela ainda POTENCIAL nao pode reduzir o VTA antes de ser reconhecida.
-    # Por isso o VTA incorpora max(apurado, 0) — e SO o VTA. Nada muda em
-    # itens_PC!F/H/I/J, no retroativo reconhecido (que segue negativo quando o
-    # ciclo e negativo) nem na politica de variacao negativa.
+    # PC-VTA-POT-TOTAL-1 — parcela POTENCIAL incorporada por criterio
+    # prudencial. Duas medidas distintas, ambas publicadas:
     #
-    # O valor apurado NAO e escondido: viaja em `retroativo_potencial_apurado`
-    # e e apresentado como informacao ao lado do quadro. O piso e aplicado UMA
-    # UNICA VEZ, aqui; os consumidores apenas leem.
+    #   apurado (informativo) = soma LIQUIDA de itens_PC!J dos PCs elegiveis;
+    #   incorporado ao VTA    = soma das parcelas POSITIVAS, PC a PC.
+    #
+    # A incorporacao NAO usa max(soma_liquida, 0): isso deixaria um potencial
+    # negativo compensar um positivo (PC A +100 e PC B -40 dariam +60). A regra
+    # patria e explicita — o negativo permanece VISIVEL e identificado como
+    # POTENCIAL, mas nao reduz o VTA e nao compensa parcela positiva alguma.
+    # Reajuste negativo RECONHECIDO (itens_PC!H) nao passa por aqui e segue
+    # exatamente como esta.
+    #
+    # Ausencia de dupla contagem: itens_PC!H e itens_PC!J sao mutuamente
+    # exclusivos por construcao (H so com G="Sim", J so com G<>"Sim"), a base
+    # de cada PC entra no maximo uma vez na execucao e o potencial entra em
+    # UMA unica linha propria. Vale, por construcao:
+    #     vta_composicao = vta_sem_potencial + retroativo_potencial_vta.
     potencial_por_ciclo = [
         {"ciclo": f"C{n}", "valor": round(pc_potencial[n], 2)}
         for n in sorted(pc_potencial)
         if round(pc_potencial[n], 2)
     ]
-    potencial_apurado = round(sum(p["valor"] for p in potencial_por_ciclo), 2)
-    potencial_no_vta = max(potencial_apurado, 0.0)
+    potencial_apurado = round(sum(pc_potencial.values()), 2)
+    potencial_no_vta = round(sum(pc_potencial_positivo.values()), 2)
     parcela_potencial = {
         "descricao": "Retroativo potencial de PCs em analise (POTENCIAL)",
         "valor_base": 0.0,
@@ -540,13 +560,15 @@ def _composicao_vta_pc(
             "data, retroativo reconhecido a pagar."
         ),
     } if potencial_no_vta else None
-    if potencial_apurado < 0:
+    potencial_negativo = round(potencial_apurado - potencial_no_vta, 2)
+    if potencial_negativo < 0:
         alertas.append(
-            f"Composicao VTA-PC: parcela potencial apurada de "
-            f"{potencial_apurado:.2f} (ciclo com variacao negativa). Por "
-            "criterio prudencial, valores potenciais negativos nao reduzem o "
-            "VTA: a parcela incorporada e 0,00. O valor apurado permanece "
-            "visivel como informacao."
+            f"Composicao VTA-PC: ha {abs(potencial_negativo):.2f} de parcela "
+            "potencial NEGATIVA apurada (ciclo com variacao negativa). Por "
+            "criterio prudencial ela permanece visivel como POTENCIAL, mas nao "
+            "reduz o VTA nem compensa parcela potencial positiva: o VTA "
+            f"incorpora {potencial_no_vta:.2f}, soma das parcelas positivas. "
+            f"Potencial apurado liquido: {potencial_apurado:.2f}."
         )
     vta_sem_potencial = round(total_exec + valor_saldo, 2)
     return {
@@ -563,11 +585,13 @@ def _composicao_vta_pc(
         "total_aditivos_atualizados": 0.0,
         "parcela_potencial": parcela_potencial,
         "potencial_por_ciclo": potencial_por_ciclo,
-        # Dois conceitos distintos, ambos publicados:
-        #   apurado -> o que a regra normal produziu (pode ser < 0);
-        #   no VTA  -> o que de fato foi somado (nunca < 0).
+        # Tres conceitos distintos, todos publicados:
+        #   apurado   -> soma liquida das parcelas potenciais (pode ser < 0);
+        #   no VTA    -> soma das parcelas POSITIVAS (unica somada; nunca < 0);
+        #   negativo  -> a parcela negativa que ficou de fora (<= 0).
         "retroativo_potencial_apurado": potencial_apurado,
         "retroativo_potencial_vta": potencial_no_vta,
+        "retroativo_potencial_negativo": potencial_negativo,
         "tem_potencial_apurado": bool(potencial_apurado),
         "tem_parcela_potencial": bool(potencial_no_vta),
         "vta_sem_potencial": vta_sem_potencial,
@@ -834,6 +858,9 @@ def montar_composicao_vta(leitura: dict[str, Any]) -> dict[str, Any]:
                     pc.get("retroativo_potencial_apurado") or 0.0
                 ),
                 "retroativo_potencial_vta": pc.get("retroativo_potencial_vta") or 0.0,
+                "retroativo_potencial_negativo": (
+                    pc.get("retroativo_potencial_negativo") or 0.0
+                ),
                 "tem_potencial_apurado": bool(pc.get("tem_potencial_apurado")),
                 "tem_parcela_potencial": bool(pc.get("tem_parcela_potencial")),
                 "vta_sem_potencial": pc.get("vta_sem_potencial"),
@@ -860,6 +887,7 @@ def montar_composicao_vta(leitura: dict[str, Any]) -> dict[str, Any]:
             "potencial_por_ciclo": [],
             "retroativo_potencial_apurado": None,
             "retroativo_potencial_vta": None,
+            "retroativo_potencial_negativo": None,
             "tem_potencial_apurado": False,
             "tem_parcela_potencial": False,
             "vta_sem_potencial": None,
