@@ -4993,6 +4993,25 @@ def _celula_resultado(
     )
 
 
+# WEB-PC-VALOR-ANALISE-1: o rotulo antigo ("Valor atualizado em analise")
+# nao dizia de que valor se tratava. O conceito e o dos PCs ja realizados,
+# ja atualizados pelo reajuste, que seguem em analise da area gestora e
+# ainda nao foram pagos a contratada. Somente redacao: mesmo valor, mesma
+# fonte, mesma posicao e o mesmo gate `medidas_pc_aplicaveis`, exclusivo do
+# metodo PC.
+_ROTULO_VALOR_PC_NAO_PAGO = "Valor atualizado dos PCs realizados e ainda não pagos"
+
+# A explicacao usa a nota discreta que a propria pagina ja emprega
+# (`.resultado-nota-vta`, a mesma do card do potencial): sem card novo e sem
+# alterar o leiaute.
+_NOTAS_SEGUNDA_LINHA = {
+    _ROTULO_VALOR_PC_NAO_PAGO: (
+        "Valor dos PCs já realizados, com reajuste aplicado, que permanecem "
+        "em análise pela área gestora e ainda não foram pagos à contratada."
+    ),
+}
+
+
 def _nota_potencial(consolidado: dict) -> str:
     """Nota do card do potencial, coerente com o que foi (ou nao) incorporado.
 
@@ -5152,7 +5171,7 @@ def render_resultado_consolidado(resultado, diagnostico):
         colunas_segunda_linha = []
         if consolidado.get("medidas_pc_aplicaveis"):
             colunas_segunda_linha.append((
-                "Valor atualizado em análise",
+                _ROTULO_VALOR_PC_NAO_PAGO,
                 _moeda_resultado(consolidado.get("valor_atualizado_em_analise")),
             ))
         fora = consolidado.get("fora_do_corte") or {}
@@ -5170,7 +5189,9 @@ def render_resultado_consolidado(resultado, diagnostico):
         colunas = st.columns(len(colunas_segunda_linha))
         for coluna, (rotulo, valor) in zip(colunas, colunas_segunda_linha):
             with coluna:
-                _celula_resultado(rotulo, valor)
+                _celula_resultado(
+                    rotulo, valor, nota=_NOTAS_SEGUNDA_LINHA.get(rotulo)
+                )
 
         st.markdown(
             f'<div class="resultado-status resultado-status-{classe_status}">'
