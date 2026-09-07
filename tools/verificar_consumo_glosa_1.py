@@ -46,7 +46,11 @@ CELULAS_NOVAS = {
         "Y3", "Z3", "AA3", "AB3", "AC3", "AD3", "AE3", "AF3", "AG3",
     ),
     "MEMORIA_RESULTADOS": ("T70", "T71", "T72", "T73", "T74", "T75"),
-    "RESULTADOS": ("A51", "H51", "A52", "B52", "D52", "F52", "H52"),
+}
+# RESULTADOS nao ganhou celula nova; o que se prova aqui e que ela reflete o
+# ajuste SOZINHA, pelas celulas que ja existiam no checkpoint.
+CELULAS_RESULTADOS = {
+    "RESULTADOS": ("B36", "D22", "B83", "B85", "B86", "C5"),
 }
 
 
@@ -121,7 +125,7 @@ def _com(acao, tentativas: int = 12, espera: float = 1.0):
 
 def _rodar(excel, origem: Path, ajuste=None, mapas=None) -> dict[str, object]:
     """Semeia, recalcula, salva, fecha e REABRE antes de ler."""
-    mapas = mapas or (CELULAS_LEGADO, CELULAS_NOVAS)
+    mapas = mapas or (CELULAS_LEGADO, CELULAS_RESULTADOS, CELULAS_NOVAS)
     tmp_dir = Path(tempfile.mkdtemp(prefix="cl8us_verif_glosa_"))
     alvo = tmp_dir / origem.name
     shutil.copyfile(origem, alvo)
@@ -177,7 +181,8 @@ def main() -> None:
     falhas: list[str] = []
     try:
         base_check = _rodar(
-            excel, args.checkpoint.resolve(), mapas=(CELULAS_LEGADO,)
+            excel, args.checkpoint.resolve(),
+            mapas=(CELULAS_LEGADO, CELULAS_RESULTADOS),
         )
         base_novo = _rodar(excel, args.novo.resolve())
         pago = _rodar(excel, args.novo.resolve(), ("Valor pago", 90000))

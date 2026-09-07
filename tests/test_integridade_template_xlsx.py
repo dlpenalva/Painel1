@@ -195,12 +195,11 @@ FORMULAS_POR_ABA = {
     # POTENCIAL e fechamento "RETROATIVO CONSIDERADO NO VTA") ocupam faixa
     # que estava vazia; e o bloco 6 ganha uma medida (12 -> 13 linhas,
     # 55:67). B84/C86 e as ancoras B83/B87 seguem intactas.
-    # CONSUMO-GLOSA-1: +11 da faixa A51/G51/H51 + A52:H52, apresentacao que
-    # resolve para "" em todas as celulas enquanto nao houver glosa > 0 no
-    # metodo Itens. As linhas 51 e 52 ja existiam VAZIAS entre os blocos 5 e
-    # 6, entao a aba continua terminando na 87 e 88:200 continua vazia — as
-    # travas do rollback da UX2 seguem intactas.
-    "RESULTADOS": 169,
+    # CONSUMO-GLOSA-1 NAO altera esta aba: nao ha linha visivel livre entre 1
+    # e 87 (as vazias sao separadores geridos, ocultas de 7pt ou ancoras
+    # testadas) e abaixo da 87 esta a camada removida pelo rollback da UX2.
+    # A aba ja reflete o ajuste sozinha via F20.
+    "RESULTADOS": 158,
 }
 
 

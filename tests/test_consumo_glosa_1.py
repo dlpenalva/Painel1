@@ -541,25 +541,18 @@ def test_xls_b26_e_remanescente_do_ramo_itens_intactos(workbook):
     assert "AJUSTE" not in (mem["D33"].value or "")
 
 
-def test_xls_bloco_de_resultados_fica_mudo_sem_glosa(workbook):
-    """Sem glosa positiva a faixa resolve para vazio em todas as celulas."""
-    res = workbook["RESULTADOS"]
-    enderecos = (
-        "A51", "G51", "H51",
-        "A52", "B52", "C52", "D52", "E52", "F52", "G52", "H52",
-    )
-    for endereco in enderecos:
-        formula = res[endereco].value
-        assert formula.startswith("=IF(NOT(AND("), endereco
-        assert "MEMORIA_RESULTADOS!$T$71>0" in formula, endereco
-        assert 'MEMORIA_RESULTADOS!$B$4="Itens"' in formula, endereco
+def test_xls_resultados_nao_foi_tocada(workbook):
+    """A aba RESULTADOS nao tem linha visivel livre — e nao recebeu nada.
 
+    Todas as suas linhas vazias entre 1 e 87 sao ancoras de leiaute de
+    frentes anteriores: 8/14/23/32/39/52 sao separadores brancos geridos pela
+    Etapa 50.3, 31/40/51 sao linhas OCULTAS de 7pt e 78 fecha a tabela 8
+    (test_resultados_final_1.py::test_tabela_8_padronizada exige A78 vazia).
+    Abaixo da 87 esta a camada que o rollback da UX2 removeu.
 
-def test_xls_resultados_nao_ganhou_camada_abaixo_da_linha_87(workbook):
-    """A faixa nova mora nas linhas 51/52, que ja existiam vazias.
-
-    As duas travas plantadas pelo rollback da UX2 (max_row == 87 e nada em
-    88:200) continuam valendo — esta frente nao reabre aquela porta.
+    Nenhuma delas foi povoada por esta frente — a aba continua exibindo o
+    ajuste sozinha, porque F20 alimenta o executado apurado, o retroativo e
+    o VTA que ela ja mostra.
     """
     res = workbook["RESULTADOS"]
     assert res.max_row == 87
@@ -569,6 +562,33 @@ def test_xls_resultados_nao_ganhou_camada_abaixo_da_linha_87(workbook):
         for celula in linha
         if celula.value is not None
     ]
-    # E a faixa nao invadiu os blocos vizinhos (5 termina na 50, 6 abre na 53).
-    assert res["A50"].value == "Complemento histórico"
-    assert res["A53"].value == "6. TOTAIS E INDICADORES DE CONFERÊNCIA"
+    for linha in (8, 14, 23, 31, 32, 39, 40, 51, 52, 78):
+        for coluna in "ABCDEFGHIJ":
+            valor = str(res[f"{coluna}{linha}"].value or "")
+            assert "itens_Consumidos!$A" not in valor
+            assert "$T$71" not in valor, f"{coluna}{linha} virou faixa de glosa"
+    assert res["A78"].value is None
+    for linha in (31, 40, 51):
+        assert res.row_dimensions[linha].hidden is True
+
+
+def test_xls_medidas_do_ajuste_vivem_na_memoria_auditavel(workbook):
+    """As seis medidas do ajuste sao publicadas em MEMORIA_RESULTADOS."""
+    mem = workbook["MEMORIA_RESULTADOS"]
+    assert mem["S69"].value == (
+        "AJUSTES DA EXECUCAO - VALOR PAGO / GLOSA (metodo Itens)"
+    )
+    rotulos = [mem[f"S{linha}"].value for linha in range(70, 76)]
+    assert rotulos == [
+        "Valor calculado da execucao (ciclos ajustados)",
+        "Glosa total",
+        "Valor pago considerado",
+        "Valor pago atualizado",
+        "Retroativo do valor pago",
+        "Status dos ajustes",
+    ]
+    for linha in range(70, 75):
+        assert mem[f"T{linha}"].value.startswith(
+            '=IF($T$75<>"AJUSTE APLICADO","",'
+        ), linha
+    assert 'COUNTIF(itens_Consumidos!$AG$2:$AG$6,"REVISAR*")>0' in mem["T75"].value

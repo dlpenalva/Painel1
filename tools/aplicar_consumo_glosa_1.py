@@ -31,11 +31,11 @@ equivalente "por outra via" que pudesse mudar arredondamento.
       base SUMPRODUCT e trocada pelo valor pago considerado; a expressao do
       fator (F - F/D) fica intacta.
     - S69:T75 (bloco novo): medidas canonicas agregadas dos ajustes.
-* RESULTADOS!A51:H52 (duas linhas que ja existiam VAZIAS entre os blocos 5 e
-  6): apresentacao discreta, que so aparece quando ha glosa > 0 no metodo
-  Itens. Deliberadamente DENTRO do rodape homologado — a aba continua
-  terminando na linha 87 e 88:200 continua vazia, as duas travas deixadas
-  pelo rollback da UX2.
+* RESULTADOS NAO e alterada: a aba nao tem uma unica linha visivel livre
+  entre 1 e 87 (as vazias sao separadores geridos, linhas ocultas ou ancoras
+  testadas) e abaixo da 87 esta a camada que o rollback da UX2 removeu. Ela
+  ja reflete o ajuste sozinha, porque F20 alimenta o executado apurado, o
+  retroativo e o VTA exibidos ali. Ver o comentario do bloco RESULTADOS.
 
 NAO altera: quantidades consumidas, remanescente fisico (C33/D33/D35),
 Financeiro, PCs, aditivos, ou qualquer ramo de B26 alem do que ja existia.
@@ -277,48 +277,28 @@ _MEMORIA_AGREGADOS = {
 
 
 # --------------------------------------------------------------------------
-# RESULTADOS!A51:H52 — apresentacao discreta (so com glosa > 0)
+# RESULTADOS — deliberadamente NAO recebe faixa nova.
 #
-# As linhas 51 e 52 ja existem VAZIAS no template homologado (entre o bloco 5,
-# que termina na 50, e o bloco 6, que comeca na 53) — sem merge e sem
-# formatacao condicional. Usa-las mantem `RESULTADOS.max_row == 87` e o
-# rodape 88:200 vazio, as duas travas que o rollback da UX2 deixou plantadas
-# em tests/test_resultados_final_1.py e tests/test_xls_pc_vta_align_1.py.
-# Sem glosa positiva todas as celulas resolvem para "" e a aba fica visualmente
-# identica a de hoje.
+# A aba nao tem uma unica linha visivel livre entre 1 e 87. Todas as seis
+# linhas vazias sao ancoras de leiaute defendidas por testes de frentes
+# anteriores:
+#   - 8/14/23/32/39/52 sao separadores brancos geridos pela Etapa 50.3 (o
+#     conteudo canonico que mora neles usa o formato ";;;", invisivel);
+#   - 31/40/51 sao linhas OCULTAS de 7pt (mesma etapa);
+#   - 78 fecha a tabela 8 e e verificada como vazia por
+#     tests/test_resultados_final_1.py::test_tabela_8_padronizada;
+#   - abaixo da 87 esta a camada que o rollback da UX2 removeu, com
+#     `max_row == 87` e 88:200 vazio travados em dois testes.
+# Escrever em qualquer uma delas ou seria invisivel para o usuario, ou
+# reabriria a porta que a UX2 fechou.
+#
+# A aba, porem, JA reflete o ajuste sozinha: com glosa valida, F20 muda e com
+# ele o executado apurado (B36/B83), o retroativo (D22) e o VTA (C5/B65/B86).
+# As seis medidas do ajuste ficam publicadas em MEMORIA_RESULTADOS!S69:T75 (a
+# aba de memoria auditavel, onde as medidas canonicas do projeto vivem) e no
+# card discreto da web.
 # --------------------------------------------------------------------------
-_GATE_RESULTADOS = (
-    f'AND({ABA_MEMORIA}!$B$4="Itens",{ABA_MEMORIA}!$T$75="{STATUS_APLICADO}",'
-    f'ISNUMBER({ABA_MEMORIA}!$T$71),{ABA_MEMORIA}!$T$71>0)'
-)
-
-
-def _res_texto(texto: str) -> str:
-    return f'=IF(NOT({_GATE_RESULTADOS}),"","{texto}")'
-
-
-def _res_valor(celula: str) -> str:
-    return (
-        f'=IF(NOT({_GATE_RESULTADOS}),"",'
-        f'IF({ABA_MEMORIA}!{celula}="","",{ABA_MEMORIA}!{celula}))'
-    )
-
-
-_RESULTADOS_BLOCO = {
-    "A51": _res_texto(
-        "AJUSTE DA EXECUCAO - VALOR PAGO / GLOSA (metodo Itens consumidos)"
-    ),
-    "G51": _res_texto("Retroativo do valor pago"),
-    "H51": _res_valor("$T$74"),
-    "A52": _res_texto("Valor calculado da execucao"),
-    "B52": _res_valor("$T$70"),
-    "C52": _res_texto("(-) Glosa"),
-    "D52": _res_valor("$T$71"),
-    "E52": _res_texto("(=) Valor pago considerado"),
-    "F52": _res_valor("$T$72"),
-    "G52": _res_texto("Valor pago atualizado"),
-    "H52": _res_valor("$T$73"),
-}
+_RESULTADOS_BLOCO: dict[str, str] = {}
 
 
 # --------------------------------------------------------------------------
@@ -451,8 +431,24 @@ def _validar_origem(wb) -> None:
 
     resultados = wb.Worksheets(ABA_RESULTADOS)
     for endereco in _RESULTADOS_BLOCO:
+        linha = int("".join(ch for ch in endereco if ch.isdigit()))
         if resultados.Range(endereco).Value not in (None, ""):
             raise ValueError(f"RESULTADOS!{endereco} ja ocupada.")
+        # Toda linha "vazia" de RESULTADOS entre 1 e 87 e ancora de leiaute:
+        # 8/14/23/32/39/52 sao separadores brancos geridos pela Etapa 50.3,
+        # 31/40/51 sao linhas ocultas de 7pt e 78 fecha a tabela 8. Escrever
+        # em qualquer uma delas ficaria invisivel ou quebraria uma trava — por
+        # isso _RESULTADOS_BLOCO esta vazio; estes gates ficam de sentinela
+        # caso alguem volte a povoa-lo.
+        if bool(resultados.Rows(linha).Hidden):
+            raise ValueError(
+                f"RESULTADOS linha {linha} esta oculta; ficaria invisivel."
+            )
+        if linha in {8, 14, 23, 32, 39, 52, 78}:
+            raise ValueError(
+                f"RESULTADOS linha {linha} e ancora de leiaute (Etapa 50.3 / "
+                "tabela 8); nao pode receber conteudo novo."
+            )
 
     if "VTA_FINAL" not in _nomes_definidos(wb):
         raise ValueError("Nome definido VTA_FINAL ausente.")
@@ -544,17 +540,18 @@ def _aplicar_memoria(wb) -> None:
 
 
 def _aplicar_resultados(wb) -> None:
+    """No-op enquanto _RESULTADOS_BLOCO estiver vazio (ver o comentario la).
+
+    Mantida para que a aba nao seja nem aberta para escrita sem necessidade:
+    sem celulas a escrever, a protecao da planilha nem chega a ser removida.
+    """
+    if not _RESULTADOS_BLOCO:
+        return
     ws = wb.Worksheets(ABA_RESULTADOS)
     estado, selecao = _capturar_protecao(ws)
     try:
         for endereco, formula in _RESULTADOS_BLOCO.items():
             ws.Range(endereco).Formula = formula
-        try:
-            ws.Range("A51").Font.Bold = True
-            for endereco in ("H51", "B52", "D52", "F52", "H52"):
-                ws.Range(endereco).NumberFormat = "#,##0.00"
-        except Exception:
-            pass
     finally:
         _restaurar_protecao(ws, estado, selecao)
 
