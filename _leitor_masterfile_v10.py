@@ -516,8 +516,59 @@ def _ler_itens_consumidos_v10(wb) -> dict[str, Any]:
         "valor_total": sum(i["valor_total"] or 0 for i in resultado["itens"]
                            if isinstance(i["valor_total"], (int, float))),
     }
+    resultado["ajustes_execucao"] = _ler_ajustes_execucao_consumidos(ws, mapa)
     resultado["ok"] = bool(resultado["itens"])
     return resultado
+
+
+# CONSUMO-GLOSA-1: rotulos aceitos em itens_Consumidos!AJUSTE_TIPO.
+_TIPOS_AJUSTE_EXECUCAO = {
+    "valor pago": "Valor pago",
+    "glosa": "Glosa",
+}
+
+
+def _ler_ajustes_execucao_consumidos(ws, mapa: dict[str, int]) -> dict[str, Any]:
+    """CONSUMO-GLOSA-1: bloco lateral OPCIONAL X:AG de itens_Consumidos.
+
+    Le SOMENTE os dois campos manuais (AJUSTE_TIPO e AJUSTE_VALOR_INFORMADO).
+    Todo o resto do bloco e formula, e o workbook chega aqui com
+    data_only=True: em um XLS gerado sem passar pelo Excel o cache nao existe
+    e essas celulas voltariam None. A medida canonica e recalculada no motor
+    (_objeto_processo_reajuste._ajustes_execucao_por_ciclo) a partir dos dois
+    manuais, nunca lida do cache.
+
+    Compatibilidade: XLS anterior ao bloco nao tem as colunas -> devolve {}
+    (ausencia de ajuste), sem erro e sem tocar no calculo legado. VAZIO nunca
+    vira ZERO: uma linha sem tipo e sem valor simplesmente nao entra.
+    """
+    col_ciclo = mapa.get(_norm("AJUSTE_CICLO"))
+    col_tipo = mapa.get(_norm("AJUSTE_TIPO"))
+    col_valor = mapa.get(_norm("AJUSTE_VALOR_INFORMADO"))
+    if not (col_ciclo and col_tipo and col_valor):
+        return {}
+
+    ajustes: dict[str, Any] = {}
+    # O bloco tem uma linha por ciclo (C0..C4) logo abaixo do cabecalho; a
+    # margem de 20 linhas so evita depender de posicao fixa.
+    for linha in range(2, min(int(ws.max_row or 2), 20) + 1):
+        ciclo = str(ws.cell(linha, col_ciclo).value or "").strip().upper()
+        if ciclo not in {"C0", "C1", "C2", "C3", "C4"} or ciclo in ajustes:
+            continue
+        tipo_bruto = ws.cell(linha, col_tipo).value
+        valor_bruto = ws.cell(linha, col_valor).value
+        tipo_txt = "" if tipo_bruto is None else str(tipo_bruto).strip()
+        valor_vazio = valor_bruto is None or str(valor_bruto).strip() == ""
+        if not tipo_txt and valor_vazio:
+            continue
+        ajustes[ciclo] = {
+            "ciclo": ciclo,
+            "tipo_bruto": tipo_txt,
+            "tipo": _TIPOS_AJUSTE_EXECUCAO.get(tipo_txt.lower()),
+            "valor_bruto": valor_bruto,
+            "valor_vazio": valor_vazio,
+        }
+    return ajustes
 
 
 _VTA_DEFAULTS = {

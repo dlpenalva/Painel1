@@ -5011,6 +5011,25 @@ _NOTAS_SEGUNDA_LINHA = {
     ),
 }
 
+# CONSUMO-GLOSA-1: rótulo do card opcional do método Itens consumidos.
+_ROTULO_GLOSA_EXECUCAO = "Glosa da execução"
+
+
+def _nota_glosa_execucao(ajustes: dict) -> str:
+    """Nota do card da glosa — diz o que é e revela o valor pago considerado.
+
+    A nota nunca inventa número: se o valor pago considerado não estiver
+    disponível, só a definição é exibida.
+    """
+    texto = (
+        "Diferença entre o valor calculado pelos itens consumidos e o valor "
+        "pago considerado na execução."
+    )
+    considerado = ajustes.get("valor_pago_considerado")
+    if isinstance(considerado, (int, float)):
+        texto += f" Valor pago considerado: {_moeda_resultado(considerado)}."
+    return texto
+
 
 def _nota_potencial(consolidado: dict) -> str:
     """Nota do card do potencial, coerente com o que foi (ou nao) incorporado.
@@ -5182,15 +5201,30 @@ def render_resultado_consolidado(resultado, diagnostico):
                 "Fora da data de corte",
                 f"{quantidade_fmt} PC(s) — {_moeda_resultado(fora.get('valor_informado'))} informado(s)",
             ))
+        # CONSUMO-GLOSA-1: card discreto, só quando há glosa material. Entra
+        # na linha que já existe — sem glosa não há card nem espaço vazio. Usa
+        # a célula neutra (cinza/azul suave): o âmbar é reservado ao potencial
+        # do método PC e não pode ser reaproveitado aqui.
+        _ajustes = consolidado.get("ajustes_execucao") or {}
+        if _ajustes.get("aplicavel"):
+            colunas_segunda_linha.append((
+                _ROTULO_GLOSA_EXECUCAO,
+                _moeda_resultado(_ajustes.get("glosa")),
+            ))
         formalizacao_exibicao = formalizacao.get("status") or "—"
         if status_em_conferencia and formalizacao_exibicao == "BLOQUEADA":
             formalizacao_exibicao = "EM CONFERÊNCIA"
         colunas_segunda_linha.append(("Formalização", formalizacao_exibicao))
+        notas_segunda_linha = dict(_NOTAS_SEGUNDA_LINHA)
+        if _ajustes.get("aplicavel"):
+            notas_segunda_linha[_ROTULO_GLOSA_EXECUCAO] = _nota_glosa_execucao(
+                _ajustes
+            )
         colunas = st.columns(len(colunas_segunda_linha))
         for coluna, (rotulo, valor) in zip(colunas, colunas_segunda_linha):
             with coluna:
                 _celula_resultado(
-                    rotulo, valor, nota=_NOTAS_SEGUNDA_LINHA.get(rotulo)
+                    rotulo, valor, nota=notas_segunda_linha.get(rotulo)
                 )
 
         st.markdown(

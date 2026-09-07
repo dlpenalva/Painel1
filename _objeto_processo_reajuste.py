@@ -790,6 +790,17 @@ def _montar_memoria_por_ciclo(
                 atualizado = round(base * fator, 2)
             acumular(ciclo, "consumidos", base, atualizado)
 
+    # CONSUMO-GLOSA-1: camada economica OPCIONAL do metodo Consumido. Roda
+    # DEPOIS da consolidacao item a item (precisa do valor calculado do ciclo)
+    # e ANTES de qualquer medida derivada. Sem ajuste informado ela nao toca
+    # em nada e o resultado fica identico ao comportamento legado.
+    ajustes_execucao, ajustes_resumo, ajustes_invalidos = (
+        _aplicar_ajustes_execucao_consumidos(leitura, ciclos)
+    )
+    consumidos_falha_completude = (
+        consumidos_falha_completude or ajustes_invalidos
+    )
+
     fotos_escolhidas: dict[tuple[str, str], dict[str, Any]] = {}
     for foto in (leitura.get("execucao_saldo") or {}).get("fotografias_ciclo") or []:
         chave = (str(foto.get("item") or ""), str(foto.get("ciclo") or "").upper())
@@ -1160,6 +1171,8 @@ def _montar_memoria_por_ciclo(
                 if metodo_escolhido else "Metodologia sem evidencias suficientes."
             )
         }),
+        "ajustes_execucao_por_ciclo": ajustes_execucao,
+        "ajustes_execucao_resumo": ajustes_resumo,
         "definicao_vta": "execucao atualizada pelo metodo aplicavel + potencial restante atualizado",
         "hierarquia_retroativo": ["financeiro", "pc_pago_definitivo", "consumidos_pagos"],
         "controle_pcs": {
@@ -1168,6 +1181,166 @@ def _montar_memoria_por_ciclo(
             "regra": "PC historico, pendente ou sem valor final nao gera retroativo",
         },
     }
+
+
+_CICLOS_AJUSTE = ("C0", "C1", "C2", "C3", "C4")
+
+
+def _aplicar_ajustes_execucao_consumidos(
+    leitura: dict[str, Any],
+    ciclos: dict[str, dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any], bool]:
+    """CONSUMO-GLOSA-1 - valor pago / glosa por ciclo no metodo Consumido.
+
+    Publica UMA medida canonica por ciclo (nenhum consumidor recalcula a
+    regra) e, quando o ajuste e valido, troca a base economica do ciclo pelo
+    VALOR PAGO CONSIDERADO - o valor bruto da execucao economicamente
+    reconhecida APOS a glosa e ANTES do reajuste retroativo em apuracao.
+
+    "Valor pago" e "Glosa" sao duas formas de informar a MESMA grandeza:
+
+        valor pago considerado = valor informado                   (Valor pago)
+        valor pago considerado = valor calculado - valor informado (Glosa)
+        glosa                  = valor calculado - valor pago considerado
+        valor pago atualizado  = valor pago considerado x fator do ciclo
+        retroativo             = valor pago atualizado - valor pago considerado
+
+    Nunca: valor_calculado x fator - glosa, que reajustaria a parcela glosada.
+
+    A glosa e FINANCEIRA: quantidade consumida e remanescente fisico ficam
+    intactos (nada aqui toca em qtd_total/qtd_contratada nem no calculo do
+    remanescente). Entrada invalida NAO vira zero e NAO e ignorada: devolve
+    True em "invalidos", que fecha (fail-closed) a conferencia inteira do
+    metodo Consumido, do mesmo jeito que uma incompletude de valoracao.
+
+    VAZIO != ZERO: sem tipo e sem valor o ciclo nao tem ajuste algum;
+    "valor pago = 0" e um ajuste valido (glosa integral do ciclo).
+    """
+    brutos = (
+        (leitura.get("itens_consumidos_v10") or {}).get("ajustes_execucao") or {}
+    )
+
+    por_ciclo: dict[str, Any] = {}
+    invalidos = False
+    aplicados: list[str] = []
+    motivos: list[str] = []
+
+    for nome in _CICLOS_AJUSTE:
+        bloco = ciclos[nome]["retroativo"]["consumidos"]
+        # Zero apurado COM evidencia e um valor calculado legitimo; ausencia
+        # de evidencia e ausencia de base, nao zero.
+        valor_calculado = bloco["base_original"] if bloco["evidencias"] else None
+        fator = ciclos[nome].get("fator_acumulado")
+        bruto = brutos.get(nome)
+
+        registro: dict[str, Any] = {
+            "ciclo": nome,
+            "informado": bool(bruto),
+            "tipo_ajuste": None,
+            "valor_informado": None,
+            "valor_calculado_execucao": valor_calculado,
+            "valor_pago_considerado": None,
+            "glosa": None,
+            "fator": fator,
+            "valor_pago_atualizado": None,
+            "retroativo": None,
+            "status": "SEM AJUSTE",
+        }
+        if not bruto:
+            por_ciclo[nome] = registro
+            continue
+
+        tipo = bruto.get("tipo")
+        tipo_bruto = str(bruto.get("tipo_bruto") or "")
+        valor = _f_none(bruto.get("valor_bruto"))
+        registro["tipo_ajuste"] = tipo
+        registro["valor_informado"] = valor
+
+        # Mesma cascata de validacao da coluna AJUSTE_STATUS do XLS, na mesma
+        # ordem, para que as duas superficies digam exatamente a mesma coisa.
+        if not tipo_bruto:
+            status = "REVISAR: VALOR INFORMADO SEM TIPO DE AJUSTE"
+        elif tipo is None:
+            status = "REVISAR: TIPO DE AJUSTE INVALIDO"
+        elif bruto.get("valor_vazio"):
+            status = "REVISAR: TIPO DE AJUSTE SEM VALOR"
+        elif valor is None:
+            status = "REVISAR: VALOR INFORMADO NAO NUMERICO"
+        elif valor < 0:
+            status = (
+                "REVISAR: GLOSA NEGATIVA" if tipo == "Glosa"
+                else "REVISAR: VALOR PAGO NEGATIVO"
+            )
+        elif valor_calculado is None:
+            status = "REVISAR: SEM EXECUCAO CALCULADA NO CICLO"
+        elif fator is None:
+            status = "REVISAR: FATOR DO CICLO INDISPONIVEL"
+        elif round(valor, 2) > round(valor_calculado, 2):
+            status = (
+                "REVISAR: GLOSA MAIOR QUE O CALCULADO" if tipo == "Glosa"
+                else "REVISAR: VALOR PAGO MAIOR QUE O CALCULADO"
+            )
+        else:
+            status = "AJUSTE APLICADO"
+
+        registro["status"] = status
+        if status != "AJUSTE APLICADO":
+            invalidos = True
+            motivos.append(f"{nome}: {status}")
+            por_ciclo[nome] = registro
+            continue
+
+        pago = (
+            round(valor, 2) if tipo == "Valor pago"
+            else round(valor_calculado - valor, 2)
+        )
+        glosa = round(valor_calculado - pago, 2)
+        pago_atualizado = round(pago * fator, 2)
+        retroativo = round(pago_atualizado - pago, 2)
+
+        registro.update({
+            "valor_pago_considerado": pago,
+            "glosa": glosa,
+            "valor_pago_atualizado": pago_atualizado,
+            "retroativo": retroativo,
+        })
+        por_ciclo[nome] = registro
+        aplicados.append(nome)
+
+        # Troca APENAS a fonte economica da execucao do ciclo. "evidencias"
+        # fica intacta: a evidencia continua sendo a mesma execucao fisica.
+        bloco["base_original"] = pago
+        bloco["valor_atualizado"] = pago_atualizado
+        bloco["retroativo"] = retroativo
+
+    if invalidos:
+        status_geral = "REVISAR"
+    elif aplicados:
+        status_geral = "AJUSTE APLICADO"
+    else:
+        status_geral = "SEM AJUSTE"
+
+    def _soma(campo: str) -> float | None:
+        if status_geral != "AJUSTE APLICADO":
+            return None
+        return round(sum(por_ciclo[c][campo] or 0.0 for c in aplicados), 2)
+
+    resumo = {
+        "status": status_geral,
+        "ciclos_ajustados": list(aplicados),
+        "valor_calculado_execucao": _soma("valor_calculado_execucao"),
+        "glosa": _soma("glosa"),
+        "valor_pago_considerado": _soma("valor_pago_considerado"),
+        "valor_pago_atualizado": _soma("valor_pago_atualizado"),
+        "retroativo": _soma("retroativo"),
+        "motivos": motivos,
+        "regra": (
+            "valor pago considerado = execucao economicamente reconhecida do "
+            "ciclo apos glosa, antes do reajuste em apuracao; o reajuste "
+            "incide sobre ele, nunca sobre a parcela glosada"
+        ),
+    }
+    return por_ciclo, resumo, invalidos
 
 
 def _montar_pendencias(

@@ -230,6 +230,18 @@ def montar_resultado_consolidado(
     memoria = resultado.get("memoria_por_ciclo") or {}
     referencias_vta = resultado.get("referencias_vta") or {}
 
+    # CONSUMO-GLOSA-1: medida canonica dos ajustes de valor pago / glosa,
+    # calculada uma unica vez em _objeto_processo_reajuste. Aqui so se decide
+    # se ha material a exibir: sem glosa positiva o bloco fica indisponivel e
+    # a web nao abre nenhum card novo.
+    ajustes_execucao = dict(memoria.get("ajustes_execucao_resumo") or {})
+    _glosa_ajuste = _numero(ajustes_execucao.get("glosa"))
+    ajustes_execucao["aplicavel"] = bool(
+        ajustes_execucao.get("status") == "AJUSTE APLICADO"
+        and _glosa_ajuste is not None
+        and _glosa_ajuste > 0
+    )
+
     metodo_controle = _normalizar_metodo(controle.get("modo"))
     metodo_efetivo = _normalizar_metodo(
         ((memoria.get("vta") or {}).get("metodo"))
@@ -619,4 +631,9 @@ def montar_resultado_consolidado(
         "informacoes": informacoes,
         "campos_nao_confiaveis": campos_nao_confiaveis,
         "composicao_vta": composicao,
+        # CONSUMO-GLOSA-1: repasse puro da medida canonica do motor. A web nao
+        # recalcula glosa nem valor pago considerado — so decide se ha o que
+        # mostrar. `aplicavel` fica False sem ajuste, e o painel entao nao
+        # abre card algum (sem espaco vazio).
+        "ajustes_execucao": ajustes_execucao,
     }

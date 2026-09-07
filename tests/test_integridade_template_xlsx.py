@@ -52,7 +52,13 @@ FORMULAS_POR_ABA = {
     # VTA-C2: +199 (V2:V200, coluna auxiliar "remanescente atualizado
     # (base) do item" por linha — evita bug real de SUMPRODUCT com mascara
     # booleana usado antes em C33/D33 do metodo Itens).
-    "itens_Consumidos": 2005,
+    # CONSUMO-GLOSA-1: +35 do bloco lateral opcional X:AG (linhas 2:6 =
+    # C0..C4), 7 colunas de formula por ciclo (Y valor calculado, AB valor
+    # pago considerado, AC glosa, AD fator, AE valor pago atualizado, AF
+    # retroativo, AG status). X (rotulo do ciclo) e a legenda X8:X12 sao
+    # literais, nao formulas. Z (tipo) e AA (valor informado) sao os dois
+    # unicos campos manuais e ficam vazios no template.
+    "itens_Consumidos": 2040,
     # Etapa 26G: grade escalada para a capacidade canonica (5.000 PCs
     # x 8 colunas de formula) + resumo lateral N2:T6.
     # 45042 = 40042 anteriores + 5000 da coluna U (VALOR_CONSIDERADO, U2:U5001).
@@ -116,7 +122,14 @@ FORMULAS_POR_ABA = {
     # espelho do motor Python) e T40 (VTA-PC antes da parcela potencial, o
     # subtotal demonstrado em RESULTADOS!C86). T25 e REESCRITA (passa a somar
     # T39), nao acrescentada; Financeiro/Itens e todo o resto ficam intactos.
-    "MEMORIA_RESULTADOS": 4414,
+    # CONSUMO-GLOSA-1: a constante 4414 JA ESTAVA DEFASADA no checkpoint
+    # 02eb9017 — o template homologado ali ja trazia 4420 formulas e este
+    # teste ja falhava antes desta frente (divergencia pre-existente de 6,
+    # provada rodando o teste sobre o template intacto do checkpoint).
+    # Esta frente soma +6 (T70:T75, as medidas canonicas agregadas dos
+    # ajustes de valor pago/glosa): 4420 + 6 = 4426. F20 e D10:D14 sao
+    # REESCRITAS, nao acrescentadas.
+    "MEMORIA_RESULTADOS": 4426,
     # 57 do prototipo + 4 selos por tabela + 1 premissa da estimativa - 1
     # helper J4 removido (status global agora agrega os selos H8/H14/H24/H33).
     # 26G: +5 (linha executiva A23:E23 dos PCs sem efeito financeiro).
@@ -182,7 +195,12 @@ FORMULAS_POR_ABA = {
     # POTENCIAL e fechamento "RETROATIVO CONSIDERADO NO VTA") ocupam faixa
     # que estava vazia; e o bloco 6 ganha uma medida (12 -> 13 linhas,
     # 55:67). B84/C86 e as ancoras B83/B87 seguem intactas.
-    "RESULTADOS": 158,
+    # CONSUMO-GLOSA-1: +11 da faixa A51/G51/H51 + A52:H52, apresentacao que
+    # resolve para "" em todas as celulas enquanto nao houver glosa > 0 no
+    # metodo Itens. As linhas 51 e 52 ja existiam VAZIAS entre os blocos 5 e
+    # 6, entao a aba continua terminando na 87 e 88:200 continua vazia — as
+    # travas do rollback da UX2 seguem intactas.
+    "RESULTADOS": 169,
 }
 
 
