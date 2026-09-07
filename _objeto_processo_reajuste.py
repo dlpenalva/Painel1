@@ -10,6 +10,8 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
+import numbers
 import unicodedata
 from datetime import date, datetime
 from typing import Any
@@ -790,6 +792,17 @@ def _montar_memoria_por_ciclo(
                 atualizado = round(base * fator, 2)
             acumular(ciclo, "consumidos", base, atualizado)
 
+    # CONSUMO-GLOSA-1: camada economica OPCIONAL do metodo Consumido. Roda
+    # DEPOIS da consolidacao item a item (precisa do valor calculado do ciclo)
+    # e ANTES de qualquer medida derivada. Sem ajuste informado ela nao toca
+    # em nada e o resultado fica identico ao comportamento legado.
+    ajustes_execucao, ajustes_resumo, ajustes_invalidos = (
+        _aplicar_ajustes_execucao_consumidos(leitura, ciclos)
+    )
+    consumidos_falha_completude = (
+        consumidos_falha_completude or ajustes_invalidos
+    )
+
     fotos_escolhidas: dict[tuple[str, str], dict[str, Any]] = {}
     for foto in (leitura.get("execucao_saldo") or {}).get("fotografias_ciclo") or []:
         chave = (str(foto.get("item") or ""), str(foto.get("ciclo") or "").upper())
@@ -1160,6 +1173,8 @@ def _montar_memoria_por_ciclo(
                 if metodo_escolhido else "Metodologia sem evidencias suficientes."
             )
         }),
+        "ajustes_execucao_por_ciclo": ajustes_execucao,
+        "ajustes_execucao_resumo": ajustes_resumo,
         "definicao_vta": "execucao atualizada pelo metodo aplicavel + potencial restante atualizado",
         "hierarquia_retroativo": ["financeiro", "pc_pago_definitivo", "consumidos_pagos"],
         "controle_pcs": {
@@ -1168,6 +1183,259 @@ def _montar_memoria_por_ciclo(
             "regra": "PC historico, pendente ou sem valor final nao gera retroativo",
         },
     }
+
+
+_CICLOS_AJUSTE = ("C0", "C1", "C2", "C3", "C4")
+_SIM_AJUSTE = {"sim", "s", "true", "1", "yes"}
+
+
+def _numero_manual_ajuste(valor: Any) -> float | None:
+    """Numero ESTRITO para a entrada manual de CONSUMO-GLOSA-1.
+
+    O XLS valida essa celula com ISNUMBER, que recusa booleano e texto. O
+    `_f_none` generico do modulo e deliberadamente permissivo (aceita
+    `float("90000")` e `float(True)`) e e usado por varias outras cadeias, por
+    isso NAO pode ser endurecido aqui — a validacao estrita fica local.
+
+    Aceita apenas o que a celula entrega como numero real e finito:
+
+        0, 0.0, 90000, 90000.50   -> aceitos (zero numerico e valor valido)
+        True, False               -> recusados (bool e subclasse de int)
+        "90000", "0", "dez mil"   -> recusados (sem coercao de texto)
+        None, datetime, nan, inf  -> recusados
+
+    Devolve None em todos os casos recusados; a cascata de status distingue
+    esse None de "celula vazia" pelo campo `valor_vazio` do leitor.
+    """
+    if isinstance(valor, bool):
+        return None
+    if not isinstance(valor, numbers.Real):
+        return None
+    numero = float(valor)
+    if not math.isfinite(numero):
+        return None
+    return numero
+
+
+def _fator_novo_do_ciclo(
+    nome: str, por_ciclo: dict[str, Any]
+) -> float | None:
+    """Fator do reajuste NOVO do ciclo — espelho de parametros!D11:D15.
+
+    O template publica DOIS fatores por ciclo e confundi-los duplica reajustes:
+
+        parametros!F2:F6   FATOR_ACUMULADO historico integral ate o ciclo (F)
+        parametros!D11     1 (base de C0)
+        parametros!D12:D15 IF(C1x="","",1+C1x) = 1 + percentual do ciclo,
+                           preenchido SO quando COMPUTAR_NESTA_APURACAO=Sim
+
+    E o segundo (D) que incide sobre o valor pago; F/D e o fator que ja estava
+    vigente antes do ciclo e ja esta embutido no que foi pago. Devolve None
+    quando o ciclo esta fora da apuracao ou sem percentual — fail-closed, sem
+    inventar reajuste onde a apuracao nao declara nenhum.
+    """
+    if nome == "C0":
+        return 1.0  # parametros!D11 e a constante 1
+    reg = por_ciclo.get(nome) or {}
+    computar = str(reg.get("computar_nesta_apuracao") or "").strip().lower()
+    if computar not in _SIM_AJUSTE:
+        return None
+    percentual = _f_none(reg.get("percentual_reajuste"))
+    if percentual is None:
+        return None
+    fator = 1.0 + percentual
+    return fator if fator else None
+
+
+def _aplicar_ajustes_execucao_consumidos(
+    leitura: dict[str, Any],
+    ciclos: dict[str, dict[str, Any]],
+) -> tuple[dict[str, Any], dict[str, Any], bool]:
+    """CONSUMO-GLOSA-1 - valor pago / glosa por ciclo no metodo Consumido.
+
+    Publica UMA medida canonica por ciclo (nenhum consumidor recalcula a
+    regra) e, quando o ajuste e valido, troca a base economica do ciclo pelo
+    VALOR PAGO CONSIDERADO - o valor bruto da execucao economicamente
+    reconhecida APOS a glosa, ANTES do reajuste que se apura NESTE ciclo mas
+    JA com os reajustes anteriores formalizados que compoem o preco vigente.
+
+    Toda a conta acontece na BASE MONETARIA VIGENTE ANTES DO CICLO, que e a
+    base em que o fiscal conhece o que foi pago:
+
+        valor calculado        = base_original x (F / D)
+        valor pago considerado = valor informado                   (Valor pago)
+        valor pago considerado = valor calculado - valor informado (Glosa)
+        glosa                  = valor calculado - valor pago considerado
+        valor pago atualizado  = valor pago considerado x D
+        retroativo             = valor pago atualizado - valor pago considerado
+
+    onde F e o fator acumulado historico do ciclo e D o fator do reajuste NOVO
+    (ver _fator_novo_do_ciclo). Isto encaixa o ajuste DENTRO da regra ja
+    homologada do metodo, porque a formula do XLS para o retroativo por itens
+
+        base x (F - F/D)  ==  (base x F/D) x (D - 1)
+
+    ja e "valor na base vigente anterior x percentual do ciclo". Com o ajuste,
+    o primeiro fator vira o valor pago considerado e nada mais muda — sem
+    glosa as duas expressoes coincidem termo a termo.
+
+    Nunca aplicar F (o acumulado) sobre o valor pago: ele ja contem os
+    reajustes anteriores e seriam cobrados duas vezes. Nunca, tampouco,
+    valor_calculado x D - glosa, que reajustaria a parcela glosada.
+
+    A glosa e FINANCEIRA: quantidade consumida e remanescente fisico ficam
+    intactos (nada aqui toca em qtd_total/qtd_contratada nem no calculo do
+    remanescente). Entrada invalida NAO vira zero e NAO e ignorada: devolve
+    True em "invalidos", que fecha (fail-closed) a conferencia inteira do
+    metodo Consumido, do mesmo jeito que uma incompletude de valoracao.
+
+    VAZIO != ZERO: sem tipo e sem valor o ciclo nao tem ajuste algum;
+    "valor pago = 0" e um ajuste valido (glosa integral do ciclo).
+    """
+    brutos = (
+        (leitura.get("itens_consumidos_v10") or {}).get("ajustes_execucao") or {}
+    )
+
+    por_ciclo: dict[str, Any] = {}
+    invalidos = False
+    aplicados: list[str] = []
+    motivos: list[str] = []
+
+    por_ciclo_param = (leitura.get("parametros_v10") or {}).get("por_ciclo") or {}
+
+    for nome in _CICLOS_AJUSTE:
+        bloco = ciclos[nome]["retroativo"]["consumidos"]
+        fator_novo = _fator_novo_do_ciclo(nome, por_ciclo_param)
+        fator_acumulado = ciclos[nome].get("fator_acumulado")
+        # Zero apurado COM evidencia e um valor calculado legitimo; ausencia
+        # de evidencia e ausencia de base, nao zero.
+        #
+        # O valor calculado e publicado NA BASE MONETARIA VIGENTE ANTES do
+        # ciclo — base_original x (F / D) —, que e a base em que o fiscal
+        # conhece o que foi efetivamente pago. Espelha itens_Consumidos!Y.
+        if not bloco["evidencias"] or fator_acumulado is None or not fator_novo:
+            valor_calculado = None
+        else:
+            valor_calculado = round(
+                bloco["base_original"] * fator_acumulado / fator_novo, 2
+            )
+        # O "fator" publicado e o do reajuste NOVO do ciclo: e ele, e nao o
+        # acumulado, que incide sobre o valor pago.
+        fator = fator_novo
+        bruto = brutos.get(nome)
+
+        registro: dict[str, Any] = {
+            "ciclo": nome,
+            "informado": bool(bruto),
+            "tipo_ajuste": None,
+            "valor_informado": None,
+            "valor_calculado_execucao": valor_calculado,
+            "valor_pago_considerado": None,
+            "glosa": None,
+            "fator": fator,
+            "valor_pago_atualizado": None,
+            "retroativo": None,
+            "status": "SEM AJUSTE",
+        }
+        if not bruto:
+            por_ciclo[nome] = registro
+            continue
+
+        tipo = bruto.get("tipo")
+        tipo_bruto = str(bruto.get("tipo_bruto") or "")
+        # Validacao ESTRITA, espelho do ISNUMBER do XLS: `_f_none` aceitaria
+        # True/False e texto numerico, divergindo da planilha.
+        valor = _numero_manual_ajuste(bruto.get("valor_bruto"))
+        registro["tipo_ajuste"] = tipo
+        registro["valor_informado"] = valor
+
+        # Mesma cascata de validacao da coluna AJUSTE_STATUS do XLS, na mesma
+        # ordem, para que as duas superficies digam exatamente a mesma coisa.
+        if not tipo_bruto:
+            status = "REVISAR: VALOR INFORMADO SEM TIPO DE AJUSTE"
+        elif tipo is None:
+            status = "REVISAR: TIPO DE AJUSTE INVALIDO"
+        elif bruto.get("valor_vazio"):
+            status = "REVISAR: TIPO DE AJUSTE SEM VALOR"
+        elif valor is None:
+            status = "REVISAR: VALOR INFORMADO NAO NUMERICO"
+        elif valor < 0:
+            status = (
+                "REVISAR: GLOSA NEGATIVA" if tipo == "Glosa"
+                else "REVISAR: VALOR PAGO NEGATIVO"
+            )
+        # O fator novo vem ANTES: sem ele o proprio valor calculado fica None,
+        # e "sem execucao" seria um diagnostico enganoso.
+        elif fator is None:
+            status = "REVISAR: CICLO FORA DA APURACAO OU SEM FATOR NOVO"
+        elif valor_calculado is None:
+            status = "REVISAR: SEM EXECUCAO CALCULADA NO CICLO"
+        elif round(valor, 2) > round(valor_calculado, 2):
+            status = (
+                "REVISAR: GLOSA MAIOR QUE O CALCULADO" if tipo == "Glosa"
+                else "REVISAR: VALOR PAGO MAIOR QUE O CALCULADO"
+            )
+        else:
+            status = "AJUSTE APLICADO"
+
+        registro["status"] = status
+        if status != "AJUSTE APLICADO":
+            invalidos = True
+            motivos.append(f"{nome}: {status}")
+            por_ciclo[nome] = registro
+            continue
+
+        pago = (
+            round(valor, 2) if tipo == "Valor pago"
+            else round(valor_calculado - valor, 2)
+        )
+        glosa = round(valor_calculado - pago, 2)
+        pago_atualizado = round(pago * fator, 2)
+        retroativo = round(pago_atualizado - pago, 2)
+
+        registro.update({
+            "valor_pago_considerado": pago,
+            "glosa": glosa,
+            "valor_pago_atualizado": pago_atualizado,
+            "retroativo": retroativo,
+        })
+        por_ciclo[nome] = registro
+        aplicados.append(nome)
+
+        # Troca APENAS a fonte economica da execucao do ciclo. "evidencias"
+        # fica intacta: a evidencia continua sendo a mesma execucao fisica.
+        bloco["base_original"] = pago
+        bloco["valor_atualizado"] = pago_atualizado
+        bloco["retroativo"] = retroativo
+
+    if invalidos:
+        status_geral = "REVISAR"
+    elif aplicados:
+        status_geral = "AJUSTE APLICADO"
+    else:
+        status_geral = "SEM AJUSTE"
+
+    def _soma(campo: str) -> float | None:
+        if status_geral != "AJUSTE APLICADO":
+            return None
+        return round(sum(por_ciclo[c][campo] or 0.0 for c in aplicados), 2)
+
+    resumo = {
+        "status": status_geral,
+        "ciclos_ajustados": list(aplicados),
+        "valor_calculado_execucao": _soma("valor_calculado_execucao"),
+        "glosa": _soma("glosa"),
+        "valor_pago_considerado": _soma("valor_pago_considerado"),
+        "valor_pago_atualizado": _soma("valor_pago_atualizado"),
+        "retroativo": _soma("retroativo"),
+        "motivos": motivos,
+        "regra": (
+            "valor pago considerado = execucao economicamente reconhecida do "
+            "ciclo apos glosa, antes do reajuste em apuracao; o reajuste "
+            "incide sobre ele, nunca sobre a parcela glosada"
+        ),
+    }
+    return por_ciclo, resumo, invalidos
 
 
 def _montar_pendencias(

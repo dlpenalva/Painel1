@@ -240,6 +240,31 @@ def montar_resultado_consolidado(
     metodo_pc = metodo_controle == "pc" or metodo_codigo == "pc"
     metodo_consumidos = metodo_controle == "d" or metodo_codigo == "consumidos"
 
+    # CONSUMO-GLOSA-1: medida canonica dos ajustes de valor pago / glosa,
+    # calculada uma unica vez em _objeto_processo_reajuste. Aqui so se decide
+    # se ha material a exibir — e o gate PRECISA do metodo efetivo, por isso
+    # vem depois dele: um arquivo apurado por Financeiro ou por PC pode ter
+    # dados residuais de ajuste em itens_Consumidos, e essa glosa nao pertence
+    # ao resultado exibido. Fail-closed: fora do metodo Itens Consumidos, o
+    # card nunca aparece.
+    #
+    # O gate e o metodo EFETIVO (`metodo_codigo`), nao o `metodo_consumidos`
+    # usado nas demais decisoes: aquele e um OR com o modo do CONTROLE e
+    # ficaria verdadeiro tambem quando a apuracao acabou saindo por outro
+    # metodo. `and not metodo_pc` cobre o caso misto/contraditorio
+    # (CONTROLE=PC com eleicao Consumidos), que fica fail-closed.
+    ajustes_execucao = dict(memoria.get("ajustes_execucao_resumo") or {})
+    _glosa_ajuste = _numero(ajustes_execucao.get("glosa"))
+    metodo_glosa_aplicavel = metodo_codigo == "consumidos" and not metodo_pc
+    ajustes_execucao["aplicavel"] = bool(
+        metodo_glosa_aplicavel
+        and ajustes_execucao.get("status") == "AJUSTE APLICADO"
+        and _glosa_ajuste is not None
+        and _glosa_ajuste > 0
+    )
+    # Publicado para que nenhum consumidor precise reinferir a metodologia.
+    ajustes_execucao["metodo_aplicavel"] = bool(metodo_glosa_aplicavel)
+
     # STATUS-CANON-1: `status_resultados_xls` e o bloco inteiro lido da aba
     # RESULTADOS (inclui a conclusao oficial em "geral" == RESULTADOS!B3);
     # `status_resultados` continua sendo apenas o sub-dicionario de valores.
@@ -619,4 +644,9 @@ def montar_resultado_consolidado(
         "informacoes": informacoes,
         "campos_nao_confiaveis": campos_nao_confiaveis,
         "composicao_vta": composicao,
+        # CONSUMO-GLOSA-1: repasse puro da medida canonica do motor. A web nao
+        # recalcula glosa nem valor pago considerado — so decide se ha o que
+        # mostrar. `aplicavel` fica False sem ajuste, e o painel entao nao
+        # abre card algum (sem espaco vazio).
+        "ajustes_execucao": ajustes_execucao,
     }
