@@ -16,20 +16,32 @@ equivalente "por outra via" que pudesse mudar arredondamento.
     - X CICLO (literal), Y AJUSTE_VALOR_CALCULADO (auto),
       Z AJUSTE_TIPO (MANUAL, dropdown vazio/"Valor pago"/"Glosa"),
       AA AJUSTE_VALOR_INFORMADO (MANUAL),
-      AB AJUSTE_VALOR_PAGO_CONSIDERADO, AC AJUSTE_GLOSA, AD AJUSTE_FATOR,
+      AB AJUSTE_VALOR_PAGO_CONSIDERADO, AC AJUSTE_GLOSA, AD AJUSTE_FATOR_NOVO,
       AE AJUSTE_VALOR_PAGO_ATUALIZADO, AF AJUSTE_RETROATIVO,
       AG AJUSTE_STATUS (todas automaticas).
-    - A base economica do ciclo e SUMPRODUCT(QTD_CONS_Cn, VU_ORIGINAL), a
-      mesma ja usada por MEMORIA_RESULTADOS!D11:D14 — NUNCA VALOR_CONS_Cn,
-      que ja embute o proprio reajuste em apuracao.
+    - A base de comparacao do ciclo e o valor calculado NA BASE MONETARIA
+      VIGENTE ANTES do reajuste que se apura ali:
+
+          QTD_CONS_Cn x VU_ORIGINAL x (F / D)
+
+      com F = parametros!F2:F6 (fator acumulado historico) e D =
+      parametros!D11:D15 (fator do reajuste NOVO do ciclo). NUNCA
+      VALOR_CONS_Cn, que ja embute o proprio reajuste em apuracao; e NUNCA
+      QTD x VU_ORIGINAL puro, que ignoraria os reajustes anteriores ja
+      formalizados e ja embutidos no que foi efetivamente pago.
+    - O VALOR PAGO CONSIDERADO e informado nessa mesma base monetaria, e so
+      o fator NOVO (D) incide sobre ele — o acumulado (F) jamais e reaplicado.
 * MEMORIA_RESULTADOS:
     - F20 (execucao consumida atualizada): cada ciclo passa a contribuir com
       AE (valor pago atualizado) quando ha ajuste valido; sem ajuste, com a
       mesma SUM(coluna VALOR_CONS_Cn) de antes. Qualquer REVISAR fecha a
       medida inteira (fail-closed), nunca vira zero.
-    - D10:D14 (retroativo do metodo Itens): idem — quando ha ajuste valido, a
-      base SUMPRODUCT e trocada pelo valor pago considerado; a expressao do
-      fator (F - F/D) fica intacta.
+    - D10:D14 (retroativo do metodo Itens): a formula homologada
+      base_original x (F - F/D) e identicamente (base_original x F/D) x
+      (D - 1), ou seja, ja e "valor na base vigente anterior x percentual do
+      ciclo". O ramo SEM ajuste permanece byte a byte o homologado; o ramo
+      COM ajuste troca o primeiro fator pelo valor pago considerado (AB) e
+      aplica so (D - 1). Sem glosa, AB = Y e as duas coincidem termo a termo.
     - S69:T75 (bloco novo): medidas canonicas agregadas dos ajustes.
 * RESULTADOS NAO e alterada: a aba nao tem uma unica linha visivel livre
   entre 1 e 87 (as vazias sao separadores geridos, linhas ocultas ou ancoras

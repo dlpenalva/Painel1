@@ -661,7 +661,13 @@ def test_xls_campos_manuais_ficam_vazios_e_com_lista_de_opcoes(workbook):
 
 
 def test_xls_base_da_glosa_nunca_e_valor_cons(workbook):
-    """VALOR_CONS_Cn ja embute o reajuste; a base tem de ser qtd x VU."""
+    """VALOR_CONS_Cn ja embute o reajuste em apuracao e nunca serve de base.
+
+    O que entra na comparacao e QTD x VU_ORIGINAL convertido para a base
+    monetaria vigente anterior pelo fator F/D — a conversao em si esta
+    coberta por test_xls_valor_calculado_esta_na_base_vigente_anterior.
+    Aqui so se prova que o SUMPRODUCT parte de VU_ORIGINAL, nao de VALOR_CONS.
+    """
     ws = workbook["itens_Consumidos"]
     for coluna_qtd, linha in (("E", 2), ("G", 3), ("I", 4), ("K", 5), ("M", 6)):
         formula = ws[f"Y{linha}"].value
