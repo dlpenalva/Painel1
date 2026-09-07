@@ -33,7 +33,15 @@ def test_explicacao_acompanha_o_card():
     )
     # A nota chega pelo mesmo parametro que o card do potencial ja usava, ou
     # seja, pela classe discreta `.resultado-nota-vta` — sem card novo.
-    assert "nota=_NOTAS_SEGUNDA_LINHA.get(rotulo)" in PAGINA
+    #
+    # CONSUMO-GLOSA-1: o dicionario de notas passou a ser montado por render
+    # (`notas_segunda_linha`, uma copia de _NOTAS_SEGUNDA_LINHA acrescida da
+    # nota dinamica da glosa, que precisa citar o valor pago considerado).
+    # A garantia deste teste — a explicacao chega pelo MESMO parametro `nota`,
+    # na MESMA classe discreta, sem card novo — continua intacta, e a fonte
+    # da nota do card dos PCs continua sendo _NOTAS_SEGUNDA_LINHA.
+    assert "notas_segunda_linha = dict(_NOTAS_SEGUNDA_LINHA)" in PAGINA
+    assert "nota=notas_segunda_linha.get(rotulo)" in PAGINA
     assert '<div class="resultado-nota-vta">' in PAGINA
 
 
