@@ -1184,6 +1184,37 @@ def _montar_memoria_por_ciclo(
 
 
 _CICLOS_AJUSTE = ("C0", "C1", "C2", "C3", "C4")
+_SIM_AJUSTE = {"sim", "s", "true", "1", "yes"}
+
+
+def _fator_novo_do_ciclo(
+    nome: str, por_ciclo: dict[str, Any]
+) -> float | None:
+    """Fator do reajuste NOVO do ciclo — espelho de parametros!D11:D15.
+
+    O template publica DOIS fatores por ciclo e confundi-los duplica reajustes:
+
+        parametros!F2:F6   FATOR_ACUMULADO historico integral ate o ciclo (F)
+        parametros!D11     1 (base de C0)
+        parametros!D12:D15 IF(C1x="","",1+C1x) = 1 + percentual do ciclo,
+                           preenchido SO quando COMPUTAR_NESTA_APURACAO=Sim
+
+    E o segundo (D) que incide sobre o valor pago; F/D e o fator que ja estava
+    vigente antes do ciclo e ja esta embutido no que foi pago. Devolve None
+    quando o ciclo esta fora da apuracao ou sem percentual — fail-closed, sem
+    inventar reajuste onde a apuracao nao declara nenhum.
+    """
+    if nome == "C0":
+        return 1.0  # parametros!D11 e a constante 1
+    reg = por_ciclo.get(nome) or {}
+    computar = str(reg.get("computar_nesta_apuracao") or "").strip().lower()
+    if computar not in _SIM_AJUSTE:
+        return None
+    percentual = _f_none(reg.get("percentual_reajuste"))
+    if percentual is None:
+        return None
+    fator = 1.0 + percentual
+    return fator if fator else None
 
 
 def _aplicar_ajustes_execucao_consumidos(
@@ -1195,17 +1226,32 @@ def _aplicar_ajustes_execucao_consumidos(
     Publica UMA medida canonica por ciclo (nenhum consumidor recalcula a
     regra) e, quando o ajuste e valido, troca a base economica do ciclo pelo
     VALOR PAGO CONSIDERADO - o valor bruto da execucao economicamente
-    reconhecida APOS a glosa e ANTES do reajuste retroativo em apuracao.
+    reconhecida APOS a glosa, ANTES do reajuste que se apura NESTE ciclo mas
+    JA com os reajustes anteriores formalizados que compoem o preco vigente.
 
-    "Valor pago" e "Glosa" sao duas formas de informar a MESMA grandeza:
+    Toda a conta acontece na BASE MONETARIA VIGENTE ANTES DO CICLO, que e a
+    base em que o fiscal conhece o que foi pago:
 
+        valor calculado        = base_original x (F / D)
         valor pago considerado = valor informado                   (Valor pago)
         valor pago considerado = valor calculado - valor informado (Glosa)
         glosa                  = valor calculado - valor pago considerado
-        valor pago atualizado  = valor pago considerado x fator do ciclo
+        valor pago atualizado  = valor pago considerado x D
         retroativo             = valor pago atualizado - valor pago considerado
 
-    Nunca: valor_calculado x fator - glosa, que reajustaria a parcela glosada.
+    onde F e o fator acumulado historico do ciclo e D o fator do reajuste NOVO
+    (ver _fator_novo_do_ciclo). Isto encaixa o ajuste DENTRO da regra ja
+    homologada do metodo, porque a formula do XLS para o retroativo por itens
+
+        base x (F - F/D)  ==  (base x F/D) x (D - 1)
+
+    ja e "valor na base vigente anterior x percentual do ciclo". Com o ajuste,
+    o primeiro fator vira o valor pago considerado e nada mais muda — sem
+    glosa as duas expressoes coincidem termo a termo.
+
+    Nunca aplicar F (o acumulado) sobre o valor pago: ele ja contem os
+    reajustes anteriores e seriam cobrados duas vezes. Nunca, tampouco,
+    valor_calculado x D - glosa, que reajustaria a parcela glosada.
 
     A glosa e FINANCEIRA: quantidade consumida e remanescente fisico ficam
     intactos (nada aqui toca em qtd_total/qtd_contratada nem no calculo do
@@ -1225,12 +1271,27 @@ def _aplicar_ajustes_execucao_consumidos(
     aplicados: list[str] = []
     motivos: list[str] = []
 
+    por_ciclo_param = (leitura.get("parametros_v10") or {}).get("por_ciclo") or {}
+
     for nome in _CICLOS_AJUSTE:
         bloco = ciclos[nome]["retroativo"]["consumidos"]
+        fator_novo = _fator_novo_do_ciclo(nome, por_ciclo_param)
+        fator_acumulado = ciclos[nome].get("fator_acumulado")
         # Zero apurado COM evidencia e um valor calculado legitimo; ausencia
         # de evidencia e ausencia de base, nao zero.
-        valor_calculado = bloco["base_original"] if bloco["evidencias"] else None
-        fator = ciclos[nome].get("fator_acumulado")
+        #
+        # O valor calculado e publicado NA BASE MONETARIA VIGENTE ANTES do
+        # ciclo — base_original x (F / D) —, que e a base em que o fiscal
+        # conhece o que foi efetivamente pago. Espelha itens_Consumidos!Y.
+        if not bloco["evidencias"] or fator_acumulado is None or not fator_novo:
+            valor_calculado = None
+        else:
+            valor_calculado = round(
+                bloco["base_original"] * fator_acumulado / fator_novo, 2
+            )
+        # O "fator" publicado e o do reajuste NOVO do ciclo: e ele, e nao o
+        # acumulado, que incide sobre o valor pago.
+        fator = fator_novo
         bruto = brutos.get(nome)
 
         registro: dict[str, Any] = {
@@ -1271,10 +1332,12 @@ def _aplicar_ajustes_execucao_consumidos(
                 "REVISAR: GLOSA NEGATIVA" if tipo == "Glosa"
                 else "REVISAR: VALOR PAGO NEGATIVO"
             )
+        # O fator novo vem ANTES: sem ele o proprio valor calculado fica None,
+        # e "sem execucao" seria um diagnostico enganoso.
+        elif fator is None:
+            status = "REVISAR: CICLO FORA DA APURACAO OU SEM FATOR NOVO"
         elif valor_calculado is None:
             status = "REVISAR: SEM EXECUCAO CALCULADA NO CICLO"
-        elif fator is None:
-            status = "REVISAR: FATOR DO CICLO INDISPONIVEL"
         elif round(valor, 2) > round(valor_calculado, 2):
             status = (
                 "REVISAR: GLOSA MAIOR QUE O CALCULADO" if tipo == "Glosa"

@@ -80,6 +80,20 @@ LINHA_CICLO = {nome: 2 + i for i, nome in enumerate(CICLOS)}
 COL_QTD = {"C0": "E", "C1": "G", "C2": "I", "C3": "K", "C4": "M"}
 COL_VALOR = {"C0": "F", "C1": "H", "C2": "J", "C3": "L", "C4": "N"}
 
+# Representacao canonica do fator, ja existente no template (nada inventado):
+#   parametros!F2:F6  = FATOR_ACUMULADO historico integral ate o ciclo  (F)
+#   parametros!D11    = 1 (base C0)
+#   parametros!D12:D15 = IF(C1x="","",1+C1x) = 1 + percentual do ciclo,
+#                        preenchido SOMENTE quando COMPUTAR_NESTA_APURACAO=Sim
+# Este segundo fator (D) e o reajuste NOVO daquele ciclo; F/D e o fator que ja
+# estava vigente ANTES dele.
+def _cel_fator_acumulado(ciclo: str) -> str:
+    return f"parametros!$F{int(ciclo[1]) + 2}"
+
+
+def _cel_fator_novo(ciclo: str) -> str:
+    return f"parametros!$D{11 + int(ciclo[1])}"
+
 CABECALHOS = {
     "X": "AJUSTE_CICLO",
     "Y": "AJUSTE_VALOR_CALCULADO",
@@ -87,7 +101,7 @@ CABECALHOS = {
     "AA": "AJUSTE_VALOR_INFORMADO",
     "AB": "AJUSTE_VALOR_PAGO_CONSIDERADO",
     "AC": "AJUSTE_GLOSA",
-    "AD": "AJUSTE_FATOR",
+    "AD": "AJUSTE_FATOR_NOVO",
     "AE": "AJUSTE_VALOR_PAGO_ATUALIZADO",
     "AF": "AJUSTE_RETROATIVO",
     "AG": "AJUSTE_STATUS",
@@ -100,9 +114,14 @@ LEGENDA = (
     "AJUSTE_TIPO vazio = comportamento normal. Escolha 'Valor pago' para"
     " informar o valor bruto reconhecido apos a glosa, ou 'Glosa' para"
     " informar o total glosado no ciclo.",
-    "Valor pago = valor bruto da execucao economicamente reconhecida, antes do"
-    " reajuste retroativo em apuracao. Nao e valor liquido: IR, ISS, INSS e"
-    " demais retencoes tributarias nao sao glosa.",
+    "Valor pago = valor bruto da execucao economicamente reconhecida, ANTES do"
+    " reajuste que esta sendo apurado neste ciclo mas JA com os reajustes"
+    " anteriores ja formalizados. Nao e valor liquido: IR, ISS, INSS e demais"
+    " retencoes tributarias nao sao glosa.",
+    "Compare sempre com AJUSTE_VALOR_CALCULADO: ele ja esta na mesma base"
+    " monetaria do que se pagava no ciclo (QTD x VU_ORIGINAL x fator vigente"
+    " anterior). AJUSTE_FATOR_NOVO e so o reajuste novo do ciclo - o acumulado"
+    " nunca e reaplicado sobre um valor que ja o contem.",
     "A glosa e financeira: nao altera quantidade consumida nem devolve saldo"
     " ao remanescente. Uma glosa que alcance dois ciclos deve ser segregada"
     " entre eles.",
@@ -120,10 +139,24 @@ _HA_REVISAR = f'COUNTIF({ABA_CONSUMIDOS}!$AG$2:$AG$6,"REVISAR*")>0'
 
 
 def _formula_valor_calculado(ciclo: str) -> str:
+    """Valor calculado da execucao NA BASE MONETARIA VIGENTE ANTES do ciclo.
+
+    E contra este valor que o fiscal compara o valor pago / a glosa: o que se
+    pagava naquele momento ja embutia os reajustes anteriores formalizados.
+
+        base_vigente_anterior = QTD_CONS_Cn x VU_ORIGINAL x (F / D)
+
+    onde F e o fator acumulado historico e D o fator do reajuste NOVO do
+    ciclo. Para C0, e para o primeiro ciclo reajustado, F/D = 1 e o valor
+    calculado volta a ser QTD x VU_ORIGINAL.
+    """
     qtd = COL_QTD[ciclo]
+    linha = LINHA_CICLO[ciclo]
+    fator = _cel_fator_acumulado(ciclo)
     return (
         f'=IF(COUNT(${qtd}$2:${qtd}$200)=0,"",'
-        f'ROUND(SUMPRODUCT(${qtd}$2:${qtd}$200,$C$2:$C$200),2))'
+        f'IF(OR(NOT(ISNUMBER({fator})),NOT(ISNUMBER($AD{linha})),$AD{linha}=0),"",'
+        f'ROUND(SUMPRODUCT(${qtd}$2:${qtd}$200,$C$2:$C$200)*{fator}/$AD{linha},2)))'
     )
 
 
@@ -137,8 +170,11 @@ def _formula_status(linha: int) -> str:
         f'IF(NOT(ISNUMBER($AA{linha})),"REVISAR: VALOR INFORMADO NAO NUMERICO",'
         f'IF($AA{linha}<0,IF($Z{linha}="Glosa","REVISAR: GLOSA NEGATIVA",'
         f'"REVISAR: VALOR PAGO NEGATIVO"),'
+        # O fator novo vem ANTES: sem ele o proprio valor calculado fica vazio,
+        # e "sem execucao" seria um diagnostico enganoso.
+        f'IF(NOT(ISNUMBER($AD{linha})),'
+        f'"REVISAR: CICLO FORA DA APURACAO OU SEM FATOR NOVO",'
         f'IF(NOT(ISNUMBER($Y{linha})),"REVISAR: SEM EXECUCAO CALCULADA NO CICLO",'
-        f'IF(NOT(ISNUMBER($AD{linha})),"REVISAR: FATOR DO CICLO INDISPONIVEL",'
         f'IF(ROUND($AA{linha},2)>ROUND($Y{linha},2),'
         f'IF($Z{linha}="Glosa","REVISAR: GLOSA MAIOR QUE O CALCULADO",'
         f'"REVISAR: VALOR PAGO MAIOR QUE O CALCULADO"),'
@@ -158,7 +194,13 @@ def _formulas_linha(ciclo: str) -> dict[str, str]:
             f'ROUND($Y{linha}-$AA{linha},2)))'
         ),
         "AC": f'=IF({gate},"",ROUND($Y{linha}-$AB{linha},2))',
-        "AD": f'=IF(ISNUMBER($U${linha}),$U${linha},"")',
+        # Fator do reajuste NOVO do ciclo — NUNCA o acumulado (U), que
+        # reaplicaria reajustes anteriores ja formalizados sobre um valor
+        # que ja os contem.
+        "AD": (
+            f'=IF(ISNUMBER({_cel_fator_novo(ciclo)}),'
+            f'{_cel_fator_novo(ciclo)},"")'
+        ),
         "AE": f'=IF({gate},"",ROUND($AB{linha}*$AD{linha},2))',
         "AF": f'=IF({gate},"",ROUND($AE{linha}-$AB{linha},2))',
         "AG": _formula_status(linha),
@@ -228,13 +270,25 @@ def _d10_nova() -> str:
 
 
 def _dn_nova(ciclo: str) -> str:
+    """Retroativo do ciclo com o ajuste encaixado NA regra homologada.
+
+    A formula homologada e, para a base original B:
+
+        B x (F - F/D)  ==  (B x F/D) x (D - 1)
+
+    ou seja, ela ja calcula "valor na base vigente ANTES do ciclo x percentual
+    do ciclo". O ajuste apenas substitui esse primeiro fator pelo VALOR PAGO
+    CONSIDERADO (AB), que esta exatamente na mesma base monetaria (AB e
+    comparado contra Y = B x F/D). Sem glosa, AB = Y e a expressao volta a ser
+    identica, termo a termo, a homologada.
+    """
     n = int(ciclo[1])
     linha = LINHA_CICLO[ciclo]
     fator = f"parametros!$F{n + 2}"
     apuracao = f"parametros!$D{11 + n}"
     ramo_ajustado = (
         f'IF(OR(NOT(ISNUMBER({fator})),NOT(ISNUMBER({apuracao})),{apuracao}=0),"",'
-        f'ROUND({ABA_CONSUMIDOS}!$AB${linha}*({fator}-{fator}/{apuracao}),2))'
+        f'ROUND({ABA_CONSUMIDOS}!$AB${linha}*({apuracao}-1),2))'
     )
     return (
         f'=IF({_HA_REVISAR},"",'

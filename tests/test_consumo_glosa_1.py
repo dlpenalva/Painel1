@@ -66,14 +66,19 @@ def _item_dois_ciclos():
     return item
 
 
-def _leitura(itens=None, ajustes=None, fatores=None, financeiro=None):
+def _leitura(
+    itens=None, ajustes=None, fatores=None, financeiro=None,
+    percentuais=None, computar=None,
+):
     fatores = fatores or {"C0": 1.0, "C1": FATOR_C1}
+    percentuais = percentuais or {"C1": 0.08}
+    computar = computar or {}
     por_ciclo = {}
     for ciclo in ("C0", "C1", "C2", "C3", "C4"):
         por_ciclo[ciclo] = {
             "fator_acumulado": fatores.get(ciclo),
-            "percentual_reajuste": 0.08 if ciclo == "C1" else None,
-            "computar_nesta_apuracao": "Sim",
+            "percentual_reajuste": percentuais.get(ciclo),
+            "computar_nesta_apuracao": computar.get(ciclo, "Sim"),
         }
     bloco = {"itens": list(itens if itens is not None else [_ITEM])}
     if ajustes is not None:
@@ -266,11 +271,172 @@ def test_5_6_entradas_invalidas_viram_revisar_e_fecham_o_metodo(bruto, esperado)
 
 
 def test_5b_ajuste_em_ciclo_sem_execucao_calculada_e_revisar():
-    memoria = _memoria(ajustes={"C3": _ajuste("Glosa", 100.0)})
-    assert (
-        memoria["ajustes_execucao_por_ciclo"]["C3"]["status"]
-        == "REVISAR: SEM EXECUCAO CALCULADA NO CICLO"
+    """C3 tem fator novo valido, mas nenhum consumo informado."""
+    memoria = _montar_memoria_por_ciclo(
+        _leitura(
+            ajustes={"C3": _ajuste("Glosa", 100.0)},
+            fatores={"C0": 1.0, "C1": FATOR_C1, "C3": 1.1},
+            percentuais={"C1": 0.08, "C3": 0.02},
+        ),
+        {}, [], {},
     )
+    registro = memoria["ajustes_execucao_por_ciclo"]["C3"]
+    assert registro["fator"] == 1.02  # o fator novo existe...
+    # ...mas nao ha execucao naquele ciclo para comparar com a glosa.
+    assert registro["status"] == "REVISAR: SEM EXECUCAO CALCULADA NO CICLO"
+
+
+# ---------------------------------------------------------------------------
+# MULTICICLO — o reajuste anterior JA formalizado nao pode ser reaplicado
+# ---------------------------------------------------------------------------
+
+# C1 formalizado (8%, FORA da apuracao) + C2 em apuracao (5%):
+#   F (acumulado)   = 1,08 x 1,05 = 1,134
+#   D (fator novo)  = 1,05
+#   F / D           = 1,08   <- ja embutido no que foi pago
+#   F - 1   = 0,134  != F - F/D = 0,054   (o cenario so prova se forem !=)
+FATOR_ACUM_C2 = 1.134
+FATOR_NOVO_C2 = 1.05
+
+_ITEM_C2 = {
+    "item": "I1",
+    "qtd_contratada": 1500,
+    "vu_original": 100.0,
+    "qtd_total": 1000,
+    "check": "OK",
+    "consumos": {
+        "C0": {"qtd": None, "valor": None},
+        "C1": {"qtd": None, "valor": None},
+        "C2": {"qtd": 1000, "valor": 113400.0},  # 1000 x 100 x 1,134
+        "C3": {"qtd": None, "valor": None},
+        "C4": {"qtd": None, "valor": None},
+    },
+}
+
+
+def _leitura_multiciclo(ajustes=None):
+    return _leitura(
+        itens=[_ITEM_C2],
+        ajustes=ajustes,
+        fatores={"C0": 1.0, "C1": FATOR_C1, "C2": FATOR_ACUM_C2},
+        percentuais={"C1": 0.08, "C2": 0.05},
+        computar={"C1": "Nao", "C2": "Sim"},  # C1 ja formalizado
+    )
+
+
+def test_multiciclo_o_cenario_de_fato_distingue_as_duas_formulas():
+    """Guarda do proprio teste: se F-1 == F-F/D, ele nao provaria nada."""
+    assert round(FATOR_ACUM_C2 - 1, 3) == 0.134
+    assert round(FATOR_ACUM_C2 - FATOR_ACUM_C2 / FATOR_NOVO_C2, 3) == 0.054
+
+
+def test_multiciclo_valor_calculado_esta_na_base_vigente_anterior():
+    memoria = _montar_memoria_por_ciclo(_leitura_multiciclo(), {}, [], {})
+    registro = memoria["ajustes_execucao_por_ciclo"]["C2"]
+    # 1000 x 100 x (1,134 / 1,05) = 108.000 — e nao 100.000.
+    assert registro["valor_calculado_execucao"] == 108000.0
+    # O fator publicado e o do reajuste NOVO, nao o acumulado.
+    assert registro["fator"] == FATOR_NOVO_C2
+
+
+def test_multiciclo_nao_reaplica_o_reajuste_anterior():
+    memoria = _montar_memoria_por_ciclo(
+        _leitura_multiciclo({"C2": _ajuste("Glosa", 10000.0)}), {}, [], {}
+    )
+    registro = memoria["ajustes_execucao_por_ciclo"]["C2"]
+    assert registro["status"] == "AJUSTE APLICADO"
+    assert registro["valor_calculado_execucao"] == 108000.0
+    assert registro["valor_pago_considerado"] == 98000.0
+    assert registro["glosa"] == 10000.0
+    assert registro["valor_pago_atualizado"] == 102900.0   # 98.000 x 1,05
+    assert registro["retroativo"] == 4900.0                # 98.000 x 0,05
+    # O erro que este teste existe para impedir: 98.000 x 1,134 = 111.132,
+    # com retroativo 13.132 — cobraria os 8% de C1 uma segunda vez.
+    assert registro["valor_pago_atualizado"] != 111132.0
+    assert registro["retroativo"] != 13132.0
+
+
+def test_multiciclo_valor_pago_e_glosa_continuam_equivalentes():
+    por_glosa = _montar_memoria_por_ciclo(
+        _leitura_multiciclo({"C2": _ajuste("Glosa", 10000.0)}), {}, [], {}
+    )["ajustes_execucao_por_ciclo"]["C2"]
+    por_pago = _montar_memoria_por_ciclo(
+        _leitura_multiciclo({"C2": _ajuste("Valor pago", 98000.0)}), {}, [], {}
+    )["ajustes_execucao_por_ciclo"]["C2"]
+    for campo in (
+        "valor_calculado_execucao", "valor_pago_considerado", "glosa",
+        "fator", "valor_pago_atualizado", "retroativo",
+    ):
+        assert por_glosa[campo] == por_pago[campo], campo
+
+
+def test_multiciclo_retroativo_converge_com_a_formula_homologada_do_xls():
+    """AF (bloco) == D12 (memoria) == base_pago x (D - 1).
+
+    A formula homologada e `base x (F - F/D)`, que e identicamente
+    `(base x F/D) x (D - 1)`. Com o ajuste, o primeiro fator vira o valor pago
+    considerado — e as duas superficies publicam o MESMO retroativo.
+    """
+    memoria = _montar_memoria_por_ciclo(
+        _leitura_multiciclo({"C2": _ajuste("Glosa", 10000.0)}), {}, [], {}
+    )
+    registro = memoria["ajustes_execucao_por_ciclo"]["C2"]
+    homologada = round(
+        registro["valor_pago_considerado"] * (FATOR_NOVO_C2 - 1), 2
+    )
+    assert registro["retroativo"] == homologada == 4900.0
+    # A cadeia canonica publica o mesmo numero — uma so medida de retroativo.
+    assert _consumidos(memoria, "C2")["retroativo"] == 4900.0
+    assert memoria["ajustes_execucao_resumo"]["retroativo"] == 4900.0
+
+
+def test_multiciclo_sem_ajuste_nao_muda_nada():
+    base = _montar_memoria_por_ciclo(_leitura_multiciclo(), {}, [], {})
+    bloco = _consumidos(base, "C2")
+    assert bloco["base_original"] == 100000.0
+    assert bloco["valor_atualizado"] == 113400.0
+    assert base["ajustes_execucao_resumo"]["status"] == "SEM AJUSTE"
+
+
+def test_multiciclo_execucao_atualizada_nao_muda_de_base():
+    """Sem glosa, valor_pago_considerado x D volta a ser base x F."""
+    sem = _consumidos(
+        _montar_memoria_por_ciclo(_leitura_multiciclo(), {}, [], {}), "C2"
+    )["valor_atualizado"]
+    com = _consumidos(
+        _montar_memoria_por_ciclo(
+            _leitura_multiciclo({"C2": _ajuste("Glosa", 0)}), {}, [], {}
+        ),
+        "C2",
+    )["valor_atualizado"]
+    assert sem == 113400.0
+    assert com == 113400.0  # glosa zero nao pode deslocar a base monetaria
+
+
+def test_ajuste_em_ciclo_fora_da_apuracao_e_fail_closed():
+    """C1 esta formalizado: nao ha reajuste novo para incidir sobre o pago.
+
+    O ciclo TEM execucao (senao o gate de execucao dispararia antes), mas
+    COMPUTAR_NESTA_APURACAO=Nao — entao nao existe fator novo e o ajuste nao
+    pode ser aplicado. Fail-closed, sem inventar reajuste.
+    """
+    item = dict(_ITEM_C2)
+    item["qtd_contratada"] = 2500
+    item["qtd_total"] = 2000
+    item["consumos"] = dict(_ITEM_C2["consumos"])
+    item["consumos"]["C1"] = {"qtd": 1000, "valor": 108000.0}
+    leitura = _leitura(
+        itens=[item],
+        ajustes={"C1": _ajuste("Glosa", 10.0)},
+        fatores={"C0": 1.0, "C1": FATOR_C1, "C2": FATOR_ACUM_C2},
+        percentuais={"C1": 0.08, "C2": 0.05},
+        computar={"C1": "Nao", "C2": "Sim"},
+    )
+    memoria = _montar_memoria_por_ciclo(leitura, {}, [], {})
+    registro = memoria["ajustes_execucao_por_ciclo"]["C1"]
+    assert registro["valor_calculado_execucao"] is None
+    assert registro["status"] == "REVISAR: CICLO FORA DA APURACAO OU SEM FATOR NOVO"
+    assert _conferencia(memoria)["disponivel"] is False
 
 
 # ---------------------------------------------------------------------------
@@ -461,7 +627,7 @@ _CABECALHOS_BLOCO = {
     "AA": "AJUSTE_VALOR_INFORMADO",
     "AB": "AJUSTE_VALOR_PAGO_CONSIDERADO",
     "AC": "AJUSTE_GLOSA",
-    "AD": "AJUSTE_FATOR",
+    "AD": "AJUSTE_FATOR_NOVO",
     "AE": "AJUSTE_VALOR_PAGO_ATUALIZADO",
     "AF": "AJUSTE_RETROATIVO",
     "AG": "AJUSTE_STATUS",
@@ -512,16 +678,47 @@ def test_xls_f20_preserva_o_ramo_sem_ajuste_de_cada_ciclo(workbook):
     assert 'COUNTIF(itens_Consumidos!$AG$2:$AG$6,"REVISAR*")>0' in f20
 
 
-def test_xls_retroativo_itens_preserva_a_expressao_do_fator(workbook):
+def test_xls_retroativo_itens_encaixa_o_ajuste_na_regra_homologada(workbook):
+    """O ramo sem ajuste fica intacto; o ajustado e a MESMA conta.
+
+        base x (F - F/D)  ==  (base x F/D) x (D - 1)
+
+    O ramo ajustado troca `base x F/D` pelo valor pago considerado (AB), que
+    esta na mesma base monetaria — e aplica so `(D - 1)`, o reajuste NOVO.
+    Aplicar `(F - F/D)` sobre AB reajustaria duas vezes os ciclos anteriores.
+    """
     mem = workbook["MEMORIA_RESULTADOS"]
     for ciclo in range(1, 5):
         formula = mem[f"D{10 + ciclo}"].value
         fator = f"parametros!$F{ciclo + 2}"
         apuracao = f"parametros!$D{11 + ciclo}"
-        # A expressao homologada do fator continua identica nos dois ramos.
-        assert formula.count(f"({fator}-{fator}/{apuracao})") == 2
-        assert f"itens_Consumidos!$AB${ciclo + 2}" in formula
+        # Ramo legado: a expressao homologada, uma unica vez e intacta.
+        assert formula.count(f"({fator}-{fator}/{apuracao})") == 1
+        # Ramo ajustado: valor pago considerado x (fator novo - 1).
+        assert (
+            f"ROUND(itens_Consumidos!$AB${ciclo + 2}*({apuracao}-1),2)"
+            in formula
+        )
+        # E o acumulado NUNCA multiplica o valor pago.
+        assert f"$AB${ciclo + 2}*({fator}" not in formula
         assert 'COUNTIF(itens_Consumidos!$AG$2:$AG$6,"REVISAR*")>0' in formula
+
+
+def test_xls_valor_calculado_esta_na_base_vigente_anterior(workbook):
+    """Y = QTD x VU x (F / D): a base em que o valor foi efetivamente pago."""
+    ws = workbook["itens_Consumidos"]
+    for ciclo, (qtd, linha) in enumerate(
+        (("E", 2), ("G", 3), ("I", 4), ("K", 5), ("M", 6))
+    ):
+        formula = ws[f"Y{linha}"].value
+        fator = f"parametros!$F{ciclo + 2}"
+        assert f"SUMPRODUCT(${qtd}$2:${qtd}$200,$C$2:$C$200)*{fator}/$AD{linha}" in formula
+    # E o fator publicado e o do reajuste NOVO, nao o acumulado da coluna U.
+    for linha in range(2, 7):
+        assert ws[f"AD{linha}"].value == (
+            f"=IF(ISNUMBER(parametros!$D{9 + linha}),parametros!$D{9 + linha},\"\")"
+        )
+        assert "$U$" not in ws[f"AD{linha}"].value
 
 
 def test_xls_b26_e_remanescente_do_ramo_itens_intactos(workbook):
