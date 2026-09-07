@@ -527,6 +527,12 @@ _TIPOS_AJUSTE_EXECUCAO = {
     "glosa": "Glosa",
 }
 
+# Fonte unica dos rotulos oferecidos pelo dropdown de itens_Consumidos!Z2:Z6.
+# O gerador da Coleta (_coleta_oficial._garantir_dropdown_ajuste_tipo) le daqui,
+# para que a lista ofertada ao fiscal e a lista aceita pelo leitor nao possam
+# divergir.
+OPCOES_AJUSTE_TIPO = tuple(_TIPOS_AJUSTE_EXECUCAO.values())
+
 
 def _ler_ajustes_execucao_consumidos(ws, mapa: dict[str, int]) -> dict[str, Any]:
     """CONSUMO-GLOSA-1: bloco lateral OPCIONAL X:AG de itens_Consumidos.
