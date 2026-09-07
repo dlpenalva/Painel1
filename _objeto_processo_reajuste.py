@@ -10,6 +10,8 @@ from __future__ import annotations
 import copy
 import hashlib
 import json
+import math
+import numbers
 import unicodedata
 from datetime import date, datetime
 from typing import Any
@@ -1187,6 +1189,34 @@ _CICLOS_AJUSTE = ("C0", "C1", "C2", "C3", "C4")
 _SIM_AJUSTE = {"sim", "s", "true", "1", "yes"}
 
 
+def _numero_manual_ajuste(valor: Any) -> float | None:
+    """Numero ESTRITO para a entrada manual de CONSUMO-GLOSA-1.
+
+    O XLS valida essa celula com ISNUMBER, que recusa booleano e texto. O
+    `_f_none` generico do modulo e deliberadamente permissivo (aceita
+    `float("90000")` e `float(True)`) e e usado por varias outras cadeias, por
+    isso NAO pode ser endurecido aqui — a validacao estrita fica local.
+
+    Aceita apenas o que a celula entrega como numero real e finito:
+
+        0, 0.0, 90000, 90000.50   -> aceitos (zero numerico e valor valido)
+        True, False               -> recusados (bool e subclasse de int)
+        "90000", "0", "dez mil"   -> recusados (sem coercao de texto)
+        None, datetime, nan, inf  -> recusados
+
+    Devolve None em todos os casos recusados; a cascata de status distingue
+    esse None de "celula vazia" pelo campo `valor_vazio` do leitor.
+    """
+    if isinstance(valor, bool):
+        return None
+    if not isinstance(valor, numbers.Real):
+        return None
+    numero = float(valor)
+    if not math.isfinite(numero):
+        return None
+    return numero
+
+
 def _fator_novo_do_ciclo(
     nome: str, por_ciclo: dict[str, Any]
 ) -> float | None:
@@ -1313,7 +1343,9 @@ def _aplicar_ajustes_execucao_consumidos(
 
         tipo = bruto.get("tipo")
         tipo_bruto = str(bruto.get("tipo_bruto") or "")
-        valor = _f_none(bruto.get("valor_bruto"))
+        # Validacao ESTRITA, espelho do ISNUMBER do XLS: `_f_none` aceitaria
+        # True/False e texto numerico, divergindo da planilha.
+        valor = _numero_manual_ajuste(bruto.get("valor_bruto"))
         registro["tipo_ajuste"] = tipo
         registro["valor_informado"] = valor
 

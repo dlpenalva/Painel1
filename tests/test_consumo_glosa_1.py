@@ -29,6 +29,7 @@ from _leitor_masterfile_v10 import (  # noqa: E402
     _mapear_colunas_por_cabecalho,
 )
 from _objeto_processo_reajuste import _montar_memoria_por_ciclo  # noqa: E402
+from _resultado_consolidado import montar_resultado_consolidado  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
@@ -102,7 +103,7 @@ def _ajuste(tipo, valor):
             str(tipo).strip().lower()
         ),
         "valor_bruto": valor,
-        "valor_vazio": valor is None or str(valor).strip() == "",
+        "valor_vazio": valor is None or valor == "",
     }
 
 
@@ -268,6 +269,81 @@ def test_5_6_entradas_invalidas_viram_revisar_e_fecham_o_metodo(bruto, esperado)
     assert conferencia["executado_atualizado"] is None
     assert conferencia["valor_total_atualizado"] is None
     assert memoria["ajustes_execucao_resumo"]["status"] == "REVISAR"
+
+
+# ---------------------------------------------------------------------------
+# A1 — entrada manual ESTRITA: o Python nao pode aceitar o que o XLS recusa
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    ("rotulo", "bruto"),
+    [
+        ("booleano TRUE", True),
+        ("booleano FALSE", False),
+        ("texto numerico", "90000"),
+        ("texto zero", "0"),
+        ("texto com virgula", "90000,00"),
+        ("texto um", "1"),
+        ("texto livre", "dez mil"),
+        ("celula com espaco", " "),
+    ],
+)
+def test_a1_entrada_nao_numerica_e_recusada_como_no_xls(rotulo, bruto):
+    """`ISNUMBER` do XLS recusa booleano e texto; o Python tem de recusar tambem.
+
+    O `_f_none` generico aceitaria `float(True)` e `float("90000")` — por isso
+    a entrada manual usa validacao estrita propria.
+    """
+    memoria = _memoria(ajustes={"C1": _ajuste("Valor pago", bruto)})
+    registro = memoria["ajustes_execucao_por_ciclo"]["C1"]
+    assert registro["status"] == "REVISAR: VALOR INFORMADO NAO NUMERICO", rotulo
+    assert registro["valor_informado"] is None
+    assert registro["valor_pago_considerado"] is None
+    assert registro["valor_pago_atualizado"] is None
+    assert registro["retroativo"] is None
+    # E nunca os R$ 1,00 / 1,05 / 0,05 que o booleano produzia.
+    conferencia = _conferencia(memoria)
+    assert conferencia["disponivel"] is False
+    assert conferencia["valor_total_atualizado"] is None
+
+
+def test_a1_helper_estrito_distingue_zero_de_nao_numerico():
+    from _objeto_processo_reajuste import _numero_manual_ajuste as n
+    assert n(0) == 0.0 and n(0.0) == 0.0          # zero numerico e valido
+    assert n(90000) == 90000.0 and n(90000.50) == 90000.5
+    assert n(True) is None and n(False) is None   # bool e subclasse de int
+    assert n("90000") is None and n("0") is None  # sem coercao de texto
+    assert n(None) is None
+    assert n(float("nan")) is None and n(float("inf")) is None
+
+
+def test_a1_zero_numerico_continua_valido_e_vazio_continua_ausencia():
+    zero = _memoria(ajustes={"C1": _ajuste("Valor pago", 0)})
+    registro = zero["ajustes_execucao_por_ciclo"]["C1"]
+    assert registro["status"] == "AJUSTE APLICADO"
+    assert registro["valor_pago_considerado"] == 0.0
+    assert registro["glosa"] == 100000.0
+
+    com_tipo = _memoria(ajustes={"C1": _ajuste("Valor pago", None)})
+    assert (
+        com_tipo["ajustes_execucao_por_ciclo"]["C1"]["status"]
+        == "REVISAR: TIPO DE AJUSTE SEM VALOR"
+    )
+    sem_nada = _memoria(ajustes={})
+    assert sem_nada["ajustes_execucao_por_ciclo"]["C1"]["status"] == "SEM AJUSTE"
+
+
+def test_a1_leitor_entrega_o_valor_cru_sem_converter():
+    """O leitor nao pode "consertar" a celula: quem julga e o motor."""
+    ws = _planilha(
+        ["AJUSTE_CICLO", "AJUSTE_TIPO", "AJUSTE_VALOR_INFORMADO"],
+        [["C1", "Valor pago", True], ["C2", "Valor pago", "90000"]],
+    )
+    lido = _ler_ajustes_execucao_consumidos(ws, _mapear_colunas_por_cabecalho(ws))
+    assert lido["C1"]["valor_bruto"] is True
+    assert lido["C1"]["valor_vazio"] is False
+    assert lido["C2"]["valor_bruto"] == "90000"
+    assert lido["C2"]["valor_vazio"] is False
 
 
 def test_5b_ajuste_em_ciclo_sem_execucao_calculada_e_revisar():
@@ -614,6 +690,169 @@ def test_leitor_preserva_entrada_invalida_em_vez_de_descartar():
     assert lido["C1"]["tipo"] is None
     assert lido["C1"]["tipo_bruto"] == "Desconto"
     assert lido["C1"]["valor_bruto"] == "dez mil"
+
+
+# ---------------------------------------------------------------------------
+# A1 — sentinela pela CADEIA REAL: leitor -> motor -> resultado consolidado
+# ---------------------------------------------------------------------------
+
+def _cadeia_real(valor_bruto, modo="d"):
+    """Percorre o mesmo caminho do upload, sem atalho pelo helper.
+
+    Constroi a aba como o Excel a entrega (celulas cruas), passa pelo leitor
+    de verdade e so entao pelo motor e pelo consolidado.
+    """
+    ws = _planilha(
+        ["AJUSTE_CICLO", "AJUSTE_TIPO", "AJUSTE_VALOR_INFORMADO"],
+        [["C1", "Valor pago", valor_bruto]],
+    )
+    ajustes = _ler_ajustes_execucao_consumidos(
+        ws, _mapear_colunas_por_cabecalho(ws)
+    )
+    leitura = _leitura(ajustes=ajustes)
+    leitura["controle"]["modo"] = modo
+    memoria = _montar_memoria_por_ciclo(leitura, {}, [], {})
+    consolidado = montar_resultado_consolidado(
+        {"controle": leitura["controle"], "memoria_por_ciclo": memoria}, {}
+    )
+    return memoria, consolidado
+
+
+@pytest.mark.parametrize("bruto", [True, "90000"])
+def test_a1_cadeia_real_recusa_booleano_e_texto(bruto):
+    """Sentinela minimo do gate: TRUE e "90000" pela cadeia inteira."""
+    memoria, consolidado = _cadeia_real(bruto)
+    registro = memoria["ajustes_execucao_por_ciclo"]["C1"]
+    assert registro["status"] == "REVISAR: VALOR INFORMADO NAO NUMERICO"
+    assert registro["valor_pago_considerado"] is None
+    assert registro["valor_pago_atualizado"] is None
+    assert registro["retroativo"] is None
+    # O metodo Consumido fecha (fail-closed) — nao ha VTA fabricado.
+    assert _conferencia(memoria)["disponivel"] is False
+    assert memoria["vta"]["valor_total_atualizado"] is None
+    # E nada da glosa vaza para a web.
+    assert consolidado["ajustes_execucao"]["aplicavel"] is False
+    # Os valores que o defeito produzia nunca podem aparecer.
+    for proibido in (1.0, 1.08, 0.08):
+        assert registro["valor_pago_atualizado"] != proibido
+
+
+def test_a1_cadeia_real_aceita_numero_de_verdade():
+    """Contraprova: o mesmo caminho, com numero, continua funcionando."""
+    memoria, consolidado = _cadeia_real(90000.0)
+    registro = memoria["ajustes_execucao_por_ciclo"]["C1"]
+    assert registro["status"] == "AJUSTE APLICADO"
+    assert registro["valor_pago_considerado"] == 90000.0
+    assert registro["valor_pago_atualizado"] == 97200.0
+    assert registro["retroativo"] == 7200.0
+    assert consolidado["ajustes_execucao"]["aplicavel"] is True
+    assert consolidado["ajustes_execucao"]["glosa"] == 10000.0
+
+
+# ---------------------------------------------------------------------------
+# A2 — o card da glosa so existe no metodo Itens Consumidos
+# ---------------------------------------------------------------------------
+
+_PARCELA_FIN_A2 = [{
+    "fonte_parcela": "Financeiro", "identificador": "financeiro:2026-01",
+    "ciclo": "C1", "valor": 5000.0, "valor_atualizado": 5400.0,
+}]
+_PC_A2 = [{
+    "elegivel_retroativo_pc": True, "ciclo_calculado": "C1",
+    "efeito_financeiro_pc": "Sim", "valor_pago": 3000.0,
+}]
+
+
+def _consolidado(modo, glosa=10000.0, financeiro=None, pcs=None):
+    ajustes = (
+        {"C1": _ajuste("Glosa", glosa)} if glosa is not None else {}
+    )
+    leitura = _leitura(ajustes=ajustes, financeiro=financeiro)
+    leitura["controle"]["modo"] = modo
+    memoria = _montar_memoria_por_ciclo(leitura, {}, pcs or [], {})
+    return memoria, montar_resultado_consolidado(
+        {"controle": leitura["controle"], "memoria_por_ciclo": memoria}, {}
+    )
+
+
+def test_a2_card_aparece_no_metodo_consumidos_com_glosa():
+    memoria, consolidado = _consolidado("d")
+    assert consolidado["metodo"]["codigo"] == "consumidos"
+    assert consolidado["ajustes_execucao"]["aplicavel"] is True
+    assert consolidado["ajustes_execucao"]["glosa"] == 10000.0
+
+
+def test_a2_card_some_com_glosa_zero_ou_sem_ajuste():
+    _, com_zero = _consolidado("d", glosa=0.0)
+    assert com_zero["ajustes_execucao"]["aplicavel"] is False
+    _, sem = _consolidado("d", glosa=None)
+    assert sem["ajustes_execucao"]["status"] == "SEM AJUSTE"
+    assert sem["ajustes_execucao"]["aplicavel"] is False
+
+
+@pytest.mark.parametrize(
+    ("rotulo", "modo", "financeiro", "pcs", "esperado"),
+    [
+        ("financeiro", "principal", _PARCELA_FIN_A2, None, "financeiro"),
+        ("pc", "pc", None, _PC_A2, "pc"),
+    ],
+)
+def test_a2_card_nunca_aparece_fora_de_consumidos(
+    rotulo, modo, financeiro, pcs, esperado
+):
+    """Glosa residual em itens_Consumidos nao pertence ao resultado exibido."""
+    memoria, consolidado = _consolidado(modo, financeiro=financeiro, pcs=pcs)
+    assert consolidado["metodo"]["codigo"] == esperado
+    assert consolidado["ajustes_execucao"]["aplicavel"] is False
+    assert consolidado["ajustes_execucao"]["metodo_aplicavel"] is False
+    # A medida canonica continua publicada e auditavel — so nao vira card.
+    assert consolidado["ajustes_execucao"]["glosa"] == 10000.0
+
+
+def test_a2_metodo_indeterminado_e_misto_sao_fail_closed():
+    resumo = {
+        "status": "AJUSTE APLICADO", "glosa": 10000.0,
+        "valor_pago_considerado": 90000.0, "ciclos_ajustados": ["C1"],
+    }
+    # Nenhum metodo eleito.
+    indeterminado = montar_resultado_consolidado(
+        {"controle": {"modo": "", "ciclo_vigente": "C1"},
+         "memoria_por_ciclo": {"ajustes_execucao_resumo": resumo, "vta": {}}},
+        {},
+    )
+    assert indeterminado["metodo"]["codigo"] == "indeterminado"
+    assert indeterminado["ajustes_execucao"]["aplicavel"] is False
+    # Misto: CONTROLE diz PC, a eleicao diz Consumidos — nao mostrar.
+    misto = montar_resultado_consolidado(
+        {"controle": {"modo": "pc", "ciclo_vigente": "C1"},
+         "memoria_por_ciclo": {"ajustes_execucao_resumo": resumo,
+                               "vta": {"metodo": "consumidos"}}},
+        {},
+    )
+    assert misto["ajustes_execucao"]["aplicavel"] is False
+
+
+def test_a2_financeiro_e_pc_nao_mudam_por_causa_da_glosa():
+    """O gate do card e apresentacional: nao pode tocar em VTA nem retroativo."""
+    for modo, financeiro, pcs in (
+        ("principal", _PARCELA_FIN_A2, None), ("pc", None, _PC_A2),
+    ):
+        sem, _ = _consolidado(modo, glosa=None, financeiro=financeiro, pcs=pcs)
+        com, _ = _consolidado(modo, glosa=10000.0, financeiro=financeiro, pcs=pcs)
+        for metodo in ("financeiro", "pc"):
+            assert (
+                _ciclo(com, "C1")["retroativo"][metodo]
+                == _ciclo(sem, "C1")["retroativo"][metodo]
+            ), (modo, metodo)
+            assert _conferencia(com, metodo) == _conferencia(sem, metodo)
+        assert com["vta"] == sem["vta"]
+
+
+def test_a2_web_le_a_flag_pronta_sem_reinferir_o_metodo():
+    """A pagina nao pode reimplementar o gate — ela so consome `aplicavel`."""
+    pagina = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
+    assert '_ajustes.get("aplicavel")' in pagina
+    assert "_ROTULO_GLOSA_EXECUCAO" in pagina
 
 
 # ---------------------------------------------------------------------------

@@ -558,7 +558,11 @@ def _ler_ajustes_execucao_consumidos(ws, mapa: dict[str, int]) -> dict[str, Any]
         tipo_bruto = ws.cell(linha, col_tipo).value
         valor_bruto = ws.cell(linha, col_valor).value
         tipo_txt = "" if tipo_bruto is None else str(tipo_bruto).strip()
-        valor_vazio = valor_bruto is None or str(valor_bruto).strip() == ""
+        # VAZIO e a celula literalmente vazia, exatamente como o `$AA=""` do
+        # Excel — uma celula com espaco NAO e vazia e cai em "nao numerico".
+        # A conversao para numero fica a cargo do motor, que aplica validacao
+        # ESTRITA (nunca coage texto nem booleano).
+        valor_vazio = valor_bruto is None or valor_bruto == ""
         if not tipo_txt and valor_vazio:
             continue
         ajustes[ciclo] = {
