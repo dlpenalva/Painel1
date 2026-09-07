@@ -250,6 +250,47 @@ def _garantir_dropdown_metodo(wb) -> None:
             dv.formula1 = lista
 
 
+def _garantir_dropdown_ajuste_tipo(wb) -> None:
+    """itens_Consumidos!Z2:Z6 sempre oferece "Valor pago" e "Glosa".
+
+    CONSUMO-GLOSA-DV-1. O template guarda essa lista dentro de um
+    `mc:AlternateContent`/`x12ac:list` (o Excel serializa assim ao criar a
+    validacao). O openpyxl nao entende essa extensao e descarta a lista JA NA
+    LEITURA — `load_workbook` devolve a validacao com `formula1 = None` —,
+    entao a Coleta gerada saia com o dropdown vazio. As demais 10 listas do
+    workbook usam `formula1` simples e atravessam a cadeia intactas; por isso
+    a correcao e so aqui, e nao uma migracao geral de validacoes.
+
+    Reescrever `formula1` em runtime mantem o template binario homologado
+    intacto e nao toca em formula, layout, estilo nem protecao — e apenas a
+    ajuda de entrada. Mesmo padrao ja usado por `_garantir_dropdown_metodo`.
+
+    A lista vem de `_leitor_masterfile_v10.OPCOES_AJUSTE_TIPO`, a mesma fonte
+    que o leitor usa para aceitar o valor digitado: o que o dropdown oferece
+    nao pode divergir do que o motor reconhece.
+    """
+    from _leitor_masterfile_v10 import OPCOES_AJUSTE_TIPO
+
+    if "itens_Consumidos" not in wb.sheetnames:
+        return
+    ws = wb["itens_Consumidos"]
+    lista = '"' + ",".join(OPCOES_AJUSTE_TIPO) + '"'
+    for dv in ws.data_validations.dataValidation:
+        if dv.type == "list" and str(dv.sqref) == "Z2:Z6":
+            dv.formula1 = lista
+            return
+
+    # Sem a validacao no template (layout inesperado), cria uma equivalente em
+    # vez de entregar a Coleta sem dropdown.
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    dv = DataValidation(
+        type="list", formula1=lista, allow_blank=True, showDropDown=False
+    )
+    ws.add_data_validation(dv)
+    dv.add("Z2:Z6")
+
+
 def _garantir_formulas_cronologia_execucao(wb) -> None:
     """CICLO por cronologia fixa da execucao — ETAPA 31.
 
@@ -775,6 +816,7 @@ def obter_coleta_oficial_bytes() -> bytes:
 
     _limpar_residuos(wb)
     _garantir_dropdown_metodo(wb)
+    _garantir_dropdown_ajuste_tipo(wb)
     _garantir_formulas_cronologia_execucao(wb)
     _garantir_fator_historico_desacoplado(wb)
     _garantir_completude_abertura_temporal(wb)
