@@ -334,19 +334,30 @@ def test_k_l_q_r_apostila_e_saneador_usam_os_mesmos_valores_e_abrem():
         texto = _texto_docx(conteudo)
         assert "R$ 57.701,49" in texto
         assert "R$ 120.016,52" in texto
-        assert "valor em análise pela área gestora" in texto.lower()
         assert "31/08/2026" in texto
     texto_termo = _texto_docx(termo)
-    assert texto_termo.count("SITUAÇÃO DOS VALORES RETROATIVOS") == 1
-    assert "Quadro 2 — Execução considerada até a data de corte" in texto_termo
-    assert "Valor original" in texto_termo
-    assert "Valor atualizado" in texto_termo
+    # O Termo consolida a situacao no Quadro 3 (modelo aprovado em 09/09/2026).
+    assert texto_termo.count("Quadro 3 — Situação dos valores retroativos") == 1
+    assert "SITUAÇÃO DOS VALORES RETROATIVOS" not in texto_termo
+    assert "Quadro 2 — Execução reconhecida e retroativo por ciclo" in texto_termo
+    assert "Pedidos de Compra reconhecidos / valor original" in texto_termo
+    assert "Pedidos de Compra reconhecidos / valor atualizado" in texto_termo
     assert "Retroativo reconhecido" in texto_termo
+    assert "validação pela área gestora" in texto_termo
     texto_saneador = _texto_docx(saneador)
+    # A frase do valor em analise migrou do Termo para o Saneador (#152): e no
+    # Saneador que ela continua existindo.
+    assert "valor em análise pela área gestora" in texto_saneador.lower()
     # Havendo providencia real da area gestora, o documento NAO pode afirmar
-    # ausencia de pendencias: as duas frases sao contraditorias.
+    # ausencia de pendencias: as duas frases sao contraditorias (#151).
     assert "PROVIDÊNCIA DA ÁREA GESTORA" in texto_saneador
     assert "Não existem pendências nesta data." not in texto_saneador
+    # A fixture tem uma pendencia canonica real (PC sem DATA_PC), que o
+    # Saneador passou a enxergar com o objeto materializado. Ela convive com a
+    # providencia sem contradicao — o que nao pode conviver com a providencia
+    # e a AFIRMACAO de ausencia de pendencias, ja verificada acima.
+    assert "PENDÊNCIA TÉCNICA:" in texto_saneador
+    assert "sem DATA_PC" in texto_saneador
 
 
 def test_saneador_pc_restaura_vta_canonico_sem_duplicar_e_outros_metodos_preservam():
