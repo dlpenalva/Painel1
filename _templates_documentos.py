@@ -2161,14 +2161,18 @@ def _ds_secao4_documentos(doc: Document, dados: dict, cm: dict) -> None:
 def _ds_secao5_controle_adequacao(doc: Document, dados: dict, cm: dict) -> None:
     """Controle da adequacao orcamentaria (secao 5 do modelo canonico).
 
-    No modelo em branco a redacao e instrutiva: nao afirma que a GFO ja
-    realizou a adequacao. O paragrafo sobre exercicios subsequentes tem
-    natureza normativa/condicional e vale nos dois modos.
+    A redacao assertiva ("a GFO realizou") exige documento processado E
+    referencia da manifestacao efetivamente preenchida. Sem a referencia
+    — inclusive fora do modelo em branco — a redacao volta a ser instrutiva:
+    o documento nunca afirma um ato cuja prova documental esta em aberto.
+    O paragrafo sobre exercicios subsequentes tem natureza normativa/
+    condicional e vale em todos os casos.
     """
     _ds_titulo(doc, 5, "Controle da adequação orçamentária")
+    ref_adequacao = _campo(cm, "adequacao_orcamentaria_ref")
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    if dados.get("_modo_branco"):
+    if dados.get("_modo_branco") or ref_adequacao is None:
         _adicionar_run(
             p,
             "Registrar a manifestação da Gerência Financeira e "
@@ -2185,8 +2189,7 @@ def _ds_secao5_controle_adequacao(doc: Document, dados: dict, cm: dict) -> None:
             "documento ",
         )
     _texto_ou_marcador(
-        p, _campo(cm, "adequacao_orcamentaria_ref"),
-        "Referencia da adequacao orcamentaria",
+        p, ref_adequacao, "Referencia da adequacao orcamentaria",
     )
     _adicionar_run(p, ", nos termos e limites da respectiva manifestação.")
 

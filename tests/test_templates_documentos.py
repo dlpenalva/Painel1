@@ -550,6 +550,27 @@ def test_saneador_branco_nao_afirma_adequacao_realizada():
     assert "natureza de previsão ou programação condicionada" in texto
 
 
+def test_saneador_processado_sem_referencia_nao_afirma_adequacao():
+    # Documento processado (nao e modelo em branco) SEM a referencia da
+    # manifestacao: nao pode afirmar um ato cuja prova esta em aberto.
+    cm = {k: v for k, v in CAMPOS_SANEADOR.items()
+          if k != "adequacao_orcamentaria_ref"}
+    texto = _texto_docx(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=cm
+    ))
+    assert "GFO realizou a adequação orçamentária" not in texto
+    assert (
+        "Registrar a manifestação da Gerência Financeira e Orçamentária "
+        "– GFO relativa à adequação orçamentária da presente atualização "
+        "contratual, conforme documento [PREENCHER: Referencia da adequacao "
+        "orcamentaria], nos termos e limites da respectiva manifestação."
+    ) in texto
+    assert "[PREENCHER: Referencia da adequacao orcamentaria]" in texto
+    assert "SANEADO PARA FORMALIZAÇÃO" not in texto
+    # O paragrafo normativo/condicional permanece.
+    assert "natureza de previsão ou programação condicionada" in texto
+
+
 def test_saneador_nao_exige_valor_manual_da_adequacao():
     chaves = [c[0] for c in CAMPOS_MANUAIS_DESPACHO]
     assert "adequacao_orcamentaria_valor" not in chaves
