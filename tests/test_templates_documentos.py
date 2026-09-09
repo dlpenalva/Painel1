@@ -15,6 +15,7 @@ from docx import Document
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from _templates_documentos import (  # noqa: E402
+    CAMPOS_MANUAIS_DESPACHO,
     CAMPOS_MANUAIS_TERMO,
     _consumidos_disponivel,
     _objeto_do_documento,
@@ -24,9 +25,13 @@ from _templates_documentos import (  # noqa: E402
     _ta_potenciais,
     _ta_secao2_pc,
     _ta_tem_potencial,
+    _ds_ha_providencia_gestora,
+    _ds_pendencias_tecnicas,
+    _ds_tem_pendencia_impeditiva,
     _ta_texto_origem_potencial,
     diagnosticar_campos_manuais,
     gerar_despacho_saneador,
+    gerar_modelo_branco_despacho,
     gerar_modelo_branco_termo,
     gerar_termo_apostila,
     _extrair_dados,
@@ -80,7 +85,6 @@ CAMPOS_SANEADOR = {
     "referencia_analise": "TLB-AUT-2026/00200",
     "memoria_calculo_ref": "TLB-AUT-2026/00200",
     "adequacao_orcamentaria_ref": "TLB-DES-2026/00300",
-    "adequacao_orcamentaria_valor": 123456.78,
     "regularidade_ref": "TLB-AUT-2026/00400",
     "regularidade_situacao": "documentação apresentada para conferência",
     "concordancia_ref": "TLB-AUT-2026/00500",
@@ -478,7 +482,7 @@ def test_saneador_assunto_e_identificacao():
     assert "com vigência até 31/12/2027" in texto
 
 
-def test_saneador_estrutura_final_1_a_6():
+def test_saneador_estrutura_final_1_a_7():
     doc = Document(BytesIO(gerar_despacho_saneador(
         leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR
     )))
@@ -488,8 +492,9 @@ def test_saneador_estrutura_final_1_a_6():
         "2. PEDIDO E PARÂMETROS DA ANÁLISE",
         "3. RESULTADO ESSENCIAL",
         "4. DOCUMENTOS E VERIFICAÇÕES",
-        "5. PENDÊNCIAS E PROVIDÊNCIAS",
-        "6. CONCLUSÃO",
+        "5. CONTROLE DA ADEQUAÇÃO ORÇAMENTÁRIA",
+        "6. PENDÊNCIAS",
+        "7. CONCLUSÃO",
     ]
 
 
@@ -559,19 +564,250 @@ def test_saneador_resultado_consolidado_sem_detalhamento_por_ciclo():
     assert "Apuração financeira por ciclo" not in texto
 
 
-def test_saneador_conclusao_neutra_sem_habilitacao_nova():
+def test_saneador_conclusao_neutra_quando_falta_documento():
+    # Campo documental obrigatorio em aberto: nao pode declarar saneamento.
+    cm = {k: v for k, v in CAMPOS_SANEADOR.items() if k != "garantia_situacao"}
+    texto = _texto_docx(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=cm
+    ))
+    assert "deverá ser avaliado o prosseguimento da instrução" in texto
+    assert "SANEADO PARA FORMALIZAÇÃO" not in texto
+    assert "instrução encontra-se apta" not in texto
+
+
+def test_saneador_conclusao_saneada_em_estado_compativel():
     texto = _texto_docx(gerar_despacho_saneador(
         leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR
     ))
-    assert "deverá ser avaliado o prosseguimento da instrução" in texto
+    assert (
+        "SANEADO PARA FORMALIZAÇÃO: encontram-se presentes e formalmente "
+        "consistentes os documentos necessários à atualização contratual, "
+        "inclusive a manifestação da unidade financeira e orçamentária quanto "
+        "ao impacto incidente no exercício vigente."
+    ) in texto
     assert "instrução encontra-se apta" not in texto
+
+
+def test_saneador_modelo_branco_nao_declara_saneamento():
+    texto = _texto_docx(gerar_modelo_branco_despacho())
+    assert "SANEADO PARA FORMALIZAÇÃO" not in texto
+    assert ("Após o preenchimento e a conferência das informações, deverá ser "
+            "avaliado se a instrução reúne condições") in texto
 
 
 def test_saneador_conclusao_impeditiva_com_pendencia_suportada():
     cm = dict(CAMPOS_SANEADOR, pendencia_critica=True)
     texto = _texto_docx(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=cm))
     assert "A instrução deverá ser complementada quanto às pendências acima" in texto
+    assert "SANEADO PARA FORMALIZAÇÃO" not in texto
     assert "instrução encontra-se apta" not in texto
+
+
+# --------------------------------------------------------- secao 5 e pendencias
+
+def test_saneador_controle_adequacao_texto_aprovado():
+    b = gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR
+    )
+    texto = _texto_docx(b)
+    assert (
+        "Registra-se que a Gerência Financeira e Orçamentária – GFO realizou "
+        "a adequação orçamentária relativa à presente atualização contratual, "
+        "conforme documento TLB-DES-2026/00300, nos termos e limites da "
+        "respectiva manifestação."
+    ) in texto
+    assert (
+        "Os valores eventualmente previstos para exercícios subsequentes "
+        "permanecem sujeitos à confirmação pela gerência competente"
+    ) in texto
+    assert "natureza de previsão ou programação condicionada" in texto
+    # A secao 5 fica entre Documentos (4) e Pendencias (6).
+    assert texto.index("4. DOCUMENTOS E VERIFICAÇÕES") < \
+        texto.index("5. CONTROLE DA ADEQUAÇÃO ORÇAMENTÁRIA") < \
+        texto.index("6. PENDÊNCIAS")
+
+
+def test_saneador_branco_nao_afirma_adequacao_realizada():
+    texto = _texto_docx(gerar_modelo_branco_despacho())
+    assert "realizou a adequação orçamentária" not in texto
+    assert "Foi realizada a adequação orçamentária" not in texto
+    assert (
+        "Registrar a manifestação da Gerência Financeira e Orçamentária "
+        "– GFO relativa à adequação orçamentária da presente atualização "
+        "contratual, conforme documento [PREENCHER: Referencia da adequacao "
+        "orcamentaria], nos termos e limites da respectiva manifestação."
+    ) in texto
+    # O paragrafo normativo/condicional permanece no modelo em branco.
+    assert "natureza de previsão ou programação condicionada" in texto
+
+
+def test_saneador_processado_sem_referencia_nao_afirma_adequacao():
+    # Documento processado (nao e modelo em branco) SEM a referencia da
+    # manifestacao: nao pode afirmar um ato cuja prova esta em aberto.
+    cm = {k: v for k, v in CAMPOS_SANEADOR.items()
+          if k != "adequacao_orcamentaria_ref"}
+    texto = _texto_docx(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=cm
+    ))
+    assert "GFO realizou a adequação orçamentária" not in texto
+    assert (
+        "Registrar a manifestação da Gerência Financeira e Orçamentária "
+        "– GFO relativa à adequação orçamentária da presente atualização "
+        "contratual, conforme documento [PREENCHER: Referencia da adequacao "
+        "orcamentaria], nos termos e limites da respectiva manifestação."
+    ) in texto
+    assert "[PREENCHER: Referencia da adequacao orcamentaria]" in texto
+    assert "SANEADO PARA FORMALIZAÇÃO" not in texto
+    # O paragrafo normativo/condicional permanece.
+    assert "natureza de previsão ou programação condicionada" in texto
+
+
+def test_saneador_nao_exige_valor_manual_da_adequacao():
+    chaves = [c[0] for c in CAMPOS_MANUAIS_DESPACHO]
+    assert "adequacao_orcamentaria_valor" not in chaves
+    pendentes = [
+        p["campo"] for p in diagnosticar_campos_manuais(
+            leitura_simples_financeiro(), campos_manuais=CAMPOS_SANEADOR
+        )
+    ]
+    assert "adequacao_orcamentaria_valor" not in pendentes
+    texto = _texto_docx(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert "[PREENCHER: Valor da adequacao orcamentaria]" not in texto
+    assert "[PREENCHER: Valor ou situacao da adequacao orcamentaria]" not in texto
+
+
+def test_saneador_sem_pendencias_usa_frase_padrao():
+    texto = _texto_docx(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert "Não existem pendências nesta data." in texto
+    assert "Não foram identificadas pendências técnicas na apuração" not in texto
+
+
+def test_saneador_pendencia_real_substitui_frase_padrao():
+    cm = dict(CAMPOS_SANEADOR, pendencias_complemento="Garantia contratual vencida")
+    texto = _texto_docx(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=cm))
+    assert "Não existem pendências nesta data." not in texto
+    assert "PENDÊNCIA TÉCNICA: Garantia contratual vencida." in texto
+
+
+def _secao6(docx_bytes: bytes) -> str:
+    """Texto da secao 6 (Pendencias), ate o titulo da secao 7."""
+    doc = Document(BytesIO(docx_bytes))
+    textos = [p.text for p in doc.paragraphs]
+    inicio = textos.index("6. PENDÊNCIAS") + 1
+    fim = textos.index("7. CONCLUSÃO")
+    return "\n".join(t for t in textos[inicio:fim] if t.strip())
+
+
+# A) processado sem pendencia e sem providencia
+def test_saneador_sem_pendencia_e_sem_providencia_usa_a_frase_padrao():
+    secao = _secao6(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert "Não existem pendências nesta data." in secao
+    assert "PROVIDÊNCIA DA ÁREA GESTORA" not in secao
+    assert "PENDÊNCIA TÉCNICA" not in secao
+
+
+# B) processado com PC em analise / retroativo potencial
+def test_saneador_com_providencia_gestora_nao_afirma_ausencia_de_pendencias():
+    leitura = _leitura_retroativos_corte(date(2026, 12, 12))
+    secao = _secao6(gerar_despacho_saneador(
+        leitura, campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert "Não existem pendências nesta data." not in secao
+    assert "PROVIDÊNCIA DA ÁREA GESTORA" in secao
+    assert "Há Pedidos de Compra em análise pela área gestora." in secao
+    assert "R$ 44,63" in secao
+    assert "não integra o retroativo reconhecido nesta apuração" in secao
+
+
+# C) pendencia tecnica real
+def test_saneador_com_pendencia_tecnica_nao_usa_a_frase_padrao():
+    cm = dict(CAMPOS_SANEADOR, pendencias_complemento="Garantia contratual vencida")
+    secao = _secao6(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=cm
+    ))
+    assert "Não existem pendências nesta data." not in secao
+    assert "PENDÊNCIA TÉCNICA: Garantia contratual vencida." in secao
+
+
+# D) pendencia tecnica + providencia da area gestora
+def test_saneador_com_pendencia_tecnica_e_providencia_mostra_os_dois_blocos():
+    leitura = _leitura_retroativos_corte(date(2026, 12, 12))
+    cm = dict(CAMPOS_SANEADOR, pendencias_complemento="Certidão vencida")
+    secao = _secao6(gerar_despacho_saneador(leitura, campos_manuais=cm))
+    assert "Não existem pendências nesta data." not in secao
+    assert "PENDÊNCIA TÉCNICA:" in secao
+    assert "Certidão vencida." in secao
+    assert "PROVIDÊNCIA DA ÁREA GESTORA" in secao
+
+
+def _leitura_pc_so_potencial() -> dict:
+    """PC unico em analise: ha providencia da area gestora e NENHUMA pendencia
+    tecnica. Isola o efeito da providencia sobre a conclusao."""
+    leitura = leitura_multiciclo_pc()
+    corte = date(2026, 8, 18)
+    leitura["controle"]["data_corte"] = corte
+    item = leitura["itens_pc_v10"]["itens"][0]
+    item.update({
+        "data_pc": date(2026, 4, 12),
+        "dentro_do_corte": True,
+        "pc_pago_a_contratada": "Nao",
+        "retroativo_reconhecido_a_pagar": 0.0,
+        "valor_atualizado_em_analise": 44.63,
+        "delta_potencial": 44.63,
+    })
+    leitura["itens_pc_v10"]["itens"] = [item]
+    leitura["itens_pc_v10"]["totais_canonicos"] = _totais_canonicos_pc(
+        [item], corte
+    )
+    return leitura
+
+
+# Providencia da area gestora NAO e pendencia impeditiva.
+def test_saneador_providencia_gestora_nao_bloqueia_o_saneamento():
+    leitura = _leitura_pc_so_potencial()
+    dados = _extrair_dados(leitura, None)
+    # A providencia existe e nao entra em pendencia tecnica nem impeditiva.
+    assert _ds_ha_providencia_gestora(dados) is True
+    assert _ds_pendencias_tecnicas(dados, CAMPOS_SANEADOR) == []
+    assert _ds_tem_pendencia_impeditiva(dados, CAMPOS_SANEADOR) is False
+
+    texto = _texto_docx(gerar_despacho_saneador(
+        leitura, campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert "PROVIDÊNCIA DA ÁREA GESTORA" in texto
+    assert "Não existem pendências nesta data." not in texto
+    # A regra negocial nao muda: o potencial segue identificado como potencial
+    # e a conclusao positiva permanece disponivel.
+    assert "SANEADO PARA FORMALIZAÇÃO" in texto
+    assert "A instrução deverá ser complementada" not in texto
+
+
+def test_saneador_branco_tem_placeholder_de_pendencia_destacado():
+    b = gerar_modelo_branco_despacho()
+    texto = _texto_docx(b)
+    assert "[PREENCHER, EM CASO DE PENDÊNCIA]" in texto
+    assert "Não existem pendências nesta data." in texto
+    encontrados = [
+        r for p in Document(BytesIO(b)).paragraphs for r in p.runs
+        if r.text == "[PREENCHER, EM CASO DE PENDÊNCIA]"
+    ]
+    assert len(encontrados) == 1
+    run = encontrados[0]
+    assert run.text == run.text.upper()
+    rpr = run._element.rPr
+    highlight = rpr.find(
+        "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}highlight"
+    )
+    assert highlight is not None
+    assert highlight.get(
+        "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}val"
+    ) == "yellow"
 
 
 def test_saneador_documentos_desatualizados_ficam_nas_pendencias():
@@ -903,10 +1139,14 @@ def test_apostila_nao_altera_o_despacho_saneador():
     texto = _texto_docx(gerar_despacho_saneador(
         leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR
     ))
-    assert "5. PENDÊNCIAS E PROVIDÊNCIAS" in texto
-    assert "6. CONCLUSÃO" in texto
+    # Estrutura do Saneador ja mergeada (PR #151), preservada pela integracao.
+    assert "5. CONTROLE DA ADEQUAÇÃO ORÇAMENTÁRIA" in texto
+    assert "6. PENDÊNCIAS" in texto
+    assert "7. CONCLUSÃO" in texto
+    # Nada do Termo vaza para o Saneador.
     assert "ANEXO 1" not in texto
     assert "TERMO DE APOSTILA" not in texto
+    assert "Dos reajustes concedidos" not in texto
 
 
 # ---------------------------------------------------------------------------
