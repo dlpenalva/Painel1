@@ -50,6 +50,19 @@ from _sanitizacao_documental import remover_emojis_leve
 # ---------------------------------------------------------------------------
 
 PREENCHER_TAG = "[PREENCHER: {}]"
+# Despacho Saneador: pendencias e adequacao orcamentaria (modelo aprovado).
+PREENCHER_PENDENCIA_TAG = "[PREENCHER, EM CASO DE PENDÊNCIA]"
+FRASE_SEM_PENDENCIAS = "Não existem pendências nesta data."
+TEXTO_EXERCICIOS_SUBSEQUENTES = (
+    "Os valores eventualmente previstos para exercícios subsequentes "
+    "permanecem sujeitos à confirmação pela gerência competente nos "
+    "respectivos instrumentos orçamentários, não caracterizando, por si "
+    "só, disponibilidade ou reserva orçamentária já constituída. Assim, os "
+    "valores constantes do cronograma possuem natureza de previsão ou "
+    "programação condicionada, quando a própria manifestação financeira "
+    "indicar que sua confirmação dependerá da aprovação, publicação ou "
+    "disponibilização do respectivo instrumento orçamentário."
+)
 COR_NEGATIVO = RGBColor(0xC0, 0x00, 0x00)
 _LETRAS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
 
@@ -102,7 +115,6 @@ CAMPOS_MANUAIS_DESPACHO = [
     ("referencia_analise", "Referencia onde o resultado da analise consta", "despacho"),
     ("memoria_calculo_ref", "Referencia da memoria de calculo", "despacho"),
     ("adequacao_orcamentaria_ref", "Referencia da adequacao orcamentaria", "despacho"),
-    ("adequacao_orcamentaria_valor", "Valor da adequacao orcamentaria", "despacho"),
     ("regularidade_ref", "Referencia das certidoes de regularidade", "despacho"),
     ("regularidade_situacao", "Situacao da regularidade da contratada", "despacho"),
     ("concordancia_ref", "Referencia da manifestacao de concordancia da contratada", "despacho"),
@@ -334,6 +346,15 @@ def _adicionar_box_retroativos(doc: Document, dados: dict, *, saneador: bool) ->
 
 def _run_campo_manual(p, descricao: str, tamanho: int = 11) -> Any:
     run = p.add_run(PREENCHER_TAG.format(descricao))
+    run.font.name = "Calibri"
+    run.font.size = Pt(tamanho)
+    _set_highlight(run, "yellow")
+    return run
+
+
+def _run_placeholder_pendencia(p, tamanho: int = 11) -> Any:
+    """Placeholder editavel de pendencia, em caixa alta e destaque amarelo."""
+    run = p.add_run(PREENCHER_PENDENCIA_TAG)
     run.font.name = "Calibri"
     run.font.size = Pt(tamanho)
     _set_highlight(run, "yellow")
@@ -1691,8 +1712,9 @@ def gerar_despacho_saneador(
     _ds_secao2_pedido_parametros(doc, dados, campos_manuais)
     _ds_secao3_resultado(doc, dados, campos_manuais)
     _ds_secao4_documentos(doc, dados, campos_manuais)
-    _ds_secao5_pendencias(doc, dados, campos_manuais)
-    _ds_secao6_conclusao(doc, dados, campos_manuais)
+    _ds_secao5_controle_adequacao(doc, dados, campos_manuais)
+    _ds_secao6_pendencias(doc, dados, campos_manuais)
+    _ds_secao7_conclusao(doc, dados, campos_manuais)
     _adicionar_id_apuracao_rodape(doc, dados)
 
     buf = BytesIO()
@@ -2109,8 +2131,6 @@ def _ds_secao4_documentos(doc: Document, dados: dict, cm: dict) -> None:
         ["Adequação orçamentária", _ds_juntar_campos(
             (_campo(cm, "adequacao_orcamentaria_ref"),
              "Referencia da adequacao orcamentaria"),
-            (_campo(cm, "adequacao_orcamentaria_valor"),
-             "Valor ou situacao da adequacao orcamentaria"),
         )],
         ["Regularidade da contratada", _ds_juntar_campos(
             (_campo(cm, "regularidade_ref"),
@@ -2138,6 +2158,44 @@ def _ds_secao4_documentos(doc: Document, dados: dict, cm: dict) -> None:
     doc.add_paragraph()
 
 
+def _ds_secao5_controle_adequacao(doc: Document, dados: dict, cm: dict) -> None:
+    """Controle da adequacao orcamentaria (secao 5 do modelo canonico).
+
+    No modelo em branco a redacao e instrutiva: nao afirma que a GFO ja
+    realizou a adequacao. O paragrafo sobre exercicios subsequentes tem
+    natureza normativa/condicional e vale nos dois modos.
+    """
+    _ds_titulo(doc, 5, "Controle da adequação orçamentária")
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    if dados.get("_modo_branco"):
+        _adicionar_run(
+            p,
+            "Registrar a manifestação da Gerência Financeira e "
+            "Orçamentária – GFO relativa à adequação "
+            "orçamentária da presente atualização contratual, "
+            "conforme documento ",
+        )
+    else:
+        _adicionar_run(
+            p,
+            "Registra-se que a Gerência Financeira e Orçamentária "
+            "– GFO realizou a adequação orçamentária "
+            "relativa à presente atualização contratual, conforme "
+            "documento ",
+        )
+    _texto_ou_marcador(
+        p, _campo(cm, "adequacao_orcamentaria_ref"),
+        "Referencia da adequacao orcamentaria",
+    )
+    _adicionar_run(p, ", nos termos e limites da respectiva manifestação.")
+
+    p_exercicios = doc.add_paragraph()
+    p_exercicios.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    _adicionar_run(p_exercicios, TEXTO_EXERCICIOS_SUBSEQUENTES)
+    doc.add_paragraph()
+
+
 def _ds_pendencias_tecnicas(dados: dict, cm: dict) -> list[str]:
     resultado: list[str] = []
     pendencias = dados.get("pendencias") or {}
@@ -2159,28 +2217,26 @@ def _ds_pendencias_tecnicas(dados: dict, cm: dict) -> list[str]:
     return resultado
 
 
-def _ds_secao5_pendencias(doc: Document, dados: dict, cm: dict) -> None:
-    _ds_titulo(doc, 5, "Pendências e providências")
+def _ds_secao6_pendencias(doc: Document, dados: dict, cm: dict) -> None:
+    _ds_titulo(doc, 6, "Pendências")
     pendencias = _ds_pendencias_tecnicas(dados, cm)
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    if dados.get("_modo_branco"):
-        _adicionar_run(p, "PENDÊNCIA TÉCNICA: ", negrito=True)
-        _adicionar_run(p, "Registrar as pendências relevantes para o prosseguimento: ")
-        _run_campo_manual(p, "Pendencias relevantes")
-        _adicionar_run(p, ".")
-    elif pendencias:
+    if pendencias:
         _adicionar_run(p, "PENDÊNCIA TÉCNICA: ", negrito=True)
         _adicionar_run(p, "; ".join(pendencias) + ".")
     else:
-        _adicionar_run(p, "PENDÊNCIA TÉCNICA: ", negrito=True)
-        _adicionar_run(p, "Não foram identificadas pendências técnicas na apuração.")
+        _adicionar_run(p, FRASE_SEM_PENDENCIAS)
     if _ds_ha_pendencia_documental(dados, cm):
         _adicionar_run(
             p,
             " Os campos documentais destacados permanecem sujeitos a "
             "preenchimento e conferência.",
         )
+    if dados.get("_modo_branco"):
+        p_ph = doc.add_paragraph()
+        p_ph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        _run_placeholder_pendencia(p_ph)
 
     situacao = dados.get("situacao_retroativos_pc") or {}
     em_analise = _num_ou_none(situacao.get("em_analise"))
@@ -2212,7 +2268,6 @@ def _ds_ha_pendencia_documental(dados: dict, cm: dict) -> bool:
     obrigatorios = (
         memoria_ref,
         _campo(cm, "adequacao_orcamentaria_ref"),
-        _campo(cm, "adequacao_orcamentaria_valor"),
         _campo(cm, "regularidade_ref"),
         _campo(cm, "regularidade_situacao"),
         _campo(cm, "concordancia_ref"),
@@ -2235,8 +2290,14 @@ def _ds_tem_pendencia_impeditiva(dados: dict, cm: dict) -> bool:
     return bool(flag)
 
 
-def _ds_secao6_conclusao(doc: Document, dados: dict, cm: dict) -> None:
-    _ds_titulo(doc, 6, "Conclusão")
+def _ds_secao7_conclusao(doc: Document, dados: dict, cm: dict) -> None:
+    """Conclusao (secao 7).
+
+    O saneamento so e declarado quando o estado real permite: fora do modelo
+    em branco, sem pendencia impeditiva, sem pendencia tecnica listada e sem
+    campo documental obrigatorio em aberto.
+    """
+    _ds_titulo(doc, 7, "Conclusão")
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     if dados.get("_modo_branco"):
@@ -2252,12 +2313,21 @@ def _ds_secao6_conclusao(doc: Document, dados: dict, cm: dict) -> None:
             "A instrução deverá ser complementada quanto às pendências acima "
             "antes do prosseguimento para formalização.",
         )
-    else:
+    elif _ds_pendencias_tecnicas(dados, cm) or _ds_ha_pendencia_documental(dados, cm):
         _adicionar_run(
             p,
             "Após a complementação e conferência das informações documentais "
             "indicadas, deverá ser avaliado o prosseguimento da instrução para "
             "formalização.",
+        )
+    else:
+        _adicionar_run(p, "SANEADO PARA FORMALIZAÇÃO: ", negrito=True)
+        _adicionar_run(
+            p,
+            "encontram-se presentes e formalmente consistentes os documentos "
+            "necessários à atualização contratual, inclusive a manifestação da "
+            "unidade financeira e orçamentária quanto ao impacto incidente no "
+            "exercício vigente.",
         )
 
 

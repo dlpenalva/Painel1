@@ -343,7 +343,7 @@ def test_k_l_q_r_apostila_e_saneador_usam_os_mesmos_valores_e_abrem():
     assert "Valor atualizado" in texto_termo
     assert "Retroativo reconhecido" in texto_termo
     texto_saneador = _texto_docx(saneador)
-    assert "PENDÊNCIA TÉCNICA" in texto_saneador
+    assert "Não existem pendências nesta data." in texto_saneador
     assert "PROVIDÊNCIA DA ÁREA GESTORA" in texto_saneador
 
 
