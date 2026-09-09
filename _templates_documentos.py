@@ -1090,6 +1090,96 @@ def _ta_tem_potencial(dados: dict) -> bool:
     return incorporado is not None or apurado is not None
 
 
+def _ta_ordem_ciclo(ciclo: Any) -> tuple[int, str]:
+    texto = str(ciclo).strip().upper()
+    return (
+        int(texto[1]) if len(texto) == 2 and texto[0] == "C"
+        and texto[1].isdigit() else 99,
+        texto,
+    )
+
+
+def _ta_origem_potencial(
+    dados: dict, apurado: float | None
+) -> list[tuple[str, float, float | None]]:
+    """Decomposicao por ciclo do retroativo potencial APURADO.
+
+    Le `situacao_retroativos_pc["por_ciclo"]`, que a cadeia canonica ja agrega
+    por ciclo; o renderer nao recompoe nada a partir dos PCs. `delta_potencial`
+    e a parcela de retroativo potencial do ciclo; `valor_atualizado_em_analise`
+    e o valor atualizado dos PCs ainda em analise pela area gestora naquele
+    ciclo — nunca a execucao total do ciclo.
+
+    Devolve lista vazia quando a decomposicao nao fecha com o total apurado
+    (PCs sem ciclo, em intervalo precluso ou indeterminados nao entram no
+    `por_ciclo`): nesse caso o documento informa o total e a origem generica,
+    sem atribuir ciclo algum.
+    """
+    if apurado is None:
+        return []
+    por_ciclo = (dados.get("situacao_retroativos_pc") or {}).get("por_ciclo") or {}
+    origens: list[tuple[str, float, float | None]] = []
+    for ciclo in sorted(por_ciclo, key=_ta_ordem_ciclo):
+        bloco = por_ciclo.get(ciclo) or {}
+        potencial = _num_ou_none(bloco.get("delta_potencial"))
+        if potencial is None or not round(potencial, 2):
+            continue
+        em_analise = _num_ou_none(bloco.get("valor_atualizado_em_analise"))
+        if em_analise is not None and not round(em_analise, 2):
+            em_analise = None
+        origens.append((remover_emojis_leve(ciclo).strip(),
+                        round(potencial, 2), em_analise))
+    if not origens:
+        return []
+    soma = round(sum(valor for _c, valor, _e in origens), 2)
+    if abs(soma - round(apurado, 2)) > 0.01:
+        return []
+    return origens
+
+
+def _ta_texto_origem_potencial(dados: dict, apurado: float | None) -> str:
+    """Frase automatica da ORIGEM do retroativo potencial apurado (metodo PC).
+
+    Vazia quando a decomposicao canonica por ciclo nao esta disponivel de
+    forma confiavel: nunca inventa ciclo nem valor-base.
+    """
+    origens = _ta_origem_potencial(dados, apurado)
+    if not origens:
+        return ""
+    total = formatar_moeda(apurado)
+    if len(origens) == 1:
+        ciclo, _potencial, em_analise = origens[0]
+        # A sujeicao a validacao ja foi dita na frase de abertura do item 2.4;
+        # aqui interessa identificar o ciclo de origem, sem repeti-la.
+        texto = (
+            f" O retroativo potencial apurado de {total} decorre dos Pedidos de "
+            f"Compra do ciclo {ciclo}."
+        )
+        if em_analise is not None:
+            texto += (
+                f" Esses eventos correspondem a {formatar_moeda(em_analise)} em "
+                f"valor atualizado em análise no ciclo, dos quais {total} "
+                "representam a diferença potencial decorrente do reajuste."
+            )
+        return texto
+    ciclos = [ciclo for ciclo, _p, _e in origens]
+    lista = ", ".join(ciclos[:-1]) + " e " + ciclos[-1]
+    partes = []
+    for ciclo, potencial, em_analise in origens:
+        parte = f"{ciclo} — {formatar_moeda(potencial)} de retroativo potencial"
+        if em_analise is not None:
+            parte += (
+                f", associado a {formatar_moeda(em_analise)} em valor "
+                "atualizado em análise"
+            )
+        partes.append(parte)
+    return (
+        f" O retroativo potencial apurado de {total} decorre de parcelas ainda "
+        f"sujeitas à validação nos ciclos {lista}. Por ciclo, correspondem a: "
+        + "; ".join(partes) + "."
+    )
+
+
 def _ta_qualificacao(doc: Document, cm: dict) -> None:
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
@@ -1612,6 +1702,9 @@ def _ta_secao2_pc(doc: Document, dados: dict) -> None:
     # A frase do piso prudencial so cabe quando a parcela apurada e de fato
     # negativa. Potencial positivo sem VTA disponivel nao e "parcela negativa".
     negativo = apurado is not None and round(apurado, 2) < 0
+    # ORIGEM da parcela: decomposicao canonica por ciclo, quando confiavel.
+    # Explica o APURADO, que e a grandeza que decorre dos deltas dos PCs.
+    texto_origem = _ta_texto_origem_potencial(dados, apurado)
     p = _ta_par(doc, "2.4")
     _adicionar_run(p,
         "Além do retroativo reconhecido, foram identificados Pedidos de Compra "
@@ -1620,14 +1713,16 @@ def _ta_secao2_pc(doc: Document, dados: dict) -> None:
         _adicionar_run(p,
             " O retroativo potencial incorporado ao Valor Total Atualizado do "
             f"Contrato corresponde a {formatar_moeda(incorporado)}.")
-        if diferentes:
+        if diferentes and not texto_origem:
             _adicionar_run(p,
                 " O retroativo potencial apurado, líquido e informativo, é de "
                 f"{formatar_moeda(apurado)}.")
-    elif apurado is not None:
+    elif apurado is not None and not texto_origem:
         _adicionar_run(p,
             " O retroativo potencial apurado corresponde a "
             f"{formatar_moeda(apurado)}.")
+    if texto_origem:
+        _adicionar_run(p, texto_origem)
     if negativo:
         _adicionar_run(p,
             " Por critério prudencial, parcela potencial negativa permanece "

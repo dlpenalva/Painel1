@@ -16,6 +16,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from _templates_documentos import (  # noqa: E402
     CAMPOS_MANUAIS_TERMO,
+    _ta_potenciais,
+    _ta_secao2_pc,
+    _ta_texto_origem_potencial,
     diagnosticar_campos_manuais,
     gerar_despacho_saneador,
     gerar_modelo_branco_termo,
@@ -890,3 +893,155 @@ def test_apostila_nao_altera_o_despacho_saneador():
     assert "6. CONCLUSÃO" in texto
     assert "ANEXO 1" not in texto
     assert "TERMO DE APOSTILA" not in texto
+
+
+# ---------------------------------------------------------------------------
+# ORIGEM DO RETROATIVO POTENCIAL (metodo PC) — decomposicao canonica por ciclo
+# ---------------------------------------------------------------------------
+
+def _leitura_pc_origem(por_ciclo: dict[str, tuple[float, float]]) -> dict:
+    """PCs em analise por ciclo, agregados pela funcao canonica do leitor.
+
+    Os itens sao itens de `itens_PC` ja normalizados; a agregacao por ciclo e
+    feita por `_totais_canonicos_pc`, a mesma funcao usada em producao — o
+    teste nao monta o bloco `por_ciclo` a mao.
+    """
+    leitura = leitura_multiciclo_pc()
+    corte = date(2026, 8, 18)
+    leitura["controle"]["data_corte"] = corte
+    base = leitura["itens_pc_v10"]["itens"][0]
+    itens = []
+    for ciclo, (em_analise, potencial) in por_ciclo.items():
+        item = deepcopy(base)
+        item.update({
+            "ciclo": ciclo,
+            "data_pc": date(2026, 4, 12),
+            "dentro_do_corte": True,
+            "pc_pago_a_contratada": "Nao",
+            "retroativo_reconhecido_a_pagar": 0.0,
+            "valor_atualizado_em_analise": em_analise,
+            "delta_potencial": potencial,
+        })
+        itens.append(item)
+    leitura["itens_pc_v10"]["itens"] = itens
+    leitura["itens_pc_v10"]["totais_canonicos"] = _totais_canonicos_pc(itens, corte)
+    return leitura
+
+
+def _item_24(docx_bytes: bytes) -> str:
+    doc = Document(BytesIO(docx_bytes))
+    return next(p.text for p in doc.paragraphs if p.text.startswith("2.4."))
+
+
+# ------------------------------------------------------------- A. um ciclo
+def test_apostila_origem_do_potencial_em_um_unico_ciclo():
+    # Caso canonico real do metodo PC (mesma fixture da frente PC-UX-1).
+    from test_pc_ux_1 import _caso_sintetico_consolidacao, _leitura_documental
+    leitura = _leitura_documental(_caso_sintetico_consolidacao())
+    dados = _extrair_dados(leitura, None)
+    por_ciclo = dados["situacao_retroativos_pc"]["por_ciclo"]
+    # A decomposicao vem pronta da cadeia canonica.
+    assert por_ciclo["C1"]["delta_potencial"] == 120_016.52
+    assert por_ciclo["C1"]["valor_atualizado_em_analise"] == 4_027_390.45
+
+    texto = _item_24(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "R$ 120.016,52" in texto
+    assert "do ciclo C1" in texto
+    assert "R$ 4.027.390,45" in texto
+    assert "em valor atualizado em análise no ciclo" in texto
+    # C0 nao tem potencial: nao pode ser apontado como origem.
+    assert "C0" not in texto
+    # Nenhum placeholder manual foi introduzido pela explicacao.
+    assert "[PREENCHER" not in texto
+
+
+# --------------------------------------------------------- B. dois ou mais
+def test_apostila_origem_do_potencial_em_mais_de_um_ciclo():
+    leitura = _leitura_pc_origem({"C1": (1_000.0, 100.0), "C2": (2_000.0, 50.0)})
+    texto = _item_24(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "nos ciclos C1 e C2" in texto
+    assert "C1 — R$ 100,00 de retroativo potencial" in texto
+    assert "C2 — R$ 50,00 de retroativo potencial" in texto
+    assert "associado a R$ 1.000,00 em valor atualizado em análise" in texto
+    assert "associado a R$ 2.000,00 em valor atualizado em análise" in texto
+    # O total nao pode ser atribuido a um unico ciclo.
+    assert "R$ 150,00" in texto
+    assert "decorre dos Pedidos de Compra do ciclo" not in texto
+
+
+def test_apostila_origem_omite_valor_base_quando_nao_canonico():
+    # Sem `valor_atualizado_em_analise`, a frase identifica o ciclo mas nao
+    # inventa valor-base.
+    leitura = _leitura_pc_origem({"C1": (0.0, 100.0)})
+    texto = _item_24(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "decorre dos Pedidos de Compra do ciclo C1" in texto
+    assert "em valor atualizado em análise" not in texto
+
+
+# ------------------------------------------------ C. apurado != incorporado
+def test_apostila_origem_explica_apurado_e_nomeia_o_incorporado():
+    from test_pc_ux_1 import _caso_sintetico_consolidacao, _leitura_documental
+    dados = _extrair_dados(_leitura_documental(_caso_sintetico_consolidacao()), None)
+    # Parcela potencial negativa em outro ciclo faz o VTA incorporar mais do
+    # que o apurado liquido: os dois valores vem prontos da cadeia canonica.
+    dados["vta_retroativo_potencial"] = 150_000.00
+    dados["vta_tem_parcela_potencial"] = True
+    incorporado, apurado, diferentes = _ta_potenciais(dados)
+    assert (incorporado, apurado, diferentes) == (150_000.00, 120_016.52, True)
+
+    doc = Document()
+    _ta_secao2_pc(doc, dados)
+    texto = "\n".join(p.text for p in doc.paragraphs)
+    item_24 = next(linha for linha in texto.splitlines()
+                   if linha.startswith("2.4."))
+    # A origem explica o APURADO; o VTA usa o INCORPORADO. Nomes inequivocos.
+    assert ("incorporado ao Valor Total Atualizado do Contrato corresponde a "
+            "R$ 150.000,00") in item_24
+    assert "O retroativo potencial apurado de R$ 120.016,52 decorre" in item_24
+    assert "do ciclo C1" in item_24
+
+
+def test_origem_potencial_nao_atribui_ciclo_quando_nao_fecha_com_o_total():
+    # Decomposicao incompleta (soma por ciclo != total apurado): sem origem.
+    dados = {"situacao_retroativos_pc": {
+        "potencial": 100.0,
+        "por_ciclo": {"C1": {"delta_potencial": 40.0,
+                             "valor_atualizado_em_analise": 400.0}},
+    }}
+    assert _ta_texto_origem_potencial(dados, 100.0) == ""
+
+
+# ------------------------------------------- D. decomposicao indisponivel
+def test_apostila_sem_decomposicao_por_ciclo_informa_so_o_total():
+    leitura = _leitura_retroativos_corte(date(2026, 12, 12))
+    dados = _extrair_dados(leitura, None)
+    assert dados["situacao_retroativos_pc"]["por_ciclo"] == {}
+    texto = _item_24(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "O retroativo potencial apurado corresponde a R$ 44,63." in texto
+    assert "sujeitos à validação pela área gestora" in texto
+    # Nao inventa ciclo nem valor-base, e nao cria placeholder manual.
+    assert "decorre" not in texto
+    assert "ciclo C" not in texto
+    assert "em valor atualizado em análise" not in texto
+    assert "[PREENCHER" not in texto
+
+
+# ------------------------------------------------------- E. sem potencial
+def test_apostila_pc_sem_potencial_nao_produz_paragrafo_de_origem():
+    b = gerar_termo_apostila(_leitura_pc_sem_potencial(),
+                             campos_manuais=CAMPOS_TERMO)
+    texto = _texto_docx(b)
+    assert "decorre" not in texto
+    assert "em valor atualizado em análise" not in texto
+    assert not any(p.text.startswith("2.4.")
+                   for p in Document(BytesIO(b)).paragraphs)
+
+
+# ------------------------------------------------------- 7.7. outros metodos
+def test_origem_do_potencial_nao_vaza_para_financeiro_nem_consumidos():
+    for leitura in (_leitura_financeiro(), _leitura_consumidos()):
+        texto = _texto_docx(gerar_termo_apostila(
+            leitura, campos_manuais=CAMPOS_TERMO
+        ))
+        assert "em valor atualizado em análise" not in texto
+        assert "retroativo potencial" not in texto.lower()
