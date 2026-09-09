@@ -16,7 +16,11 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from _templates_documentos import (  # noqa: E402
     CAMPOS_MANUAIS_TERMO,
+    _consumidos_disponivel,
+    _objeto_do_documento,
+    _retroativo_total,
     _ta_origem_potencial,
+    _ta_retroativo_do_metodo,
     _ta_potenciais,
     _ta_secao2_pc,
     _ta_tem_potencial,
@@ -1358,3 +1362,201 @@ def test_apostila_consumidos_sem_vu_nao_remete_a_anexo_inexistente():
     item_22 = next(p.text for p in Document(BytesIO(b)).paragraphs
                    if p.text.startswith("2.2."))
     assert "deverão ser conferidos e complementados" in item_22
+
+
+# ---------------------------------------------------------------------------
+# VALIDADE CANONICA DE CONSUMIDOS, ENTRADA EQUIVALENTE E RETROATIVO POR METODO
+# ---------------------------------------------------------------------------
+
+def _leitura_consumidos_bruta(**kwargs) -> dict:
+    """Leitura de Consumidos SEM objeto anexado — a cadeia materializa sozinha."""
+    from test_consumo_glosa_1 import _leitura as _leitura_consumo  # noqa: PLC0415
+    leitura = dict(_leitura_consumo(**kwargs))
+    leitura["ok"] = True
+    return leitura
+
+
+# ------------------------------------------ 5. glosa maior que a execucao
+def test_consumidos_glosa_invalida_nao_publica_retroativo():
+    from test_consumo_glosa_1 import _ajuste  # noqa: PLC0415
+    leitura = _leitura_consumidos_bruta(
+        ajustes={"C1": _ajuste("Glosa", 110_000.0)}
+    )
+    dados = _extrair_dados(leitura, None)
+    # O subtotal por ciclo continua existindo na memoria — e nao pode ser
+    # publicado, porque a conferencia canonica marcou o metodo indisponivel.
+    objeto = _objeto_do_documento(leitura)
+    ciclos = (objeto.get("memoria_por_ciclo") or {}).get("ciclos") or []
+    subtotais = [
+        ((c.get("retroativo") or {}).get("consumidos") or {}).get("retroativo")
+        for c in ciclos
+        if ((c.get("retroativo") or {}).get("consumidos") or {}).get("evidencias")
+    ]
+    assert subtotais == [8_000.0]
+    assert _consumidos_disponivel(objeto) is False
+    assert dados["retroativo_consumidos"] is None
+
+    texto = _texto_docx(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "R$ 8.000,00" not in texto
+    assert "Não há, nesta análise, consumo declarado" in texto
+
+
+# ------------------------------------------------- 6. falha de completude
+def test_consumidos_completude_insuficiente_nao_publica_retroativo():
+    from test_consumo_glosa_1 import _ITEM  # noqa: PLC0415
+    valido = deepcopy(_ITEM)
+    # Segundo item com quantidade consumida e SEM valor unitario: consumo
+    # informado que a cadeia nao consegue valorar. A falha fecha a conferencia
+    # inteira do metodo, ainda que o primeiro item produza subtotal.
+    incompleto = deepcopy(_ITEM)
+    incompleto["item"] = "I2"
+    incompleto["vu_original"] = None
+    leitura = _leitura_consumidos_bruta(itens=[valido, incompleto])
+
+    objeto = _objeto_do_documento(leitura)
+    ciclos = (objeto.get("memoria_por_ciclo") or {}).get("ciclos") or []
+    evidencias = sum(
+        int(((c.get("retroativo") or {}).get("consumidos") or {}).get("evidencias") or 0)
+        for c in ciclos
+    )
+    assert evidencias > 0          # ha subtotal na memoria...
+    assert _consumidos_disponivel(objeto) is False   # ...e ele nao e publicavel
+
+    dados = _extrair_dados(leitura, None)
+    assert dados["retroativo_consumidos"] is None
+    texto = _texto_docx(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "R$ 8.000,00" not in texto
+    assert "Não há, nesta análise, consumo declarado" in texto
+
+
+# ------------------------------------------------ 7. divergencia relevante
+def test_consumidos_divergencia_relevante_nao_publica_retroativo():
+    from _objeto_processo_reajuste import (  # noqa: PLC0415
+        montar_objeto_processo_reajuste,
+    )
+    from _reconciliacao_xls_python import reconciliar_xls_python  # noqa: PLC0415
+    leitura = _leitura_consumidos_bruta()
+    leitura["objeto_processo"] = montar_objeto_processo_reajuste(leitura)
+    # XLS 7.000,00 x Python 8.000,00: a cadeia classifica como relevante.
+    leitura["resultados_xls"] = {
+        "disponivel": True,
+        "nomes_presentes": ["RETRO_ITENS"],
+        "valores": {"RETRO_ITENS": 7_000.0},
+    }
+    leitura["reconciliacao_xls_python"] = reconciliar_xls_python(leitura)
+    assert leitura["reconciliacao_xls_python"]["status_geral"] == \
+        "DIVERGENCIA_RELEVANTE"
+
+    dados = _extrair_dados(leitura, None)
+    assert "RETRO_ITENS" in dados["campos_nao_confiaveis"]
+    assert dados["retroativo_consumidos"] is None
+    texto = _texto_docx(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "R$ 8.000,00" not in texto
+    assert "R$ 7.000,00" not in texto
+    assert "Não há, nesta análise, consumo declarado" in texto
+
+
+# ------------------------------- 10-12. equivalencia das formas de entrada
+def test_consumidos_equivalencia_leitura_snapshot_e_objeto():
+    from _objeto_processo_reajuste import (  # noqa: PLC0415
+        CHAVE_OBJETO_PROCESSO, montar_objeto_processo_reajuste,
+    )
+    bruta = _leitura_consumidos_bruta()
+    com_snapshot = _leitura_consumidos_bruta()
+    com_snapshot[CHAVE_OBJETO_PROCESSO] = montar_objeto_processo_reajuste(
+        com_snapshot
+    )
+    objeto = montar_objeto_processo_reajuste(_leitura_consumidos_bruta())
+
+    entradas = (bruta, com_snapshot, objeto)
+    retroativos = [_extrair_dados(e, None)["retroativo_consumidos"] for e in entradas]
+    assert retroativos == [8_000.0, 8_000.0, 8_000.0]
+
+    textos = [
+        _item_23(gerar_termo_apostila(e, campos_manuais=CAMPOS_TERMO))
+        for e in entradas
+    ]
+    assert textos[0] == textos[1] == textos[2]
+    assert "R$ 8.000,00" in textos[0]
+
+
+# -------------------------------------------- 13-15. retroativo por metodo
+def test_pc_nao_herda_retroativo_financeiro_na_secao_3():
+    leitura = _leitura_retroativos_corte(date(2026, 8, 12))
+    dados = _extrair_dados(leitura, None)
+    reconhecido = dados["situacao_retroativos_pc"]["reconhecido"]
+    assert reconhecido == 20.08
+    # O helper legado prioriza Financeiro e devolveria outra grandeza.
+    assert _retroativo_total(dados) != reconhecido
+    assert _ta_retroativo_do_metodo(dados) == reconhecido
+
+    texto = _texto_docx(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "R$ 20,08" in texto
+    assert "O retroativo reconhecido de R$ 20,08" in texto
+
+
+def test_consumidos_nao_rotula_o_retroativo_como_reconhecido():
+    # VTA-C2: sem fonte independente de pagamento, o metodo Itens Consumidos
+    # publica o valor mas nao o chama de "retroativo reconhecido".
+    texto = _texto_docx(gerar_termo_apostila(
+        _leitura_consumidos_bruta(), campos_manuais=CAMPOS_TERMO
+    ))
+    assert "R$ 8.000,00" in texto
+    assert "O retroativo de R$ 8.000,00 não é somado como parcela autônoma" \
+        in texto
+    assert "retroativo reconhecido" not in texto
+
+
+def test_pc_com_residuo_financeiro_usa_o_reconhecido_do_pc():
+    # Payload de apresentacao: PC consolidado com residuo Financeiro no mesmo
+    # dicionario. A selecao por metodo nao pode capturar o residuo.
+    dados = {
+        "metodo": "pc",
+        "situacao_retroativos_pc": {"reconhecido": 20.00, "por_ciclo": {}},
+        "financeiro": {"delta_total_financeiro": 157.50},
+    }
+    assert _retroativo_total(dados) == 157.50
+    assert _ta_retroativo_do_metodo(dados) == 20.00
+
+
+def test_financeiro_com_residuo_pc_nao_captura_retroativo_pc():
+    dados = {
+        "metodo": "principal",
+        "financeiro": {"delta_total_pc": 999.00},
+        "situacao_retroativos_pc": {"reconhecido": 999.00, "por_ciclo": {}},
+    }
+    # Sem medida Financeira propria, nada e afirmado — nunca o valor do PC.
+    assert _ta_retroativo_do_metodo(dados) is None
+    dados["financeiro"]["delta_total_financeiro"] = 12.34
+    assert _ta_retroativo_do_metodo(dados) == 12.34
+
+
+def test_pc_sem_consolidacao_nao_expoe_grandeza_de_outro_metodo():
+    dados = {
+        "metodo": "pc",
+        "situacao_retroativos_pc": {},
+        "financeiro": {"delta_total_financeiro": 157.50},
+    }
+    assert _ta_retroativo_do_metodo(dados) is None
+    texto = _texto_docx(gerar_termo_apostila(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO
+    ))
+    assert "R$ 157,50" not in texto
+    assert "valor pago efetivo" not in texto
+
+
+def test_metodo_indefinido_nao_publica_retroativo_de_metodo_algum():
+    dados = {
+        "metodo": "",
+        "financeiro": {"delta_total_financeiro": 157.50, "delta_total_pc": 20.00},
+    }
+    assert _ta_retroativo_do_metodo(dados) is None
+
+
+def test_divergencia_relevante_suprime_retroativo_do_metodo():
+    dados = {
+        "metodo": "principal",
+        "financeiro": {"delta_total_financeiro": 12.34},
+        "campos_nao_confiaveis": ["RETRO_FIN", "RETRO_OFICIAL"],
+    }
+    assert _ta_retroativo_do_metodo(dados) is None

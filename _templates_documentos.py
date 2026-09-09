@@ -36,7 +36,10 @@ from _sumario_executivo import (
     montar_dados_sumario_executivo,
     _num_ou_none,
 )
-from _objeto_processo_reajuste import obter_objeto_processo_reajuste
+from _objeto_processo_reajuste import (
+    montar_objeto_processo_reajuste,
+    obter_objeto_processo_reajuste,
+)
 from _reajuste_utils import (
     FRASE_SEM_CICLOS_COMPUTADOS,
     expressao_quantidade_ciclos,
@@ -516,7 +519,7 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
     fin_por_ciclo = {r["ciclo"]: r for r in financeiro.get("financeiro_por_ciclo") or []}
     pc_por_ciclo = {r["ciclo"]: r for r in financeiro.get("pc_por_ciclo") or []}
 
-    objeto_proc = obter_objeto_processo_reajuste(leitura_ou_objeto) or {}
+    objeto_proc = _objeto_do_documento(leitura_ou_objeto)
     dados_op = objeto_proc.get("dados_operacionais") or {}
     if not dados_op and isinstance(leitura_ou_objeto, dict):
         dados_op = leitura_ou_objeto
@@ -588,8 +591,12 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
             or {}
         ),
         "metodo": metodo_canonico,
-        # Medida propria do metodo Itens Consumidos (nunca Financeiro/PC).
-        "retroativo_consumidos": _retroativo_consumidos_canonico(objeto_proc),
+        # Medida propria do metodo Itens Consumidos (nunca Financeiro/PC),
+        # publicada apenas quando a cadeia a considera valida e confiavel.
+        "retroativo_consumidos": _retroativo_consumidos_publicavel(
+            dados, objeto_proc
+        ),
+        "campos_nao_confiaveis": list(dados.get("campos_nao_confiaveis") or ()),
         "metodo_pc": metodo_pc,
         "data_corte": (
             controle_operacional.get("data_corte")
@@ -638,16 +645,80 @@ def _situacao_retroativos_pc(dados_operacionais: dict) -> dict[str, Any] | None:
     }
 
 
+def _objeto_do_documento(leitura_ou_objeto: dict) -> dict:
+    """Objeto do processo efetivamente materializado — a MESMA resolucao do
+    sumario (`montar_dados_sumario_executivo`): usa o objeto ja anexado e, so
+    na ausencia dele, materializa a partir da leitura.
+
+    Sem isto, a mesma leitura produzia resultados documentais diferentes
+    conforme o chamador tivesse ou nao anexado o snapshot. Nao ha segunda
+    cadeia: e a mesma funcao canonica sobre a mesma entrada.
+    """
+    objeto = obter_objeto_processo_reajuste(leitura_ou_objeto)
+    if (
+        objeto is None
+        and isinstance(leitura_ou_objeto, dict)
+        and leitura_ou_objeto.get("ok")
+    ):
+        objeto = montar_objeto_processo_reajuste(leitura_ou_objeto)
+    return objeto or {}
+
+
+# Campo canonico do retroativo de cada metodo na reconciliacao XLS x Python.
+_CAMPO_RETRO_RECONCILIACAO = {
+    "principal": "RETRO_FIN",
+    "pc": "RETRO_PC",
+    "d": "RETRO_ITENS",
+}
+
+
+def _retroativo_nao_confiavel(dados_sumario: dict, metodo: str | None) -> bool:
+    """Divergencia relevante XLS x Python no retroativo do metodo.
+
+    Consome `campos_nao_confiaveis`, que o sumario ja calculou uma unica vez
+    por `campos_nao_confiaveis_para_documentos` — o gate documental canonico.
+    O Termo nao reclassifica divergencia nem escolhe entre XLS e Python.
+    """
+    campos = set(dados_sumario.get("campos_nao_confiaveis") or ())
+    if not campos:
+        return False
+    campo = _CAMPO_RETRO_RECONCILIACAO.get(str(metodo or ""))
+    # RETRO_OFICIAL e o retroativo oficial consolidado: divergente ele, o
+    # documento nao publica retroativo de metodo algum.
+    return bool(campo and campo in campos) or "RETRO_OFICIAL" in campos
+
+
+def _consumidos_disponivel(objeto_proc: dict) -> bool:
+    """Decisao canonica de disponibilidade do metodo Itens Consumidos.
+
+    Fonte: `memoria_por_ciclo.conferencias_metodologicas`, entrada do metodo
+    `consumidos`. Ela ja incorpora falha de completude, remanescente em FALHA
+    e ajuste de execucao invalido (glosa maior que o calculado) — cenarios em
+    que o subtotal por ciclo AINDA EXISTE mas nao pode ser publicado.
+
+    Fail-closed: sem conferencia canonica, nao se publica valor.
+    """
+    conferencias = (
+        (objeto_proc or {}).get("memoria_por_ciclo") or {}
+    ).get("conferencias_metodologicas") or []
+    for conferencia in conferencias:
+        if str((conferencia or {}).get("metodo") or "") == "consumidos":
+            return bool(conferencia.get("disponivel"))
+    return False
+
+
 def _retroativo_consumidos_canonico(objeto_proc: dict) -> float | None:
     """Retroativo do metodo Itens Consumidos, da cadeia canonica do metodo.
 
-    Fonte unica: `objeto["memoria_por_ciclo"]["ciclos"][*]["retroativo"]
+    Fonte do VALOR: `objeto["memoria_por_ciclo"]["ciclos"][*]["retroativo"]
     ["consumidos"]["retroativo"]` — o mesmo bloco que a glosa de execucao
-    atualiza. Nao ha recalculo aqui: os valores ja vem prontos.
+    atualiza. Nao ha recalculo aqui.
 
-    A disponibilidade e dada por `evidencias`, nunca pelo valor: zero COM
-    evidencia e zero apurado; sem evidencia nao ha base, e o documento nao
-    afirma valor algum. Financeiro e PC nunca servem de fallback.
+    A disponibilidade de cada ciclo e dada por `evidencias`, nunca pelo valor:
+    zero COM evidencia e zero apurado; sem evidencia nao ha base. Financeiro e
+    PC nunca servem de fallback.
+
+    O chamador so deve invocar esta funcao apos `_consumidos_disponivel`.
     """
     ciclos = ((objeto_proc or {}).get("memoria_por_ciclo") or {}).get("ciclos")
     total: float | None = None
@@ -660,6 +731,17 @@ def _retroativo_consumidos_canonico(objeto_proc: dict) -> float | None:
             continue
         total = round((total or 0.0) + valor, 2)
     return total
+
+
+def _retroativo_consumidos_publicavel(
+    dados_sumario: dict, objeto_proc: dict
+) -> float | None:
+    """Valor de Consumidos apenas quando a cadeia o considera publicavel."""
+    if not _consumidos_disponivel(objeto_proc):
+        return None
+    if _retroativo_nao_confiavel(dados_sumario, "d"):
+        return None
+    return _retroativo_consumidos_canonico(objeto_proc)
 
 
 def _retroativo_total(dados: dict) -> float | None:
@@ -1384,9 +1466,12 @@ def _ta_considerandos(doc: Document, dados: dict, cm: dict) -> None:
         _adicionar_run(p6, "A memória de cálculo constante em ")
         _texto_ou_marcador(p6, _campo(cm, "memoria_calculo_ref"),
                            "Referencia da memoria de calculo")
+        # VTA-C2: em Itens Consumidos nao ha fonte independente de pagamento;
+        # o retroativo existe, mas nao se rotula "reconhecido".
         _adicionar_run(p6,
             ", que apurou os ciclos de reajuste, os percentuais aplicáveis, os "
-            "efeitos financeiros, o retroativo reconhecido")
+            "efeitos financeiros, o retroativo"
+            + ("" if dados.get("metodo") == "d" else " reconhecido"))
         if _ta_tem_potencial(dados):
             _adicionar_run(p6, ", o retroativo potencial")
         _adicionar_run(p6,
@@ -1890,7 +1975,8 @@ def _ta_secao2_financeiro(doc: Document, dados: dict, cm: dict) -> None:
         _valor_moeda_ou_marcador(p, _campo(cm, "valor_teorico"),
                                  "Valor devido apos o reajuste")
     _adicionar_run(p, ", resultando em valor retroativo a pagar de ")
-    retro = _retroativo_total(dados)
+    # Mesma selecao explicita da secao 3: secoes 2 e 3 nunca divergem.
+    retro = _ta_retroativo_do_metodo(dados)
     if retro is not None:
         _adicionar_run(p, formatar_moeda(retro), negrito=True)
     else:
@@ -1918,7 +2004,9 @@ def _ta_secao2_financeiro(doc: Document, dados: dict, cm: dict) -> None:
             tot_delta = (tot_delta or 0.0) + vdl
     if not linhas:
         linhas = [["—", "", "", ""]]
-    total_delta = tot_delta if tot_delta is not None else _retroativo_total(dados)
+    total_delta = (
+        tot_delta if tot_delta is not None else _ta_retroativo_do_metodo(dados)
+    )
     linhas.append([
         "Total",
         formatar_moeda(tot_pago) if tot_pago is not None else "",
@@ -1979,16 +2067,33 @@ def _ta_secao2_consumidos(doc: Document, dados: dict) -> None:
 
 
 def _ta_retroativo_do_metodo(dados: dict) -> float | None:
-    """Retroativo da fonte canonica do metodo em uso — nunca de outro metodo.
+    """Retroativo da fonte canonica do metodo em uso — NUNCA de outro metodo.
 
-    Evita que a composicao do VTA de Itens Consumidos cite uma grandeza
-    Financeira/PC residual.
+    `_retroativo_total` nao serve como helper transversal: sua semantica e
+    "Financeiro primeiro, depois PC", e num contrato apurado por PC com dado
+    residual em `financeiro` ele devolveria a grandeza errada. A selecao aqui
+    e explicita por metodo:
+
+      principal -> financeiro.delta_total_financeiro
+      pc        -> situacao_retroativos_pc.reconhecido (o mesmo da secao 2)
+      d         -> retroativo_consumidos (ja filtrado por validade)
+      outros    -> None (redacao neutra)
+
+    Divergencia relevante XLS x Python no campo do metodo suprime o valor.
     """
     metodo = dados.get("metodo")
+    if _retroativo_nao_confiavel(dados, metodo):
+        return None
+    if metodo == "principal":
+        fin = dados.get("financeiro") or {}
+        return _num_ou_none(fin.get("delta_total_financeiro"))
+    if metodo == "pc":
+        situacao = dados.get("situacao_retroativos_pc") or {}
+        if not situacao:
+            return None
+        return _num_ou_none(situacao.get("reconhecido"))
     if metodo == "d":
         return _num_ou_none(dados.get("retroativo_consumidos"))
-    if metodo in ("principal", "pc"):
-        return _retroativo_total(dados)
     return None
 
 
@@ -2065,8 +2170,14 @@ def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
         retro = _ta_retroativo_do_metodo(dados)
         if retro is not None and round(retro, 2):
             p = par()
+            # VTA-C2: no metodo Itens Consumidos nao ha fonte independente de
+            # pagamento — o valor existe, mas nao se rotula "reconhecido".
+            rotulo_retro = (
+                "O retroativo" if dados.get("metodo") == "d"
+                else "O retroativo reconhecido"
+            )
             _adicionar_run(p,
-                f"O retroativo reconhecido de {formatar_moeda(retro)} não é "
+                f"{rotulo_retro} de {formatar_moeda(retro)} não é "
                 "somado como parcela autônoma no Quadro 4, pois seus efeitos já "
                 "estão incorporados à execução atualizada considerada na "
                 "composição. Sua inclusão adicional representaria dupla "
