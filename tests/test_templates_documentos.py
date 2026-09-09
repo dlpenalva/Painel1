@@ -4,6 +4,7 @@ Despacho Saneador (§7/§10.3).
 from __future__ import annotations
 
 import sys
+from copy import deepcopy
 from datetime import date
 from io import BytesIO
 from pathlib import Path
@@ -14,8 +15,10 @@ from docx import Document
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from _templates_documentos import (  # noqa: E402
+    CAMPOS_MANUAIS_TERMO,
     diagnosticar_campos_manuais,
     gerar_despacho_saneador,
+    gerar_modelo_branco_termo,
     gerar_termo_apostila,
     _extrair_dados,
     _composicao_didatica_vta,
@@ -42,6 +45,7 @@ from test_sumario_executivo import (  # noqa: E402
 CAMPOS_TERMO = {
     "contrato": "TLB-CTR-2025/00001",
     "empresa_contratada": "Empresa XPTO S.A., CNPJ 00.000.000/0001-00",
+    "clausula_reajuste": "Cláusula Oitava",
     "representante_telebras_1_nome": "Fulano de Tal",
     "representante_telebras_1_matricula": "12345",
     "representante_telebras_2_cargo": "Diretor Financeiro",
@@ -124,7 +128,16 @@ def test_docx_valido(gerador, leitura):
 
 def test_apostila_titulo_exato():
     texto = _texto_docx(gerar_termo_apostila(leitura_simples_financeiro(), campos_manuais=CAMPOS_TERMO))
-    assert "MINUTA DE TERMO DE APOSTILAMENTO" in texto
+    assert "TERMO DE APOSTILA" in texto
+    # O documento processado nao se chama minuta nem modelo.
+    assert "MINUTA DE TERMO DE APOSTILAMENTO" not in texto
+    assert "MODELO PADRÃO" not in texto
+
+
+def test_apostila_modelo_branco_usa_titulo_de_modelo():
+    texto = _texto_docx(gerar_modelo_branco_termo())
+    assert "TERMO DE APOSTILA - MODELO PADRÃO" in texto
+    assert "MINUTA DE TERMO DE APOSTILAMENTO" not in texto
 
 
 def test_apostila_qualificacao_canonica():
@@ -141,17 +154,24 @@ def test_apostila_qualificacao_canonica():
     assert "SAS Quadra 05" not in texto
 
 
-def test_apostila_nove_considerandos_na_ordem_aprovada():
-    doc = Document(BytesIO(gerar_termo_apostila(
-        leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO
-    )))
+def _considerandos(docx_bytes: bytes) -> list[str]:
+    doc = Document(BytesIO(docx_bytes))
     textos = [p.text for p in doc.paragraphs]
     inicio = textos.index("CONSIDERANDO:") + 1
-    considerandos = textos[inicio:inicio + 9]
-    assert len(considerandos) == 9
+    saida = []
+    for texto in textos[inicio:]:
+        if not texto.strip():
+            break
+        saida.append(texto)
+    return saida
+
+
+def test_apostila_considerandos_na_ordem_aprovada():
+    considerandos = _considerandos(gerar_termo_apostila(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO
+    ))
     chaves_ordenadas = (
         "Cláusula Oitava",
-        "deliberação da Diretoria Executiva",
         "solicitação da CONTRATADA",
         "histórico já formalizado",
         "informações encaminhadas pela área gestora",
@@ -159,29 +179,78 @@ def test_apostila_nove_considerandos_na_ordem_aprovada():
         "índice contratual",
         "concordância da CONTRATADA",
         "certidões de regularidade",
+        "adequação orçamentária",
     )
+    assert len(considerandos) == len(chaves_ordenadas)
     for numero, (paragrafo, chave) in enumerate(
         zip(considerandos, chaves_ordenadas), start=1
     ):
         assert paragrafo.startswith(f"{numero}. ")
         assert chave in paragrafo
     texto = "\n".join(considerandos)
-    assert "Ata da 1869ª Reunião Ordinária, de 13 de janeiro de 2026" in texto
+    # A deliberacao institucional deixou de ser afirmada por hardcode.
+    assert "1869ª Reunião Ordinária" not in texto
+    assert "deliberação da Diretoria Executiva" not in texto
     assert "10/10/2025" in texto
     assert "TLB-AUT-2025/00100" in texto
+
+
+def test_apostila_deliberacao_institucional_condicional_e_sequencial():
+    cm = dict(CAMPOS_TERMO,
+              deliberacao_institucional="A deliberação da Diretoria Executiva "
+                                        "registrada na Ata nº 1")
+    considerandos = _considerandos(gerar_termo_apostila(
+        leitura_multiciclo_pc(), campos_manuais=cm
+    ))
+    assert considerandos[1].startswith("2. ")
+    assert "Ata nº 1" in considerandos[1]
+    # Numeracao permanece sequencial, sem lacuna.
+    for numero, paragrafo in enumerate(considerandos, start=1):
+        assert paragrafo.startswith(f"{numero}. ")
+    assert len(considerandos) == 10
+
+
+def test_apostila_instrumentos_posteriores_condicionais():
+    sem = _considerandos(gerar_termo_apostila(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO
+    ))
+    assert not any("instrumentos posteriores considerados" in c for c in sem)
+    assert sem[-1].endswith(".")
+    cm = dict(CAMPOS_TERMO, instrumentos_posteriores="Termo Aditivo nº 3")
+    com = _considerandos(gerar_termo_apostila(
+        leitura_multiciclo_pc(), campos_manuais=cm
+    ))
+    assert com[-1].startswith(f"{len(com)}. ")
+    assert "Os instrumentos posteriores considerados: Termo Aditivo nº 3." == \
+        com[-1][len(f"{len(com)}. "):]
+
+
+def test_apostila_clausula_do_reajuste_vem_do_campo_manual():
+    chaves = [c[0] for c in CAMPOS_MANUAIS_TERMO]
+    assert "clausula_reajuste" in chaves
+    cm = {k: v for k, v in CAMPOS_TERMO.items() if k != "clausula_reajuste"}
+    texto = _texto_docx(gerar_termo_apostila(
+        leitura_multiciclo_pc(), campos_manuais=cm
+    ))
+    # Sem o campo, o documento marca o preenchimento — nunca inventa clausula.
+    assert "[PREENCHER: Clausula contratual do reajuste]" in texto
+    assert "Cláusula Oitava" not in texto
 
 
 def test_apostila_estrutura_final_1_a_8_sem_duplicidades():
     texto = _texto_docx(gerar_termo_apostila(leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO))
     assert "FORMALIZA-SE O PRESENTE TERMO DE APOSTILA:" in texto
     assert "1. Dos reajustes concedidos" in texto
-    assert "2. Da apuração financeira do retroativo" in texto
-    assert "3. Do Valor Total Atualizado do Contrato" in texto
+    assert "2. Da apuração financeira dos valores retroativos" in texto
+    assert "3. Da composição do Valor Total Atualizado do Contrato" in texto
     assert "4. Dos valores unitários" in texto
     assert "5. Dos aditivos e supressões considerados" in texto
-    assert "6. Permanecem inalteradas e em pleno vigor" in texto
-    assert "7. A CONTRATADA deverá atualizar a garantia contratual" in texto
-    assert "8. O presente apostilamento vincula-se" in texto
+    assert "6. Das demais condições contratuais" in texto
+    assert "7. Da garantia contratual" in texto
+    assert "8. Da vinculação processual" in texto
+    assert "6.1. Permanecem inalteradas e em pleno vigor" in texto
+    assert "7.1. A CONTRATADA deverá atualizar a garantia contratual" in texto
+    assert "8.1. O presente apostilamento vincula-se" in texto
     assert "Da composição sintética do Valor Total Atualizado" not in texto
     assert "4-A." not in texto
     assert "Referências auditáveis do Valor Total Atualizado" not in texto
@@ -289,13 +358,13 @@ def test_documentos_usam_corte_canonico_e_excluem_pc_posterior():
     assert "eventual pagamento" in saneador
     assert "não integra o valor reconhecido a pagar" in saneador
 
-    assert "SITUAÇÃO DOS VALORES RETROATIVOS" in termo
-    assert "Retroativo reconhecido: R$ 0,00" in termo
-    assert "Retroativo potencial: R$ 44,63" in termo
+    # O Termo passou a consolidar a situacao no Quadro 3 (modelo aprovado).
+    assert "Quadro 3 — Situação dos valores retroativos" in termo
+    assert "retroativo potencial" in termo
+    assert "R$ 44,63" in termo
     assert "R$ 20,08" not in termo
-    assert "Pedidos de Compra ainda em análise pela área gestora" in termo
-    assert "confirmação e eventual pagamento competem à área gestora" in termo
-    assert "não integra o valor reconhecido a pagar" in termo
+    assert "sujeitos à validação pela área gestora" in termo
+    assert "não representa reconhecimento definitivo da obrigação" in termo
 
 
 def test_documentos_reincluem_reconhecido_quando_pc_pago_esta_antes_do_corte():
@@ -308,9 +377,11 @@ def test_documentos_reincluem_reconhecido_quando_pc_pago_esta_antes_do_corte():
         leitura, campos_manuais=CAMPOS_TERMO
     ))
 
-    for texto in (saneador, termo):
-        assert "Retroativo reconhecido: R$ 20,08" in texto
-        assert "Retroativo potencial: R$ 44,63" in texto
+    assert "Retroativo reconhecido: R$ 20,08" in saneador
+    assert "Retroativo potencial: R$ 44,63" in saneador
+    assert "Quadro 3 — Situação dos valores retroativos" in termo
+    assert "R$ 20,08" in termo
+    assert "R$ 44,63" in termo
 
 
 def test_documentos_nao_exibem_bloco_retroativos_sem_pc_relevante():
@@ -363,7 +434,7 @@ def test_apostila_espaco_visual_apos_capitulo_5():
     textos = [p.text for p in doc.paragraphs]
     indice_52 = next(i for i, texto in enumerate(textos) if texto.startswith("5.2."))
     assert textos[indice_52 + 1] == ""
-    assert textos[indice_52 + 2].startswith("6. Permanecem inalteradas")
+    assert textos[indice_52 + 2].startswith("6. Das demais condições")
 
 
 def test_apostila_sem_termos_tecnicos_e_sem_emoji():
@@ -562,3 +633,260 @@ def test_fmt_pct_doc():
     assert _fmt_pct_doc(0.04) == "4,00%"
     assert _fmt_pct_doc(0.106231) == "10,62%"
     assert _fmt_pct_doc(-0.02) == "-2,00%"
+
+
+# ---------------------------------------------------------------------------
+# TERMO — modelo aprovado em 09/09/2026 (estrutura, metodo e terminologia)
+# ---------------------------------------------------------------------------
+
+LABEL_POTENCIAL_PROIBIDO = "RETROATIVO POTENCIAL - NÃO RECONHECIDO"
+
+
+def _leitura_pc_com_potencial() -> dict:
+    return _leitura_retroativos_corte(date(2026, 12, 12))
+
+
+def _leitura_pc_sem_potencial() -> dict:
+    leitura = leitura_multiciclo_pc()
+    corte = date(2026, 8, 18)
+    leitura["controle"]["data_corte"] = corte
+    primeiro, segundo = leitura["itens_pc_v10"]["itens"]
+    for item, retro in ((primeiro, 12.50), (segundo, 20.08)):
+        item.update({
+            "data_pc": date(2026, 4, 12),
+            "dentro_do_corte": True,
+            "pc_pago_a_contratada": "Sim",
+            "retroativo_reconhecido_a_pagar": retro,
+            "valor_atualizado_em_analise": 0.0,
+            "delta_potencial": 0.0,
+        })
+    leitura["itens_pc_v10"]["totais_canonicos"] = _totais_canonicos_pc(
+        [primeiro, segundo], corte
+    )
+    return leitura
+
+
+def _leitura_consumidos() -> dict:
+    leitura = deepcopy(leitura_simples_financeiro())
+    leitura["controle"]["modo"] = "Itens Consumidos"
+    return leitura
+
+
+def _leitura_financeiro() -> dict:
+    leitura = deepcopy(leitura_simples_financeiro())
+    leitura["controle"]["modo"] = "Financeiro (Mensalidade)"
+    return leitura
+
+
+# ------------------------------------------------------------ B. terminologia
+def test_apostila_nunca_usa_o_label_proibido_de_potencial():
+    documentos = (
+        gerar_termo_apostila(_leitura_pc_com_potencial(), campos_manuais=CAMPOS_TERMO),
+        gerar_termo_apostila(_leitura_pc_sem_potencial(), campos_manuais=CAMPOS_TERMO),
+        gerar_termo_apostila(leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO),
+        gerar_modelo_branco_termo(),
+    )
+    for conteudo in documentos:
+        texto = _texto_docx(conteudo)
+        assert LABEL_POTENCIAL_PROIBIDO not in texto
+        assert "RETROATIVO POTENCIAL" not in texto
+        assert "Retroativo Potencial" not in texto
+        # O nome da parcela e sempre caixa baixa, inclusive nas tabelas.
+        assert "Retroativo potencial" not in texto
+
+
+def test_apostila_pc_com_potencial_nomeia_a_parcela_em_caixa_baixa():
+    b = gerar_termo_apostila(_leitura_pc_com_potencial(),
+                             campos_manuais=CAMPOS_TERMO)
+    texto = _texto_docx(b)
+    assert "retroativo potencial" in texto
+    quadro = next(
+        t for t in Document(BytesIO(b)).tables
+        if t.rows[0].cells[0].text == "Natureza"
+    )
+    naturezas = [r.cells[0].text for r in quadro.rows[1:]]
+    assert "Retroativo reconhecido" in naturezas
+    assert any(n.startswith("retroativo potencial") for n in naturezas)
+
+
+# ----------------------------------------------------------- C/D. PC potencial
+def test_apostila_pc_com_potencial_tem_quadros_2_e_3_e_textos_proprios():
+    texto = _texto_docx(gerar_termo_apostila(
+        _leitura_pc_com_potencial(), campos_manuais=CAMPOS_TERMO
+    ))
+    assert "método de Pedidos de Compra" in texto
+    assert "Quadro 2 — Execução reconhecida e retroativo por ciclo" in texto
+    assert "Quadro 3 — Situação dos valores retroativos" in texto
+    assert "Integra o valor reconhecido a pagar nesta data" in texto
+    assert "A conversão do retroativo potencial em retroativo reconhecido" in texto
+
+
+def test_apostila_pc_sem_potencial_nao_gera_quadro_3_nem_menciona_potencial():
+    b = gerar_termo_apostila(_leitura_pc_sem_potencial(),
+                             campos_manuais=CAMPOS_TERMO)
+    texto = _texto_docx(b)
+    assert "Quadro 2 — Execução reconhecida e retroativo por ciclo" in texto
+    assert "Quadro 3 — Situação dos valores retroativos" not in texto
+    assert "potencial" not in texto.lower()
+    assert not any(
+        t.rows[0].cells[0].text == "Natureza" for t in Document(BytesIO(b)).tables
+    )
+
+
+# ---------------------------------------------------------------- F. Financeiro
+def test_apostila_financeiro_nao_menciona_pc_nem_potencial():
+    texto = _texto_docx(gerar_termo_apostila(
+        _leitura_financeiro(), campos_manuais=CAMPOS_TERMO
+    ))
+    assert "Quadro 2 — Apuração financeira por ciclo" in texto
+    assert "Pedido de Compra" not in texto
+    assert "Pedidos de Compra" not in texto
+    assert "potencial" not in texto.lower()
+    assert "realizada por competência" in texto
+
+
+# --------------------------------------------------------------- G. Consumidos
+def test_apostila_consumidos_tem_redacao_propria_sem_pc_e_sem_valor_pago():
+    texto = _texto_docx(gerar_termo_apostila(
+        _leitura_consumidos(), campos_manuais=CAMPOS_TERMO
+    ))
+    assert "método de Itens Consumidos" in texto
+    assert "consumo itemizado declarado" in texto
+    assert "Pedido de Compra" not in texto
+    assert "Pedidos de Compra" not in texto
+    assert "valor pago efetivo" not in texto
+    assert "[PREENCHER: Valor pago efetivo]" not in texto
+    assert "Quadro 2" not in texto
+
+
+# ----------------------------------------------------- A. estrutura e Anexo 1
+def test_apostila_valores_unitarios_so_no_anexo_1_ao_final():
+    b = gerar_termo_apostila(leitura_simples_financeiro(),
+                             campos_manuais=CAMPOS_TERMO)
+    doc = Document(BytesIO(b))
+    textos = [p.text for p in doc.paragraphs]
+    texto = _texto_docx(b)
+    assert "ANEXO 1 - HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO" in texto
+    assert "constante do ANEXO 1 deste Termo de Apostila" in texto
+    i_anexo = textos.index("ANEXO 1 - HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO")
+    i_secao8 = next(i for i, t in enumerate(textos)
+                    if t.startswith("8. Da vinculação processual"))
+    assert i_secao8 < i_anexo
+    i_tabela = next(i for i, t in enumerate(textos)
+                    if t.startswith("Tabela 1 - Valores unitários por ciclo"))
+    assert i_tabela > i_anexo
+    # A tabela de VU nao pode aparecer no meio do documento.
+    assert all(
+        not t.startswith("HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO")
+        for t in textos[:i_anexo]
+    )
+
+
+def test_apostila_anexo_1_extenso_pagina_sem_perder_itens():
+    leitura = deepcopy(leitura_simples_financeiro())
+    dados = _extrair_dados(leitura, None)
+    hvu = dados.get("historico_vu") or {}
+    ciclos = hvu.get("ciclos") or ["C0", "C1"]
+    leitura["historico_vu"] = {
+        "ciclos": ciclos,
+        "ultimo_ciclo": ciclos[-1],
+        "itens": [
+            {"item": f"ITEM-{n:03d}",
+             "vus": {c: 100.0 + n for c in ciclos}}
+            for n in range(1, 41)
+        ],
+    }
+    b = gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO)
+    doc = Document(BytesIO(b))
+    tabelas = [t for t in doc.tables if t.rows[0].cells[0].text == "Item"]
+    assert tabelas, "tabela do ANEXO 1 ausente"
+    itens = [r.cells[0].text for t in tabelas for r in t.rows[1:]]
+    assert len(itens) == 40
+    assert itens[0] == "ITEM-001" and itens[-1] == "ITEM-040"
+    # Continuacao paginada, com o cabecalho reemitido em cada bloco.
+    assert len(tabelas) > 1
+    assert "(continuação)" in _texto_docx(b)
+
+
+# -------------------------------------------------------------- I. aditivos
+def test_apostila_sem_aditivos_nao_gera_tabela_vazia():
+    b = gerar_termo_apostila(leitura_ausencias(), campos_manuais=CAMPOS_TERMO)
+    texto = _texto_docx(b)
+    assert "Não foram identificados aditivos ou supressões" in texto
+    assert "Quadro 5 — Aditivos e supressões considerados" not in texto
+    assert not any(
+        len(t.rows[0].cells) > 2
+        and t.rows[0].cells[2].text == "Impacto atualizado total"
+        for t in Document(BytesIO(b)).tables
+    )
+
+
+def test_apostila_com_aditivos_gera_quadro_5_automatico():
+    # A fixture ja traz a alteracao contratual canonica: o quadro sai sozinho,
+    # sem nenhum campo manual de aditivo.
+    b = gerar_termo_apostila(leitura_simples_financeiro(),
+                             campos_manuais=CAMPOS_TERMO)
+    texto = _texto_docx(b)
+    assert "conforme Quadro 5" in texto
+    assert "Quadro 5 — Aditivos e supressões considerados" in texto
+    quadro = next(
+        t for t in Document(BytesIO(b)).tables
+        if [c.text for c in t.rows[0].cells]
+        == ["Ciclo", "Alterações consideradas", "Impacto atualizado total"]
+    )
+    linhas = [[c.text for c in r.cells] for r in quadro.rows[1:]]
+    assert linhas
+    assert linhas[0][0] == "C1"
+    assert "acréscimo" in linhas[0][1]
+    assert linhas[0][2].startswith("R$ ")
+    assert "[PREENCHER" not in "".join(c for linha in linhas for c in linha)
+
+
+# ------------------------------------------------------- H. modelo em branco
+def test_apostila_modelo_branco_reflete_a_nova_estrutura_sem_afirmar_fato():
+    texto = _texto_docx(gerar_modelo_branco_termo())
+    for titulo in (
+        "1. Dos reajustes concedidos",
+        "2. Da apuração financeira dos valores retroativos",
+        "3. Da composição do Valor Total Atualizado do Contrato",
+        "4. Dos valores unitários",
+        "5. Dos aditivos e supressões considerados",
+        "6. Das demais condições contratuais",
+        "7. Da garantia contratual",
+        "8. Da vinculação processual",
+    ):
+        assert titulo in texto
+    assert LABEL_POTENCIAL_PROIBIDO not in texto
+    assert "1869ª Reunião Ordinária" not in texto
+    assert "[PREENCHER: Deliberacao institucional aplicavel]" in texto
+    assert "[PREENCHER: Clausula contratual do reajuste]" in texto
+    # Nao afirma potencial, aditivos, apuracao nem VTA apurado.
+    assert "foram identificados Pedidos de Compra" not in texto
+    assert "Não foram identificados aditivos" not in texto
+    assert "inclui expressamente" not in texto
+
+
+# ---------------------------------------------------------------- 7. garantia
+def test_apostila_garantia_menciona_potencial_apenas_quando_existir():
+    texto_com = _texto_docx(gerar_termo_apostila(
+        _leitura_pc_com_potencial(), campos_manuais=CAMPOS_TERMO
+    ))
+    assert "7.1. A CONTRATADA deverá atualizar a garantia contratual" in texto_com
+    texto_sem = _texto_docx(gerar_termo_apostila(
+        _leitura_pc_sem_potencial(), campos_manuais=CAMPOS_TERMO
+    ))
+    linha_sem = next(
+        linha for linha in texto_sem.splitlines() if linha.startswith("7.1.")
+    )
+    assert "retroativo potencial" not in linha_sem
+
+
+# ------------------------------------------------------------ K. regressao
+def test_apostila_nao_altera_o_despacho_saneador():
+    texto = _texto_docx(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert "5. PENDÊNCIAS E PROVIDÊNCIAS" in texto
+    assert "6. CONCLUSÃO" in texto
+    assert "ANEXO 1" not in texto
+    assert "TERMO DE APOSTILA" not in texto

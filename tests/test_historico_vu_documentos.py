@@ -197,7 +197,10 @@ class TestDocumentoFinalEndToEnd(unittest.TestCase):
         self._assert_documento(docx_bytes)
         from io import BytesIO
         texto = chr(10).join(p.text for p in Document(BytesIO(docx_bytes)).paragraphs)
-        self.assertIn("ficam consolidados conforme quadro abaixo", texto)
+        # O quadro saiu do corpo da secao 4 e passou a constar do ANEXO 1.
+        self.assertIn(
+            "ficam consolidados conforme quadro constante do ANEXO 1", texto
+        )
         self.assertIn("HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO", texto)
 
     def test_ciclo_historico_permanece_na_apostila_mas_nao_no_saneador(self):

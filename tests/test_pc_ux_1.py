@@ -334,15 +334,18 @@ def test_k_l_q_r_apostila_e_saneador_usam_os_mesmos_valores_e_abrem():
         texto = _texto_docx(conteudo)
         assert "R$ 57.701,49" in texto
         assert "R$ 120.016,52" in texto
-        assert "valor em análise pela área gestora" in texto.lower()
         assert "31/08/2026" in texto
     texto_termo = _texto_docx(termo)
-    assert texto_termo.count("SITUAÇÃO DOS VALORES RETROATIVOS") == 1
-    assert "Quadro 2 — Execução considerada até a data de corte" in texto_termo
-    assert "Valor original" in texto_termo
-    assert "Valor atualizado" in texto_termo
+    # O Termo consolida a situacao no Quadro 3 (modelo aprovado em 09/09/2026).
+    assert texto_termo.count("Quadro 3 — Situação dos valores retroativos") == 1
+    assert "SITUAÇÃO DOS VALORES RETROATIVOS" not in texto_termo
+    assert "Quadro 2 — Execução reconhecida e retroativo por ciclo" in texto_termo
+    assert "Pedidos de Compra reconhecidos / valor original" in texto_termo
+    assert "Pedidos de Compra reconhecidos / valor atualizado" in texto_termo
     assert "Retroativo reconhecido" in texto_termo
+    assert "validação pela área gestora" in texto_termo
     texto_saneador = _texto_docx(saneador)
+    assert "valor em análise pela área gestora" in texto_saneador.lower()
     assert "PENDÊNCIA TÉCNICA" in texto_saneador
     assert "PROVIDÊNCIA DA ÁREA GESTORA" in texto_saneador
 
