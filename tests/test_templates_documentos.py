@@ -16,8 +16,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 
 from _templates_documentos import (  # noqa: E402
     CAMPOS_MANUAIS_TERMO,
+    _ta_origem_potencial,
     _ta_potenciais,
     _ta_secao2_pc,
+    _ta_tem_potencial,
     _ta_texto_origem_potencial,
     diagnosticar_campos_manuais,
     gerar_despacho_saneador,
@@ -176,7 +178,6 @@ def test_apostila_considerandos_na_ordem_aprovada():
     chaves_ordenadas = (
         "Cláusula Oitava",
         "solicitação da CONTRATADA",
-        "histórico já formalizado",
         "informações encaminhadas pela área gestora",
         "memória de cálculo",
         "índice contratual",
@@ -196,6 +197,15 @@ def test_apostila_considerandos_na_ordem_aprovada():
     assert "deliberação da Diretoria Executiva" not in texto
     assert "10/10/2025" in texto
     assert "TLB-AUT-2025/00100" in texto
+    # Considerando herdado do documento antigo: removido do modelo aprovado.
+    assert "histórico já formalizado" not in texto
+    assert "duplicidade de contagem" not in texto
+
+
+def test_apostila_considerando_herdado_removido_tambem_no_modelo_branco():
+    texto = _texto_docx(gerar_modelo_branco_termo())
+    assert "histórico já formalizado" not in texto
+    assert "duplicidade de contagem ou sobreposição de efeitos" not in texto
 
 
 def test_apostila_deliberacao_institucional_condicional_e_sequencial():
@@ -210,7 +220,7 @@ def test_apostila_deliberacao_institucional_condicional_e_sequencial():
     # Numeracao permanece sequencial, sem lacuna.
     for numero, paragrafo in enumerate(considerandos, start=1):
         assert paragrafo.startswith(f"{numero}. ")
-    assert len(considerandos) == 10
+    assert len(considerandos) == 9
 
 
 def test_apostila_instrumentos_posteriores_condicionais():
@@ -260,7 +270,9 @@ def test_apostila_estrutura_final_1_a_8_sem_duplicidades():
 
 
 def test_apostila_quadros_sem_composicao_duplicada():
-    quadros = _titulos_quadros(gerar_termo_apostila(leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO))
+    # Metodo Financeiro canonico: e ele que produz o Quadro 2 por ciclo.
+    quadros = _titulos_quadros(gerar_termo_apostila(
+        _leitura_financeiro(), campos_manuais=CAMPOS_TERMO))
     assert "Ref. | Ciclo | Percentual aplicado | Efeitos financeiros | Situação" in quadros  # Q1
     assert "Ciclo | Valor pago efetivo | Valor devido após o reajuste | Diferença/retroativo" in quadros  # Q2
     assert "Ref. | Descrição | Valor" in quadros  # Q3
@@ -395,9 +407,7 @@ def test_documentos_nao_exibem_bloco_retroativos_sem_pc_relevante():
 
 def test_apostila_terminologia_exclusiva_e_seguranca_da_tempestividade():
     for bytes_docx in (
-        gerar_termo_apostila(
-            leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO
-        ),
+        gerar_termo_apostila(_leitura_financeiro(), campos_manuais=CAMPOS_TERMO),
         gerar_termo_apostila({}, {}, {}, modo_modelo_em_branco=True),
     ):
         texto = _texto_docx(bytes_docx)
@@ -1045,3 +1055,306 @@ def test_origem_do_potencial_nao_vaza_para_financeiro_nem_consumidos():
         ))
         assert "em valor atualizado em análise" not in texto
         assert "retroativo potencial" not in texto.lower()
+
+
+# ---------------------------------------------------------------------------
+# CORRECOES DA REVISAO CODEX — metodo Consumidos, dispatch, anexo, zero
+# ---------------------------------------------------------------------------
+
+def _leitura_consumidos_canonica(**kwargs) -> dict:
+    """Cadeia REAL do metodo Itens Consumidos, ponta a ponta.
+
+    `itens_consumidos_v10` + `parametros_v10` passam pelo construtor de
+    producao `montar_objeto_processo_reajuste`, que agrega
+    `memoria_por_ciclo.ciclos[*].retroativo.consumidos` — inclusive a glosa de
+    execucao. Nao e uma fixture Financeira renomeada.
+    """
+    from _objeto_processo_reajuste import (  # noqa: PLC0415
+        CHAVE_OBJETO_PROCESSO, montar_objeto_processo_reajuste,
+    )
+    from test_consumo_glosa_1 import _leitura as _leitura_consumo  # noqa: PLC0415
+    leitura = dict(_leitura_consumo(**kwargs))
+    leitura["ok"] = True
+    leitura[CHAVE_OBJETO_PROCESSO] = montar_objeto_processo_reajuste(leitura)
+    return leitura
+
+
+def _item_23(docx_bytes: bytes) -> str:
+    doc = Document(BytesIO(docx_bytes))
+    return next(p.text for p in doc.paragraphs if p.text.startswith("2.3."))
+
+
+def _item_21(docx_bytes: bytes) -> str:
+    doc = Document(BytesIO(docx_bytes))
+    return next(p.text for p in doc.paragraphs if p.text.startswith("2.1."))
+
+
+# ------------------------------------------------- 1-2. Consumidos real
+def test_apostila_consumidos_publica_o_retroativo_canonico_sem_glosa():
+    leitura = _leitura_consumidos_canonica()
+    dados = _extrair_dados(leitura, None)
+    assert dados["metodo"] == "d"
+    assert dados["retroativo_consumidos"] == 8_000.00
+    texto = _item_23(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "R$ 8.000,00" in texto
+    assert "consumo declarado" in texto
+
+
+def test_apostila_consumidos_publica_o_retroativo_canonico_com_glosa():
+    from test_consumo_glosa_1 import _ajuste  # noqa: PLC0415
+    leitura = _leitura_consumidos_canonica(
+        ajustes={"C1": _ajuste("Glosa", 10_000.0)}
+    )
+    dados = _extrair_dados(leitura, None)
+    # A glosa muda a fonte economica do ciclo: 7.200,00, nao 8.000,00.
+    assert dados["retroativo_consumidos"] == 7_200.00
+    texto = _item_23(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "R$ 7.200,00" in texto
+    assert "R$ 8.000,00" not in texto
+
+
+# ------------------------------------------------------- 3. zero conhecido
+def test_apostila_consumidos_zero_conhecido_nao_vira_ausencia():
+    # Consumo declarado cujo valor atualizado iguala a base: retroativo 0,00
+    # COM evidencia — resultado conhecido, nao ausencia de base.
+    from test_consumo_glosa_1 import _ITEM  # noqa: PLC0415
+    item = deepcopy(_ITEM)
+    item["consumos"] = dict(item["consumos"])
+    item["consumos"]["C1"] = {"qtd": 1000, "valor": 100_000.0}
+    leitura = _leitura_consumidos_canonica(itens=[item])
+    dados = _extrair_dados(leitura, None)
+    assert dados["retroativo_consumidos"] == 0.0
+    texto = _item_23(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "R$ 0,00" in texto
+    assert "Não há, nesta análise, consumo declarado" not in texto
+
+
+# ------------------------------------------------------- 4. indisponivel
+def test_apostila_consumidos_indisponivel_usa_redacao_fail_safe():
+    leitura = _leitura_consumidos_canonica(itens=[])
+    dados = _extrair_dados(leitura, None)
+    assert dados["retroativo_consumidos"] is None
+    texto = _item_23(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "Não há, nesta análise, consumo declarado" in texto
+    assert "R$ 0,00" not in texto
+
+
+# ---------------------------------------------------- 5-6. residuos vazados
+def test_apostila_consumidos_ignora_residuo_financeiro():
+    leitura = _leitura_consumidos_canonica()
+    leitura["financeiro"] = {"delta_total_financeiro": 999_999.99}
+    texto = _texto_docx(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "R$ 8.000,00" in texto
+    assert "R$ 999.999,99" not in texto
+
+
+def test_apostila_consumidos_ignora_residuo_pc():
+    leitura = _leitura_consumidos_canonica()
+    leitura["financeiro"] = {"delta_total_pc": 888_888.88}
+    texto = _texto_docx(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "R$ 8.000,00" in texto
+    assert "R$ 888.888,88" not in texto
+    assert "Pedido de Compra" not in texto
+    assert "Pedidos de Compra" not in texto
+
+
+# ------------------------------------------------ 7-9. dispatch de metodo
+def test_apostila_metodo_vazio_nao_afirma_financeiro():
+    leitura = deepcopy(leitura_simples_financeiro())
+    leitura["controle"]["modo"] = ""
+    texto = _item_21(gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO))
+    assert "não está definido nesta análise" in texto
+    assert "valor pago efetivo" not in texto
+    assert "por competência" not in texto
+
+
+def test_apostila_metodo_desconhecido_nao_afirma_financeiro():
+    leitura = deepcopy(leitura_simples_financeiro())
+    leitura["controle"]["modo"] = "xyz"
+    b = gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO)
+    texto = _texto_docx(b)
+    assert "não está definido nesta análise" in _item_21(b)
+    assert "valor pago efetivo" not in texto
+    assert "Quadro 2" not in texto
+
+
+def test_apostila_pc_sem_consolidacao_nao_vira_financeiro():
+    leitura = leitura_multiciclo_pc()
+    dados = _extrair_dados(leitura, None)
+    assert dados["metodo"] == "pc" and not dados.get("situacao_retroativos_pc")
+    b = gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO)
+    texto_21 = _item_21(b)
+    assert "método de Pedidos de Compra" in texto_21
+    assert "não se encontra disponível nesta análise" in texto_21
+    assert "por competência" not in _texto_docx(b)
+    assert "valor pago efetivo" not in _texto_docx(b)
+
+
+# ------------------------------------------------ 10-11. ANEXO 1 e sem VU
+def test_apostila_modelo_branco_tem_anexo_1_com_placeholders():
+    b = gerar_modelo_branco_termo()
+    doc = Document(BytesIO(b))
+    textos = [p.text for p in doc.paragraphs if p.text.strip()]
+    assert "ANEXO 1 - HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO" in textos
+    assert "Tabela 1 - Valores unitários por ciclo" in textos
+    assert "A tabela deverá ser gerada conforme os itens e ciclos" in _texto_docx(b)
+    quadro = next(
+        t for t in doc.tables
+        if [c.text for c in t.rows[0].cells] == ["Item", "VU_C0", "VU_C1"]
+    )
+    linha = [c.text for c in quadro.rows[1].cells]
+    assert linha == ["[PREENCHER: Item]", "[PREENCHER: VU_C0]",
+                     "[PREENCHER: VU_C1]"]
+    # Todos os placeholders do modelo continuam destacados.
+    ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    for celula in quadro.rows[1].cells:
+        for par in celula.paragraphs:
+            for run in par.runs:
+                if "[PREENCHER" in run.text:
+                    rpr = run._element.rPr
+                    assert rpr is not None
+                    assert rpr.find(f"{ns}highlight") is not None
+
+
+def test_apostila_processado_sem_vu_nao_afirma_quadro_no_anexo():
+    leitura = deepcopy(leitura_simples_financeiro())
+    leitura["controle"]["modo"] = "Financeiro (Mensalidade)"
+    leitura["historico_vu"] = {"itens": [], "ciclos": []}
+    b = gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO)
+    texto = _texto_docx(b)
+    assert "não puderam ser consolidados nesta análise" in texto
+    assert "conforme quadro constante do ANEXO 1" not in texto
+    assert "ANEXO 1 - HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO" not in texto
+
+
+# ------------------------------------------------------- 12. garantia neutra
+def test_apostila_garantia_no_modelo_branco_nao_afirma_apuracao():
+    texto = _texto_docx(gerar_modelo_branco_termo())
+    linha = next(l for l in texto.splitlines() if l.startswith("7.1."))
+    assert "que vier a ser apurado nesta atualização" in linha
+    assert "Contrato apurado nesta atualização" not in linha
+
+
+# --------------------------------------- 13-15. zero apurado != ausencia
+def _dados_potencial(apurado, incorporado=None, tem_parcela=None):
+    return {
+        "metodo": "pc",
+        "situacao_retroativos_pc": {"potencial": apurado, "por_ciclo": {}},
+        "vta_retroativo_potencial": incorporado,
+        "vta_tem_parcela_potencial": (
+            tem_parcela if tem_parcela is not None else incorporado is not None
+        ),
+    }
+
+
+def test_potencial_apurado_zero_com_incorporado_positivo_sao_diferentes():
+    incorporado, apurado, diferentes = _ta_potenciais(
+        _dados_potencial(0.0, incorporado=100.0)
+    )
+    assert (incorporado, apurado, diferentes) == (100.0, 0.0, True)
+    assert _ta_tem_potencial(_dados_potencial(0.0, incorporado=100.0)) is True
+
+
+def test_potencial_apurado_zero_isolado_nao_gera_bloco():
+    dados = _dados_potencial(0.0)
+    incorporado, apurado, diferentes = _ta_potenciais(dados)
+    # Zero conhecido continua conhecido — nao vira ausencia.
+    assert (incorporado, apurado, diferentes) == (None, 0.0, False)
+    assert _ta_tem_potencial(dados) is False
+
+
+def test_potencial_apurado_negativo_e_positivo_preservados():
+    assert _ta_potenciais(_dados_potencial(-40.0))[1] == -40.0
+    assert _ta_potenciais(_dados_potencial(120.0))[1] == 120.0
+    assert _ta_tem_potencial(_dados_potencial(-40.0)) is True
+
+
+def test_potencial_ausente_de_verdade_continua_none():
+    dados = {"metodo": "pc", "situacao_retroativos_pc": {"por_ciclo": {}}}
+    assert _ta_potenciais(dados) == (None, None, False)
+    assert _ta_tem_potencial(dados) is False
+
+
+def test_apostila_pc_apurado_zero_com_incorporado_declara_os_dois():
+    from test_pc_ux_1 import (  # noqa: PLC0415
+        _caso_sintetico_consolidacao, _leitura_documental,
+    )
+    dados = _extrair_dados(_leitura_documental(_caso_sintetico_consolidacao()), None)
+    dados["situacao_retroativos_pc"]["potencial"] = 0.0
+    dados["situacao_retroativos_pc"]["por_ciclo"] = {}
+    dados["vta_retroativo_potencial"] = 100.0
+    dados["vta_tem_parcela_potencial"] = True
+    doc = Document()
+    _ta_secao2_pc(doc, dados)
+    item_24 = next(p.text for p in doc.paragraphs if p.text.startswith("2.4."))
+    assert ("incorporado ao Valor Total Atualizado do Contrato corresponde a "
+            "R$ 100,00") in item_24
+    assert "apurado, líquido e informativo, é de R$ 0,00" in item_24
+
+
+# --------------------------------------------- 16-18. fechamento em centavos
+def _dados_origem(total, por_ciclo):
+    return {"situacao_retroativos_pc": {
+        "potencial": total,
+        "por_ciclo": {c: {"delta_potencial": d, "valor_atualizado_em_analise": a}
+                      for c, (d, a) in por_ciclo.items()},
+    }}
+
+
+def test_origem_publica_quando_fecha_exatamente_em_centavos():
+    dados = _dados_origem(10.00, {"C1": (10.00, 100.00)})
+    assert _ta_origem_potencial(dados, 10.00) == [("C1", 10.00, 100.00)]
+
+
+def test_origem_nao_publica_com_diferenca_de_um_centavo():
+    dados = _dados_origem(10.00, {"C1": (9.99, 100.00)})
+    assert _ta_origem_potencial(dados, 10.00) == []
+    assert _ta_texto_origem_potencial(dados, 10.00) == ""
+
+
+def test_origem_nao_publica_com_diferenca_de_dois_centavos():
+    dados = _dados_origem(10.00, {"C1": (9.98, 100.00)})
+    assert _ta_origem_potencial(dados, 10.00) == []
+
+
+def test_origem_fecha_em_centavos_com_soma_binaria_imprecisa():
+    # 0,1 + 0,2 != 0,3 em ponto flutuante; em centavos, fecha.
+    dados = _dados_origem(0.30, {"C1": (0.10, 1.0), "C2": (0.20, 2.0)})
+    assert [c for c, _d, _a in _ta_origem_potencial(dados, 0.30)] == ["C1", "C2"]
+
+
+def test_origem_usa_o_delta_do_proprio_ciclo_e_nao_o_total():
+    dados = _dados_origem(10.00, {"C1": (10.00, 100.00)})
+    texto = _ta_texto_origem_potencial(dados, 10.00)
+    assert "dos quais R$ 10,00 representam a diferença potencial" in texto
+    assert "do ciclo C1" in texto
+
+
+# ------------------------------- Consumidos x ANEXO 1: o que o anexo contem
+def test_apostila_consumidos_nao_atribui_quantidades_ao_anexo():
+    leitura = _leitura_consumidos_canonica()
+    leitura["historico_vu"] = {
+        "itens": [{"item": "I1", "vus": {"C0": 100.0, "C1": 108.0}}],
+        "ciclos": ["C0", "C1"],
+        "ultimo_ciclo": "C1",
+    }
+    b = gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO)
+    item_22 = next(p.text for p in Document(BytesIO(b)).paragraphs
+                   if p.text.startswith("2.2."))
+    # O ANEXO 1 traz VALORES UNITARIOS, nunca as quantidades consumidas.
+    assert "quantidades consumidas informadas constituem a base" in item_22
+    assert "valores unitários aplicáveis aos itens em cada ciclo de reajuste " \
+        "ficam consolidados no ANEXO 1" in item_22
+    assert "quantidades consumidas informadas e os respectivos valores " \
+        "unitários, por ciclo de reajuste, constam do ANEXO 1" not in item_22
+
+
+def test_apostila_consumidos_sem_vu_nao_remete_a_anexo_inexistente():
+    b = gerar_termo_apostila(_leitura_consumidos_canonica(),
+                             campos_manuais=CAMPOS_TERMO)
+    texto = _texto_docx(b)
+    assert "ANEXO 1 - HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO" not in texto
+    assert "consolidados no ANEXO 1" not in texto
+    item_22 = next(p.text for p in Document(BytesIO(b)).paragraphs
+                   if p.text.startswith("2.2."))
+    assert "deverão ser conferidos e complementados" in item_22

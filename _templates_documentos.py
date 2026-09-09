@@ -588,6 +588,8 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
             or {}
         ),
         "metodo": metodo_canonico,
+        # Medida propria do metodo Itens Consumidos (nunca Financeiro/PC).
+        "retroativo_consumidos": _retroativo_consumidos_canonico(objeto_proc),
         "metodo_pc": metodo_pc,
         "data_corte": (
             controle_operacional.get("data_corte")
@@ -634,6 +636,30 @@ def _situacao_retroativos_pc(dados_operacionais: dict) -> dict[str, Any] | None:
         "data_corte": totais_pc.get("data_corte"),
         "corte_aplicado": bool(totais_pc.get("corte_aplicado")),
     }
+
+
+def _retroativo_consumidos_canonico(objeto_proc: dict) -> float | None:
+    """Retroativo do metodo Itens Consumidos, da cadeia canonica do metodo.
+
+    Fonte unica: `objeto["memoria_por_ciclo"]["ciclos"][*]["retroativo"]
+    ["consumidos"]["retroativo"]` — o mesmo bloco que a glosa de execucao
+    atualiza. Nao ha recalculo aqui: os valores ja vem prontos.
+
+    A disponibilidade e dada por `evidencias`, nunca pelo valor: zero COM
+    evidencia e zero apurado; sem evidencia nao ha base, e o documento nao
+    afirma valor algum. Financeiro e PC nunca servem de fallback.
+    """
+    ciclos = ((objeto_proc or {}).get("memoria_por_ciclo") or {}).get("ciclos")
+    total: float | None = None
+    for registro in ciclos or []:
+        bloco = ((registro or {}).get("retroativo") or {}).get("consumidos") or {}
+        if not bloco.get("evidencias"):
+            continue
+        valor = _num_ou_none(bloco.get("retroativo"))
+        if valor is None:
+            continue
+        total = round((total or 0.0) + valor, 2)
+    return total
 
 
 def _retroativo_total(dados: dict) -> float | None:
@@ -1065,19 +1091,20 @@ def _ta_par(doc: Document, numero: str) -> Any:
 def _ta_potenciais(dados: dict) -> tuple[float | None, float | None, bool]:
     """(incorporado ao VTA, apurado liquido, sao_diferentes).
 
-    Consome valores JA PRONTOS da cadeia canonica — nada e recalculado. As
-    duas grandezas so coincidem quando nao ha parcela potencial negativa; por
-    isso nunca sao publicadas sob o mesmo nome (PC-VTA-POT-TOTAL-1).
+    Consome valores JA PRONTOS da cadeia canonica — nada e recalculado. A
+    disponibilidade vem dos SINAIS canonicos (`vta_tem_parcela_potencial`,
+    `vta_tem_potencial_apurado`, presenca da grandeza em
+    `situacao_retroativos_pc`), nunca de truthiness: apurado liquido igual a
+    R$ 0,00 e um resultado conhecido, nao ausencia — e pode conviver com uma
+    parcela incorporada positiva, por forca da regra prudencial.
     """
     incorporado = _num_ou_none(dados.get("vta_retroativo_potencial"))
-    if incorporado is not None and not round(incorporado, 2):
-        incorporado = None
-    if incorporado is not None and not dados.get("vta_tem_parcela_potencial"):
+    if not dados.get("vta_tem_parcela_potencial"):
         incorporado = None
     situacao = dados.get("situacao_retroativos_pc") or {}
     apurado = _num_ou_none(situacao.get("potencial"))
-    if apurado is not None and not round(apurado, 2):
-        apurado = None
+    if apurado is None and dados.get("vta_tem_potencial_apurado"):
+        apurado = _num_ou_none(dados.get("vta_retroativo_potencial_apurado"))
     diferentes = (
         incorporado is not None and apurado is not None
         and round(incorporado, 2) != round(apurado, 2)
@@ -1086,8 +1113,16 @@ def _ta_potenciais(dados: dict) -> tuple[float | None, float | None, bool]:
 
 
 def _ta_tem_potencial(dados: dict) -> bool:
+    """Ha parcela potencial MATERIAL a declarar no documento.
+
+    Zero conhecido sozinho nao gera bloco (nao se escreve "potencial de
+    R$ 0,00" so para preencher espaco); mas apurado zero com incorporado
+    positivo e material — o documento precisa explicar os dois.
+    """
     incorporado, apurado, _ = _ta_potenciais(dados)
-    return incorporado is not None or apurado is not None
+    if incorporado is not None and round(incorporado, 2):
+        return True
+    return apurado is not None and round(apurado, 2) != 0
 
 
 def _ta_ordem_ciclo(ciclo: Any) -> tuple[int, str]:
@@ -1131,8 +1166,13 @@ def _ta_origem_potencial(
                         round(potencial, 2), em_analise))
     if not origens:
         return []
-    soma = round(sum(valor for _c, valor, _e in origens), 2)
-    if abs(soma - round(apurado, 2)) > 0.01:
+    # Fechamento EXATO em centavos: comparacao monetaria inteira, imune a
+    # representacao binaria. Diferenca de 1 centavo NAO e igualdade. Isto e
+    # validacao de APRESENTACAO — nenhum valor e alterado, rateado ou
+    # corrigido; nao fechando, a origem por ciclo simplesmente nao e publicada.
+    centavos_total = round(round(apurado, 2) * 100)
+    centavos_ciclos = sum(round(valor * 100) for _c, valor, _e in origens)
+    if centavos_total != centavos_ciclos:
         return []
     return origens
 
@@ -1148,7 +1188,9 @@ def _ta_texto_origem_potencial(dados: dict, apurado: float | None) -> str:
         return ""
     total = formatar_moeda(apurado)
     if len(origens) == 1:
-        ciclo, _potencial, em_analise = origens[0]
+        # Publica o delta do PROPRIO ciclo, nunca o total consolidado.
+        ciclo, potencial_ciclo, em_analise = origens[0]
+        valor_ciclo = formatar_moeda(potencial_ciclo)
         # A sujeicao a validacao ja foi dita na frase de abertura do item 2.4;
         # aqui interessa identificar o ciclo de origem, sem repeti-la.
         texto = (
@@ -1158,7 +1200,7 @@ def _ta_texto_origem_potencial(dados: dict, apurado: float | None) -> str:
         if em_analise is not None:
             texto += (
                 f" Esses eventos correspondem a {formatar_moeda(em_analise)} em "
-                f"valor atualizado em análise no ciclo, dos quais {total} "
+                f"valor atualizado em análise no ciclo, dos quais {valor_ciclo} "
                 "representam a diferença potencial decorrente do reajuste."
             )
         return texto
@@ -1306,14 +1348,10 @@ def _ta_considerandos(doc: Document, dados: dict, cm: dict) -> None:
             )
             _adicionar_run(p3, ";")
 
-    # 4 — separacao entre historico formalizado e objeto da analise
-    p4 = item()
-    _adicionar_run(p4,
-        "A necessidade de distinguir o histórico já formalizado anteriormente do "
-        "objeto da presente análise, evitando duplicidade de contagem ou "
-        "sobreposição de efeitos financeiros;")
-
-    # 5 — informacoes da area gestora (nunca afirmadas como "aprovadas")
+    # 4 — informacoes da area gestora (nunca afirmadas como "aprovadas").
+    # O considerando herdado sobre "distinguir o historico ja formalizado" foi
+    # removido: nao consta do modelo aprovado e a vedacao a dupla contagem ja
+    # esta na secao 3 e no item 5.2.
     p5 = item()
     if branco:
         _adicionar_run(p5,
@@ -1596,20 +1634,47 @@ def _ta_secao2_retroativo(doc: Document, dados: dict, cm: dict) -> None:
     """Secao 2, com redacao propria por METODO CANONICO.
 
     O metodo vem de `dados["metodo"]` (CONTROLE!B1 normalizado): nenhuma
-    inferencia por presenca de tabela. Cada metodo publica apenas o que os
-    seus dados canonicos sustentam.
+    inferencia por presenca de tabela. O despacho e EXPLICITO — Financeiro so
+    quando o metodo canonico e `principal`. Metodo ausente, desconhecido ou
+    PC sem consolidacao caem em bloco neutro, nunca em Financeiro por
+    conveniencia.
     """
     _titulo_secao(doc, "2. Da apuração financeira dos valores retroativos")
     if dados.get("_modo_branco"):
         _ta_secao2_branco(doc)
         return
     metodo = dados.get("metodo")
-    if metodo == "pc" and dados.get("situacao_retroativos_pc"):
-        _ta_secao2_pc(doc, dados)
+    if metodo == "pc":
+        if dados.get("situacao_retroativos_pc"):
+            _ta_secao2_pc(doc, dados)
+        else:
+            _ta_secao2_pc_sem_consolidacao(doc)
     elif metodo == "d":
         _ta_secao2_consumidos(doc, dados)
-    else:
+    elif metodo == "principal":
         _ta_secao2_financeiro(doc, dados, cm)
+    else:
+        _ta_secao2_metodo_indefinido(doc)
+
+
+def _ta_secao2_pc_sem_consolidacao(doc: Document) -> None:
+    """PC declarado, sem consolidacao dos Pedidos de Compra disponivel."""
+    p = _ta_par(doc, "2.1")
+    _adicionar_run(p,
+        "A apuração segue o método de Pedidos de Compra, cuja consolidação não "
+        "se encontra disponível nesta análise. Os valores retroativos deverão "
+        "ser apurados e conferidos antes da formalização.")
+    doc.add_paragraph()
+
+
+def _ta_secao2_metodo_indefinido(doc: Document) -> None:
+    """Metodo ausente ou desconhecido: nenhuma metodologia e afirmada."""
+    p = _ta_par(doc, "2.1")
+    _adicionar_run(p,
+        "O método de apuração aplicável não está definido nesta análise. Os "
+        "valores retroativos deverão ser apurados e informados conforme o "
+        "método próprio do contrato, antes da formalização.")
+    doc.add_paragraph()
 
 
 def _ta_secao2_branco(doc: Document) -> None:
@@ -1695,8 +1760,9 @@ def _ta_secao2_pc(doc: Document, dados: dict) -> None:
     doc.add_paragraph()
 
     incorporado, apurado, diferentes = _ta_potenciais(dados)
-    if incorporado is None and apurado is None:
-        # Sem parcela potencial material: nao ha 2.4-2.7 nem Quadro 3.
+    if not _ta_tem_potencial(dados):
+        # Sem parcela potencial MATERIAL: nao ha 2.4-2.7 nem Quadro 3. Zero
+        # apurado isolado nao vira paragrafo so para preencher espaco.
         return
 
     # A frase do piso prudencial so cabe quando a parcela apurada e de fato
@@ -1871,9 +1937,9 @@ def _ta_secao2_financeiro(doc: Document, dados: dict, cm: dict) -> None:
 def _ta_secao2_consumidos(doc: Document, dados: dict) -> None:
     """Metodo Itens Consumidos: consumo itemizado, sem base mensal nem PC.
 
-    Este metodo nao produz apuracao por competencia nem Pedidos de Compra; o
-    documento nao afirma pagamento e nao pede valor financeiro manual. O
-    detalhamento por item fica no ANEXO 1.
+    O retroativo vem da medida PROPRIA do metodo
+    (`dados["retroativo_consumidos"]`), nunca de Financeiro ou PC. Ausencia e
+    distinta de zero: sem evidencia consumida, o documento nao afirma valor.
     """
     p = _ta_par(doc, "2.1")
     _adicionar_run(p,
@@ -1884,12 +1950,21 @@ def _ta_secao2_consumidos(doc: Document, dados: dict) -> None:
 
     p = _ta_par(doc, "2.2")
     _adicionar_run(p,
-        "As quantidades consumidas informadas e os respectivos valores "
-        "unitários, por ciclo de reajuste, constam do ANEXO 1 deste Termo de "
-        "Apostila.")
+        "As quantidades consumidas informadas constituem a base da apuração.")
+    # O ANEXO 1 traz os VALORES UNITARIOS por ciclo, nunca as quantidades — e
+    # so pode ser citado quando o historico existe (coerencia com a secao 4).
+    if montar_historico_vu_documental(dados)["disponivel"]:
+        _adicionar_run(p,
+            " Os valores unitários aplicáveis aos itens em cada ciclo de "
+            "reajuste ficam consolidados no ANEXO 1 deste Termo de Apostila.")
+    else:
+        _adicionar_run(p,
+            " Os valores unitários aplicáveis aos itens em cada ciclo de "
+            "reajuste deverão ser conferidos e complementados para a formação "
+            "do histórico correspondente.")
 
     p = _ta_par(doc, "2.3")
-    retro = _retroativo_total(dados)
+    retro = _num_ou_none(dados.get("retroativo_consumidos"))
     if retro is not None:
         _adicionar_run(p,
             "O retroativo resultante da atualização do consumo declarado "
@@ -1898,9 +1973,23 @@ def _ta_secao2_consumidos(doc: Document, dados: dict) -> None:
         _adicionar_run(p, ".")
     else:
         _adicionar_run(p,
-            "Não consta desta apuração valor de retroativo decorrente da "
-            "atualização do consumo declarado.")
+            "Não há, nesta análise, consumo declarado que permita apurar "
+            "retroativo pelo método de Itens Consumidos.")
     doc.add_paragraph()
+
+
+def _ta_retroativo_do_metodo(dados: dict) -> float | None:
+    """Retroativo da fonte canonica do metodo em uso — nunca de outro metodo.
+
+    Evita que a composicao do VTA de Itens Consumidos cite uma grandeza
+    Financeira/PC residual.
+    """
+    metodo = dados.get("metodo")
+    if metodo == "d":
+        return _num_ou_none(dados.get("retroativo_consumidos"))
+    if metodo in ("principal", "pc"):
+        return _retroativo_total(dados)
+    return None
 
 
 def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
@@ -1973,7 +2062,7 @@ def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
                 "Total Atualizado do Contrato e a adequação orçamentária, mas "
                 "permanece destacada em razão de sua natureza potencial e não "
                 "integra, nesta data, o valor reconhecido a pagar à CONTRATADA.")
-        retro = _retroativo_total(dados)
+        retro = _ta_retroativo_do_metodo(dados)
         if retro is not None and round(retro, 2):
             p = par()
             _adicionar_run(p,
@@ -1986,7 +2075,11 @@ def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
 
 
 def _ta_secao4_valores_unitarios(doc: Document, dados: dict) -> None:
-    """Somente a remissao: o quadro (potencialmente enorme) vai ao ANEXO 1."""
+    """Somente a remissao: o quadro (potencialmente enorme) vai ao ANEXO 1.
+
+    Sem historico de valores unitarios no documento processado, nao se afirma
+    que o quadro existe: a redacao vira fail-safe e o ANEXO 1 nao e emitido.
+    """
     _titulo_secao(doc, "4. Dos valores unitários")
     p = _ta_par(doc, "4.1")
     if dados.get("_modo_branco"):
@@ -1994,11 +2087,16 @@ def _ta_secao4_valores_unitarios(doc: Document, dados: dict) -> None:
             "Os valores unitários dos itens, considerados os ciclos de reajuste "
             "aplicáveis até a presente atualização, deverão ser consolidados no "
             "quadro do ANEXO 1 deste Termo de Apostila.")
-    else:
+    elif montar_historico_vu_documental(dados)["disponivel"]:
         _adicionar_run(p,
             "Os valores unitários dos itens, considerados os ciclos de reajuste "
             "aplicáveis até a presente atualização, ficam consolidados conforme "
             "quadro constante do ANEXO 1 deste Termo de Apostila.")
+    else:
+        _adicionar_run(p,
+            "Os valores unitários por ciclo não puderam ser consolidados nesta "
+            "análise e deverão ser conferidos e complementados para a formação "
+            "do histórico correspondente.")
     doc.add_paragraph()
 
 
@@ -2130,8 +2228,9 @@ def _ta_secoes_finais(doc: Document, dados: dict, cm: dict) -> None:
                 f", que inclui {formatar_moeda(incorporado)} de retroativo "
                 "potencial")
     else:
-        # VTA indisponivel/nao confiavel: nao se afirma valor (fail-closed).
-        _adicionar_run(p7, " apurado nesta atualização")
+        # Sem VTA confiavel (inclusive no modelo em branco) nao se afirma que
+        # houve apuracao: a redacao e prospectiva.
+        _adicionar_run(p7, " que vier a ser apurado nesta atualização")
     _adicionar_run(p7, ".")
     doc.add_paragraph()
 
@@ -2172,10 +2271,14 @@ def _ta_assinaturas(doc: Document, cm: dict) -> None:
 def _ta_anexo1_valores_unitarios(doc: Document, dados: dict) -> None:
     """ANEXO 1, ao final do documento: historico dos valores unitarios.
 
-    O quadro pode ser extenso; a paginacao em blocos e o cabecalho repetido
-    ficam a cargo de `_secao_valores_unitarios_por_ciclo`. Sem limite
-    artificial de itens.
+    No modelo em branco o anexo existe sempre, com estrutura de placeholder —
+    e um modelo, e o quadro precisa estar la para ser preenchido. No documento
+    processado sem historico, o anexo NAO e emitido e a secao 4 ja registra a
+    indisponibilidade: um anexo vazio afirmaria um quadro que nao existe.
     """
+    if dados.get("_modo_branco"):
+        _ta_anexo1_modelo(doc)
+        return
     quadro = montar_historico_vu_documental(dados)
     if not quadro["disponivel"]:
         return
@@ -2186,6 +2289,27 @@ def _ta_anexo1_valores_unitarios(doc: Document, dados: dict) -> None:
     _secao_valores_unitarios_por_ciclo(
         doc, dados, titulo="Tabela 1 - Valores unitários por ciclo",
     )
+
+
+def _ta_anexo1_modelo(doc: Document) -> None:
+    """ANEXO 1 do MODELO PADRAO: estrutura e placeholders, sem afirmar dados."""
+    doc.add_page_break()
+    _titulo_secao(doc, TITULO_ANEXO_VU, tamanho=12,
+                  alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
+    doc.add_paragraph()
+    _titulo_quadro(doc, "Tabela 1 - Valores unitários por ciclo")
+    _adicionar_tabela(
+        doc,
+        ["Item", "VU_C0", "VU_C1"],
+        [["[PREENCHER: Item]", "[PREENCHER: VU_C0]", "[PREENCHER: VU_C1]"]],
+        destacar_placeholders=True,
+    )
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    _adicionar_run(p,
+        "A tabela deverá ser gerada conforme os itens e ciclos efetivamente "
+        "existentes na apuração.")
+    doc.add_paragraph()
 
 
 # ---------------------------------------------------------------------------
