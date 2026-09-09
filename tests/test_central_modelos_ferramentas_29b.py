@@ -192,18 +192,19 @@ def test_neutralidade_integral_29c12():
     # instrucao/obrigacao futura nos DOIS modelos, com contagens preservadas.
     b_ds, b_ta = gerar_modelo_branco_despacho(), gerar_modelo_branco_termo()
     txt_ds, txt_ta = _texto(b_ds), _texto(b_ta)
-    # Despacho: estrutura 1-6, sem afirmações factuais ainda não comprovadas.
+    # Despacho: estrutura 1-7, sem afirmações factuais ainda não comprovadas.
     for titulo in (
         "1. IDENTIFICAÇÃO",
         "2. PEDIDO E PARÂMETROS DA ANÁLISE",
         "3. RESULTADO ESSENCIAL",
         "4. DOCUMENTOS E VERIFICAÇÕES",
-        "5. PENDÊNCIAS",
-        "6. CONCLUSÃO",
+        "5. CONTROLE DA ADEQUAÇÃO ORÇAMENTÁRIA",
+        "6. PENDÊNCIAS",
+        "7. CONCLUSÃO",
     ):
         assert titulo in txt_ds
     assert "Deverão ser registrados o pedido" in txt_ds
-    assert "Registrar as pendências relevantes" in txt_ds
+    assert "[PREENCHER, EM CASO DE PENDÊNCIA]" in txt_ds
     assert "instrução encontra-se apta" not in txt_ds
     # Termo: considerandos 3 e 5, secoes 2.1 e 3.1 neutros.
     assert "A memória de cálculo a ser indicada em" in txt_ta
