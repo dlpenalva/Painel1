@@ -2220,34 +2220,71 @@ def _ds_pendencias_tecnicas(dados: dict, cm: dict) -> list[str]:
     return resultado
 
 
+def _ds_ha_providencia_gestora(dados: dict) -> bool:
+    """Ha Pedidos de Compra em analise / retroativo potencial a registrar.
+
+    E uma PROVIDENCIA da area gestora, nao uma pendencia impeditiva: nao
+    entra em `_ds_tem_pendencia_impeditiva` e nao bloqueia o saneamento. Serve
+    apenas para o documento nao afirmar ausencia de pendencias tendo uma
+    providencia real a declarar logo abaixo.
+    """
+    situacao = dados.get("situacao_retroativos_pc") or {}
+    if not (dados.get("metodo_pc") and situacao):
+        return False
+    em_analise = _num_ou_none(situacao.get("em_analise"))
+    potencial = _num_ou_none(situacao.get("potencial"))
+    return bool(
+        (em_analise is not None and abs(em_analise) > 0.004)
+        or (potencial is not None and abs(potencial) > 0.004)
+    )
+
+
 def _ds_secao6_pendencias(doc: Document, dados: dict, cm: dict) -> None:
     _ds_titulo(doc, 6, "Pendências")
+    branco = bool(dados.get("_modo_branco"))
     pendencias = _ds_pendencias_tecnicas(dados, cm)
-    p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    documental = _ds_ha_pendencia_documental(dados, cm)
+    ha_providencia = _ds_ha_providencia_gestora(dados)
+    # A frase padrao AFIRMA ausencia de pendencias: no documento processado
+    # ela nao pode conviver com uma providencia real da area gestora. No
+    # modelo em branco permanece como texto padrao a ser editado.
+    omitir_frase_padrao = ha_providencia and not branco
+
+    def _ressalva_documental(paragrafo, iniciar: bool = False) -> None:
+        texto = (
+            "Os campos documentais destacados permanecem sujeitos a "
+            "preenchimento e conferência."
+        )
+        _adicionar_run(paragrafo, texto if iniciar else " " + texto)
+
     if pendencias:
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         _adicionar_run(p, "PENDÊNCIA TÉCNICA: ", negrito=True)
         _adicionar_run(p, "; ".join(pendencias) + ".")
-    else:
+        if documental:
+            _ressalva_documental(p)
+    elif not omitir_frase_padrao:
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         _adicionar_run(p, FRASE_SEM_PENDENCIAS)
-    if _ds_ha_pendencia_documental(dados, cm):
-        _adicionar_run(
-            p,
-            " Os campos documentais destacados permanecem sujeitos a "
-            "preenchimento e conferência.",
-        )
-    if dados.get("_modo_branco"):
+        if documental:
+            _ressalva_documental(p)
+    elif documental:
+        # Sem a frase padrao, a ressalva documental ainda precisa aparecer.
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        _ressalva_documental(p, iniciar=True)
+
+    if branco:
         p_ph = doc.add_paragraph()
         p_ph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         _run_placeholder_pendencia(p_ph)
 
-    situacao = dados.get("situacao_retroativos_pc") or {}
-    em_analise = _num_ou_none(situacao.get("em_analise"))
-    potencial = _num_ou_none(situacao.get("potencial"))
-    if dados.get("metodo_pc") and situacao and (
-        (em_analise is not None and abs(em_analise) > 0.004)
-        or (potencial is not None and abs(potencial) > 0.004)
-    ):
+    if ha_providencia:
+        potencial = _num_ou_none(
+            (dados.get("situacao_retroativos_pc") or {}).get("potencial")
+        )
         p_gestora = doc.add_paragraph()
         p_gestora.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         _adicionar_run(p_gestora, "PROVIDÊNCIA DA ÁREA GESTORA: ", negrito=True)

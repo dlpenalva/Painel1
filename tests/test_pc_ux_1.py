@@ -343,8 +343,10 @@ def test_k_l_q_r_apostila_e_saneador_usam_os_mesmos_valores_e_abrem():
     assert "Valor atualizado" in texto_termo
     assert "Retroativo reconhecido" in texto_termo
     texto_saneador = _texto_docx(saneador)
-    assert "Não existem pendências nesta data." in texto_saneador
+    # Havendo providencia real da area gestora, o documento NAO pode afirmar
+    # ausencia de pendencias: as duas frases sao contraditorias.
     assert "PROVIDÊNCIA DA ÁREA GESTORA" in texto_saneador
+    assert "Não existem pendências nesta data." not in texto_saneador
 
 
 def test_saneador_pc_restaura_vta_canonico_sem_duplicar_e_outros_metodos_preservam():

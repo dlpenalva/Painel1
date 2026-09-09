@@ -602,6 +602,70 @@ def test_saneador_pendencia_real_substitui_frase_padrao():
     assert "PENDÊNCIA TÉCNICA: Garantia contratual vencida." in texto
 
 
+def _secao6(docx_bytes: bytes) -> str:
+    """Texto da secao 6 (Pendencias), ate o titulo da secao 7."""
+    doc = Document(BytesIO(docx_bytes))
+    textos = [p.text for p in doc.paragraphs]
+    inicio = textos.index("6. PENDÊNCIAS") + 1
+    fim = textos.index("7. CONCLUSÃO")
+    return "\n".join(t for t in textos[inicio:fim] if t.strip())
+
+
+# A) processado sem pendencia e sem providencia
+def test_saneador_sem_pendencia_e_sem_providencia_usa_a_frase_padrao():
+    secao = _secao6(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert "Não existem pendências nesta data." in secao
+    assert "PROVIDÊNCIA DA ÁREA GESTORA" not in secao
+    assert "PENDÊNCIA TÉCNICA" not in secao
+
+
+# B) processado com PC em analise / retroativo potencial
+def test_saneador_com_providencia_gestora_nao_afirma_ausencia_de_pendencias():
+    leitura = _leitura_retroativos_corte(date(2026, 12, 12))
+    secao = _secao6(gerar_despacho_saneador(
+        leitura, campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert "Não existem pendências nesta data." not in secao
+    assert "PROVIDÊNCIA DA ÁREA GESTORA" in secao
+    assert "Há Pedidos de Compra em análise pela área gestora." in secao
+    assert "R$ 44,63" in secao
+    assert "não integra o retroativo reconhecido nesta apuração" in secao
+
+
+# C) pendencia tecnica real
+def test_saneador_com_pendencia_tecnica_nao_usa_a_frase_padrao():
+    cm = dict(CAMPOS_SANEADOR, pendencias_complemento="Garantia contratual vencida")
+    secao = _secao6(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=cm
+    ))
+    assert "Não existem pendências nesta data." not in secao
+    assert "PENDÊNCIA TÉCNICA: Garantia contratual vencida." in secao
+
+
+# D) pendencia tecnica + providencia da area gestora
+def test_saneador_com_pendencia_tecnica_e_providencia_mostra_os_dois_blocos():
+    leitura = _leitura_retroativos_corte(date(2026, 12, 12))
+    cm = dict(CAMPOS_SANEADOR, pendencias_complemento="Certidão vencida")
+    secao = _secao6(gerar_despacho_saneador(leitura, campos_manuais=cm))
+    assert "Não existem pendências nesta data." not in secao
+    assert "PENDÊNCIA TÉCNICA: Certidão vencida." in secao
+    assert "PROVIDÊNCIA DA ÁREA GESTORA" in secao
+
+
+# Providencia da area gestora NAO e pendencia impeditiva.
+def test_saneador_providencia_gestora_nao_bloqueia_o_saneamento():
+    leitura = _leitura_retroativos_corte(date(2026, 12, 12))
+    b = gerar_despacho_saneador(leitura, campos_manuais=CAMPOS_SANEADOR)
+    texto = _texto_docx(b)
+    assert "PROVIDÊNCIA DA ÁREA GESTORA" in texto
+    # A regra negocial nao muda: o potencial segue identificado como potencial
+    # e a conclusao positiva permanece disponivel.
+    assert "SANEADO PARA FORMALIZAÇÃO" in texto
+    assert "A instrução deverá ser complementada" not in texto
+
+
 def test_saneador_branco_tem_placeholder_de_pendencia_destacado():
     b = gerar_modelo_branco_despacho()
     texto = _texto_docx(b)
