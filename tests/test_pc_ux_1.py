@@ -352,9 +352,12 @@ def test_k_l_q_r_apostila_e_saneador_usam_os_mesmos_valores_e_abrem():
     # ausencia de pendencias: as duas frases sao contraditorias (#151).
     assert "PROVIDÊNCIA DA ÁREA GESTORA" in texto_saneador
     assert "Não existem pendências nesta data." not in texto_saneador
-    # Sem pendencia tecnica neste cenario, o rotulo nao e emitido — a
-    # providencia da area gestora nao e pendencia.
-    assert "PENDÊNCIA TÉCNICA" not in texto_saneador
+    # A fixture tem uma pendencia canonica real (PC sem DATA_PC), que o
+    # Saneador passou a enxergar com o objeto materializado. Ela convive com a
+    # providencia sem contradicao — o que nao pode conviver com a providencia
+    # e a AFIRMACAO de ausencia de pendencias, ja verificada acima.
+    assert "PENDÊNCIA TÉCNICA:" in texto_saneador
+    assert "sem DATA_PC" in texto_saneador
 
 
 def test_saneador_pc_restaura_vta_canonico_sem_duplicar_e_outros_metodos_preservam():
