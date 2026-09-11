@@ -204,6 +204,11 @@ def test_b83_b87_seguem_compondo_o_vta(res):
     assert "$B$86-($B$83+N($B$84)+$B$85)" in res["B87"].value.replace(" ", "")
 
 
+def test_linha_86_exibe_legenda_integral_sem_alterar_wrap(res):
+    assert res.row_dimensions[86].height == 144.5
+    assert res["C86"].alignment.wrap_text is True
+
+
 def test_memoria_resultados_permanece_oculta_e_intocada(wb):
     memoria = wb["MEMORIA_RESULTADOS"]
     assert memoria.sheet_state == "hidden"

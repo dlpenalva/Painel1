@@ -9,7 +9,7 @@ from openpyxl import load_workbook
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
-from _apresentacao_pc_xls import valores_apresentacao_pc
+from _apresentacao_pc_xls import ALTURA_LINHA_86, valores_apresentacao_pc
 
 
 def aplicar(path):
@@ -37,6 +37,9 @@ def aplicar(path):
         row = root.xpath('//m:row[@r="25"]', namespaces=ns)[0]
         row.set("ht", str(max(float(row.get("ht", 0)), 48)))
         row.set("customHeight", "1")
+        row86 = root.xpath('//m:row[@r="86"]', namespaces=ns)[0]
+        row86.set("ht", str(max(float(row86.get("ht", 0)), ALTURA_LINHA_86)))
+        row86.set("customHeight", "1")
         output = BytesIO()
         with ZipFile(output, "w", ZIP_DEFLATED) as dest:
             for info in z.infolist():

@@ -3,6 +3,7 @@
 NOTA_EXECUCAO = "Já contém o reajuste/retroativo reconhecido incorporado à execução."
 NOTA_POTENCIAL = "Parcela prudencial sujeita à confirmação da área gestora."
 SALDO = "Saldo remanescente final atualizado"
+ALTURA_LINHA_86 = 144.5
 
 
 def valores_apresentacao_pc(ws):
@@ -60,3 +61,6 @@ def garantir_apresentacao_pc(wb):
         alinhamento.wrap_text = True
         ws[celula].alignment = alinhamento
     ws.row_dimensions[25].height = max(ws.row_dimensions[25].height or 0, 48)
+    ws.row_dimensions[86].height = max(
+        ws.row_dimensions[86].height or 0, ALTURA_LINHA_86
+    )
