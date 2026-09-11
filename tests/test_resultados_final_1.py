@@ -192,10 +192,15 @@ def test_nomes_definidos_intactos(wb):
 
 
 def test_b83_b87_seguem_compondo_o_vta(res):
-    assert str(res["B83"].value).startswith("=IF(MEMORIA_RESULTADOS!$B$4=")
-    assert res["B85"].value == (
-        '=IF(MEMORIA_RESULTADOS!$D$35="","",MEMORIA_RESULTADOS!$D$35)'
-    )
+    formula_execucao = str(res["B83"].value)
+    assert formula_execucao.startswith('=IF($B$5="PCs",')
+    assert "MEMORIA_RESULTADOS!$T$21+MEMORIA_RESULTADOS!$T$22" in formula_execucao
+    assert "MEMORIA_RESULTADOS!$B$4=" in formula_execucao
+
+    formula_saldo = str(res["B85"].value)
+    assert formula_saldo.startswith('=IF($B$5="PCs",')
+    assert "MEMORIA_RESULTADOS!$T$23" in formula_saldo
+    assert 'MEMORIA_RESULTADOS!$D$35="","",MEMORIA_RESULTADOS!$D$35' in formula_saldo
     assert "$B$86-($B$83+N($B$84)+$B$85)" in res["B87"].value.replace(" ", "")
 
 

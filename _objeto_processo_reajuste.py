@@ -218,7 +218,7 @@ def _montar_dados_operacionais(leitura: dict[str, Any]) -> dict[str, Any]:
         "itens_pc_v10", "itens_consumidos_v10", "execucao_saldo", "historico_vu",
         "itens_contrato", "vta_sombra", "reconciliacao", "composicao_vta",
         "potencial_futuro", "posicao_contratual_sombra", "avisos",
-        "reconciliacao_evidencias_sombra",
+        "reconciliacao_evidencias_sombra", "referencias_remanescente_pc",
     )
     return {chave: copy.deepcopy(leitura.get(chave)) for chave in chaves}
 

@@ -4133,6 +4133,8 @@ def ler_masterfile_v10(
         )
 
     res["ok"] = True
+    from _apresentacao_pc import ler_referencias_pc
+    res["referencias_remanescente_pc"] = ler_referencias_pc(wb)
     res["objeto_processo"] = montar_objeto_processo_reajuste(res)
 
     # Etapa 6 — reconciliacao XLS (RESULTADOS) x motor Python: auditoria,
