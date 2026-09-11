@@ -178,22 +178,6 @@ def df_retroativo_estimado_itens(res):
 
 
 def indicadores_executivos_relatorio(res):
-    from _sumario_executivo import montar_dados_sumario_executivo
-    from _apresentacao_pc import EXECUCAO, POTENCIAL, SALDO, TOTAL
-
-    quadros_pc = montar_dados_sumario_executivo(res).get("quadros_pc") or {}
-    if quadros_pc:
-        valores = {linha[0]: linha[1] for linha in quadros_pc["composicao"]}
-        return [
-            ["Indicador", "Valor"],
-            ["Valor original", moeda(res.get("valor_original_contrato", 0))],
-            [EXECUCAO, moeda(valores[EXECUCAO])],
-            [SALDO, moeda(valores[SALDO])],
-            [POTENCIAL, moeda(valores[POTENCIAL])],
-            [TOTAL, moeda(valores[TOTAL])],
-            ["Metodologia de corte", metodologia_corte_operacional_info(res)["titulo"].replace("Metodologia aplicada: ", "")],
-        ]
-
     if eh_modo_consumo_itens_ciclo(res):
         return [
             ["Indicador", "Valor"],
@@ -1051,51 +1035,24 @@ def criar_pdf_relatorio(adm, res):
     story.append(tabela_dataframe_pdf(df_fin[keep_fin] if keep_fin else df_fin, max_linhas=20))
 
     story.append(Paragraph("5. Composição do Valor Total Atualizado do Contrato", styles["Subtitulo"]))
-    from _sumario_executivo import montar_dados_sumario_executivo
-    from _apresentacao_pc import NOTA_REFERENCIA, SALDO
-    quadros_pc_pdf = montar_dados_sumario_executivo(res).get("quadros_pc") or {}
-    if quadros_pc_pdf:
-        for titulo, chave_cab, chave_linhas in (
-            ("Execução realizada por ciclo", "execucao_cabecalho", "execucao"),
-            ("Remanescente - referências por ciclo", "referencia_cabecalho", "referencias"),
-        ):
-            registros = quadros_pc_pdf[chave_linhas]
-            if registros:
-                story.append(Paragraph(titulo, styles["Subtitulo"]))
-                story.append(tabela_dataframe_pdf(pd.DataFrame([
-                    [moeda(v) if isinstance(v, (int, float)) else v for v in linha]
-                    for linha in registros
-                ], columns=quadros_pc_pdf[chave_cab]), max_linhas=20))
-                story.append(Paragraph(
-                    quadros_pc_pdf["nota_execucao"] if chave_linhas == "execucao" else NOTA_REFERENCIA,
-                    styles["Texto"],
-                ))
-        story.append(Paragraph(
-            f"{SALDO}: {moeda(quadros_pc_pdf['saldo_final'])}", styles["Subtitulo"]
-        ))
-        story.append(tabela_dataframe_pdf(pd.DataFrame([
-            [moeda(v) if isinstance(v, (int, float)) else v for v in linha]
-            for linha in quadros_pc_pdf["composicao"]
-        ], columns=quadros_pc_pdf["composicao_cabecalho"]), max_linhas=10))
+    df_comp = res.get("df_composicao_valor_total")
+    if isinstance(df_comp, pd.DataFrame) and not df_comp.empty:
+        df_comp_pdf = df_comp.copy()
+        if "Valor" in df_comp_pdf.columns:
+            df_comp_pdf["Valor"] = df_comp_pdf["Valor"].apply(moeda)
+        keep_comp = [c for c in ["Componente", "Ciclo/Referência", "Valor", "Observação"] if c in df_comp_pdf.columns]
+        story.append(tabela_dataframe_pdf(df_comp_pdf[keep_comp], max_linhas=20))
     else:
-        df_comp = res.get("df_composicao_valor_total")
-        if isinstance(df_comp, pd.DataFrame) and not df_comp.empty:
-            df_comp_pdf = df_comp.copy()
-            if "Valor" in df_comp_pdf.columns:
-                df_comp_pdf["Valor"] = df_comp_pdf["Valor"].apply(moeda)
-            keep_comp = [c for c in ["Componente", "Ciclo/Referência", "Valor", "Observação"] if c in df_comp_pdf.columns]
-            story.append(tabela_dataframe_pdf(df_comp_pdf[keep_comp], max_linhas=20))
-        else:
-            story.append(tabela_pdf([
-                ["Componente", "Valor"],
-                ["Valor executado atualizado", moeda(res.get("valor_executado_atualizado", 0))],
-                ["Saldo remanescente atualizado", moeda(res.get("remanescente_reajustado", 0))],
-                ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)))],
-            ], header=True, col_widths=[10 * cm, 7 * cm]))
-            story.append(Paragraph(
-                "Aditivos e supressões registrados são apresentados em seção própria para controle e não são somados como parcela autônoma ao Valor Total Atualizado quando já refletidos na execução ou no saldo remanescente.",
-                styles["Texto"],
-            ))
+        story.append(tabela_pdf([
+            ["Componente", "Valor"],
+            ["Valor executado atualizado", moeda(res.get("valor_executado_atualizado", 0))],
+            ["Saldo remanescente atualizado", moeda(res.get("remanescente_reajustado", 0))],
+            ["Valor Total Atualizado do Contrato", moeda(res.get("valor_atualizado_contrato", res.get("valor_global_estoque", 0)))],
+        ], header=True, col_widths=[10 * cm, 7 * cm]))
+        story.append(Paragraph(
+            "Aditivos e supressões registrados são apresentados em seção própria para controle e não são somados como parcela autônoma ao Valor Total Atualizado quando já refletidos na execução ou no saldo remanescente.",
+            styles["Texto"],
+        ))
 
     df_ad = res.get("df_aditivos_executivo", res.get("df_aditivos"))
     if isinstance(df_ad, pd.DataFrame) and not df_ad.empty:
@@ -2027,15 +1984,8 @@ def gerar_minuta_apostilamento_docx(adm, res):
             document,
             "3.1. Para fins de consolidação contratual, a memória fiscal do Valor Total Atualizado foi organizada de forma evolutiva, demonstrando a execução por ciclo, os remanescentes intermediários, o saldo remanescente final e os aditivos/supressões computáveis, quando aplicáveis."
         )
-    from _sumario_executivo import montar_dados_sumario_executivo
-    quadros_pc_memoria = montar_dados_sumario_executivo(res).get("quadros_pc") or {}
-    linhas_mem = [] if quadros_pc_memoria else _linhas_quadro_memoria_fiscal(res)
-    if quadros_pc_memoria:
-        _docx_add_texto(
-            document,
-            "No método PC, as referências históricas por ciclo e o saldo remanescente final atualizado são apresentados separadamente na composição sintética, conforme suas grandezas canônicas.",
-        )
-    elif linhas_mem:
+    linhas_mem = _linhas_quadro_memoria_fiscal(res)
+    if linhas_mem:
         document.add_paragraph("Quadro 3 — Memória fiscal do Valor Total Atualizado")
         _docx_tabela_executiva(
             document,
@@ -2050,29 +2000,8 @@ def gerar_minuta_apostilamento_docx(adm, res):
     # 4. Composição sintética final
     _docx_add_titulo_secao(document, "4. Da composição sintética do Valor Total Atualizado")
     _docx_add_texto(document, "4.1. De forma sintética, o Valor Total Atualizado do Contrato pode ser compreendido pela soma das parcelas indicadas no Quadro 4.")
-    from _sumario_executivo import montar_dados_sumario_executivo
-    from _apresentacao_pc import SALDO, NOTA_REFERENCIA
-    quadros_pc_docx = montar_dados_sumario_executivo(res).get("quadros_pc") or {}
     linhas_comp = _linhas_quadro_composicao_sintetica(res)
-    if quadros_pc_docx:
-        for titulo, chave_cab, chave_linhas in (
-            ("Execução realizada por ciclo", "execucao_cabecalho", "execucao"),
-            ("Remanescente - referências por ciclo", "referencia_cabecalho", "referencias"),
-        ):
-            registros = quadros_pc_docx[chave_linhas]
-            if registros:
-                document.add_paragraph(titulo)
-                _docx_tabela_executiva(document, quadros_pc_docx[chave_cab], [
-                    [moeda(v) if isinstance(v, (int, float)) else v for v in linha]
-                    for linha in registros
-                ], total_last=chave_linhas == "execucao")
-                _docx_add_texto(document, quadros_pc_docx["nota_execucao"] if chave_linhas == "execucao" else NOTA_REFERENCIA)
-        _docx_add_texto(document, f"{SALDO}: {moeda(quadros_pc_docx['saldo_final'])}")
-        _docx_tabela_executiva(document, quadros_pc_docx["composicao_cabecalho"], [
-            [moeda(v) if isinstance(v, (int, float)) else v for v in linha]
-            for linha in quadros_pc_docx["composicao"]
-        ], total_last=True)
-    elif linhas_comp:
+    if linhas_comp:
         document.add_paragraph("Quadro 4 — Composição didática do Valor Total Atualizado")
         _docx_tabela_executiva(
             document,
@@ -2238,38 +2167,16 @@ with tab2:
             st.info("Tabela detalhada do retroativo estimado por itens/estoque não disponível nesta sessão.")
 
     st.markdown("### Composição do Valor Total Atualizado do Contrato")
-    from _sumario_executivo import montar_dados_sumario_executivo
-    from _apresentacao_pc import SALDO, NOTA_REFERENCIA
-    quadros_pc = montar_dados_sumario_executivo(res).get("quadros_pc") or {}
-    if quadros_pc:
-        for titulo, cab, linhas in [
-            ("Execução realizada por ciclo", "execucao_cabecalho", "execucao"),
-            ("Remanescente — referências por ciclo", "referencia_cabecalho", "referencias"),
-            ("Conciliação do VTA", "composicao_cabecalho", "composicao"),
-        ]:
-            if not quadros_pc[linhas]:
-                continue
-            st.markdown(f"#### {titulo}")
-            st.dataframe(pd.DataFrame([
-                [moeda(v) if isinstance(v, (int, float)) else v for v in linha]
-                for linha in quadros_pc[linhas]
-            ], columns=quadros_pc[cab]), hide_index=True, use_container_width=True)
-            if linhas == "execucao":
-                st.caption(quadros_pc["nota_execucao"])
-            if linhas == "referencias":
-                st.caption(NOTA_REFERENCIA)
-        st.metric(SALDO, moeda(quadros_pc["saldo_final"]))
+    st.caption("Composição considerada: execução atualizada por ciclo + saldo remanescente atualizado + aditivos/supressões computáveis, quando aplicáveis.")
+    df_comp_valor = res.get("df_composicao_valor_total")
+    if isinstance(df_comp_valor, pd.DataFrame) and not df_comp_valor.empty:
+        st.dataframe(
+            df_visual(df_comp_valor, moeda_cols=["Valor"]),
+            use_container_width=True,
+            hide_index=True,
+        )
     else:
-        st.caption("Composição considerada: execução atualizada por ciclo + saldo remanescente atualizado + aditivos/supressões computáveis, quando aplicáveis.")
-        df_comp_valor = res.get("df_composicao_valor_total")
-        if isinstance(df_comp_valor, pd.DataFrame) and not df_comp_valor.empty:
-            st.dataframe(
-                df_visual(df_comp_valor, moeda_cols=["Valor"]),
-                use_container_width=True,
-                hide_index=True,
-            )
-        else:
-            st.info("Composição do valor total não disponível nesta sessão.")
+        st.info("Composição do valor total não disponível nesta sessão.")
 
     st.markdown("### Financeiro por Ciclo")
     st.dataframe(

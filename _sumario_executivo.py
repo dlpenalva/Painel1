@@ -19,9 +19,6 @@ pedido por ciclo); quando ausentes, os campos saem como "Nao informado".
 """
 from __future__ import annotations
 
-from _apresentacao_pc import montar_quadros_pc, SALDO, NOTA_REFERENCIA
-
-
 import copy
 from datetime import date, datetime
 from io import BytesIO
@@ -128,10 +125,6 @@ def montar_dados_sumario_executivo(
         # Composicao canonica do VTA (motor de composicao), ja pronta para
         # formatacao. O renderer nao conhece nenhuma formula do VTA.
         "composicao_vta": _montar_composicao_vta(dados_op, sintese),
-        "quadros_pc": montar_quadros_pc(
-            dados_op.get("composicao_vta"), memoria_ciclo, sintese.get("vta"),
-            dados_op.get("referencias_remanescente_pc"),
-        ) if sintese.get("vta") is not None else {},
         "ciclos": ciclos_sec,
         "financeiro": financeiro_sec,
         "itens": _montar_secao_itens(memoria_ciclo, parametros),
@@ -1245,46 +1238,23 @@ def _bloco_sintese(historia, dados, estilos) -> None:
         historia.append(_paragrafo(
             "Composição do Valor Total Atualizado — VTA", estilos["subsecao"],
         ))
-        quadros = dados.get("quadros_pc") or {}
-        if quadros:
-            def tabela_pc_pdf(cabecalho, registros, larguras, **kwargs):
-                linhas_pc = [cabecalho] + [
-                    [formatar_moeda(v) if isinstance(v, (int, float)) else v for v in linha]
-                    for linha in registros
-                ]
-                historia.append(_tabela(linhas_pc, larguras, estilos, **kwargs))
-            historia.append(_paragrafo("Execução realizada por ciclo", estilos["subsecao"]))
-            n = len(quadros["execucao_cabecalho"])
-            tabela_pc_pdf(quadros["execucao_cabecalho"], quadros["execucao"],
-                          [largura / n] * n, linha_total=True)
-            historia.append(_paragrafo(quadros["nota_execucao"], estilos["normal"]))
-            if quadros["referencias"]:
-                historia.append(_paragrafo("Remanescente — referências por ciclo", estilos["subsecao"]))
-                tabela_pc_pdf(quadros["referencia_cabecalho"], quadros["referencias"],
-                              [largura * f for f in (.10, .30, .30, .30)])
-                historia.append(_paragrafo(NOTA_REFERENCIA, estilos["normal"]))
-            historia.append(_paragrafo(f"{SALDO}: {formatar_moeda(quadros['saldo_final'])}", estilos["subsecao"]))
-            tabela_pc_pdf(quadros["composicao_cabecalho"], quadros["composicao"],
-                          [largura * f for f in (.36, .20, .44)],
-                          alinhamentos_direita={1}, linha_total=True, linhas_destaque={3})
-        else:
-            linhas_composicao = [["Componente", "Valor"]]
-            destaque_potencial: set[int] = set()
-            for componente in composicao.get("componentes") or []:
-                if componente.get("potencial"):
-                    destaque_potencial.add(len(linhas_composicao))
-                linhas_composicao.append([
-                    componente.get("descricao"),
-                    formatar_moeda(componente.get("valor")),
-                ])
+        linhas_composicao = [["Componente", "Valor"]]
+        destaque_potencial: set[int] = set()
+        for componente in composicao.get("componentes") or []:
+            if componente.get("potencial"):
+                destaque_potencial.add(len(linhas_composicao))
             linhas_composicao.append([
-                ROTULO_TOTAL_VTA, formatar_moeda(composicao.get("total")),
+                componente.get("descricao"),
+                formatar_moeda(componente.get("valor")),
             ])
-            historia.append(_tabela(
-                linhas_composicao, [largura * 0.62, largura * 0.38], estilos,
-                alinhamentos_direita={1}, linha_total=True,
-                linhas_destaque=destaque_potencial,
-            ))
+        linhas_composicao.append([
+            ROTULO_TOTAL_VTA, formatar_moeda(composicao.get("total")),
+        ])
+        historia.append(_tabela(
+            linhas_composicao, [largura * 0.62, largura * 0.38], estilos,
+            alinhamentos_direita={1}, linha_total=True,
+            linhas_destaque=destaque_potencial,
+        ))
         # VTA-POT-1: a parcela potencial nunca aparece sem a frase que diz o
         # que ela e — e o que ela NAO e.
         apurado = composicao.get("retroativo_potencial_apurado")

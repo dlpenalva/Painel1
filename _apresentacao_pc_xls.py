@@ -1,5 +1,8 @@
-"""Rótulos e referências de saída PC; nenhuma fórmula econômica é alterada."""
-from _apresentacao_pc import NOTA_EXECUCAO, NOTA_POTENCIAL, SALDO
+"""Rótulos e referências da aba RESULTADOS; não altera fórmulas econômicas."""
+
+NOTA_EXECUCAO = "Já contém o reajuste/retroativo reconhecido incorporado à execução."
+NOTA_POTENCIAL = "Parcela prudencial sujeita à confirmação da área gestora."
+SALDO = "Saldo remanescente final atualizado"
 
 
 def valores_apresentacao_pc(ws):

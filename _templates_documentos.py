@@ -579,7 +579,6 @@ def _extrair_dados(leitura_ou_objeto: dict, identificacao: dict | None) -> dict:
         "ciclos_computados": ciclos_computados,
         "var_acumulada": sintese.get("variacao_acumulada"),
         "vta": sintese.get("vta"),
-        "quadros_pc": dados.get("quadros_pc") or {},
         "vta_previa": sintese.get("vta_previa"),
         "vta_execucao_atualizada": sintese.get("vta_execucao_atualizada"),
         "vta_saldo_remanescente_atualizado": sintese.get(
@@ -2119,30 +2118,6 @@ def _ta_retroativo_do_metodo(dados: dict) -> float | None:
     return None
 
 
-def _tabelas_pc_documento(doc: Document, dados: dict, *, detalhes=False) -> bool:
-    from _apresentacao_pc import SALDO, NOTA_REFERENCIA
-    quadros = dados.get("quadros_pc") or {}
-    if not quadros:
-        return False
-    def tabela(cabecalho, linhas, **kwargs):
-        _adicionar_tabela(doc, cabecalho, [
-            [formatar_moeda(v) if isinstance(v, (int, float)) else v for v in linha]
-            for linha in linhas
-        ], **kwargs)
-    if detalhes:
-        _titulo_quadro(doc, "Execução realizada por ciclo")
-        tabela(quadros["execucao_cabecalho"], quadros["execucao"])
-        doc.add_paragraph(quadros["nota_execucao"])
-        if quadros["referencias"]:
-            _titulo_quadro(doc, "Remanescente — referências por ciclo")
-            tabela(quadros["referencia_cabecalho"], quadros["referencias"])
-            doc.add_paragraph(NOTA_REFERENCIA)
-        p = doc.add_paragraph()
-        p.add_run(f"{SALDO}: {formatar_moeda(quadros['saldo_final'])}").bold = True
-    tabela(quadros["composicao_cabecalho"], quadros["composicao"], linhas_destaque={2})
-    return True
-
-
 def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
     """Composicao do VTA (Quadro 4), com as parcelas REAIS da cadeia canonica.
 
@@ -2172,27 +2147,26 @@ def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
             "ajustes contratuais aplicáveis, quando houver.")
 
     _titulo_quadro(doc, "Quadro 4 — Composição do Valor Total Atualizado do Contrato")
-    if not _tabelas_pc_documento(doc, dados, detalhes=True):
-        linhas: list[list[str]] = []
-        destaque_potencial: set[int] = set()
-        for i, (desc, valor) in enumerate(_composicao_didatica_vta(dados)):
-            rotulo = desc
-            if desc == ROTULO_PARCELA_POTENCIAL:
-                # Nome documental do Termo: caixa baixa, sem sufixo em caixa alta.
-                rotulo = ROTULO_POTENCIAL_TERMO
-                destaque_potencial.add(i)
-            linhas.append([
-                _LETRAS[i] if i < len(_LETRAS) else str(i + 1),
-                rotulo,
-                formatar_moeda(valor) if valor is not None else "",
-            ])
+    linhas: list[list[str]] = []
+    destaque_potencial: set[int] = set()
+    for i, (desc, valor) in enumerate(_composicao_didatica_vta(dados)):
+        rotulo = desc
+        if desc == ROTULO_PARCELA_POTENCIAL:
+            # Nome documental do Termo: caixa baixa, sem sufixo em caixa alta.
+            rotulo = ROTULO_POTENCIAL_TERMO
+            destaque_potencial.add(i)
         linhas.append([
-            "Total",
-            "Valor Total Atualizado do Contrato",
-            _vta_texto_doc(dados),
+            _LETRAS[i] if i < len(_LETRAS) else str(i + 1),
+            rotulo,
+            formatar_moeda(valor) if valor is not None else "",
         ])
-        _adicionar_tabela(doc, ["Ref.", "Descrição", "Valor"], linhas,
-                          linhas_destaque=destaque_potencial)
+    linhas.append([
+        "Total",
+        "Valor Total Atualizado do Contrato",
+        _vta_texto_doc(dados),
+    ])
+    _adicionar_tabela(doc, ["Ref.", "Descrição", "Valor"], linhas,
+                      linhas_destaque=destaque_potencial)
 
     if not dados.get("_modo_branco"):
         incorporado, _apurado, _dif = _ta_potenciais(dados)
@@ -2861,14 +2835,28 @@ def _ds_secao3_resultado(doc: Document, dados: dict, cm: dict) -> None:
             ["Ciclo", "Valor original", "Valor atualizado", "Retroativo reconhecido"],
             linhas_pc,
         )
-        # O quadro final compartilha as mesmas três parcelas da web, do Termo
-        # e do Sumário. A função apenas formata valores já conciliados.
-        if not _tabelas_pc_documento(doc, dados):
-            linhas_resultado = [[
-                "Valor Total Atualizado do Contrato",
-                vta or PREENCHER_TAG.format("Valor Total Atualizado do Contrato"),
-            ]]
-            _adicionar_tabela(doc, ["Resultado", "Valor"], linhas_resultado)
+        # VTA-POT-1: no metodo PC o quadro de resultado mostra a parcela
+        # POTENCIAL separada, com shading suave, e so depois o VTA — que
+        # continua aparecendo UMA unica vez.
+        linhas_resultado: list[list[str]] = []
+        destaque_resultado: set[int] = set()
+        if dados.get("vta_tem_parcela_potencial") and potencial_vta:
+            destaque_resultado.add(len(linhas_resultado))
+            linhas_resultado.append([
+                ROTULO_PARCELA_POTENCIAL, formatar_moeda(potencial_vta),
+            ])
+        linhas_resultado.append([
+            "Valor Total Atualizado do Contrato",
+            vta or PREENCHER_TAG.format("Valor Total Atualizado do Contrato"),
+        ])
+        _adicionar_tabela(
+            doc,
+            ["Resultado", "Valor"],
+            linhas_resultado,
+            destacar_placeholders=True,
+            destacar_placeholders_embutidos=True,
+            linhas_destaque=destaque_resultado,
+        )
     else:
         _adicionar_tabela(
             doc, ["Resultado", "Valor"], linhas,
@@ -3409,9 +3397,6 @@ def _ds_par6_quadro3(doc: Document, dados: dict, cm: dict) -> None:
         ], destacar_placeholders=True)
         doc.add_paragraph()
         return
-    if _tabelas_pc_documento(doc, dados):
-        doc.add_paragraph()
-        return
     linhas: list[list[str]] = []
     for desc, valor in _composicao_didatica_vta(dados):
         linhas.append([desc, formatar_moeda(valor) if valor is not None else ""])
@@ -3432,9 +3417,6 @@ def _ds_par7_composicao(doc: Document, dados: dict) -> None:
             ["Valor Total Atualizado Estimado do Contrato",
              "[PREENCHER: Valor Total Atualizado]"],
         ], destacar_placeholders=True)
-        doc.add_paragraph()
-        return
-    if _tabelas_pc_documento(doc, dados):
         doc.add_paragraph()
         return
     componentes = _composicao_didatica_vta(dados)

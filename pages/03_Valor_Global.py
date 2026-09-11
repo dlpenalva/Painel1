@@ -5280,31 +5280,9 @@ def render_resultado_consolidado(resultado, diagnostico):
                 for detalhe in detalhes:
                     st.markdown(f"- {detalhe}")
 
-    from _apresentacao_pc import montar_quadros_pc, SALDO, NOTA_REFERENCIA
-    quadros_pc = montar_quadros_pc(
-        resultado.get("composicao_vta"), resultado.get("memoria_por_ciclo"),
-        consolidado.get("vta"),
-        ((resultado.get("objeto_processo") or {}).get("dados_operacionais") or {}).get("referencias_remanescente_pc"),
-    ) if consolidado.get("vta") is not None else {}
-    if quadros_pc:
-        def tabela_pc(cabecalho, linhas):
-            st.dataframe(pd.DataFrame([
-                [_moeda_resultado(v) if isinstance(v, (int, float)) else v for v in linha]
-                for linha in linhas
-            ], columns=cabecalho), hide_index=True, use_container_width=True)
-        st.markdown("### EXECUÇÃO REALIZADA POR CICLO")
-        tabela_pc(quadros_pc["execucao_cabecalho"], quadros_pc["execucao"])
-        st.caption(quadros_pc["nota_execucao"])
-        if quadros_pc["referencias"]:
-            st.markdown("### REMANESCENTE — REFERÊNCIAS POR CICLO")
-            tabela_pc(quadros_pc["referencia_cabecalho"], quadros_pc["referencias"])
-            st.caption(NOTA_REFERENCIA)
-        st.metric(SALDO, _moeda_resultado(quadros_pc["saldo_final"]))
     st.markdown("### COMPOSIÇÃO DO VTA")
     composicao = consolidado.get("composicao_vta") or {}
-    if quadros_pc:
-        tabela_pc(quadros_pc["composicao_cabecalho"], quadros_pc["composicao"])
-    elif composicao.get("exibivel") and composicao.get("linhas"):
+    if composicao.get("exibivel") and composicao.get("linhas"):
         rotulos_origem = {"posicao_fisica": "quantitativo restante"}
         linhas_ui = []
         for linha in composicao["linhas"]:
