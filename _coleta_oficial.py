@@ -825,6 +825,8 @@ def obter_coleta_oficial_bytes() -> bytes:
     _garantir_orientacao_novo_item_por_aditivo(wb)
     _validar_estrutura_itens_pc(wb)
     _garantir_apresentacao_retroativos_e_aditivos(wb)
+    from _apresentacao_pc_xls import garantir_apresentacao_pc
+    garantir_apresentacao_pc(wb)
     _garantir_colunas_tecnicas_itens_pc_ocultas(wb)
     _validar_validacoes_aditivos_criticas(wb)
 

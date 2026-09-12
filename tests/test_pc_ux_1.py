@@ -279,7 +279,7 @@ def test_pipeline_real_entrega_os_tres_blocos_pc_ux_sem_cabecalho_legado():
 def test_i_j_resultados_preserva_formulas_e_vta():
     ws = load_workbook(TEMPLATE, data_only=False)["RESULTADOS"]
     assert ws["A9"].value == "1. COMO O VTA FOI CALCULADO"
-    assert ws["A15"].value == "2. EXECUÇÃO E RETROATIVO POR CICLO"
+    assert "2. EXECUÇÃO RECONHECIDA EM PCs POR CICLO" in ws["A15"].value
     assert ws["B22"].value == '=IF(COUNT(B16:B20)=0,"",ROUND(SUM(B16:B20),2))'
     assert ws["B38"].value == '=IF(OR(B36="",B37=""),"",ROUND(B37-B36,2))'
     assert ws["B86"].value == '=IF(VTA_FINAL="","",VTA_FINAL)'
@@ -404,7 +404,8 @@ def test_resultados_rotulos_sao_condicionais_aos_tres_metodos():
         assert formula.startswith("=IF(")
         for texto in textos:
             assert texto in formula
-    assert ws["D15"].value == "Diferença"
+    assert "Reajuste incorporado" in ws["D15"].value
+    assert "Diferença" in ws["D15"].value
 
 
 # --------------------------------------------------------------- A-01 / A-02
