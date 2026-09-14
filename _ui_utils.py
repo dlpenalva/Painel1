@@ -3,6 +3,7 @@ import html as html_lib
 import re
 from pathlib import Path
 
+import pandas as pd
 import streamlit as st
 
 from _versao import atualizado_em
@@ -242,6 +243,50 @@ def render_alerta_icti_ipeadata():
         """,
         unsafe_allow_html=True,
     )
+
+
+def render_diagnostico_indice(diagnostico, ciclo_label="C1"):
+    """Apresenta o estado da consulta sem transformar falha técnica em mês ausente."""
+    from _indice_utils import ESTADO_COMPETENCIAS_AUSENTES, ESTADO_FONTE_INDISPONIVEL
+
+    estado = (diagnostico or {}).get("estado")
+    fonte = (diagnostico or {}).get("fonte") or "oficial"
+    if estado == ESTADO_FONTE_INDISPONIVEL:
+        st.error(
+            f"Não foi possível acessar a fonte oficial do índice ({fonte}) neste momento. "
+            "O cálculo não foi realizado. Tente novamente em alguns minutos."
+        )
+        return
+
+    if estado != ESTADO_COMPETENCIAS_AUSENTES:
+        return
+
+    st.error(
+        "Não foi possível concluir a apuração porque a fonte consultada não possui "
+        f"todas as competências necessárias para este intervalo no {ciclo_label}."
+    )
+    faltantes = (diagnostico or {}).get("faltantes") or []
+    esperadas = (diagnostico or {}).get("esperadas") or []
+    dados = []
+    if faltantes:
+        dados.append({"Item": "Competências faltantes", "Competências": ", ".join(faltantes)})
+    if esperadas:
+        intervalo = f"{esperadas[0]} a {esperadas[-1]}"
+        dados.append({"Item": "Intervalo esperado", "Competências": intervalo})
+    if dados:
+        st.dataframe(pd.DataFrame(dados), use_container_width=True, hide_index=True)
+
+
+def render_aviso_fallback_indice(diagnostico):
+    """Informa discretamente o uso do fallback local válido do IST."""
+    from _indice_utils import ESTADO_FALLBACK_LOCAL
+
+    if (diagnostico or {}).get("estado") == ESTADO_FALLBACK_LOCAL:
+        st.caption(
+            "Fonte oficial da Anatel indisponível neste momento; cálculo realizado "
+            "com a base local ist.csv."
+        )
+
 
 def render_indice_contrato_selectbox(key=None, index=0, options=None):
     """Renderiza o campo de índice com destaque visual consistente entre os fluxos."""
