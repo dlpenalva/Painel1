@@ -1,4 +1,6 @@
 import time
+import math
+from pathlib import Path
 
 from dateutil.relativedelta import relativedelta
 
@@ -6,7 +8,12 @@ import pandas as pd
 import requests
 
 
+# Identidade historica da serie usada pelo projeto e codigo atualmente exposto
+# pelo catalogo OData. Em 14/09/2026, o Ipeadata deixou DIMAC_ICTI2 sem valores
+# e passou a publicar a mesma serie mensal (% a.m.) como DIMAC12_ICTI2.
 ICTI_SERCODIGO = "DIMAC_ICTI2"
+ICTI_SERCODIGO_IPEADATA = "DIMAC12_ICTI2"
+ICTI_CSV_PADRAO = Path(__file__).resolve().with_name("icti.csv")
 ICTI_API_BASES = [
     "https://www.ipeadata.gov.br/api/odata4",
     "http://www.ipeadata.gov.br/api/odata4",
@@ -40,10 +47,11 @@ class CompetenciasIndiceAusentes(RuntimeError):
 class FonteIndiceIndisponivel(RuntimeError):
     """A fonte oficial não pôde ser tecnicamente consultada."""
 
-    def __init__(self, fonte, detalhe=None):
+    def __init__(self, fonte, detalhe=None, contexto=None):
         super().__init__(f"Fonte {fonte} indisponível")
         self.fonte = fonte
         self.detalhe = detalhe
+        self.contexto = dict(contexto or {})
 
 
 def competencias_mensais(data_inicio, data_fim):
@@ -93,6 +101,7 @@ def _executar_consulta_diagnosticada(funcao, *, fonte, esperadas):
             esperadas,
             detalhe=repr(exc.detalhe),
         )
+        diagnostico.update(exc.contexto)
         return {"resultado": None, "diagnostico": diagnostico}
     except Exception as exc:
         diagnostico = _diagnostico_indice(
@@ -119,6 +128,15 @@ def _executar_consulta_diagnosticada(funcao, *, fonte, esperadas):
         else ESTADO_INDICE_OK
     )
     diagnostico = _diagnostico_indice(estado, fonte, esperadas, encontradas)
+    for chave in (
+        "fonte",
+        "fonte_original",
+        "sercodigo",
+        "sercodigo_ipeadata",
+        "ultima_competencia_local",
+    ):
+        if resultado.get(chave) is not None:
+            diagnostico[chave] = resultado[chave]
     return {"resultado": resultado, "diagnostico": diagnostico}
 
 
@@ -399,15 +417,99 @@ def _ipeadata_get_json(endpoint, timeout=20):
     raise RuntimeError(f"Não foi possível consultar o Ipeadata. Último erro: {ultimo_erro}")
 
 
+def _finalizar_serie_icti(df, *, origem):
+    """Valida e completa uma serie ICTI sem estimar ou deduplicar dados."""
+    obrigatorias = {"data", "taxa_mensal_percentual"}
+    if not isinstance(df, pd.DataFrame) or not obrigatorias.issubset(df.columns):
+        raise ValueError(f"A série ICTI {origem} possui estrutura inválida.")
+    if df.empty:
+        raise ValueError(f"A série ICTI {origem} está vazia.")
+
+    serie = df.copy()
+    # O OData mistura offsets -02:00 e -03:00 ao longo da serie historica.
+    # Normalizar em UTC evita que pandas trate essa variacao de fuso como data
+    # invalida; a competencia mensal continua sendo o mesmo primeiro dia.
+    datas = pd.to_datetime(serie["data"], errors="coerce", utc=True).dt.tz_convert(None)
+    valores = pd.to_numeric(serie["taxa_mensal_percentual"], errors="coerce")
+    if datas.isna().any() or valores.isna().any():
+        raise ValueError(f"A série ICTI {origem} contém data ou taxa inválida.")
+
+    serie["data"] = datas.apply(
+        lambda data: pd.Timestamp(year=int(data.year), month=int(data.month), day=1).normalize()
+    )
+    serie["taxa_mensal_percentual"] = valores.astype(float)
+    if not serie["taxa_mensal_percentual"].map(math.isfinite).all():
+        raise ValueError(f"A série ICTI {origem} contém taxa não finita.")
+    duplicadas = serie.loc[serie["data"].duplicated(keep=False), "data"]
+    if not duplicadas.empty:
+        competencia = duplicadas.iloc[0].strftime("%m/%Y")
+        raise ValueError(f"A série ICTI {origem} contém competência duplicada: {competencia}.")
+    if not serie["data"].is_monotonic_increasing:
+        raise ValueError(f"A série ICTI {origem} não está em ordem cronológica.")
+
+    serie = serie.reset_index(drop=True)
+    serie["mes_ano"] = serie["data"].apply(
+        lambda data: f"{MESES_PT_ABREV[data.month]}/{str(data.year)[-2:]}"
+    )
+    serie["valor"] = serie["taxa_mensal_percentual"]
+    serie["fator_mensal"] = 1 + serie["taxa_mensal_percentual"] / 100
+    serie["indice_nivel_sintetico"] = 100 * serie["fator_mensal"].cumprod()
+    return serie
+
+
+def carregar_icti_local(caminho=ICTI_CSV_PADRAO):
+    """Carrega a copia local oficial do ICTI (nao e uma serie independente)."""
+    df = pd.read_csv(
+        caminho,
+        sep=";",
+        dtype=str,
+        keep_default_na=False,
+        encoding="utf-8-sig",
+    )
+    df.columns = [str(coluna).strip().lower() for coluna in df.columns]
+    if set(df.columns) != {"competencia", "taxa_mensal_percentual"}:
+        raise ValueError(
+            "O icti.csv deve conter somente COMPETENCIA;TAXA_MENSAL_PERCENTUAL."
+        )
+    competencia = df["competencia"].astype(str).str.strip()
+    if not competencia.str.fullmatch(r"\d{4}-(0[1-9]|1[0-2])").all():
+        raise ValueError("O icti.csv contém competência inválida; use AAAA-MM.")
+    taxa_texto = df["taxa_mensal_percentual"].astype(str).str.strip()
+    if not taxa_texto.str.fullmatch(r"[+-]?\d+(?:[.,]\d+)?").all():
+        raise ValueError("O icti.csv contém taxa mensal não numérica.")
+    bruto = pd.DataFrame(
+        {
+            "data": pd.to_datetime(competencia, format="%Y-%m", errors="coerce"),
+            # float() preserva a mesma conversao binaria usada pelo JSON do
+            # requests. pd.to_numeric pode arredondar os ultimos digitos de
+            # decimais longos e quebrar a igualdade valor a valor do espelho.
+            "taxa_mensal_percentual": taxa_texto.map(
+                lambda texto: float(texto.replace(",", "."))
+            ),
+        }
+    )
+    serie = _finalizar_serie_icti(bruto, origem="local")
+    serie.attrs.update(
+        fonte="local",
+        fonte_original="Ipeadata/Ipea",
+        serie=ICTI_SERCODIGO,
+        sercodigo_ipeadata=ICTI_SERCODIGO_IPEADATA,
+    )
+    return serie
+
+
 def carregar_icti_ipeadata(timeout=20):
     """Carrega o ICTI mensal diretamente do Ipeadata.
 
-    A série DIMAC_ICTI2 é retornada pelo Ipeadata como taxa de variação mensal (% a.m.).
+    A identidade historica DIMAC_ICTI2 e atualmente exposta pelo Ipeadata sob o
+    codigo DIMAC12_ICTI2, como taxa de variacao mensal (% a.m.).
     Para uso no cl8us, é criada também uma série de nível sintética, com base 100 acumulada
     a partir da primeira competência disponível. Isso permite exibir índice inicial/final,
     mas o cálculo principal permanece o produtório das taxas mensais.
     """
-    dados = _ipeadata_get_json(f"ValoresSerie(SERCODIGO='{ICTI_SERCODIGO}')", timeout=timeout)
+    dados = _ipeadata_get_json(
+        f"ValoresSerie(SERCODIGO='{ICTI_SERCODIGO_IPEADATA}')", timeout=timeout
+    )
     registros = dados.get("value", []) if isinstance(dados, dict) else []
     if not registros:
         raise RuntimeError("A API do Ipeadata retornou a série ICTI vazia.")
@@ -419,29 +521,42 @@ def carregar_icti_ipeadata(timeout=20):
         data = pd.to_datetime(data_raw, errors="coerce")
         valor = pd.to_numeric(valor_raw, errors="coerce")
         if pd.isna(data) or pd.isna(valor):
-            continue
-        data = pd.Timestamp(year=int(data.year), month=int(data.month), day=1).normalize()
+            raise ValueError("A API do Ipeadata retornou registro ICTI inválido.")
         linhas.append({
             "data": data,
-            "mes_ano": f"{MESES_PT_ABREV[data.month]}/{str(data.year)[-2:]}",
             "taxa_mensal_percentual": float(valor),
-            "valor": float(valor),
         })
 
     df = pd.DataFrame(linhas)
-    if df.empty:
-        raise RuntimeError("Nenhuma competência válida do ICTI foi identificada no Ipeadata.")
-
-    df = df.sort_values("data").drop_duplicates(subset=["data"], keep="last").reset_index(drop=True)
-
-    nivel_atual = 100.0
-    niveis = []
-    for _, row in df.iterrows():
-        nivel_atual = nivel_atual * (1 + float(row["taxa_mensal_percentual"]) / 100)
-        niveis.append(nivel_atual)
-    df["indice_nivel_sintetico"] = niveis
-    df["fator_mensal"] = 1 + df["taxa_mensal_percentual"] / 100
+    df = _finalizar_serie_icti(df, origem="do Ipeadata")
+    df.attrs.update(
+        fonte="ipeadata",
+        fonte_original="Ipeadata/Ipea",
+        serie=ICTI_SERCODIGO,
+        sercodigo_ipeadata=ICTI_SERCODIGO_IPEADATA,
+        fonte_oficial_indisponivel=False,
+    )
     return df
+
+
+def carregar_icti_atual(caminho=ICTI_CSV_PADRAO, *, timeout=20):
+    """Serie ICTI vigente: Ipeadata oficial e, em falha tecnica, copia local."""
+    try:
+        return carregar_icti_ipeadata(timeout=timeout), "ipeadata"
+    except Exception as erro_ipeadata:
+        try:
+            df = carregar_icti_local(caminho)
+        except Exception as erro_local:
+            raise FonteIndiceIndisponivel(
+                "Ipeadata",
+                {
+                    "erro_ipeadata": repr(erro_ipeadata),
+                    "erro_fallback_local": repr(erro_local),
+                },
+            ) from erro_local
+        df.attrs["fonte_oficial_indisponivel"] = True
+        df.attrs["erro_fonte_oficial"] = repr(erro_ipeadata)
+        return df, "local"
 
 
 def obter_ultima_competencia_icti_ipeadata(timeout=20):
@@ -455,11 +570,38 @@ def obter_ultima_competencia_icti_ipeadata(timeout=20):
         "descricao": f"{MESES_PT_EXTENSO[data.month]}/{data.year}",
         "taxa_mensal_percentual": float(ultima["taxa_mensal_percentual"]),
         "sercodigo": ICTI_SERCODIGO,
+        "sercodigo_ipeadata": ICTI_SERCODIGO_IPEADATA,
         "serie": ICTI_SERCODIGO,
+        "fonte": "ipeadata",
     }
 
 
-def calcular_icti_ipeadata(data_inicio, data_fim=None, timeout=20, *, _diagnostico=False):
+def obter_ultima_competencia_icti_atual(caminho=ICTI_CSV_PADRAO, timeout=20):
+    """Ultima competencia da mesma serie vigente que alimenta o calculo."""
+    df, fonte = carregar_icti_atual(caminho, timeout=timeout)
+    ultima = df.iloc[-1]
+    data = pd.Timestamp(ultima["data"])
+    return {
+        "data": data,
+        "mes_ano": ultima["mes_ano"],
+        "descricao": f"{MESES_PT_EXTENSO[data.month]}/{data.year}",
+        "taxa_mensal_percentual": float(ultima["taxa_mensal_percentual"]),
+        "sercodigo": ICTI_SERCODIGO,
+        "sercodigo_ipeadata": ICTI_SERCODIGO_IPEADATA,
+        "serie": ICTI_SERCODIGO,
+        "fonte": fonte,
+        "fonte_original": "Ipeadata/Ipea",
+    }
+
+
+def calcular_icti_ipeadata(
+    data_inicio,
+    data_fim=None,
+    timeout=20,
+    *,
+    caminho=ICTI_CSV_PADRAO,
+    _diagnostico=False,
+):
     """Calcula ICTI automaticamente via Ipeadata.
 
     Regra transparente adotada para o cl8us:
@@ -489,7 +631,7 @@ def calcular_icti_ipeadata(data_inicio, data_fim=None, timeout=20, *, _diagnosti
     if competencia_final < competencia_proposta:
         return None
 
-    df = carregar_icti_ipeadata(timeout=timeout)
+    df, fonte = carregar_icti_atual(caminho, timeout=timeout)
     datas = set(df["data"])
 
     esperadas = competencias_mensais(competencia_proposta, competencia_final)
@@ -500,6 +642,23 @@ def calcular_icti_ipeadata(data_inicio, data_fim=None, timeout=20, *, _diagnosti
 
     if faltantes:
         if _diagnostico:
+            if fonte == "local" and df.attrs.get("fonte_oficial_indisponivel"):
+                ultima_local = pd.Timestamp(df["data"].max()).strftime("%m/%Y")
+                raise FonteIndiceIndisponivel(
+                    "Ipeadata",
+                    {
+                        "erro_ipeadata": df.attrs.get("erro_fonte_oficial"),
+                        "fallback_local_faltantes": faltantes,
+                    },
+                    contexto={
+                        "fallback_local_insuficiente": True,
+                        "ultima_competencia_local": ultima_local,
+                        "periodo_necessario": (
+                            f"{competencia_proposta.strftime('%m/%Y')} a "
+                            f"{competencia_final.strftime('%m/%Y')}"
+                        ),
+                    },
+                )
             raise CompetenciasIndiceAusentes(faltantes, encontradas)
         return None
 
@@ -534,7 +693,14 @@ def calcular_icti_ipeadata(data_inicio, data_fim=None, timeout=20, *, _diagnosti
         "d_final_icti": competencia_final,
         "metodo": "ICTI/Ipeadata: produtório das taxas mensais; índice-base = mês anterior à proposta/âncora",
         "dados": dados,
+        "fonte": fonte,
+        "fonte_original": "Ipeadata/Ipea",
+        "fonte_oficial_indisponivel": bool(df.attrs.get("fonte_oficial_indisponivel")),
+        "ultima_competencia_local": (
+            pd.Timestamp(df["data"].max()).strftime("%m/%Y") if fonte == "local" else None
+        ),
         "sercodigo": ICTI_SERCODIGO,
+        "sercodigo_ipeadata": ICTI_SERCODIGO_IPEADATA,
         "serie": ICTI_SERCODIGO,
     }
 
@@ -560,12 +726,18 @@ def consultar_sgs_com_diagnostico(serie_codigo, data_inicio, data_fim, timeout=1
     )
 
 
-def consultar_icti_com_diagnostico(data_inicio, data_fim=None, timeout=20):
+def consultar_icti_com_diagnostico(
+    data_inicio, data_fim=None, timeout=20, *, caminho=ICTI_CSV_PADRAO
+):
     final = pd.Timestamp(data_inicio) + relativedelta(months=11) if data_fim is None else data_fim
     esperadas = competencias_mensais(data_inicio, final)
     return _executar_consulta_diagnosticada(
         lambda: calcular_icti_ipeadata(
-            data_inicio, data_fim, timeout=timeout, _diagnostico=True
+            data_inicio,
+            data_fim,
+            timeout=timeout,
+            caminho=caminho,
+            _diagnostico=True,
         ),
         fonte="Ipeadata",
         esperadas=esperadas,

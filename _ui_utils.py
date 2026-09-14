@@ -195,8 +195,8 @@ def render_alerta_ist_local():
 
 @st.cache_data(ttl=60 * 60, show_spinner=False)
 def _obter_ultima_competencia_icti_cache():
-    from _indice_utils import obter_ultima_competencia_icti_ipeadata
-    return obter_ultima_competencia_icti_ipeadata(timeout=15)
+    from _indice_utils import obter_ultima_competencia_icti_atual
+    return obter_ultima_competencia_icti_atual(timeout=15)
 
 
 @st.cache_data(ttl=60 * 60, show_spinner=False)
@@ -219,14 +219,22 @@ def _texto_ultima_competencia_sgs(serie_codigo):
 
 
 def render_alerta_icti_ipeadata():
-    """Mostra alerta discreto sobre a última competência ICTI disponível no Ipeadata."""
+    """Mostra a ultima competencia da mesma fonte ICTI vigente no calculo."""
     try:
         ultima = _obter_ultima_competencia_icti_cache()
-        texto = (
-            f"ICTI/Ipeadata: última competência disponível: <strong>{ultima['descricao']}</strong> "
-            f"— série <strong>{ultima.get('serie') or ultima.get('sercodigo') or 'DIMAC_ICTI2'}</strong>. "
-            "O cálculo usa a competência do mês anterior como índice-base e acumula as taxas mensais do período."
-        )
+        if ultima.get("fonte") == "local":
+            texto = (
+                "ICTI/base local oficial: última competência disponível: "
+                f"<strong>{ultima['descricao']}</strong> — série "
+                f"<strong>{ultima.get('serie') or 'DIMAC_ICTI2'}</strong>. "
+                "Fonte oficial do Ipeadata indisponível neste momento."
+            )
+        else:
+            texto = (
+                f"ICTI/Ipeadata: última competência disponível: <strong>{ultima['descricao']}</strong> "
+                f"— série <strong>{ultima.get('serie') or ultima.get('sercodigo') or 'DIMAC_ICTI2'}</strong>. "
+                "O cálculo usa a competência do mês anterior como índice-base e acumula as taxas mensais do período."
+            )
     except Exception:
         texto = (
             "ICTI/Ipeadata: não foi possível consultar a última competência neste momento. "
@@ -252,10 +260,23 @@ def render_diagnostico_indice(diagnostico, ciclo_label="C1"):
     estado = (diagnostico or {}).get("estado")
     fonte = (diagnostico or {}).get("fonte") or "oficial"
     if estado == ESTADO_FONTE_INDISPONIVEL:
-        st.error(
-            f"Não foi possível acessar a fonte oficial do índice ({fonte}) neste momento. "
-            "O cálculo não foi realizado. Tente novamente em alguns minutos."
-        )
+        if (diagnostico or {}).get("fallback_local_insuficiente"):
+            mensagem = (
+                "Não foi possível acessar o Ipeadata e a cópia local do ICTI não "
+                "alcança todas as competências necessárias para este cálculo."
+            )
+            ultima = (diagnostico or {}).get("ultima_competencia_local")
+            periodo = (diagnostico or {}).get("periodo_necessario")
+            if ultima:
+                mensagem += f" Última competência local disponível: {ultima}."
+            if periodo:
+                mensagem += f" Período necessário: {periodo}."
+            st.error(mensagem)
+        else:
+            st.error(
+                f"Não foi possível acessar a fonte oficial do índice ({fonte}) neste momento. "
+                "O cálculo não foi realizado. Tente novamente em alguns minutos."
+            )
         return
 
     if estado != ESTADO_COMPETENCIAS_AUSENTES:
@@ -278,14 +299,22 @@ def render_diagnostico_indice(diagnostico, ciclo_label="C1"):
 
 
 def render_aviso_fallback_indice(diagnostico):
-    """Informa discretamente o uso do fallback local válido do IST."""
+    """Informa discretamente o uso de um fallback local oficial valido."""
     from _indice_utils import ESTADO_FALLBACK_LOCAL
 
     if (diagnostico or {}).get("estado") == ESTADO_FALLBACK_LOCAL:
-        st.caption(
-            "Fonte oficial da Anatel indisponível neste momento; cálculo realizado "
-            "com a base local ist.csv."
-        )
+        if (diagnostico or {}).get("sercodigo") == "DIMAC_ICTI2":
+            ultima = (diagnostico or {}).get("ultima_competencia_local") or "não identificada"
+            st.caption(
+                "Fonte oficial do Ipeadata indisponível neste momento. O cálculo foi "
+                "realizado com a última cópia local válida da série oficial ICTI, "
+                f"atualizada até {ultima}."
+            )
+        else:
+            st.caption(
+                "Fonte oficial da Anatel indisponível neste momento; cálculo realizado "
+                "com a base local ist.csv."
+            )
 
 
 def render_indice_contrato_selectbox(key=None, index=0, options=None):
