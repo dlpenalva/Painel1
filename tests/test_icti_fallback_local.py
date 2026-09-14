@@ -5,6 +5,7 @@ import pytest
 import requests
 
 import _indice_utils as iu
+from _memoria_calculo import normalizar_memoria_calculo
 
 
 ANCORA = date(2025, 7, 25)
@@ -60,6 +61,34 @@ def test_b_ipeadata_indisponivel_local_completo_e_identico(monkeypatch, tmp_path
     pd.testing.assert_frame_equal(local["resultado"]["dados"], online["resultado"]["dados"])
 
 
+def test_memoria_persistida_distingue_online_e_fallback(monkeypatch, tmp_path):
+    serie = _serie()
+    caminho = _csv(tmp_path / "icti.csv", serie)
+    monkeypatch.setattr(iu, "carregar_icti_ipeadata", lambda **kwargs: serie)
+    online = iu.calcular_icti_ipeadata(ANCORA, FINAL, caminho=caminho)
+    memoria_online = normalizar_memoria_calculo(
+        online, 1 + online["variacao"], online["variacao"]
+    )[-1]["metodo_fonte"]
+
+    monkeypatch.setattr(
+        iu,
+        "carregar_icti_ipeadata",
+        lambda **kwargs: (_ for _ in ()).throw(requests.Timeout("offline")),
+    )
+    fallback = iu.calcular_icti_ipeadata(ANCORA, FINAL, caminho=caminho)
+    memoria_fallback = normalizar_memoria_calculo(
+        fallback, 1 + fallback["variacao"], fallback["variacao"]
+    )[-1]["metodo_fonte"]
+
+    assert memoria_online == (
+        "ICTI/Ipeadata [DIMAC12_ICTI2; identidade histórica DIMAC_ICTI2]"
+    )
+    assert "cópia local" in memoria_fallback
+    assert "DIMAC12_ICTI2" in memoria_fallback
+    assert "DIMAC_ICTI2" in memoria_fallback
+    assert fallback["variacao"] == online["variacao"]
+
+
 def test_espelho_local_preserva_decimal_longo_valor_a_valor(monkeypatch, tmp_path):
     bruto = pd.DataFrame(
         {
@@ -87,6 +116,22 @@ def test_c_ipeadata_indisponivel_local_insuficiente_bloqueia(monkeypatch, tmp_pa
     assert consulta["diagnostico"]["fallback_local_insuficiente"] is True
     assert consulta["diagnostico"]["ultima_competencia_local"] == "05/2026"
     assert consulta["diagnostico"]["faltantes"] == []
+
+
+def test_falha_https_runtime_usa_copia_local_sem_tentar_http(monkeypatch, tmp_path):
+    caminho = _csv(tmp_path / "icti.csv", _serie())
+    urls = []
+
+    def falhar_https(url, **kwargs):
+        urls.append(url)
+        raise requests.Timeout("offline")
+
+    monkeypatch.setattr(iu.requests, "get", falhar_https)
+    consulta = iu.consultar_icti_com_diagnostico(ANCORA, FINAL, caminho=caminho)
+    assert consulta["diagnostico"]["estado"] == iu.ESTADO_FALLBACK_LOCAL
+    assert consulta["resultado"]["fonte"] == "local"
+    assert len(urls) == 1
+    assert urls[0].startswith("https://www.ipeadata.gov.br/")
 
 
 def test_ui_local_insuficiente_informa_limite_e_periodo(monkeypatch):

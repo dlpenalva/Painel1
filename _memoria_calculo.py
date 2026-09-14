@@ -77,8 +77,31 @@ def normalizar_memoria_calculo(
         return None
     colunas = [str(c) for c in getattr(dados, "columns", [])]
     metodo = str(res.get("metodo") or "").strip()
-    fonte = str(res.get("sercodigo") or res.get("serie") or "").strip()
-    metodo_fonte = f"{metodo} [{fonte}]" if metodo and fonte else (metodo or fonte)
+    identidade_serie = str(res.get("sercodigo") or res.get("serie") or "").strip()
+    codigo_odata = str(res.get("sercodigo_ipeadata") or "").strip()
+    fonte_real = str(res.get("fonte") or "").strip().lower()
+    fallback_local = bool(res.get("fonte_oficial_indisponivel")) or fonte_real == "local"
+
+    # ICTI: a fonte efetivamente usada precisa sobreviver no XLS. A identidade
+    # historica DIMAC_ICTI2 e distinta do codigo OData ativo DIMAC12_ICTI2.
+    # Nenhuma coluna nova e criada: a rastreabilidade cabe em METODO_FONTE.
+    if codigo_odata and (fonte_real == "ipeadata" or fallback_local):
+        identidade = (
+            f"; identidade histórica {identidade_serie}" if identidade_serie else ""
+        )
+        if fallback_local:
+            metodo_fonte = (
+                "ICTI — cópia local da série oficial Ipeadata/Ipea "
+                f"[código ativo {codigo_odata}{identidade}]"
+            )
+        else:
+            metodo_fonte = f"ICTI/Ipeadata [{codigo_odata}{identidade}]"
+    else:
+        metodo_fonte = (
+            f"{metodo} [{identidade_serie}]"
+            if metodo and identidade_serie
+            else (metodo or identidade_serie)
+        )
 
     registros: list[dict[str, Any]] = []
     if "indice" in colunas:

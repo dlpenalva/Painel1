@@ -21,6 +21,10 @@ jobs:
     steps:
       - name: Obter repositorio
         uses: actions/checkout@v7
+        with:
+          # Inclusive no workflow_dispatch: a branch automatica sempre nasce
+          # da main atual, nunca da ref escolhida manualmente na interface.
+          ref: main
 
       - name: Preparar Python
         uses: actions/setup-python@v7

@@ -18,10 +18,7 @@ import requests
 ROOT = Path(__file__).resolve().parents[1]
 ICTI_CSV = ROOT / "icti.csv"
 ICTI_SERCODIGO = "DIMAC12_ICTI2"
-ICTI_API_BASES = (
-    "https://www.ipeadata.gov.br/api/odata4",
-    "http://www.ipeadata.gov.br/api/odata4",
-)
+ICTI_API_BASE = "https://www.ipeadata.gov.br/api/odata4"
 
 
 class ErroAtualizacaoICTI(RuntimeError):
@@ -103,19 +100,18 @@ def extrair_registros_ipeadata(payload) -> list[RegistroICTI]:
 
 
 def baixar_registros_icti(timeout: int = 30) -> list[RegistroICTI]:
-    ultimo_erro = None
     endpoint = f"ValoresSerie(SERCODIGO='{ICTI_SERCODIGO}')"
     headers = {"User-Agent": "Mozilla/5.0 cl8us-icti", "Accept": "application/json"}
-    for base in ICTI_API_BASES:
-        try:
-            resposta = requests.get(f"{base}/{endpoint}", headers=headers, timeout=timeout)
-            resposta.raise_for_status()
-            return extrair_registros_ipeadata(resposta.json())
-        except (requests.RequestException, ValueError, ErroAtualizacaoICTI) as exc:
-            ultimo_erro = exc
-    raise ErroAtualizacaoICTI(
-        f"Não foi possível obter uma série ICTI oficial válida. Último erro: {ultimo_erro}"
-    ) from ultimo_erro
+    try:
+        resposta = requests.get(
+            f"{ICTI_API_BASE}/{endpoint}", headers=headers, timeout=timeout
+        )
+        resposta.raise_for_status()
+        return extrair_registros_ipeadata(resposta.json())
+    except (requests.RequestException, ValueError, ErroAtualizacaoICTI) as exc:
+        raise ErroAtualizacaoICTI(
+            f"Não foi possível obter uma série ICTI oficial válida por HTTPS: {exc}"
+        ) from exc
 
 
 def ler_registros_locais(caminho: Path = ICTI_CSV) -> list[RegistroICTI]:

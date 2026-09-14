@@ -1,7 +1,9 @@
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 
 import pytest
+import requests
 
 from tools import atualizar_icti_ipeadata as atualizador
 
@@ -50,14 +52,18 @@ def test_serie_mais_curta_aborta_e_preserva_bytes(tmp_path, monkeypatch):
 def test_api_indisponivel_nao_modifica_arquivo(tmp_path, monkeypatch):
     caminho = tmp_path / "icti.csv"
     original = _gravar(caminho, [_registro(2026, 6, "0.63")])
-    monkeypatch.setattr(
-        atualizador,
-        "baixar_registros_icti",
-        lambda: (_ for _ in ()).throw(atualizador.ErroAtualizacaoICTI("offline")),
-    )
-    with pytest.raises(atualizador.ErroAtualizacaoICTI, match="offline"):
+    urls = []
+
+    def falhar_https(url, **kwargs):
+        urls.append(url)
+        raise requests.Timeout("offline")
+
+    monkeypatch.setattr(atualizador.requests, "get", falhar_https)
+    with pytest.raises(atualizador.ErroAtualizacaoICTI, match="HTTPS"):
         atualizador.executar(caminho)
     assert caminho.read_bytes() == original
+    assert len(urls) == 1
+    assert urls[0].startswith("https://www.ipeadata.gov.br/")
 
 
 def test_duplicidade_aborta():
@@ -104,3 +110,22 @@ def test_divergencia_historica_aborta_e_preserva_bytes(tmp_path, monkeypatch):
         atualizador.executar(caminho)
 
     assert caminho.read_bytes() == original
+
+
+def test_workflow_dispatch_sempre_parte_da_main():
+    raiz = Path(__file__).resolve().parents[1]
+    workflow = (raiz / ".github/workflows/atualizar-icti-ipeadata.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "uses: actions/checkout@v7\n        with:\n" in workflow
+    assert "          ref: main\n" in workflow
+    assert '--base main' in workflow
+    assert '"${ALTERADOS[0]}" != "icti.csv"' in workflow
+
+
+def test_caminhos_icti_nao_contem_url_http():
+    raiz = Path(__file__).resolve().parents[1]
+    for relativo in ("_indice_utils.py", "tools/atualizar_icti_ipeadata.py"):
+        codigo = (raiz / relativo).read_text(encoding="utf-8")
+        assert "http://www.ipeadata" not in codigo
+        assert "https://www.ipeadata.gov.br/api/odata4" in codigo

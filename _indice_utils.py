@@ -14,10 +14,7 @@ import requests
 ICTI_SERCODIGO = "DIMAC_ICTI2"
 ICTI_SERCODIGO_IPEADATA = "DIMAC12_ICTI2"
 ICTI_CSV_PADRAO = Path(__file__).resolve().with_name("icti.csv")
-ICTI_API_BASES = [
-    "https://www.ipeadata.gov.br/api/odata4",
-    "http://www.ipeadata.gov.br/api/odata4",
-]
+ICTI_API_BASE = "https://www.ipeadata.gov.br/api/odata4"
 
 MESES_PT_ABREV = {
     1: "jan", 2: "fev", 3: "mar", 4: "abr", 5: "mai", 6: "jun",
@@ -401,20 +398,17 @@ def obter_ultima_competencia_sgs(serie_codigo, timeout=15):
 
 
 def _ipeadata_get_json(endpoint, timeout=20):
-    ultimo_erro = None
     headers = {
         "User-Agent": "Mozilla/5.0 cl8us-icti",
         "Accept": "application/json",
     }
-    for base in ICTI_API_BASES:
-        url = f"{base}/{endpoint}"
-        try:
-            resp = requests.get(url, headers=headers, timeout=timeout)
-            resp.raise_for_status()
-            return resp.json()
-        except Exception as exc:
-            ultimo_erro = exc
-    raise RuntimeError(f"Não foi possível consultar o Ipeadata. Último erro: {ultimo_erro}")
+    url = f"{ICTI_API_BASE}/{endpoint}"
+    try:
+        resp = requests.get(url, headers=headers, timeout=timeout)
+        resp.raise_for_status()
+        return resp.json()
+    except Exception as exc:
+        raise RuntimeError(f"Não foi possível consultar o Ipeadata por HTTPS: {exc}") from exc
 
 
 def _finalizar_serie_icti(df, *, origem):
