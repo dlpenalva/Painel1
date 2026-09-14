@@ -4,7 +4,6 @@ import hashlib
 import json
 import re
 import pandas as pd
-import requests
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from dateutil.relativedelta import relativedelta
@@ -44,9 +43,12 @@ def aplicar_css_aditivos25_compacto():
         unsafe_allow_html=True,
     )
 # <<< UX_ADITIVOS_25_COMPACTO
-from _ui_utils import render_cabecalho_pagina, render_indice_contrato_selectbox, render_referencia_temporal_anterior
-from _indice_utils import (calcular_ist_numero_indice, coletar_sgs_produtorio,
-                           serie_sgs_do_indice)
+from _ui_utils import (render_aviso_fallback_indice, render_cabecalho_pagina,
+                       render_diagnostico_indice, render_indice_contrato_selectbox,
+                       render_referencia_temporal_anterior)
+from _indice_utils import (consultar_icti_com_diagnostico,
+                           consultar_ist_com_diagnostico,
+                           consultar_sgs_com_diagnostico, serie_sgs_do_indice)
 from _reajuste_utils import (
     APLICAR_VARIACAO_NEGATIVA,
     NEUTRALIZAR_VARIACAO_NEGATIVA,
@@ -65,120 +67,16 @@ from _memoria_calculo import normalizar_memoria_calculo
 from _email_contratada import gerar_rascunho_email_contratada, render_email_contratada
 from _solicitacao_fiscal import render_solicitacao_fiscal_coleta
 from _ui_preclusao import render_indicador_preclusao
-# Imports dos blocos auxiliares de orientação/coleta fiscal
-# ICTI/IPEADATA_LOCAL_FALLBACK_V1
-ICTI_SERCODIGO_LOCAL = "DIMAC_ICTI2"
-ICTI_API_BASES_LOCAL = [
-    "https://www.ipeadata.gov.br/api/odata4",
-    "http://www.ipeadata.gov.br/api/odata4",
-]
-MESES_PT_ABREV_ICTI = {1:"jan",2:"fev",3:"mar",4:"abr",5:"mai",6:"jun",7:"jul",8:"ago",9:"set",10:"out",11:"nov",12:"dez"}
-
-def _icti_ipeadata_get_json_local(endpoint, timeout=20):
-    ultimo_erro = None
-    headers = {"User-Agent": "Mozilla/5.0 cl8us-icti", "Accept": "application/json"}
-    for base_url in ICTI_API_BASES_LOCAL:
-        try:
-            resposta = requests.get(f"{base_url}/{endpoint}", headers=headers, timeout=timeout)
-            resposta.raise_for_status()
-            return resposta.json()
-        except Exception as exc:
-            ultimo_erro = exc
-    raise RuntimeError(f"Não foi possível consultar o Ipeadata. Último erro: {ultimo_erro}")
-
-@st.cache_data(ttl=60 * 60)
-def _carregar_icti_ipeadata_local(timeout=20):
-    dados = _icti_ipeadata_get_json_local(f"ValoresSerie(SERCODIGO='{ICTI_SERCODIGO_LOCAL}')", timeout=timeout)
-    registros = dados.get("value", []) if isinstance(dados, dict) else []
-    if not registros:
-        raise RuntimeError("A API do Ipeadata retornou a série ICTI vazia.")
-    linhas = []
-    for item in registros:
-        if not isinstance(item, dict):
-            continue
-        data = pd.to_datetime(item.get("VALDATA"), errors="coerce")
-        valor = pd.to_numeric(item.get("VALVALOR"), errors="coerce")
-        if pd.isna(data) or pd.isna(valor):
-            continue
-        data = pd.Timestamp(year=int(data.year), month=int(data.month), day=1).normalize()
-        linhas.append({
-            "data": data,
-            "mes_ano": f"{MESES_PT_ABREV_ICTI[data.month]}/{str(data.year)[-2:]}",
-            "taxa_mensal_percentual": float(valor),
-        })
-    df = pd.DataFrame(linhas)
-    if df.empty:
-        raise RuntimeError("Nenhuma competência válida do ICTI foi identificada no Ipeadata.")
-    df = df.sort_values("data").drop_duplicates(subset=["data"], keep="last").reset_index(drop=True)
-    df["fator_mensal"] = 1 + df["taxa_mensal_percentual"] / 100
-    df["indice_nivel_sintetico"] = 100.0 * df["fator_mensal"].cumprod()
-    return df
-
-def calcular_icti_ipeadata(data_inicio, data_fim=None, timeout=20):
-    if data_inicio is None:
-        return None
-    data_inicio_ts = pd.Timestamp(data_inicio)
-    competencia_proposta = pd.Timestamp(data_inicio_ts.year, data_inicio_ts.month, 1).normalize()
-    competencia_base = (competencia_proposta - relativedelta(months=1)).normalize()
-    data_fim_ts = data_inicio_ts + relativedelta(months=11) if data_fim is None else pd.Timestamp(data_fim)
-    competencia_final = pd.Timestamp(data_fim_ts.year, data_fim_ts.month, 1).normalize()
-    if competencia_final < competencia_proposta:
-        return None
-    df = _carregar_icti_ipeadata_local(timeout=timeout)
-    datas = set(df["data"])
-    if competencia_base not in datas or competencia_final not in datas:
-        return None
-    periodo = df[(df["data"] > competencia_base) & (df["data"] <= competencia_final)].copy()
-    if periodo.empty:
-        return None
-    fator = float(periodo["fator_mensal"].prod())
-    variacao = fator - 1
-    linha_base = df[df["data"] == competencia_base].iloc[0]
-    linha_final = df[df["data"] == competencia_final].iloc[0]
-    periodo["fator_acumulado_progressivo"] = periodo["fator_mensal"].cumprod()
-    dados = periodo[["data", "taxa_mensal_percentual", "fator_mensal", "fator_acumulado_progressivo"]].copy()
-    dados = dados.rename(columns={"taxa_mensal_percentual": "valor"})
-    return {
-        "variacao": variacao,
-        "var": variacao,
-        "i_ini": float(linha_base["indice_nivel_sintetico"]),
-        "i_fim": float(linha_final["indice_nivel_sintetico"]),
-        "d_ini": competencia_base,
-        "d_fim": competencia_final,
-        "p_ini": competencia_base,
-        "p_fim": competencia_final,
-        "competencia_proposta": competencia_proposta,
-        "competencia_indice_base": competencia_base,
-        "competencia_final": competencia_final,
-        "d_proposta_ancora": competencia_proposta,
-        "d_indice_base": competencia_base,
-        "d_final_icti": competencia_final,
-        "metodo": "ICTI/Ipeadata: produtório das taxas mensais; índice-base = mês anterior à proposta/âncora",
-        "dados": dados,
-        "sercodigo": ICTI_SERCODIGO_LOCAL,
-        "serie": ICTI_SERCODIGO_LOCAL,
-    }
-
-
 def get_index_data(serie_codigo, data_inicio, data_fim):
-    try:
-        return coletar_sgs_produtorio(serie_codigo, data_inicio, data_fim, timeout=15)
-    except Exception:
-        return None
+    return consultar_sgs_com_diagnostico(serie_codigo, data_inicio, data_fim, timeout=15)
 
 
 def get_ist_local(data_inicio, data_fim):
-    try:
-        return calcular_ist_numero_indice(data_inicio)
-    except Exception:
-        return None
+    return consultar_ist_com_diagnostico(data_inicio)
 
 
 def get_icti_ipeadata(data_inicio, data_fim):
-    try:
-        return calcular_icti_ipeadata(data_inicio, data_fim, timeout=15)
-    except Exception:
-        return None
+    return consultar_icti_com_diagnostico(data_inicio, data_fim, timeout=15)
 
 
 def _formatar_mes_ano(valor):
@@ -207,164 +105,6 @@ def _data_para_date_segura(valor):
     except Exception:
         pass
     return None
-
-
-def _competencias_esperadas_indice(data_inicio, data_fim):
-    """Lista competências mensais esperadas entre data_inicio e data_fim, inclusive."""
-    try:
-        inicio = pd.Timestamp(data_inicio).to_period("M")
-        fim = pd.Timestamp(data_fim).to_period("M")
-        if fim < inicio:
-            return []
-        return [p.strftime("%m/%Y") for p in pd.period_range(inicio, fim, freq="M")]
-    except Exception:
-        return []
-
-
-def _competencia_de_valor(valor):
-    """Extrai competência mm/aaaa de datas ou textos comuns."""
-    if valor is None:
-        return None
-    try:
-        if pd.isna(valor):
-            return None
-    except Exception:
-        pass
-    if isinstance(valor, (datetime, pd.Timestamp)):
-        return pd.Timestamp(valor).to_period("M").strftime("%m/%Y")
-    texto = str(valor).strip()
-    if not texto:
-        return None
-
-    # dd/mm/aaaa
-    m = re.search(r"\b(\d{1,2})/(\d{1,2})/(\d{4})\b", texto)
-    if m:
-        dia, mes, ano = m.groups()
-        try:
-            return pd.Timestamp(int(ano), int(mes), 1).to_period("M").strftime("%m/%Y")
-        except Exception:
-            return None
-
-    # mm/aaaa
-    m = re.search(r"\b(\d{1,2})/(\d{4})\b", texto)
-    if m:
-        mes, ano = m.groups()
-        try:
-            return pd.Timestamp(int(ano), int(mes), 1).to_period("M").strftime("%m/%Y")
-        except Exception:
-            return None
-
-    # aaaa-mm-dd ou aaaa-mm
-    m = re.search(r"\b(\d{4})-(\d{1,2})(?:-\d{1,2})?\b", texto)
-    if m:
-        ano, mes = m.groups()
-        try:
-            return pd.Timestamp(int(ano), int(mes), 1).to_period("M").strftime("%m/%Y")
-        except Exception:
-            return None
-
-    try:
-        dt = pd.to_datetime(texto, dayfirst=True, errors="coerce")
-        if pd.notna(dt):
-            return pd.Timestamp(dt).to_period("M").strftime("%m/%Y")
-    except Exception:
-        pass
-    return None
-
-
-def _competencias_encontradas_no_resultado(res):
-    """Extrai competências existentes no retorno do índice, especialmente para IPCA/IGP-M."""
-    comps = set()
-    if not res:
-        return comps
-
-    dados = res.get("dados") if isinstance(res, dict) else None
-
-    def adicionar_de_obj(obj):
-        if isinstance(obj, dict):
-            for v in obj.values():
-                adicionar_de_obj(v)
-        elif isinstance(obj, (list, tuple, set)):
-            for v in obj:
-                adicionar_de_obj(v)
-        else:
-            comp = _competencia_de_valor(obj)
-            if comp:
-                comps.add(comp)
-
-    if isinstance(dados, pd.DataFrame):
-        # Dá preferência a colunas com nomes de data/competência.
-        colunas_prioritarias = [
-            c for c in dados.columns
-            if str(c).strip().lower() in ["data", "dt", "competencia", "competência", "mes", "mês", "periodo", "período"]
-        ]
-        colunas = colunas_prioritarias or list(dados.columns)
-        for col in colunas:
-            for valor in dados[col].dropna().tolist():
-                comp = _competencia_de_valor(valor)
-                if comp:
-                    comps.add(comp)
-    elif dados is not None:
-        adicionar_de_obj(dados)
-
-    return comps
-
-
-def _validar_indice_disponivel(res, data_inicio, data_fim, indice_nome):
-    """Valida se o índice possui base suficiente para processar o ciclo.
-
-    Para IPCA/IGP-M, exige todas as competências mensais do intervalo.
-    Para IST, mantém a validação por retorno existente, pois o cálculo usa número-índice.
-    """
-    esperadas = _competencias_esperadas_indice(data_inicio, data_fim)
-
-    if not res:
-        return {
-            "ok": False,
-            "motivo": "sem_retorno",
-            "esperadas": esperadas,
-            "encontradas": [],
-            "faltantes": esperadas,
-        }
-
-    if "IST" in str(indice_nome).upper():
-        return {
-            "ok": True,
-            "motivo": "",
-            "esperadas": esperadas,
-            "encontradas": esperadas,
-            "faltantes": [],
-        }
-
-    encontradas = sorted(_competencias_encontradas_no_resultado(res))
-    faltantes = [c for c in esperadas if c not in set(encontradas)]
-
-    return {
-        "ok": len(faltantes) == 0,
-        "motivo": "competencias_ausentes" if faltantes else "",
-        "esperadas": esperadas,
-        "encontradas": encontradas,
-        "faltantes": faltantes,
-    }
-
-
-def _render_alerta_indice_ausente(validacao, ciclo_label="C1"):
-    faltantes = validacao.get("faltantes", []) or []
-    esperadas = validacao.get("esperadas", []) or []
-    st.error(
-        f"Processamento inviável: falta pelo menos um mês do intervalo de apuração do índice no {ciclo_label}."
-    )
-    st.warning(
-        "Não foi possível concluir a apuração porque há competência ausente no intervalo do índice. "
-        "Atualize a base de índices ou confira o período de apuração antes de prosseguir."
-    )
-    dados = []
-    if faltantes:
-        dados.append({"Item": "Competências faltantes", "Competências": ", ".join(faltantes)})
-    if esperadas:
-        dados.append({"Item": "Intervalo esperado", "Competências": ", ".join(esperadas)})
-    if dados:
-        st.dataframe(pd.DataFrame(dados), use_container_width=True, hide_index=True)
 
 
 def _ciclo_para_numero(valor):
@@ -2033,18 +1773,21 @@ if efeito_financeiro_retardado:
     status_ped = "✅ TEMPESTIVO*"
 
 if "IST" in tipo_idx:
-    res = get_ist_local(dt_base, dt_fim_ap)
+    consulta_indice = get_ist_local(dt_base, dt_fim_ap)
 elif "ICTI" in tipo_idx:
-    res = get_icti_ipeadata(dt_base, dt_fim_ap)
+    consulta_indice = get_icti_ipeadata(dt_base, dt_fim_ap)
 else:
-    res = get_index_data(serie_sgs_do_indice(tipo_idx), dt_base, dt_fim_ap)
+    consulta_indice = get_index_data(serie_sgs_do_indice(tipo_idx), dt_base, dt_fim_ap)
 
-validacao_indice = _validar_indice_disponivel(res, dt_base, dt_fim_ap, tipo_idx)
+res = consulta_indice["resultado"]
+validacao_indice = consulta_indice["diagnostico"]
 if not validacao_indice.get("ok", False):
     st.session_state.pop("tratamento_variacao_negativa_simples_c1", None)
     st.session_state.pop("assinatura_variacao_negativa_simples_c1", None)
-    _render_alerta_indice_ausente(validacao_indice, ciclo_label)
+    render_diagnostico_indice(validacao_indice, ciclo_label)
     st.stop()
+
+render_aviso_fallback_indice(validacao_indice)
 
 if res:
     v_fmt = f"{res['variacao']*100:,.2f}%".replace('.', ',')

@@ -22,6 +22,105 @@ MESES_PT_EXTENSO = {
     7: "julho", 8: "agosto", 9: "setembro", 10: "outubro", 11: "novembro", 12: "dezembro",
 }
 
+ESTADO_INDICE_OK = "OK"
+ESTADO_FONTE_INDISPONIVEL = "FONTE_INDISPONIVEL"
+ESTADO_COMPETENCIAS_AUSENTES = "COMPETENCIAS_AUSENTES"
+ESTADO_FALLBACK_LOCAL = "FALLBACK_LOCAL"
+
+
+class CompetenciasIndiceAusentes(RuntimeError):
+    """Série obtida com sucesso, mas sem todas as competências necessárias."""
+
+    def __init__(self, faltantes, encontradas=()):
+        super().__init__("A série consultada não cobre todas as competências necessárias.")
+        self.faltantes = list(faltantes)
+        self.encontradas = list(encontradas)
+
+
+class FonteIndiceIndisponivel(RuntimeError):
+    """A fonte oficial não pôde ser tecnicamente consultada."""
+
+    def __init__(self, fonte, detalhe=None):
+        super().__init__(f"Fonte {fonte} indisponível")
+        self.fonte = fonte
+        self.detalhe = detalhe
+
+
+def competencias_mensais(data_inicio, data_fim):
+    """Competências mm/aaaa entre os meses inicial e final, inclusive."""
+    inicio = pd.Timestamp(data_inicio).to_period("M")
+    fim = pd.Timestamp(data_fim).to_period("M")
+    if fim < inicio:
+        return []
+    return [p.strftime("%m/%Y") for p in pd.period_range(inicio, fim, freq="M")]
+
+
+def _competencias_do_dataframe(df):
+    if not isinstance(df, pd.DataFrame) or "data" not in df.columns:
+        return []
+    datas = pd.to_datetime(df["data"], dayfirst=True, errors="coerce").dropna()
+    return sorted({data.to_period("M").strftime("%m/%Y") for data in datas})
+
+
+def _diagnostico_indice(estado, fonte, esperadas, encontradas=(), faltantes=(), detalhe=None):
+    return {
+        "estado": estado,
+        "ok": estado in {ESTADO_INDICE_OK, ESTADO_FALLBACK_LOCAL},
+        "fonte": fonte,
+        "esperadas": list(esperadas),
+        "encontradas": list(encontradas),
+        "faltantes": list(faltantes),
+        "detalhe_tecnico": detalhe,
+    }
+
+
+def _executar_consulta_diagnosticada(funcao, *, fonte, esperadas):
+    try:
+        resultado = funcao()
+    except CompetenciasIndiceAusentes as exc:
+        diagnostico = _diagnostico_indice(
+            ESTADO_COMPETENCIAS_AUSENTES,
+            fonte,
+            esperadas,
+            exc.encontradas,
+            exc.faltantes,
+        )
+        return {"resultado": None, "diagnostico": diagnostico}
+    except FonteIndiceIndisponivel as exc:
+        diagnostico = _diagnostico_indice(
+            ESTADO_FONTE_INDISPONIVEL,
+            exc.fonte,
+            esperadas,
+            detalhe=repr(exc.detalhe),
+        )
+        return {"resultado": None, "diagnostico": diagnostico}
+    except Exception as exc:
+        diagnostico = _diagnostico_indice(
+            ESTADO_FONTE_INDISPONIVEL,
+            fonte,
+            esperadas,
+            detalhe=repr(exc),
+        )
+        return {"resultado": None, "diagnostico": diagnostico}
+
+    if resultado is None:
+        diagnostico = _diagnostico_indice(
+            ESTADO_COMPETENCIAS_AUSENTES,
+            fonte,
+            esperadas,
+            faltantes=esperadas,
+        )
+        return {"resultado": None, "diagnostico": diagnostico}
+
+    encontradas = _competencias_do_dataframe(resultado.get("dados"))
+    estado = (
+        ESTADO_FALLBACK_LOCAL
+        if resultado.get("fonte") == "local" and resultado.get("fonte_oficial_indisponivel")
+        else ESTADO_INDICE_OK
+    )
+    diagnostico = _diagnostico_indice(estado, fonte, esperadas, encontradas)
+    return {"resultado": resultado, "diagnostico": diagnostico}
+
 
 def carregar_ist_local(caminho="ist.csv"):
     """Carrega o IST local aceitando os dois layouts usados no projeto.
@@ -121,14 +220,23 @@ def carregar_ist_atual(caminho="ist.csv", *, ttl=_IST_TTL_SEGUNDOS, timeout=15, 
     try:
         df = carregar_ist_anatel(timeout=timeout)
         fonte = "anatel"
-    except Exception:
-        df = carregar_ist_local(caminho)
+        df.attrs["fonte_oficial_indisponivel"] = False
+    except Exception as erro_anatel:
+        try:
+            df = carregar_ist_local(caminho)
+        except Exception as erro_local:
+            raise FonteIndiceIndisponivel(
+                "Anatel",
+                {"erro_anatel": repr(erro_anatel), "erro_fallback_local": repr(erro_local)},
+            ) from erro_local
         fonte = "local"
+        df.attrs["fonte_oficial_indisponivel"] = True
+        df.attrs["erro_fonte_oficial"] = repr(erro_anatel)
     _ist_cache.update(df=df, fonte=fonte, expira_em=agora + ttl)
     return df, fonte
 
 
-def calcular_ist_numero_indice(data_inicio, caminho="ist.csv"):
+def calcular_ist_numero_indice(data_inicio, caminho="ist.csv", *, _diagnostico=False):
     """Calcula IST por divisão de número-índice entre o mês-base e o mesmo mês 12 meses depois.
 
     Fonte da série: Anatel (oficial, quando disponível) com fallback para ist.csv.
@@ -145,6 +253,22 @@ def calcular_ist_numero_indice(data_inicio, caminho="ist.csv"):
     v_fim_rows = df[df["data"].dt.to_period("M") == r_fim.to_period("M")]
 
     if v_ini_rows.empty or v_fim_rows.empty:
+        if _diagnostico:
+            encontradas = _competencias_do_dataframe(df)
+            faltantes = [
+                data.strftime("%m/%Y")
+                for data, linhas in ((r_ini, v_ini_rows), (r_fim, v_fim_rows))
+                if linhas.empty
+            ]
+            if fonte == "local" and df.attrs.get("fonte_oficial_indisponivel"):
+                raise FonteIndiceIndisponivel(
+                    "Anatel",
+                    {
+                        "erro_anatel": df.attrs.get("erro_fonte_oficial"),
+                        "fallback_local_faltantes": faltantes,
+                    },
+                )
+            raise CompetenciasIndiceAusentes(faltantes, encontradas)
         return None
 
     v_ini = float(v_ini_rows["indice"].iloc[0])
@@ -171,24 +295,37 @@ def calcular_ist_numero_indice(data_inicio, caminho="ist.csv"):
         "d_ini": r_ini,
         "d_fim": r_fim,
         "fonte": fonte,
+        "fonte_oficial_indisponivel": bool(df.attrs.get("fonte_oficial_indisponivel")),
         "metodo": metodo,
         "dados": serie_periodo,
     }
 
 
-def coletar_sgs_produtorio(serie_codigo, data_inicio, data_fim, timeout=15):
+def coletar_sgs_produtorio(serie_codigo, data_inicio, data_fim, timeout=15, *, _diagnostico=False):
     """Coleta série SGS/BCB e calcula a variação acumulada por produtório de taxas mensais."""
     url = (
         f"https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie_codigo}/dados?"
         f"formato=json&dataInicial={data_inicio.strftime('%d/%m/%Y')}&dataFinal={data_fim.strftime('%d/%m/%Y')}"
     )
     response = requests.get(url, timeout=timeout)
+    response.raise_for_status()
     df = pd.DataFrame(response.json())
     if df.empty:
+        if _diagnostico:
+            raise FonteIndiceIndisponivel(
+                "SGS/BCB", "A fonte respondeu sem uma série utilizável."
+            )
         return None
 
     df["valor_decimal"] = df["valor"].astype(float) / 100
     df["data"] = pd.to_datetime(df["data"], dayfirst=True)
+
+    if _diagnostico:
+        esperadas = competencias_mensais(data_inicio, data_fim)
+        encontradas = _competencias_do_dataframe(df)
+        faltantes = [c for c in esperadas if c not in set(encontradas)]
+        if faltantes:
+            raise CompetenciasIndiceAusentes(faltantes, encontradas)
 
     return {
         "variacao": (1 + df["valor_decimal"]).prod() - 1,
@@ -322,7 +459,7 @@ def obter_ultima_competencia_icti_ipeadata(timeout=20):
     }
 
 
-def calcular_icti_ipeadata(data_inicio, data_fim=None, timeout=20):
+def calcular_icti_ipeadata(data_inicio, data_fim=None, timeout=20, *, _diagnostico=False):
     """Calcula ICTI automaticamente via Ipeadata.
 
     Regra transparente adotada para o cl8us:
@@ -355,7 +492,15 @@ def calcular_icti_ipeadata(data_inicio, data_fim=None, timeout=20):
     df = carregar_icti_ipeadata(timeout=timeout)
     datas = set(df["data"])
 
-    if competencia_base not in datas or competencia_final not in datas:
+    esperadas = competencias_mensais(competencia_proposta, competencia_final)
+    encontradas = _competencias_do_dataframe(df)
+    faltantes = [c for c in esperadas if c not in set(encontradas)]
+    if competencia_base not in datas:
+        faltantes = [competencia_base.strftime("%m/%Y"), *faltantes]
+
+    if faltantes:
+        if _diagnostico:
+            raise CompetenciasIndiceAusentes(faltantes, encontradas)
         return None
 
     periodo = df[(df["data"] > competencia_base) & (df["data"] <= competencia_final)].copy()
@@ -392,3 +537,36 @@ def calcular_icti_ipeadata(data_inicio, data_fim=None, timeout=20):
         "sercodigo": ICTI_SERCODIGO,
         "serie": ICTI_SERCODIGO,
     }
+
+
+def consultar_ist_com_diagnostico(data_inicio, caminho="ist.csv"):
+    marco_final = pd.Timestamp(data_inicio) + relativedelta(years=1)
+    esperadas = competencias_mensais(data_inicio, marco_final)
+    return _executar_consulta_diagnosticada(
+        lambda: calcular_ist_numero_indice(data_inicio, caminho, _diagnostico=True),
+        fonte="Anatel",
+        esperadas=esperadas,
+    )
+
+
+def consultar_sgs_com_diagnostico(serie_codigo, data_inicio, data_fim, timeout=15):
+    esperadas = competencias_mensais(data_inicio, data_fim)
+    return _executar_consulta_diagnosticada(
+        lambda: coletar_sgs_produtorio(
+            serie_codigo, data_inicio, data_fim, timeout=timeout, _diagnostico=True
+        ),
+        fonte="SGS/BCB",
+        esperadas=esperadas,
+    )
+
+
+def consultar_icti_com_diagnostico(data_inicio, data_fim=None, timeout=20):
+    final = pd.Timestamp(data_inicio) + relativedelta(months=11) if data_fim is None else data_fim
+    esperadas = competencias_mensais(data_inicio, final)
+    return _executar_consulta_diagnosticada(
+        lambda: calcular_icti_ipeadata(
+            data_inicio, data_fim, timeout=timeout, _diagnostico=True
+        ),
+        fonte="Ipeadata",
+        esperadas=esperadas,
+    )
