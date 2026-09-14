@@ -1,0 +1,98 @@
+name: Atualizar ICTI pelo Ipeadata
+
+on:
+  schedule:
+    # Segunda-feira, 09:15 em Brasilia. O ICTI possui periodicidade mensal.
+    - cron: "15 12 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: write
+
+concurrency:
+  group: atualizar-icti-ipeadata
+  cancel-in-progress: false
+
+jobs:
+  atualizar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Obter repositorio
+        uses: actions/checkout@v7
+        with:
+          # Inclusive no workflow_dispatch: a branch automatica sempre nasce
+          # da main atual, nunca da ref escolhida manualmente na interface.
+          ref: main
+
+      - name: Preparar Python
+        uses: actions/setup-python@v7
+        with:
+          python-version: "3.11"
+
+      - name: Instalar dependencias do atualizador
+        run: python -m pip install --disable-pip-version-check requests==2.32.5 pytest==8.4.1
+
+      - name: Testar o atualizador
+        run: python -m pytest -q tests/test_atualizar_icti_ipeadata.py
+
+      - name: Consultar o Ipeadata e atualizar a copia local
+        run: python tools/atualizar_icti_ipeadata.py
+
+      - name: Abrir PR somente se houver nova competencia
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+
+          mapfile -t ALTERADOS < <(git status --porcelain | awk '{print $2}')
+          if [ "${#ALTERADOS[@]}" -eq 0 ]; then
+            echo "A copia local do ICTI ja esta atualizada."
+            exit 0
+          fi
+          if [ "${#ALTERADOS[@]}" -ne 1 ] || [ "${ALTERADOS[0]}" != "icti.csv" ]; then
+            echo "::error::Atualizacao abortada: arquivo inesperado alterado."
+            printf 'Arquivos alterados:\n%s\n' "${ALTERADOS[@]}"
+            exit 1
+          fi
+
+          PR_ABERTO="$(gh pr list --repo "$GITHUB_REPOSITORY" --state open --json headRefName \
+            --jq '[.[] | select(.headRefName | startswith("automation/atualiza-icti-ipeadata-"))] | length')"
+          if [ "$PR_ABERTO" -gt 0 ]; then
+            echo "Ja existe PR aberto da automacao de ICTI; nenhum PR novo sera criado."
+            exit 0
+          fi
+
+          COMPETENCIA_ANTERIOR="$(git show HEAD:icti.csv | tail -n 1 | cut -d';' -f1)"
+          NOVAS_LINHAS="$(git diff --unified=0 -- icti.csv | grep -E '^\+[^+]' | sed 's/^+//')"
+          BRANCH="automation/atualiza-icti-ipeadata-${GITHUB_RUN_ID}"
+
+          git config user.name "cl8us-icti-bot"
+          git config user.email "cl8us-icti-bot@users.noreply.github.com"
+          git checkout -b "$BRANCH"
+          git add -- icti.csv
+          git commit -m "Atualiza ICTI pela fonte oficial do Ipeadata"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --repo "$GITHUB_REPOSITORY" \
+            --base main \
+            --head "$BRANCH" \
+            --title "Atualiza ICTI pela fonte oficial do Ipeadata" \
+            --body "$(cat <<EOF
+          Atualizacao automatica da copia local oficial \`icti.csv\`.
+
+          - Competencia anterior: ${COMPETENCIA_ANTERIOR}
+          - Competencia(s) nova(s):
+          ${NOVAS_LINHAS}
+          - Fonte original: Ipeadata/Ipea
+          - Serie historica: DIMAC_ICTI2
+          - Codigo OData ativo: DIMAC12_ICTI2
+          - Somente \`icti.csv\` foi modificado.
+          - Workflow run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+
+          Merge exclusivamente manual; este workflow nao habilita auto-merge.
+          EOF
+          )"

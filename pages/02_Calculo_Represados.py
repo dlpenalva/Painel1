@@ -127,6 +127,12 @@ def get_data_rep(serie, d_ini, d_fim, is_ist, is_icti=False):
             "d_indice_base": resultado.get("d_indice_base"),
             "metodo": resultado["metodo"],
             "dados": resultado["dados"],
+            "fonte": resultado.get("fonte"),
+            "fonte_original": resultado.get("fonte_original"),
+            "fonte_oficial_indisponivel": resultado.get("fonte_oficial_indisponivel"),
+            "ultima_competencia_local": resultado.get("ultima_competencia_local"),
+            "sercodigo": resultado.get("sercodigo"),
+            "sercodigo_ipeadata": resultado.get("sercodigo_ipeadata"),
         }
     else:
         resultado_pagina = {

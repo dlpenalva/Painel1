@@ -59,6 +59,11 @@ def test_icti_fonte_indisponivel_nao_inventa_doze_competencias(monkeypatch):
         "carregar_icti_ipeadata",
         lambda **kwargs: (_ for _ in ()).throw(requests.ConnectionError("offline")),
     )
+    monkeypatch.setattr(
+        iu,
+        "carregar_icti_local",
+        lambda caminho: (_ for _ in ()).throw(FileNotFoundError("sem cópia local")),
+    )
 
     consulta = iu.consultar_icti_com_diagnostico(INICIO, FIM)
 
