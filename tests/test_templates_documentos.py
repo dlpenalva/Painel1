@@ -677,6 +677,71 @@ def test_saneador_conclusao_transporta_marcos_temporais_canonicos():
     assert "data do pedido + 12 meses" not in texto
 
 
+def _leitura_sem_efeitos_financeiros(proxima=date(2027, 5, 1)):
+    """Ciclos preclusos sem acordo: nenhum inicio de efeito financeiro."""
+    from _reajuste_utils import SITUACAO_SEM_PEDIDO
+
+    leitura = leitura_multiciclo_pc()
+    por_ciclo = leitura["parametros_v10"]["por_ciclo"]
+    for nome in ("C1", "C2"):
+        por_ciclo[nome]["inicio_efeito_financeiro"] = None
+        por_ciclo[nome]["inicio_efeito_financeiro_parametros"] = None
+        por_ciclo[nome]["situacao"] = SITUACAO_SEM_PEDIDO
+    if proxima is not None:
+        por_ciclo["C2"]["proxima_data_reajuste"] = proxima
+    return leitura
+
+
+def test_saneador_conclusao_omite_efeitos_quando_ciclo_e_precluso():
+    """Sem inicio de efeitos, a conclusao nao afirma reconhecimento algum."""
+    texto = _texto_docx(gerar_despacho_saneador(
+        _leitura_sem_efeitos_financeiros(), campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert (
+        "Não há, nesta análise, data de início de efeitos financeiros a "
+        "registrar. Registra-se que o próximo ciclo de reajuste contratual "
+        "estará apto a partir de 01/05/2027, observados os termos e a "
+        "periodicidade previstos no contrato."
+    ) in texto
+    # Nem afirmacao contraditoria, nem placeholder no lugar da data de efeitos.
+    assert "efeitos financeiros do presente reajuste são reconhecidos" not in texto
+    assert "[PREENCHER: Data dos efeitos financeiros]" not in texto
+    assert "reconhecidos a partir de Não informado" not in texto
+
+
+def test_saneador_conclusao_preserva_redacao_quando_ha_efeitos_financeiros():
+    """Contraponto do cenario precluso: a redacao aprovada segue intacta."""
+    leitura = leitura_multiciclo_pc()
+    ciclo = leitura["parametros_v10"]["por_ciclo"]["C2"]
+    ciclo["inicio_efeito_financeiro"] = date(2026, 8, 27)
+    ciclo["proxima_data_reajuste"] = date(2027, 8, 27)
+    texto = _texto_docx(gerar_despacho_saneador(
+        leitura, campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert (
+        "Considerando que os efeitos financeiros do presente reajuste são "
+        "reconhecidos a partir de 27/08/2026, registra-se que o próximo ciclo "
+        "de reajuste contratual estará apto a partir de 27/08/2027"
+    ) in texto
+    assert "Não há, nesta análise, data de início de efeitos financeiros" not in texto
+
+
+def test_saneador_conclusao_marca_proxima_data_ausente_sem_afirmar_efeitos():
+    """Ausencia da proxima data vira placeholder, nunca 'Não informado'."""
+    texto = _texto_docx(gerar_despacho_saneador(
+        _leitura_sem_efeitos_financeiros(proxima=None),
+        campos_manuais=CAMPOS_SANEADOR,
+    ))
+    assert (
+        "Não há, nesta análise, data de início de efeitos financeiros a "
+        "registrar. Registra-se que o próximo ciclo de reajuste contratual "
+        "estará apto a partir de [PREENCHER: Proxima data canonica de "
+        "reajuste], observados os termos e a periodicidade previstos no "
+        "contrato."
+    ) in texto
+    assert "apto a partir de Não informado" not in texto
+
+
 def test_saneador_paragrafo_de_complementacao_so_com_pendencia_documental():
     frase = (
         "Após a complementação e conferência das informações documentais "

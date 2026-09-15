@@ -1071,7 +1071,9 @@ def gerar_masterfile_preenchido(
     )
     garantir_formatacao_orientacao_aditivos(wb)
     # Ultima barreira do XLSX efetivamente preenchido, depois de todas as
-    # transformacoes do gerador. Reutiliza o guard da Coleta oficial.
+    # transformacoes do gerador. Reutiliza o guard da Coleta oficial, que se
+    # restringe sozinho ao layout oficial: workbook legado suportado
+    # (v9/v10.1/v10.2) atravessa sem alteracao e sem erro.
     _garantir_colunas_tecnicas_itens_pc_ocultas(wb)
 
     saida = BytesIO()

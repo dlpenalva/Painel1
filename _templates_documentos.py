@@ -840,11 +840,28 @@ def _data_pedido_documental(c: dict) -> str:
     return texto
 
 
+def _ciclo_precluso(c: dict) -> bool:
+    """Ciclo precluso: a apuracao nao produz efeitos financeiros para ele."""
+    situacao = remover_emojis_leve(c.get("situacao") or "").strip().lower()
+    return "preclu" in situacao
+
+
+def _data_canonica_ou_none(valor: Any) -> str | None:
+    """Data ja apurada, ou None quando a apuracao nao a produziu.
+
+    ``NAO_INFORMADO`` e a forma normalizada da ausencia no sumario: aqui ela
+    volta a ser ausencia, nunca texto exibivel dentro de uma afirmacao.
+    """
+    texto = str(valor or "").strip()
+    if not texto or texto == NAO_INFORMADO:
+        return None
+    return texto
+
+
 def _efeito_financeiro_ciclo(c: dict) -> str:
     """Frase administrativa de efeitos financeiros de um ciclo."""
-    situacao = remover_emojis_leve(c.get("situacao") or "").strip().lower()
     inicio = _formatar_competencia(c.get("inicio_efeito_financeiro"))
-    if "preclu" in situacao:
+    if _ciclo_precluso(c):
         return "Sem efeitos financeiros"
     if inicio:
         return f"A partir de {inicio}"
@@ -3157,34 +3174,56 @@ def _ds_secao7_conclusao(doc: Document, dados: dict, cm: dict) -> None:
         _run_campo_manual(p_marcos, "Proxima data canonica de reajuste")
         _adicionar_run(p_marcos, ".")
     else:
+        # Os dois marcos sao lidos de forma independente, do ciclo mais
+        # recente que efetivamente os declare. Ciclo precluso sem acordo nao
+        # tem inicio de efeitos financeiros: nesse caso o documento nao pode
+        # afirmar reconhecimento algum nem exibir placeholder como se fosse
+        # data de efeitos — a redacao passa a ser neutra, preservando o
+        # registro da proxima data canonica.
         ciclos = list(reversed(_ds_ciclos_relevantes(dados)))
-        ciclo_marco = next(
+        inicio_efeito = next(
             (
-                ciclo for ciclo in ciclos
-                if ciclo.get("inicio_efeito_financeiro")
-                or ciclo.get("proxima_data_reajuste")
+                data for data in (
+                    _data_canonica_ou_none(ciclo.get("inicio_efeito_financeiro"))
+                    for ciclo in ciclos if not _ciclo_precluso(ciclo)
+                )
+                if data
             ),
-            {},
+            None,
         )
-        _adicionar_run(
-            p_marcos,
-            "Considerando que os efeitos financeiros do presente reajuste são "
-            "reconhecidos a partir de ",
+        proxima_data = next(
+            (
+                data for data in (
+                    _data_canonica_ou_none(ciclo.get("proxima_data_reajuste"))
+                    for ciclo in ciclos
+                )
+                if data
+            ),
+            None,
         )
+        if inicio_efeito:
+            _adicionar_run(
+                p_marcos,
+                "Considerando que os efeitos financeiros do presente reajuste "
+                "são reconhecidos a partir de ",
+            )
+            _texto_ou_marcador(
+                p_marcos, inicio_efeito, "Data dos efeitos financeiros",
+            )
+            _adicionar_run(
+                p_marcos,
+                ", registra-se que o próximo ciclo de reajuste contratual "
+                "estará apto a partir de ",
+            )
+        else:
+            _adicionar_run(
+                p_marcos,
+                "Não há, nesta análise, data de início de efeitos financeiros "
+                "a registrar. Registra-se que o próximo ciclo de reajuste "
+                "contratual estará apto a partir de ",
+            )
         _texto_ou_marcador(
-            p_marcos,
-            ciclo_marco.get("inicio_efeito_financeiro"),
-            "Data dos efeitos financeiros",
-        )
-        _adicionar_run(
-            p_marcos,
-            ", registra-se que o próximo ciclo de reajuste contratual estará "
-            "apto a partir de ",
-        )
-        _texto_ou_marcador(
-            p_marcos,
-            ciclo_marco.get("proxima_data_reajuste"),
-            "Proxima data canonica de reajuste",
+            p_marcos, proxima_data, "Proxima data canonica de reajuste",
         )
         _adicionar_run(
             p_marcos,

@@ -21,12 +21,81 @@ from openpyxl.utils import column_index_from_string
 
 from _coleta_oficial import (
     TEMPLATE_COLETA_OFICIAL,
+    _garantir_colunas_tecnicas_itens_pc_ocultas,
     gerar_coleta_oficial_preenchida,
     obter_coleta_oficial_bytes,
 )
 
 
 COLUNAS_TECNICAS_ITENS_PC = ("V", "W", "X", "Y", "Z", "AA", "AB", "AC")
+# Linhagem legada ainda suportada (v9/v10.1/v10.2): itens_PC traz o bloco
+# tecnico deslocado (V:AB, sem COMPUTA_VTA) e sem dimensoes de coluna.
+TEMPLATE_LEGADO_SUPORTADO = TEMPLATE_COLETA_OFICIAL.parent / "Coleta_Reajuste.xlsx"
+
+
+def _colunas_ocultas_da_aba(ws) -> set[int]:
+    return {
+        coluna
+        for dimensao in ws.column_dimensions.values()
+        if dimensao.hidden and dimensao.min is not None
+        for coluna in range(dimensao.min, dimensao.max + 1)
+    }
+
+
+def test_guard_vac_oculta_as_colunas_tecnicas_no_layout_oficial():
+    wb = load_workbook(TEMPLATE_COLETA_OFICIAL)
+    try:
+        ws = wb["itens_PC"]
+        for dimensao in ws.column_dimensions.values():
+            dimensao.hidden = False
+        _garantir_colunas_tecnicas_itens_pc_ocultas(wb)
+        ocultas = _colunas_ocultas_da_aba(ws)
+        for letra in COLUNAS_TECNICAS_ITENS_PC:
+            assert column_index_from_string(letra) in ocultas, letra
+    finally:
+        wb.close()
+
+
+def test_guard_vac_segue_fail_closed_no_layout_oficial():
+    """Layout oficial sem faixa que cubra V:AC ainda falha explicitamente."""
+    wb = load_workbook(TEMPLATE_COLETA_OFICIAL)
+    try:
+        ws = wb["itens_PC"]
+        for chave, dimensao in list(ws.column_dimensions.items()):
+            if dimensao.min is not None and dimensao.max is not None and (
+                set(range(dimensao.min, dimensao.max + 1)) & set(range(22, 30))
+            ):
+                del ws.column_dimensions[chave]
+        with pytest.raises(ValueError, match="colunas tecnicas"):
+            _garantir_colunas_tecnicas_itens_pc_ocultas(wb)
+    finally:
+        wb.close()
+
+
+@pytest.mark.skipif(
+    not TEMPLATE_LEGADO_SUPORTADO.is_file(),
+    reason="template legado nao versionado nesta instalacao",
+)
+def test_guard_vac_nao_quebra_layout_legado_suportado():
+    """Linhagem legada atravessa o guard sem erro e sem alteracao.
+
+    O guard e a ultima barreira de ``gerar_masterfile_preenchido``, que ainda
+    declara suporte a v9/v10.1/v10.2. Nessas linhagens as dimensoes de coluna
+    nao cobrem V:AC — exigi-las abortaria a geracao do arquivo inteiro.
+    """
+    wb = load_workbook(TEMPLATE_LEGADO_SUPORTADO)
+    try:
+        ws = wb["itens_PC"]
+        assert str(ws.cell(1, 22).value or "").strip().upper() != "COMPUTA_VTA"
+        antes_ocultas = _colunas_ocultas_da_aba(ws)
+        antes_cabecalhos = [ws.cell(1, c).value for c in range(22, 30)]
+
+        _garantir_colunas_tecnicas_itens_pc_ocultas(wb)  # nao pode levantar
+
+        assert _colunas_ocultas_da_aba(ws) == antes_ocultas
+        assert [ws.cell(1, c).value for c in range(22, 30)] == antes_cabecalhos
+    finally:
+        wb.close()
 
 
 def _coleta_preenchida() -> bytes:
