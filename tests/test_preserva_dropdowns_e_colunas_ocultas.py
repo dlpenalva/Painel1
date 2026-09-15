@@ -19,10 +19,109 @@ import pytest
 from openpyxl import load_workbook
 from openpyxl.utils import column_index_from_string
 
-from _coleta_oficial import TEMPLATE_COLETA_OFICIAL, obter_coleta_oficial_bytes
+from _coleta_oficial import (
+    TEMPLATE_COLETA_OFICIAL,
+    _garantir_colunas_tecnicas_itens_pc_ocultas,
+    gerar_coleta_oficial_preenchida,
+    obter_coleta_oficial_bytes,
+)
 
 
 COLUNAS_TECNICAS_ITENS_PC = ("V", "W", "X", "Y", "Z", "AA", "AB", "AC")
+# Linhagem legada ainda suportada (v9/v10.1/v10.2): itens_PC traz o bloco
+# tecnico deslocado (V:AB, sem COMPUTA_VTA) e sem dimensoes de coluna.
+TEMPLATE_LEGADO_SUPORTADO = TEMPLATE_COLETA_OFICIAL.parent / "Coleta_Reajuste.xlsx"
+
+
+def _colunas_ocultas_da_aba(ws) -> set[int]:
+    return {
+        coluna
+        for dimensao in ws.column_dimensions.values()
+        if dimensao.hidden and dimensao.min is not None
+        for coluna in range(dimensao.min, dimensao.max + 1)
+    }
+
+
+def test_guard_vac_oculta_as_colunas_tecnicas_no_layout_oficial():
+    wb = load_workbook(TEMPLATE_COLETA_OFICIAL)
+    try:
+        ws = wb["itens_PC"]
+        for dimensao in ws.column_dimensions.values():
+            dimensao.hidden = False
+        _garantir_colunas_tecnicas_itens_pc_ocultas(wb)
+        ocultas = _colunas_ocultas_da_aba(ws)
+        for letra in COLUNAS_TECNICAS_ITENS_PC:
+            assert column_index_from_string(letra) in ocultas, letra
+    finally:
+        wb.close()
+
+
+def test_guard_vac_segue_fail_closed_no_layout_oficial():
+    """Layout oficial sem faixa que cubra V:AC ainda falha explicitamente."""
+    wb = load_workbook(TEMPLATE_COLETA_OFICIAL)
+    try:
+        ws = wb["itens_PC"]
+        for chave, dimensao in list(ws.column_dimensions.items()):
+            if dimensao.min is not None and dimensao.max is not None and (
+                set(range(dimensao.min, dimensao.max + 1)) & set(range(22, 30))
+            ):
+                del ws.column_dimensions[chave]
+        with pytest.raises(ValueError, match="colunas tecnicas"):
+            _garantir_colunas_tecnicas_itens_pc_ocultas(wb)
+    finally:
+        wb.close()
+
+
+@pytest.mark.skipif(
+    not TEMPLATE_LEGADO_SUPORTADO.is_file(),
+    reason="template legado nao versionado nesta instalacao",
+)
+def test_guard_vac_nao_quebra_layout_legado_suportado():
+    """Linhagem legada atravessa o guard sem erro e sem alteracao.
+
+    O guard e a ultima barreira de ``gerar_masterfile_preenchido``, que ainda
+    declara suporte a v9/v10.1/v10.2. Nessas linhagens as dimensoes de coluna
+    nao cobrem V:AC — exigi-las abortaria a geracao do arquivo inteiro.
+    """
+    wb = load_workbook(TEMPLATE_LEGADO_SUPORTADO)
+    try:
+        ws = wb["itens_PC"]
+        assert str(ws.cell(1, 22).value or "").strip().upper() != "COMPUTA_VTA"
+        antes_ocultas = _colunas_ocultas_da_aba(ws)
+        antes_cabecalhos = [ws.cell(1, c).value for c in range(22, 30)]
+
+        _garantir_colunas_tecnicas_itens_pc_ocultas(wb)  # nao pode levantar
+
+        assert _colunas_ocultas_da_aba(ws) == antes_ocultas
+        assert [ws.cell(1, c).value for c in range(22, 30)] == antes_cabecalhos
+    finally:
+        wb.close()
+
+
+def _coleta_preenchida() -> bytes:
+    return gerar_coleta_oficial_preenchida({
+        "origem": "Reajuste Simples",
+        "indice": "IPCA",
+        "data_base_original": "27/08/2025",
+        "fator": 1.05,
+        "fator_acumulado": 1.05,
+        "variacao_acumulada": 0.05,
+        "ciclos": [{
+            "ciclo": "C1",
+            "data_base": "27/08/2025",
+            "data_pedido": "27/08/2026",
+            "data_abertura_fisica_exata": "27/08/2026",
+            "proxima_data_reajuste": "27/08/2027",
+            "financeiro_inicio": "01/08/2026",
+            "financeiro_fim": "31/07/2027",
+            "situacao": "TEMPESTIVO",
+            "situacao_aplicada": "TEMPESTIVO",
+            "objeto_analise_atual": True,
+            "percentual_aplicado": 0.05,
+            "variacao": 0.05,
+            "fator": 1.05,
+        }],
+    })
 
 
 @pytest.fixture(scope="module")
@@ -129,6 +228,37 @@ def test_itens_pc_v_ate_ac_saem_ocultas(entrega):
     assert cobertas == {
         column_index_from_string(letra) for letra in COLUNAS_TECNICAS_ITENS_PC
     }
+
+
+def test_itens_pc_v_ate_ac_ocultas_no_xlsx_final_preenchido_e_intactas():
+    base_bytes = obter_coleta_oficial_bytes()
+    final_bytes = _coleta_preenchida()
+    base = load_workbook(BytesIO(base_bytes), data_only=False)
+    final = load_workbook(BytesIO(final_bytes), data_only=False)
+    try:
+        ws_base = base["itens_PC"]
+        ws_final = final["itens_PC"]
+        ocultas = {
+            coluna
+            for dimensao in ws_final.column_dimensions.values()
+            if dimensao.hidden and dimensao.min is not None
+            for coluna in range(dimensao.min, dimensao.max + 1)
+        }
+        for letra in COLUNAS_TECNICAS_ITENS_PC:
+            assert column_index_from_string(letra) in ocultas, letra
+
+        ultima_linha = max(ws_base.max_row, ws_final.max_row)
+        for coluna in range(22, 30):
+            assert [
+                ws_final.cell(linha, coluna).value
+                for linha in range(1, ultima_linha + 1)
+            ] == [
+                ws_base.cell(linha, coluna).value
+                for linha in range(1, ultima_linha + 1)
+            ]
+    finally:
+        base.close()
+        final.close()
 
 
 def test_nenhuma_validacao_do_template_desaparece(entrega):

@@ -511,6 +511,9 @@ def _montar_secao_ciclos(
                 reg.get("inicio_efeito_financeiro")
                 or reg.get("inicio_efeito_financeiro_parametros")
             ),
+            "proxima_data_reajuste": _fmt_data(
+                reg.get("proxima_data_reajuste")
+            ),
             "situacao": _texto_ou_nao_informado(reg.get("situacao")),
             "percentual_reajuste": (
                 NAO_APLICAVEL if nome == "C0"

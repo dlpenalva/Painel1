@@ -1,4 +1,5 @@
 import sys
+import hashlib
 from pathlib import Path
 import unittest
 
@@ -161,6 +162,53 @@ class TestFluxoUploadDocs(unittest.TestCase):
         self.assertIn("processar_coleta_oficial_runtime", PAGINA)
         self.assertIn("resultado_valor_global", PAGINA)
         self.assertIn("diagnostico_coleta_v2", PAGINA)
+
+    def test_comunicacoes_do_termo_ficam_abaixo_do_download_e_sem_txt(self):
+        inicio = PAGINA.index('elif chave == "termo_apostila":')
+        fim = PAGINA.index('elif chave == "garantia_contratual":', inicio)
+        bloco = PAGINA[inicio:fim]
+        download = bloco.index('key="upload_docs_termo_apostila"')
+        verificacao = bloco.index("E-mail para verificação final pelo fiscal")
+        pos_formalizacao = bloco.index("Após a formalização")
+        sap = bloco.index("E-mail ao fiscal — Requisição de Compras no SAP")
+        self.assertLess(download, verificacao)
+        self.assertLess(verificacao, pos_formalizacao)
+        self.assertLess(pos_formalizacao, sap)
+        self.assertIn("expanded=False", bloco)
+        self.assertIn("st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)", bloco)
+        self.assertIn("st.code(TEXTO_EMAIL_REQUISICAO_SAP, language=None)", bloco)
+        self.assertNotIn("text/plain", bloco)
+        self.assertNotIn(".txt", bloco.lower())
+
+    def test_textos_aprovados_das_comunicacoes_do_termo(self):
+        self.assertIn(
+            "Boa tarde! Encaminho a minuta do Termo de Apostila para verificação ",
+            PAGINA,
+        )
+        self.assertIn("final => TMP-1026436.\\n\\n", PAGINA)
+        self.assertIn(
+            "Com a formalização do reajuste e a assinatura do Termo de Apostila, ",
+            PAGINA,
+        )
+        self.assertIn(
+            "Após a conclusão, favor informar a GCC para vinculação da Requisição de ",
+            PAGINA,
+        )
+
+    def test_asset_png_do_sap_e_downloadavel(self):
+        asset = ROOT / "assets" / "Atualização da Requisição de Compra_E-MAIL.png"
+        dados = asset.read_bytes()
+        self.assertTrue(dados.startswith(b"\x89PNG\r\n\x1a\n"))
+        self.assertGreater(len(dados), 100)
+        self.assertEqual(
+            hashlib.sha256(dados).hexdigest(),
+            "1255c4ca4a6ad1abe4b4db624e9b6ad1c0518607eaeb1a5b15bbcc3da9aa4587",
+        )
+        self.assertIn("CAMINHO_ORIENTACAO_SAP.read_bytes()", PAGINA)
+        self.assertIn(
+            "Baixar orientação visual — Atualização da ", PAGINA
+        )
+        self.assertIn('mime="image/png"', PAGINA)
 
 
 if __name__ == "__main__":

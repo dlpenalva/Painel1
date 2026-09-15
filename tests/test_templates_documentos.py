@@ -4,6 +4,7 @@ Despacho Saneador (§7/§10.3).
 from __future__ import annotations
 
 import sys
+import re
 from copy import deepcopy
 from datetime import date
 from io import BytesIO
@@ -70,6 +71,7 @@ CAMPOS_TERMO = {
     "concordancia_ref": "TLB-AUT-2026/00500",
     "regularidade_ref": "TLB-AUT-2026/00400",
     "adequacao_orcamentaria_ref": "TLB-DES-2026/00300",
+    "despacho_saneador_ref": "TLB-DES-2026/00600",
     "processo_ref": "TLB-PRO-2026/01100",
     "valor_original_contrato": 1000000.0,
     "local_data": "20/07/2026",
@@ -192,6 +194,7 @@ def test_apostila_considerandos_na_ordem_aprovada():
         "concordância da CONTRATADA",
         "certidões de regularidade",
         "adequação orçamentária",
+        "Despacho Saneador",
     )
     assert len(considerandos) == len(chaves_ordenadas)
     for numero, (paragrafo, chave) in enumerate(
@@ -210,6 +213,69 @@ def test_apostila_considerandos_na_ordem_aprovada():
     assert "duplicidade de contagem" not in texto
 
 
+def test_apostila_considerandos_8_e_9_usam_referencias_sem_inventar_dados():
+    completos = _considerandos(gerar_termo_apostila(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO
+    ))
+    assert completos[7] == (
+        "8. A manifestação da Gerência Financeira e Orçamentária – GFO "
+        "relativa à adequação orçamentária da presente atualização contratual, "
+        "constante do documento TLB-DES-2026/00300."
+    )
+    assert completos[8] == (
+        "9. O Despacho Saneador relativo à presente matéria, constante do "
+        "documento TLB-DES-2026/00600."
+    )
+
+    sem_referencias = {
+        k: v for k, v in CAMPOS_TERMO.items()
+        if k not in ("adequacao_orcamentaria_ref", "despacho_saneador_ref")
+    }
+    termo_pendente = gerar_termo_apostila(
+        leitura_multiciclo_pc(), campos_manuais=sem_referencias
+    )
+    pendentes = _considerandos(termo_pendente)
+    assert "[PREENCHER: Referencia da adequacao orcamentaria]" in pendentes[7]
+    assert "[PREENCHER: Referencia do Despacho Saneador]" in pendentes[8]
+    placeholders = {
+        "[PREENCHER: Referencia da adequacao orcamentaria]",
+        "[PREENCHER: Referencia do Despacho Saneador]",
+    }
+    runs = [
+        run
+        for paragrafo in Document(BytesIO(termo_pendente)).paragraphs
+        for run in paragrafo.runs
+        if run.text in placeholders
+    ]
+    assert {run.text for run in runs} == placeholders
+    ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    assert all(run._element.rPr.find(f"{ns}highlight") is not None for run in runs)
+
+
+def test_apostila_quadros_numerados_sao_sequenciais_e_titulos_so_italicos():
+    for leitura in (leitura_multiciclo_pc(), _leitura_pc_com_potencial()):
+        b = gerar_termo_apostila(leitura, campos_manuais=CAMPOS_TERMO)
+        doc = Document(BytesIO(b))
+        titulos = [
+            p for p in doc.paragraphs
+            if p.text.startswith("Quadro ")
+        ]
+        assert titulos
+        numeros = [
+            int(match.group(1))
+            for p in titulos
+            if (match := re.match(r"Quadro (\d+)\b", p.text))
+        ]
+        assert numeros == list(range(1, len(numeros) + 1))
+        assert "Quadro 3 — Composição do Valor Total Atualizado do Contrato" in [
+            p.text for p in titulos
+        ]
+        for paragrafo in titulos:
+            runs = [run for run in paragrafo.runs if run.text]
+            assert runs and all(run.italic is True for run in runs)
+            assert all(run.bold is False for run in runs)
+
+
 def test_apostila_considerando_herdado_removido_tambem_no_modelo_branco():
     texto = _texto_docx(gerar_modelo_branco_termo())
     assert "histórico já formalizado" not in texto
@@ -223,12 +289,12 @@ def test_apostila_deliberacao_institucional_condicional_e_sequencial():
     considerandos = _considerandos(gerar_termo_apostila(
         leitura_multiciclo_pc(), campos_manuais=cm
     ))
-    assert considerandos[1].startswith("2. ")
-    assert "Ata nº 1" in considerandos[1]
+    assert considerandos[9].startswith("10. ")
+    assert "Ata nº 1" in considerandos[9]
     # Numeracao permanece sequencial, sem lacuna.
     for numero, paragrafo in enumerate(considerandos, start=1):
         assert paragrafo.startswith(f"{numero}. ")
-    assert len(considerandos) == 9
+    assert len(considerandos) == 10
 
 
 def test_apostila_instrumentos_posteriores_condicionais():
@@ -381,8 +447,7 @@ def test_documentos_usam_corte_canonico_e_excluem_pc_posterior():
     assert "eventual pagamento" in saneador
     assert "não integra o valor reconhecido a pagar" in saneador
 
-    # O Termo passou a consolidar a situacao no Quadro 3 (modelo aprovado).
-    assert "Quadro 3 — Situação dos valores retroativos" in termo
+    assert "Quadro complementar — Situação dos valores retroativos" in termo
     assert "retroativo potencial" in termo
     assert "R$ 44,63" in termo
     assert "R$ 20,08" not in termo
@@ -402,7 +467,7 @@ def test_documentos_reincluem_reconhecido_quando_pc_pago_esta_antes_do_corte():
 
     assert "Retroativo reconhecido: R$ 20,08" in saneador
     assert "Retroativo potencial: R$ 44,63" in saneador
-    assert "Quadro 3 — Situação dos valores retroativos" in termo
+    assert "Quadro complementar — Situação dos valores retroativos" in termo
     assert "R$ 20,08" in termo
     assert "R$ 44,63" in termo
 
@@ -548,6 +613,10 @@ def test_saneador_itens_administrativos_presentes():
         "Garantia contratual",
     ):
         assert item in texto
+    assert (
+        "Deverá observar os valores, condições e prazos estabelecidos no "
+        "contrato, quando aplicável."
+    ) in texto
 
 
 def test_saneador_resultado_consolidado_sem_detalhamento_por_ciclo():
@@ -566,7 +635,10 @@ def test_saneador_resultado_consolidado_sem_detalhamento_por_ciclo():
 
 def test_saneador_conclusao_neutra_quando_falta_documento():
     # Campo documental obrigatorio em aberto: nao pode declarar saneamento.
-    cm = {k: v for k, v in CAMPOS_SANEADOR.items() if k != "garantia_situacao"}
+    cm = {
+        k: v for k, v in CAMPOS_SANEADOR.items()
+        if k != "adequacao_orcamentaria_ref"
+    }
     texto = _texto_docx(gerar_despacho_saneador(
         leitura_multiciclo_pc(), campos_manuais=cm
     ))
@@ -586,6 +658,109 @@ def test_saneador_conclusao_saneada_em_estado_compativel():
         "ao impacto incidente no exercício vigente."
     ) in texto
     assert "instrução encontra-se apta" not in texto
+
+
+def test_saneador_conclusao_transporta_marcos_temporais_canonicos():
+    leitura = leitura_multiciclo_pc()
+    ciclo = leitura["parametros_v10"]["por_ciclo"]["C2"]
+    ciclo["inicio_efeito_financeiro"] = date(2026, 8, 27)
+    ciclo["proxima_data_reajuste"] = date(2027, 8, 27)
+    texto = _texto_docx(gerar_despacho_saneador(
+        leitura, campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert (
+        "Considerando que os efeitos financeiros do presente reajuste são "
+        "reconhecidos a partir de 27/08/2026, registra-se que o próximo ciclo "
+        "de reajuste contratual estará apto a partir de 27/08/2027, observados "
+        "os termos e a periodicidade previstos no contrato."
+    ) in texto
+    assert "data do pedido + 12 meses" not in texto
+
+
+def _leitura_sem_efeitos_financeiros(proxima=date(2027, 5, 1)):
+    """Ciclos preclusos sem acordo: nenhum inicio de efeito financeiro."""
+    from _reajuste_utils import SITUACAO_SEM_PEDIDO
+
+    leitura = leitura_multiciclo_pc()
+    por_ciclo = leitura["parametros_v10"]["por_ciclo"]
+    for nome in ("C1", "C2"):
+        por_ciclo[nome]["inicio_efeito_financeiro"] = None
+        por_ciclo[nome]["inicio_efeito_financeiro_parametros"] = None
+        por_ciclo[nome]["situacao"] = SITUACAO_SEM_PEDIDO
+    if proxima is not None:
+        por_ciclo["C2"]["proxima_data_reajuste"] = proxima
+    return leitura
+
+
+def test_saneador_conclusao_omite_efeitos_quando_ciclo_e_precluso():
+    """Sem inicio de efeitos, a conclusao nao afirma reconhecimento algum."""
+    texto = _texto_docx(gerar_despacho_saneador(
+        _leitura_sem_efeitos_financeiros(), campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert (
+        "Não há, nesta análise, data de início de efeitos financeiros a "
+        "registrar. Registra-se que o próximo ciclo de reajuste contratual "
+        "estará apto a partir de 01/05/2027, observados os termos e a "
+        "periodicidade previstos no contrato."
+    ) in texto
+    # Nem afirmacao contraditoria, nem placeholder no lugar da data de efeitos.
+    assert "efeitos financeiros do presente reajuste são reconhecidos" not in texto
+    assert "[PREENCHER: Data dos efeitos financeiros]" not in texto
+    assert "reconhecidos a partir de Não informado" not in texto
+
+
+def test_saneador_conclusao_preserva_redacao_quando_ha_efeitos_financeiros():
+    """Contraponto do cenario precluso: a redacao aprovada segue intacta."""
+    leitura = leitura_multiciclo_pc()
+    ciclo = leitura["parametros_v10"]["por_ciclo"]["C2"]
+    ciclo["inicio_efeito_financeiro"] = date(2026, 8, 27)
+    ciclo["proxima_data_reajuste"] = date(2027, 8, 27)
+    texto = _texto_docx(gerar_despacho_saneador(
+        leitura, campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert (
+        "Considerando que os efeitos financeiros do presente reajuste são "
+        "reconhecidos a partir de 27/08/2026, registra-se que o próximo ciclo "
+        "de reajuste contratual estará apto a partir de 27/08/2027"
+    ) in texto
+    assert "Não há, nesta análise, data de início de efeitos financeiros" not in texto
+
+
+def test_saneador_conclusao_marca_proxima_data_ausente_sem_afirmar_efeitos():
+    """Ausencia da proxima data vira placeholder, nunca 'Não informado'."""
+    texto = _texto_docx(gerar_despacho_saneador(
+        _leitura_sem_efeitos_financeiros(proxima=None),
+        campos_manuais=CAMPOS_SANEADOR,
+    ))
+    assert (
+        "Não há, nesta análise, data de início de efeitos financeiros a "
+        "registrar. Registra-se que o próximo ciclo de reajuste contratual "
+        "estará apto a partir de [PREENCHER: Proxima data canonica de "
+        "reajuste], observados os termos e a periodicidade previstos no "
+        "contrato."
+    ) in texto
+    assert "apto a partir de Não informado" not in texto
+
+
+def test_saneador_paragrafo_de_complementacao_so_com_pendencia_documental():
+    frase = (
+        "Após a complementação e conferência das informações documentais "
+        "indicadas, deverá ser avaliado o prosseguimento da instrução para "
+        "formalização."
+    )
+    completo = _texto_docx(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR
+    ))
+    assert frase not in completo
+
+    campos_pendentes = {
+        k: v for k, v in CAMPOS_SANEADOR.items()
+        if k != "adequacao_orcamentaria_ref"
+    }
+    pendente = _texto_docx(gerar_despacho_saneador(
+        leitura_multiciclo_pc(), campos_manuais=campos_pendentes
+    ))
+    assert frase in pendente
 
 
 def test_saneador_modelo_branco_nao_declara_saneamento():
@@ -611,16 +786,17 @@ def test_saneador_controle_adequacao_texto_aprovado():
     )
     texto = _texto_docx(b)
     assert (
-        "Registra-se que a Gerência Financeira e Orçamentária – GFO realizou "
-        "a adequação orçamentária relativa à presente atualização contratual, "
-        "conforme documento TLB-DES-2026/00300, nos termos e limites da "
-        "respectiva manifestação."
+        "Para fins de formalização, registra-se a manifestação da Gerência "
+        "Financeira e Orçamentária – GFO relativa à adequação orçamentária da "
+        "presente atualização contratual, conforme documento "
+        "TLB-DES-2026/00300, observados os termos e limites nela consignados."
     ) in texto
+    assert "Registrar a manifestação" not in texto
     assert (
         "Os valores eventualmente previstos para exercícios subsequentes "
         "permanecem sujeitos à confirmação pela gerência competente"
     ) in texto
-    assert "natureza de previsão ou programação condicionada" in texto
+    assert "caráter de previsão ou programação" in texto
     # A secao 5 fica entre Documentos (4) e Pendencias (6).
     assert texto.index("4. DOCUMENTOS E VERIFICAÇÕES") < \
         texto.index("5. CONTROLE DA ADEQUAÇÃO ORÇAMENTÁRIA") < \
@@ -635,10 +811,10 @@ def test_saneador_branco_nao_afirma_adequacao_realizada():
         "Registrar a manifestação da Gerência Financeira e Orçamentária "
         "– GFO relativa à adequação orçamentária da presente atualização "
         "contratual, conforme documento [PREENCHER: Referencia da adequacao "
-        "orcamentaria], nos termos e limites da respectiva manifestação."
+        "orcamentaria], observados os termos e limites nela consignados."
     ) in texto
     # O paragrafo normativo/condicional permanece no modelo em branco.
-    assert "natureza de previsão ou programação condicionada" in texto
+    assert "caráter de previsão ou programação" in texto
 
 
 def test_saneador_processado_sem_referencia_nao_afirma_adequacao():
@@ -646,20 +822,33 @@ def test_saneador_processado_sem_referencia_nao_afirma_adequacao():
     # manifestacao: nao pode afirmar um ato cuja prova esta em aberto.
     cm = {k: v for k, v in CAMPOS_SANEADOR.items()
           if k != "adequacao_orcamentaria_ref"}
-    texto = _texto_docx(gerar_despacho_saneador(
+    saneador = gerar_despacho_saneador(
         leitura_multiciclo_pc(), campos_manuais=cm
-    ))
+    )
+    texto = _texto_docx(saneador)
     assert "GFO realizou a adequação orçamentária" not in texto
     assert (
-        "Registrar a manifestação da Gerência Financeira e Orçamentária "
-        "– GFO relativa à adequação orçamentária da presente atualização "
-        "contratual, conforme documento [PREENCHER: Referencia da adequacao "
-        "orcamentaria], nos termos e limites da respectiva manifestação."
+        "Para fins de formalização, registra-se a manifestação da Gerência "
+        "Financeira e Orçamentária – GFO relativa à adequação orçamentária da "
+        "presente atualização contratual, conforme documento [PREENCHER: "
+        "Referencia da adequacao orcamentaria], observados os termos e limites "
+        "nela consignados."
     ) in texto
+    marcador = "[PREENCHER: Referencia da adequacao orcamentaria]"
+    runs = [
+        run
+        for paragrafo in Document(BytesIO(saneador)).paragraphs
+        for run in paragrafo.runs
+        if run.text == marcador
+    ]
+    ns = "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}"
+    assert len(runs) == 1
+    assert runs[0]._element.rPr.find(f"{ns}highlight") is not None
+    assert "Registrar a manifestação" not in texto
     assert "[PREENCHER: Referencia da adequacao orcamentaria]" in texto
     assert "SANEADO PARA FORMALIZAÇÃO" not in texto
     # O paragrafo normativo/condicional permanece.
-    assert "natureza de previsão ou programação condicionada" in texto
+    assert "caráter de previsão ou programação" in texto
 
 
 def test_saneador_nao_exige_valor_manual_da_adequacao():
@@ -969,7 +1158,7 @@ def test_apostila_pc_com_potencial_tem_quadros_2_e_3_e_textos_proprios():
     ))
     assert "método de Pedidos de Compra" in texto
     assert "Quadro 2 — Execução reconhecida e retroativo por ciclo" in texto
-    assert "Quadro 3 — Situação dos valores retroativos" in texto
+    assert "Quadro complementar — Situação dos valores retroativos" in texto
     assert "Integra o valor reconhecido a pagar nesta data" in texto
     assert "A conversão do retroativo potencial em retroativo reconhecido" in texto
 
@@ -979,7 +1168,7 @@ def test_apostila_pc_sem_potencial_nao_gera_quadro_3_nem_menciona_potencial():
                              campos_manuais=CAMPOS_TERMO)
     texto = _texto_docx(b)
     assert "Quadro 2 — Execução reconhecida e retroativo por ciclo" in texto
-    assert "Quadro 3 — Situação dos valores retroativos" not in texto
+    assert "Quadro complementar — Situação dos valores retroativos" not in texto
     assert "potencial" not in texto.lower()
     assert not any(
         t.rows[0].cells[0].text == "Natureza" for t in Document(BytesIO(b)).tables
@@ -1066,7 +1255,7 @@ def test_apostila_sem_aditivos_nao_gera_tabela_vazia():
     b = gerar_termo_apostila(leitura_ausencias(), campos_manuais=CAMPOS_TERMO)
     texto = _texto_docx(b)
     assert "Não foram identificados aditivos ou supressões" in texto
-    assert "Quadro 5 — Aditivos e supressões considerados" not in texto
+    assert "Quadro 4 — Aditivos e supressões considerados" not in texto
     assert not any(
         len(t.rows[0].cells) > 2
         and t.rows[0].cells[2].text == "Impacto atualizado total"
@@ -1080,8 +1269,8 @@ def test_apostila_com_aditivos_gera_quadro_5_automatico():
     b = gerar_termo_apostila(leitura_simples_financeiro(),
                              campos_manuais=CAMPOS_TERMO)
     texto = _texto_docx(b)
-    assert "conforme Quadro 5" in texto
-    assert "Quadro 5 — Aditivos e supressões considerados" in texto
+    assert "conforme Quadro 4" in texto
+    assert "Quadro 4 — Aditivos e supressões considerados" in texto
     quadro = next(
         t for t in Document(BytesIO(b)).tables
         if [c.text for c in t.rows[0].cells]
@@ -1419,7 +1608,7 @@ def test_apostila_metodo_desconhecido_nao_afirma_financeiro():
     texto = _texto_docx(b)
     assert "não está definido nesta análise" in _item_21(b)
     assert "valor pago efetivo" not in texto
-    assert "Quadro 2" not in texto
+    assert "Quadro 2 — Situação da apuração financeira" in texto
 
 
 def test_apostila_pc_sem_consolidacao_nao_vira_financeiro():

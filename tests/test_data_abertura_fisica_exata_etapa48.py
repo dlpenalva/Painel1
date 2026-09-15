@@ -93,6 +93,31 @@ def test_a_tempestivo_separa_cadeia_mensal_da_fisica():
     assert "parametros!$C$" not in str(rem["E1"].value)
 
 
+def test_proxima_data_canonica_e_transportada_sem_recalculo_documental():
+    wb, par = _parametros(_payload(
+        _ciclo(
+            1,
+            "27/08/2025",
+            "27/08/2026",
+            "27/08/2026",
+            "01/08/2026",
+            proxima_data_reajuste="27/08/2027",
+        ),
+    ))
+    try:
+        assert par["V1"].value == "PROXIMA_DATA_REAJUSTE"
+        assert _d(par["V3"]) == date(2027, 8, 27)
+
+        from _leitor_masterfile_v10 import _ler_parametros_v10
+
+        leitura = _ler_parametros_v10(wb)
+        assert leitura["por_ciclo"]["C1"]["proxima_data_reajuste"] == date(
+            2027, 8, 27
+        )
+    finally:
+        wb.close()
+
+
 def test_b_tempestivo_retardado_usa_pedido_aplicavel_exato():
     wb, par = _parametros(_payload(
         _ciclo(1, "20/04/2023", "15/06/2024", "15/06/2024", "01/06/2024",

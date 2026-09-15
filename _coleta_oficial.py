@@ -721,19 +721,45 @@ def _validar_validacoes_aditivos_criticas(wb) -> None:
 _COLS_TECNICAS_ITENS_PC = frozenset(range(22, 30))
 
 
+# Assinatura do bloco tecnico de itens_PC no layout OFICIAL (V1:AC1).
+# Layouts legados ainda suportados (v9/v10.1/v10.2) trazem outro bloco,
+# deslocado e sem COMPUTA_VTA (V:AB): neles V:AC nao sao as colunas tecnicas
+# oficiais, e este guard nao tem autoridade sobre a aba.
+_CABECALHOS_TECNICOS_ITENS_PC = (
+    "COMPUTA_VTA", "TIPO_PARCELA", "ORIGEM_DADO", "TIPO_FINANCEIRO",
+    "FONTE_PARCELA", "JA_REFLETIDO_EM", "STATUS_CONSOLIDACAO",
+    "JUSTIFICATIVA_VTA",
+)
+
+
+def _itens_pc_tem_bloco_tecnico_oficial(ws) -> bool:
+    """True quando itens_PC!V1:AC1 e o bloco tecnico do layout oficial."""
+    return tuple(
+        str(ws.cell(1, coluna).value or "").strip().upper()
+        for coluna in sorted(_COLS_TECNICAS_ITENS_PC)
+    ) == _CABECALHOS_TECNICOS_ITENS_PC
+
+
 def _garantir_colunas_tecnicas_itens_pc_ocultas(wb) -> None:
     """Assegura que itens_PC!V:AC saiam OCULTAS no XLSX entregue.
 
-    Altera SOMENTE a propriedade ``hidden`` de faixas de coluna ja existentes
-    e inteiramente contidas em V:AC. Nunca cria, divide ou redimensiona
-    faixas (o que produziria elementos <col> sobrepostos e reparo do Excel)
-    e nunca oculta coluna fora dessa janela. Se alguma coluna de V:AC ficar
-    sem faixa que a cubra, a geracao falha explicitamente em vez de entregar
-    a aba com as colunas tecnicas visiveis.
+    Aplica-se apenas ao layout oficial, identificado pela assinatura do bloco
+    tecnico em V1:AC1. Aba ausente ou de linhagem legada suportada sai deste
+    guard sem alteracao e sem erro — nessas linhagens V:AC nao sao as colunas
+    tecnicas oficiais e suas dimensoes podem nem existir.
+
+    No layout oficial, altera SOMENTE a propriedade ``hidden`` de faixas de
+    coluna ja existentes e inteiramente contidas em V:AC. Nunca cria, divide
+    ou redimensiona faixas (o que produziria elementos <col> sobrepostos e
+    reparo do Excel) e nunca oculta coluna fora dessa janela. Se alguma coluna
+    de V:AC ficar sem faixa que a cubra, a geracao falha explicitamente em vez
+    de entregar a aba com as colunas tecnicas visiveis.
     """
     if "itens_PC" not in wb.sheetnames:
         return
     ws = wb["itens_PC"]
+    if not _itens_pc_tem_bloco_tecnico_oficial(ws):
+        return
     pendentes = set(_COLS_TECNICAS_ITENS_PC)
     for dimensao in list(ws.column_dimensions.values()):
         if dimensao.min is None or dimensao.max is None:
@@ -988,6 +1014,7 @@ def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]
             # data_inicio/janelas. Payload sem o campo -> None (o gerador
             # aplica o fallback para data_inicio ao preencher parametros!I).
             "data_abertura_fisica_exata": _data(bruto.get("data_abertura_fisica_exata")),
+            "proxima_data_reajuste": _data(bruto.get("proxima_data_reajuste")),
             # Data final ja decidida pela Calculadora, normalizada a
             # COMPETENCIA (dia 1). O gerador apenas a propaga; nao recria
             # tempestividade, negociacao ou excecoes.

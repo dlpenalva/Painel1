@@ -649,6 +649,24 @@ def _registrar_datas_pedido(wb, ciclos: dict[str, Any]) -> None:
         ws[f"U{linha}"].number_format = "dd/mm/yyyy"
 
 
+def _registrar_proximas_datas_reajuste(wb, ciclos: dict[str, Any]) -> None:
+    """Persiste a proxima data exata ja calculada pela Calculadora.
+
+    A coluna tecnica V nao calcula nem infere datas: apenas transporta o
+    resultado canonico para os documentos gerados apos o upload da Coleta.
+    """
+    ws = wb["parametros"] if "parametros" in wb.sheetnames else None
+    if ws is None or str(ws["B1"].value or "").strip().upper() != "CICLO":
+        return
+    ws["V1"] = "PROXIMA_DATA_REAJUSTE"
+    for linha, nome in enumerate(("C0", "C1", "C2", "C3", "C4"), start=2):
+        valor = (ciclos.get(nome) or {}).get("proxima_data_reajuste")
+        if isinstance(valor, datetime):
+            valor = valor.date()
+        _escrever_entrada(ws, f"V{linha}", valor if isinstance(valor, date) else None)
+        ws[f"V{linha}"].number_format = "dd/mm/yyyy"
+
+
 def _preencher_datas_fotografias_remanescentes(
     ws, ciclos: dict[str, Any], data_corte: Any, ciclo_vigente: str,
 ) -> None:
@@ -853,6 +871,7 @@ def gerar_masterfile_preenchido(
     _registrar_inicio_efeitos_financeiros(wb, ciclos_completos)
     _registrar_datas_abertura_fisica(wb, ciclos_completos, ciclos)
     _registrar_datas_pedido(wb, ciclos_completos)
+    _registrar_proximas_datas_reajuste(wb, ciclos_completos)
 
     ciclos_computados: list[tuple[str, Any]] = []
     for linha, nome in enumerate(("C0", "C1", "C2", "C3", "C4"), start=2):
@@ -1046,8 +1065,16 @@ def gerar_masterfile_preenchido(
     # 26J.1: a planilha entregue ao fiscal deve manter a mensagem de novo item
     # (aditivos!M) integralmente legivel mesmo quando o template de origem for
     # de linhagem anterior a 26H.2 (WrapText/dimensoes ausentes).
-    from _coleta_oficial import garantir_formatacao_orientacao_aditivos
+    from _coleta_oficial import (
+        _garantir_colunas_tecnicas_itens_pc_ocultas,
+        garantir_formatacao_orientacao_aditivos,
+    )
     garantir_formatacao_orientacao_aditivos(wb)
+    # Ultima barreira do XLSX efetivamente preenchido, depois de todas as
+    # transformacoes do gerador. Reutiliza o guard da Coleta oficial, que se
+    # restringe sozinho ao layout oficial: workbook legado suportado
+    # (v9/v10.1/v10.2) atravessa sem alteracao e sem erro.
+    _garantir_colunas_tecnicas_itens_pc_ocultas(wb)
 
     saida = BytesIO()
     wb.save(saida)

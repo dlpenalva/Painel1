@@ -3,6 +3,7 @@ import html
 import unicodedata
 from io import BytesIO
 from datetime import datetime
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pandas as pd
@@ -30,6 +31,28 @@ from _templates_documentos import gerar_despacho_saneador, gerar_termo_apostila
 
 aditivos_somados_ao_valor_total = 0.0  # fallback: planilha sem aditivos computaveis
 LEITOR_CONSUMO_ITENS_CICLO_VERSAO = "20260516_0207"
+CAMINHO_ORIENTACAO_SAP = (
+    Path(__file__).resolve().parents[1]
+    / "assets"
+    / "Atualização da Requisição de Compra_E-MAIL.png"
+)
+TEXTO_EMAIL_VERIFICACAO_TERMO = (
+    "Boa tarde! Encaminho a minuta do Termo de Apostila para verificação "
+    "final => TMP-1026436.\n\n"
+    "Solicito a conferência e, não havendo ressalvas, a confirmação de "
+    "concordância com as informações do documento. Após esse retorno, "
+    "prosseguiremos com a formalização e assinatura do Termo."
+)
+TEXTO_EMAIL_REQUISICAO_SAP = (
+    "Boa tarde!\n\n"
+    "Com a formalização do reajuste e a assinatura do Termo de Apostila, "
+    "faz-se necessária a criação/atualização da Requisição de Compras no SAP, "
+    "contemplando os valores vigentes, o novo período contratual, os "
+    "retroativos, se houver, e os demais ajustes financeiros aplicáveis.\n\n"
+    "Após a conclusão, favor informar a GCC para vinculação da Requisição de "
+    "Compras ao contrato no SAP.\n\n"
+    "Obrigado."
+)
 
 try:
     from reportlab.lib import colors
@@ -5408,6 +5431,34 @@ def _render_acao_documento_upload(chave, documento, resultado):
                     use_container_width=True,
                     key="upload_docs_termo_apostila",
                 )
+                with st.expander(
+                    "E-mail para verificação final pelo fiscal", expanded=False
+                ):
+                    st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)
+
+                with st.container(border=True):
+                    st.markdown("#### Após a formalização")
+                    with st.expander(
+                        "E-mail ao fiscal — Requisição de Compras no SAP",
+                        expanded=False,
+                    ):
+                        st.code(TEXTO_EMAIL_REQUISICAO_SAP, language=None)
+                        if CAMINHO_ORIENTACAO_SAP.is_file():
+                            st.download_button(
+                                "Baixar orientação visual — Atualização da "
+                                "Requisição de Compras no SAP",
+                                data=CAMINHO_ORIENTACAO_SAP.read_bytes(),
+                                file_name=(
+                                    "Atualização da Requisição de Compra_E-MAIL.png"
+                                ),
+                                mime="image/png",
+                                use_container_width=True,
+                                key="upload_docs_orientacao_requisicao_sap",
+                            )
+                        else:
+                            st.warning(
+                                "Orientação visual do SAP indisponível nesta instalação."
+                            )
             except Exception:
                 _render_pendencia_documento(chave, documento)
         else:
