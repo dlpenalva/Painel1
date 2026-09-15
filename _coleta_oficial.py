@@ -988,6 +988,7 @@ def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]
             # data_inicio/janelas. Payload sem o campo -> None (o gerador
             # aplica o fallback para data_inicio ao preencher parametros!I).
             "data_abertura_fisica_exata": _data(bruto.get("data_abertura_fisica_exata")),
+            "proxima_data_reajuste": _data(bruto.get("proxima_data_reajuste")),
             # Data final ja decidida pela Calculadora, normalizada a
             # COMPETENCIA (dia 1). O gerador apenas a propaga; nao recria
             # tempestividade, negociacao ou excecoes.

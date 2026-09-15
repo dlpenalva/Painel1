@@ -372,6 +372,9 @@ def _ler_parametros_v10(wb) -> dict[str, Any]:
     # gravada pelo gerador. Arquivo anterior a essa gravacao nao tem a coluna e
     # devolve None — ausencia continua sendo ausencia, nunca vira data presumida.
     col_data_pedido = _col(mapa, "DATA_PEDIDO", "DATA DO PEDIDO")
+    col_proxima_data_reajuste = _col(
+        mapa, "PROXIMA_DATA_REAJUSTE", "PROXIMA DATA REAJUSTE"
+    )
     from _efeitos_financeiros_pc import reconciliar_inicios_efeito
     inicios_reconciliados, erros_inicio, tem_inicio_visivel, tem_inicio_metadado = (
         reconciliar_inicios_efeito(wb)
@@ -426,6 +429,10 @@ def _ler_parametros_v10(wb) -> dict[str, Any]:
             "data_pedido": (
                 _normalizar_data(ws.cell(r, col_data_pedido).value)
                 if col_data_pedido else None
+            ),
+            "proxima_data_reajuste": (
+                _normalizar_data(ws.cell(r, col_proxima_data_reajuste).value)
+                if col_proxima_data_reajuste else None
             ),
             "inicio_efeito_financeiro": inicios_reconciliados.get(ciclo),
             "inicio_efeito_financeiro_parametros": (

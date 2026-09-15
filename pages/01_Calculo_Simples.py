@@ -59,6 +59,7 @@ from _reajuste_utils import (
     _parse_moeda_br,
     SITUACAO_SEM_PEDIDO,
     classificar_pedido_por_data_exata,
+    referencia_exata_pedido_subsequente,
     resolver_tratamento_variacao_negativa,
     situacao_com_tratamento_variacao_negativa,
 )
@@ -2102,6 +2103,9 @@ if res:
         referencia_exata_efeito = None
     else:
         referencia_exata_efeito = dt_solic if dt_solic >= dt_aniv else dt_aniv
+    proxima_data_reajuste = referencia_exata_pedido_subsequente(
+        referencia_exata_efeito or dt_aniv
+    )
 
     ciclo_unico = {
         'ciclo': ciclo_label,
@@ -2130,6 +2134,8 @@ if res:
         # Transporte puro da fotografia fisica exata (ETAPA 48): decidida
         # logo acima, sem mensalizacao. Fallback 48.4 = referencia apta.
         'data_abertura_fisica_exata': _formatar_data(referencia_exata_efeito or dt_aniv),
+        # Resultado da regra temporal canonica; os documentos apenas o leem.
+        'proxima_data_reajuste': _formatar_data(proxima_data_reajuste),
         'financeiro_inicio': _formatar_data(inicio_efeito_financeiro),
         'financeiro_fim': _formatar_data(fim_efeito_financeiro),
         # Etapa 4: persiste no XLS a mesma memoria mensal exibida acima

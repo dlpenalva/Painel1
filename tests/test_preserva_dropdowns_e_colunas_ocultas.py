@@ -19,10 +19,40 @@ import pytest
 from openpyxl import load_workbook
 from openpyxl.utils import column_index_from_string
 
-from _coleta_oficial import TEMPLATE_COLETA_OFICIAL, obter_coleta_oficial_bytes
+from _coleta_oficial import (
+    TEMPLATE_COLETA_OFICIAL,
+    gerar_coleta_oficial_preenchida,
+    obter_coleta_oficial_bytes,
+)
 
 
 COLUNAS_TECNICAS_ITENS_PC = ("V", "W", "X", "Y", "Z", "AA", "AB", "AC")
+
+
+def _coleta_preenchida() -> bytes:
+    return gerar_coleta_oficial_preenchida({
+        "origem": "Reajuste Simples",
+        "indice": "IPCA",
+        "data_base_original": "27/08/2025",
+        "fator": 1.05,
+        "fator_acumulado": 1.05,
+        "variacao_acumulada": 0.05,
+        "ciclos": [{
+            "ciclo": "C1",
+            "data_base": "27/08/2025",
+            "data_pedido": "27/08/2026",
+            "data_abertura_fisica_exata": "27/08/2026",
+            "proxima_data_reajuste": "27/08/2027",
+            "financeiro_inicio": "01/08/2026",
+            "financeiro_fim": "31/07/2027",
+            "situacao": "TEMPESTIVO",
+            "situacao_aplicada": "TEMPESTIVO",
+            "objeto_analise_atual": True,
+            "percentual_aplicado": 0.05,
+            "variacao": 0.05,
+            "fator": 1.05,
+        }],
+    })
 
 
 @pytest.fixture(scope="module")
@@ -129,6 +159,37 @@ def test_itens_pc_v_ate_ac_saem_ocultas(entrega):
     assert cobertas == {
         column_index_from_string(letra) for letra in COLUNAS_TECNICAS_ITENS_PC
     }
+
+
+def test_itens_pc_v_ate_ac_ocultas_no_xlsx_final_preenchido_e_intactas():
+    base_bytes = obter_coleta_oficial_bytes()
+    final_bytes = _coleta_preenchida()
+    base = load_workbook(BytesIO(base_bytes), data_only=False)
+    final = load_workbook(BytesIO(final_bytes), data_only=False)
+    try:
+        ws_base = base["itens_PC"]
+        ws_final = final["itens_PC"]
+        ocultas = {
+            coluna
+            for dimensao in ws_final.column_dimensions.values()
+            if dimensao.hidden and dimensao.min is not None
+            for coluna in range(dimensao.min, dimensao.max + 1)
+        }
+        for letra in COLUNAS_TECNICAS_ITENS_PC:
+            assert column_index_from_string(letra) in ocultas, letra
+
+        ultima_linha = max(ws_base.max_row, ws_final.max_row)
+        for coluna in range(22, 30):
+            assert [
+                ws_final.cell(linha, coluna).value
+                for linha in range(1, ultima_linha + 1)
+            ] == [
+                ws_base.cell(linha, coluna).value
+                for linha in range(1, ultima_linha + 1)
+            ]
+    finally:
+        base.close()
+        final.close()
 
 
 def test_nenhuma_validacao_do_template_desaparece(entrega):

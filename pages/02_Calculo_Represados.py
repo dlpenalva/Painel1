@@ -2651,6 +2651,10 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
             # calculada do proprio ciclo (data_referencia_exata = d_aniv),
             # nunca a data mensal de parametros!C. Nenhuma data e criada.
             'data_abertura_fisica_exata': _formatar_data(dados_ciclo.get('referencia_exata_efeito') or dados_ciclo.get('data_referencia_exata')),
+            # Resultado ja decidido pela cadeia temporal exata do ciclo.
+            'proxima_data_reajuste': _formatar_data(
+                dados_ciclo.get('data_referencia_exata_proximo_ciclo')
+            ),
             'situacao': situacao_aplicada,
             'ciclo_ja_concedido': bool(ciclo_ja_concedido),
             'objeto_analise_atual': not bool(ciclo_ja_concedido),
