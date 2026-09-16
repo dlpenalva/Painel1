@@ -163,22 +163,43 @@ class TestFluxoUploadDocs(unittest.TestCase):
         self.assertIn("resultado_valor_global", PAGINA)
         self.assertIn("diagnostico_coleta_v2", PAGINA)
 
-    def test_comunicacoes_do_termo_ficam_abaixo_do_download_e_sem_txt(self):
+    def test_card_do_termo_contem_apenas_a_acao_principal(self):
+        """O card documental nao hospeda comunicacao: so titulo e download."""
         inicio = PAGINA.index('elif chave == "termo_apostila":')
         fim = PAGINA.index('elif chave == "garantia_contratual":', inicio)
         bloco = PAGINA[inicio:fim]
-        download = bloco.index('key="upload_docs_termo_apostila"')
-        verificacao = bloco.index("E-mail para verificação final pelo fiscal")
-        pos_formalizacao = bloco.index("Após a formalização")
-        sap = bloco.index("E-mail ao fiscal — Requisição de Compras no SAP")
-        self.assertLess(download, verificacao)
-        self.assertLess(verificacao, pos_formalizacao)
-        self.assertLess(pos_formalizacao, sap)
-        self.assertIn("expanded=False", bloco)
-        self.assertIn("st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)", bloco)
-        self.assertIn("st.code(TEXTO_EMAIL_REQUISICAO_SAP, language=None)", bloco)
-        self.assertNotIn("text/plain", bloco)
-        self.assertNotIn(".txt", bloco.lower())
+        self.assertIn('key="upload_docs_termo_apostila"', bloco)
+        self.assertNotIn("st.expander", bloco)
+        self.assertNotIn("Após a formalização", bloco)
+        self.assertNotIn("st.container(border=True)", bloco)
+
+    def test_comunicacoes_ficam_em_secao_propria_abaixo_da_grade(self):
+        inicio = PAGINA.index("def _render_comunicacoes_e_providencias()")
+        fim = PAGINA.index("def render_documentos_funcionais_upload(", inicio)
+        secao = PAGINA[inicio:fim]
+        titulo = secao.index("Comunicações e providências")
+        verificacao = secao.index("E-mail para verificação final pelo fiscal")
+        sap = secao.index("E-mail ao fiscal — Requisição de Compras no SAP")
+        self.assertLess(titulo, verificacao)
+        self.assertLess(verificacao, sap)
+        # Fechados por default, copiaveis e sem TXT — como aprovado.
+        self.assertEqual(secao.count("expanded=False"), 2)
+        self.assertIn("st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)", secao)
+        self.assertIn("st.code(TEXTO_EMAIL_REQUISICAO_SAP, language=None)", secao)
+        self.assertNotIn("text/plain", secao)
+        self.assertNotIn(".txt", secao.lower())
+        # Sem card nem container intermediario dentro da secao.
+        self.assertNotIn("st.container(border=True)", secao)
+
+    def test_secao_de_comunicacoes_e_renderizada_depois_dos_cards(self):
+        inicio = PAGINA.index("def render_documentos_funcionais_upload(")
+        fim = PAGINA.index("def _invalidar_caso_antes_do_rerun_upload(", inicio)
+        bloco = PAGINA[inicio:fim]
+        grade = bloco.index("for grupo, chaves_do_grupo in GRUPOS_CARDS_UPLOAD:")
+        chamada = bloco.index("_render_comunicacoes_e_providencias()")
+        self.assertLess(grade, chamada)
+        # So aparece quando a minuta do Termo existe nesta execucao.
+        self.assertIn("if termo_disponivel:", bloco)
 
     def test_textos_aprovados_das_comunicacoes_do_termo(self):
         self.assertIn(

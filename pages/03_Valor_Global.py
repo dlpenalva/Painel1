@@ -5431,34 +5431,13 @@ def _render_acao_documento_upload(chave, documento, resultado):
                     use_container_width=True,
                     key="upload_docs_termo_apostila",
                 )
-                with st.expander(
-                    "E-mail para verificação final pelo fiscal", expanded=False
-                ):
-                    st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)
-
-                with st.container(border=True):
-                    st.markdown("#### Após a formalização")
-                    with st.expander(
-                        "E-mail ao fiscal — Requisição de Compras no SAP",
-                        expanded=False,
-                    ):
-                        st.code(TEXTO_EMAIL_REQUISICAO_SAP, language=None)
-                        if CAMINHO_ORIENTACAO_SAP.is_file():
-                            st.download_button(
-                                "Baixar orientação visual — Atualização da "
-                                "Requisição de Compras no SAP",
-                                data=CAMINHO_ORIENTACAO_SAP.read_bytes(),
-                                file_name=(
-                                    "Atualização da Requisição de Compra_E-MAIL.png"
-                                ),
-                                mime="image/png",
-                                use_container_width=True,
-                                key="upload_docs_orientacao_requisicao_sap",
-                            )
-                        else:
-                            st.warning(
-                                "Orientação visual do SAP indisponível nesta instalação."
-                            )
+                # As comunicacoes que acompanham a minuta ficam FORA do card,
+                # na secao "Comunicacoes e providencias" logo abaixo da grade:
+                # o card documental guarda apenas titulo e acao principal, que
+                # e o que mantem os seis cards com a mesma altura e os botoes
+                # alinhados. Este retorno sinaliza que a minuta existe nesta
+                # execucao — mesma condicao que antes governava os expanders.
+                return True
             except Exception:
                 _render_pendencia_documento(chave, documento)
         else:
@@ -5495,6 +5474,44 @@ def render_status_base_coleta(diagnostico):
         )
 
 
+def _render_comunicacoes_e_providencias() -> None:
+    """Comunicacoes que acompanham a minuta, abaixo da grade de cards.
+
+    Conteudo identico ao que antes ficava dentro do card do Termo: mesmos
+    textos, mesmos blocos copiaveis, mesmo download do PNG, expanders
+    fechados por padrao. Aqui eles sao irmaos diretos da secao, sem card nem
+    container intermediario — nesting menor e grade preservada.
+    """
+    # Separacao da grade: o <div> de altura zero soma exatamente um gap padrao
+    # do Streamlit ao espacamento ja existente.
+    st.markdown("<div style='height:0'></div>", unsafe_allow_html=True)
+    st.markdown("#### Comunicações e providências")
+
+    with st.expander(
+        "E-mail para verificação final pelo fiscal", expanded=False
+    ):
+        st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)
+
+    with st.expander(
+        "E-mail ao fiscal — Requisição de Compras no SAP", expanded=False
+    ):
+        st.code(TEXTO_EMAIL_REQUISICAO_SAP, language=None)
+        if CAMINHO_ORIENTACAO_SAP.is_file():
+            st.download_button(
+                "Baixar orientação visual — Atualização da "
+                "Requisição de Compras no SAP",
+                data=CAMINHO_ORIENTACAO_SAP.read_bytes(),
+                file_name="Atualização da Requisição de Compra_E-MAIL.png",
+                mime="image/png",
+                use_container_width=True,
+                key="upload_docs_orientacao_requisicao_sap",
+            )
+        else:
+            st.warning(
+                "Orientação visual do SAP indisponível nesta instalação."
+            )
+
+
 def render_documentos_funcionais_upload(resultado):
     """Renderiza os seis destinos documentais após processamento explícito.
 
@@ -5506,6 +5523,7 @@ def render_documentos_funcionais_upload(resultado):
     documentos = (resultado.get("capacidades") or {}).get("documentos") or {}
     titulos = dict(DOCUMENTOS_FUNCIONAIS_UPLOAD)
 
+    termo_disponivel = False
     for grupo, chaves_do_grupo in GRUPOS_CARDS_UPLOAD:
         linha = st.columns(3)
         for coluna, chave in zip(linha, chaves_do_grupo):
@@ -5519,9 +5537,15 @@ def render_documentos_funcionais_upload(resultado):
                     )
                     st.markdown(f"#### {titulo}")
                     try:
-                        _render_acao_documento_upload(chave, documento, resultado)
+                        rendeu = _render_acao_documento_upload(chave, documento, resultado)
                     except Exception as exc:
                         st.error(f"Não foi possível preparar {titulo}: {exc}")
+                    else:
+                        if chave == "termo_apostila" and rendeu:
+                            termo_disponivel = True
+
+    if termo_disponivel:
+        _render_comunicacoes_e_providencias()
 
 
 def _invalidar_caso_antes_do_rerun_upload() -> None:
