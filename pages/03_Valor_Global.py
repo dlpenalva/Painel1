@@ -5507,7 +5507,8 @@ def _render_comunicados_pos_documentos() -> None:
     st.markdown(_CSS_COMUNICADOS_FISCAL, unsafe_allow_html=True)
 
     with st.expander(
-        "E-mail para verificação final do TAD pelo fiscal", expanded=False
+        "E-mail ao fiscal — conferência final do Termo de Apostila",
+        expanded=False,
     ):
         st.markdown(_MARCADOR_COMUNICADO_FISCAL, unsafe_allow_html=True)
         st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)
@@ -5988,14 +5989,15 @@ def render_validacao_contratada(resultado, diagnostico):
     """Bloco aditivo pos-Coleta: comunicado para conferencia da apuracao pela
     contratada antes da formalizacao da Apostila. Renderizado sempre depois de
     todo o conteudo atual da pagina; nao altera nenhum card, calculo ou
-    documento existente."""
+    documento existente.
+
+    A propria barra do expander nomeia o bloco: sem container com borda, sem
+    titulo e sem legenda externos.
+    """
     st.divider()
-    with st.container(border=True):
-        st.markdown("### Validação com a contratada")
-        st.caption("Comunicado para conferência da apuração antes da formalização da Apostila.")
-        texto_comunicado = gerar_texto_validacao_contratada(resultado, diagnostico)
-        with st.expander("Visualizar comunicado"):
-            st.code(texto_comunicado, language=None)
+    texto_comunicado = gerar_texto_validacao_contratada(resultado, diagnostico)
+    with st.expander("Validação com a contratada"):
+        st.code(texto_comunicado, language=None)
 # <<< VALIDACAO_CONTRATADA_POS_COLETA_V1
 
 
@@ -6097,14 +6099,14 @@ def gerar_texto_comunicado_interno(resultado, diagnostico):
 def render_comunicado_interno(resultado, diagnostico):
     """Bloco aditivo pos-Coleta, ao lado do comunicado a contratada: texto para
     conferencia interna da apuracao pela fiscalizacao/gestao. Mesmo padrao de
-    entrega (expander copiavel); nao altera nenhum card, calculo ou
-    documento."""
-    with st.container(border=True):
-        st.markdown("### Comunicado interno")
-        st.caption("Conferência da apuração pela fiscalização/gestão antes da formalização.")
-        texto_interno = gerar_texto_comunicado_interno(resultado, diagnostico)
-        with st.expander("Visualizar comunicado interno"):
-            st.code(texto_interno, language=None)
+    entrega (expander copiavel); nao altera nenhum card, calculo ou documento.
+
+    A propria barra do expander nomeia o bloco: sem container com borda, sem
+    titulo e sem legenda externos.
+    """
+    texto_interno = gerar_texto_comunicado_interno(resultado, diagnostico)
+    with st.expander("Comunicado interno"):
+        st.code(texto_interno, language=None)
 # <<< COMUNICADO_INTERNO_CONFERENCIA_V1
 
 

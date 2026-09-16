@@ -207,10 +207,14 @@ class TestFluxoUploadDocs(unittest.TestCase):
         fim = PAGINA.index("def render_documentos_funcionais_upload(", inicio)
         secao = PAGINA[inicio:fim]
         divisor = secao.index("st.divider()")
-        tad = secao.index("E-mail para verificação final do TAD pelo fiscal")
-        rc = secao.index("E-mail solicitando RC atualizada ao fiscal")
+        tad = secao.index(
+            '"E-mail ao fiscal — conferência final do Termo de Apostila"'
+        )
+        rc = secao.index('"E-mail solicitando RC atualizada ao fiscal"')
         self.assertLess(divisor, tad)
         self.assertLess(tad, rc)
+        # Titulo anterior nao sobrevive em lugar nenhum da pagina.
+        self.assertNotIn("verificação final do TAD pelo fiscal", PAGINA)
         # Fechados por padrao, copiaveis, sem TXT e sem container auxiliar.
         self.assertEqual(secao.count("expanded=False"), 2)
         self.assertIn("st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)", secao)
@@ -271,22 +275,37 @@ class TestFluxoUploadDocs(unittest.TestCase):
         )
         self.assertIn('"Obrigado."', constantes)
 
-    def test_comunicados_antigos_sem_download_de_texto(self):
-        """Os 4 blocos ficam padronizados: expander copiavel, sem TXT."""
-        for inicio_marca, fim_marca in (
-            ("def render_validacao_contratada", "# <<< VALIDACAO_CONTRATADA_POS_COLETA_V1"),
-            ("def render_comunicado_interno", "# <<< COMUNICADO_INTERNO_CONFERENCIA_V1"),
+    def test_comunicados_antigos_sao_apenas_expanders(self):
+        """Os 2 primeiros viram expander puro: sem container, titulo ou legenda."""
+        for inicio_marca, fim_marca, rotulo in (
+            (
+                "def render_validacao_contratada",
+                "# <<< VALIDACAO_CONTRATADA_POS_COLETA_V1",
+                "Validação com a contratada",
+            ),
+            (
+                "def render_comunicado_interno",
+                "# <<< COMUNICADO_INTERNO_CONFERENCIA_V1",
+                "Comunicado interno",
+            ),
         ):
             inicio = PAGINA.index(inicio_marca)
             bloco = PAGINA[inicio:PAGINA.index(fim_marca, inicio)]
+            # O proprio expander nomeia o bloco.
+            self.assertIn(f'with st.expander("{rotulo}"):', bloco)
+            self.assertNotIn("st.container(", bloco)
+            self.assertNotIn("st.markdown(", bloco)
+            self.assertNotIn("st.caption(", bloco)
+            self.assertNotIn("Visualizar comunicado", bloco)
+            # Entrega copiavel, sem download de texto.
+            self.assertIn("language=None", bloco)
             self.assertNotIn("st.download_button", bloco)
             self.assertNotIn("Baixar TXT", bloco)
             self.assertNotIn("text/plain", bloco)
             self.assertNotIn(".txt", bloco)
-            # Titulo, legenda e expander copiavel permanecem.
-            self.assertIn("st.caption(", bloco)
-            self.assertIn("st.expander(", bloco)
-            self.assertIn("language=None", bloco)
+            # Estilo padrao: o marcador do destaque azul nao chega aqui.
+            self.assertNotIn("comunicado-fiscal", bloco)
+            self.assertNotIn("_MARCADOR_COMUNICADO_FISCAL", bloco)
         self.assertNotIn("baixar_validacao_contratada_txt", PAGINA)
         self.assertNotIn("baixar_comunicado_interno_txt", PAGINA)
 

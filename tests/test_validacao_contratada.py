@@ -62,8 +62,12 @@ class TestEstruturaNaPagina(unittest.TestCase):
 
     def test_titulo_e_texto_do_bloco(self):
         bloco = self._bloco_render()
-        self.assertIn('st.markdown("### Validação com a contratada")', bloco)
-        self.assertIn(
+        # A propria barra do expander nomeia o bloco.
+        self.assertIn('with st.expander("Validação com a contratada")', bloco)
+        self.assertNotIn('st.markdown("### Validação com a contratada")', bloco)
+        self.assertNotIn("st.container(border=True)", bloco)
+        # Legenda externa removida junto do container e do titulo.
+        self.assertNotIn(
             "Comunicado para conferência da apuração antes da formalização da Apostila.",
             bloco,
         )
@@ -71,7 +75,8 @@ class TestEstruturaNaPagina(unittest.TestCase):
     def test_entrega_apenas_por_expander_copiavel(self):
         """Padronizacao dos 4 comunicados: expander copiavel, sem TXT."""
         bloco = self._bloco_render()
-        self.assertIn('with st.expander("Visualizar comunicado")', bloco)
+        self.assertIn('with st.expander("Validação com a contratada")', bloco)
+        self.assertNotIn("st.caption(", bloco)
         self.assertIn("st.code(texto_comunicado, language=None)", bloco)
         self.assertNotIn('"Baixar TXT"', bloco)
         self.assertNotIn("baixar_validacao_contratada_txt", bloco)
@@ -194,11 +199,14 @@ class TestAppTestValidacaoContratada(unittest.TestCase):
         self.assertEqual(metricas.get("Percentual acumulado"), "7,50%")
 
         markdowns = " \n ".join(m.value for m in at.markdown)
-        self.assertIn("Validação com a contratada", markdowns)
-        # Ordem: os 6 cards de documentos vêm antes do novo bloco.
-        self.assertLess(markdowns.index("Termo de Apostila"), markdowns.index("Validação com a contratada"))
+        # O bloco deixou de ter título externo: quem o nomeia é o expander.
+        self.assertNotIn("### Validação com a contratada", markdowns)
+        self.assertIn("Termo de Apostila", markdowns)
 
-        self.assertIn("Visualizar comunicado", [e.label for e in at.expander])
+        rotulos_expander = [e.label for e in at.expander]
+        self.assertIn("Validação com a contratada", rotulos_expander)
+        self.assertIn("Comunicado interno", rotulos_expander)
+        self.assertNotIn("Visualizar comunicado", rotulos_expander)
         # Nenhum dos 4 comunicados oferece download de texto.
         rotulos_download = [d.label for d in at.download_button]
         self.assertNotIn("Baixar TXT", rotulos_download)
