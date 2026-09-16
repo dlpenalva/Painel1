@@ -583,8 +583,12 @@ def test_f3_comunicado_interno_e_entregue_ao_lado_do_da_contratada():
     assert ordem == sorted(ordem)
     trecho = PAGINA[PAGINA.index("def render_comunicado_interno"):]
     trecho = trecho[:trecho.index("# <<< COMUNICADO_INTERNO_CONFERENCIA_V1")]
-    assert 'st.markdown("### Comunicado interno")' in trecho
-    assert 'with st.expander("Visualizar comunicado interno")' in trecho
+    # A propria barra do expander nomeia o bloco: sem container com borda,
+    # sem titulo e sem legenda externos.
+    assert 'with st.expander("Comunicado interno")' in trecho
+    assert 'st.markdown("### Comunicado interno")' not in trecho
+    assert "st.caption(" not in trecho
+    assert "st.container(border=True)" not in trecho
     # Padronizacao dos 4 comunicados: entrega apenas por expander
     # copiavel, sem download de texto.
     assert '"Baixar TXT (interno)"' not in trecho
