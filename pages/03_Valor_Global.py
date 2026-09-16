@@ -5431,12 +5431,11 @@ def _render_acao_documento_upload(chave, documento, resultado):
                     use_container_width=True,
                     key="upload_docs_termo_apostila",
                 )
-                # As comunicacoes que acompanham a minuta ficam FORA do card,
-                # na secao "Comunicacoes e providencias" logo abaixo da grade:
-                # o card documental guarda apenas titulo e acao principal, que
-                # e o que mantem os seis cards com a mesma altura e os botoes
-                # alinhados. Este retorno sinaliza que a minuta existe nesta
-                # execucao — mesma condicao que antes governava os expanders.
+                # O card guarda apenas titulo e acao principal, como os
+                # outros cinco — e o que mantem os seis com a mesma altura e
+                # os botoes alinhados. Os comunicados do fiscal ficam no fim
+                # do fluxo da pagina. Este retorno apenas sinaliza que a
+                # minuta existe nesta execucao.
                 return True
             except Exception:
                 _render_pendencia_documento(chave, documento)
@@ -5474,26 +5473,24 @@ def render_status_base_coleta(diagnostico):
         )
 
 
-def _render_comunicacoes_e_providencias() -> None:
-    """Comunicacoes que acompanham a minuta, abaixo da grade de cards.
+def _render_comunicados_pos_documentos() -> None:
+    """Os dois comunicados do fiscal, no fim do fluxo da pagina.
 
-    Conteudo identico ao que antes ficava dentro do card do Termo: mesmos
-    textos, mesmos blocos copiaveis, mesmo download do PNG, expanders
-    fechados por padrao. Aqui eles sao irmaos diretos da secao, sem card nem
-    container intermediario — nesting menor e grade preservada.
+    Vem DEPOIS de "Validacao com a contratada" e "Comunicado interno": a
+    linha separadora ja distingue os dois grupos, entao aqui nao ha titulo de
+    secao, card nem container auxiliar — os expanders sao irmaos diretos do
+    fluxo. Conteudo identico ao aprovado: mesmos textos, mesmos blocos
+    copiaveis, mesmo download do PNG, fechados por padrao.
     """
-    # Separacao da grade: o <div> de altura zero soma exatamente um gap padrao
-    # do Streamlit ao espacamento ja existente.
-    st.markdown("<div style='height:0'></div>", unsafe_allow_html=True)
-    st.markdown("#### Comunicações e providências")
+    st.divider()
 
     with st.expander(
-        "E-mail para verificação final pelo fiscal", expanded=False
+        "E-mail para verificação final do TAD pelo fiscal", expanded=False
     ):
         st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)
 
     with st.expander(
-        "E-mail ao fiscal — Requisição de Compras no SAP", expanded=False
+        "E-mail solicitando RC atualizada ao fiscal", expanded=False
     ):
         st.code(TEXTO_EMAIL_REQUISICAO_SAP, language=None)
         if CAMINHO_ORIENTACAO_SAP.is_file():
@@ -5514,6 +5511,10 @@ def _render_comunicacoes_e_providencias() -> None:
 
 def render_documentos_funcionais_upload(resultado):
     """Renderiza os seis destinos documentais após processamento explícito.
+
+    Devolve True quando a minuta do Termo de Apostila foi gerada nesta
+    execução — o fluxo da página usa esse sinal para decidir se renderiza os
+    comunicados do fiscal, bem depois da grade.
 
     Etapa 26H (limpeza da interface): o aviso de status da base foi retirado
     da tela — a política documental da PRÉVIA passa a comunicar o estado não
@@ -5544,8 +5545,9 @@ def render_documentos_funcionais_upload(resultado):
                         if chave == "termo_apostila" and rendeu:
                             termo_disponivel = True
 
-    if termo_disponivel:
-        _render_comunicacoes_e_providencias()
+    # Quem decide ONDE os comunicados aparecem e o fluxo da pagina, nao a
+    # grade: aqui so se informa que a minuta existe nesta execucao.
+    return termo_disponivel
 
 
 def _invalidar_caso_antes_do_rerun_upload() -> None:
@@ -6201,9 +6203,11 @@ if resultado:
     # Etapa 26H (limpeza da interface): expander de cobertura temporal
     # confirmado na homologação e removido da tela; o diagnóstico permanece
     # em diagnostico_coleta["cobertura_temporal"] (camada sombra intacta).
-    render_documentos_funcionais_upload(resultado)
+    termo_disponivel = render_documentos_funcionais_upload(resultado)
     render_validacao_contratada(resultado, diagnostico_coleta)
     render_comunicado_interno(resultado, diagnostico_coleta)
+    if termo_disponivel:
+        _render_comunicados_pos_documentos()
     st.stop()
 
 if diagnostico_coleta:
