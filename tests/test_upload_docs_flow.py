@@ -163,22 +163,74 @@ class TestFluxoUploadDocs(unittest.TestCase):
         self.assertIn("resultado_valor_global", PAGINA)
         self.assertIn("diagnostico_coleta_v2", PAGINA)
 
-    def test_comunicacoes_do_termo_ficam_abaixo_do_download_e_sem_txt(self):
+    def test_card_do_termo_contem_apenas_titulo_e_download(self):
+        """O card documental nao hospeda comunicacao nem container auxiliar."""
         inicio = PAGINA.index('elif chave == "termo_apostila":')
         fim = PAGINA.index('elif chave == "garantia_contratual":', inicio)
         bloco = PAGINA[inicio:fim]
-        download = bloco.index('key="upload_docs_termo_apostila"')
-        verificacao = bloco.index("E-mail para verificação final pelo fiscal")
-        pos_formalizacao = bloco.index("Após a formalização")
-        sap = bloco.index("E-mail ao fiscal — Requisição de Compras no SAP")
-        self.assertLess(download, verificacao)
-        self.assertLess(verificacao, pos_formalizacao)
-        self.assertLess(pos_formalizacao, sap)
-        self.assertIn("expanded=False", bloco)
-        self.assertIn("st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)", bloco)
-        self.assertIn("st.code(TEXTO_EMAIL_REQUISICAO_SAP, language=None)", bloco)
-        self.assertNotIn("text/plain", bloco)
-        self.assertNotIn(".txt", bloco.lower())
+        self.assertIn('key="upload_docs_termo_apostila"', bloco)
+        self.assertIn('"Baixar DOCX"', bloco)
+        self.assertNotIn("st.expander", bloco)
+        self.assertNotIn("st.container(", bloco)
+        self.assertNotIn("Após a formalização", bloco)
+        self.assertNotIn("E-mail", bloco)
+
+    def test_grade_nao_renderiza_os_novos_expanders(self):
+        """Nada de expander logo apos a grade: ela so devolve o sinal."""
+        inicio = PAGINA.index("def render_documentos_funcionais_upload(")
+        fim = PAGINA.index("def _invalidar_caso_antes_do_rerun_upload(", inicio)
+        bloco = PAGINA[inicio:fim]
+        self.assertNotIn("st.expander", bloco)
+        self.assertNotIn("_render_comunicados_pos_documentos()", bloco)
+        self.assertIn("return termo_disponivel", bloco)
+        self.assertNotIn("Comunicações e providências", PAGINA)
+        self.assertNotIn("Após a formalização", PAGINA)
+
+    def test_ordem_do_fluxo_da_pagina(self):
+        """6 cards -> validacao -> comunicado interno -> separador -> novos."""
+        grade = PAGINA.index("= render_documentos_funcionais_upload(resultado)")
+        validacao = PAGINA.index(
+            "render_validacao_contratada(resultado, diagnostico_coleta)", grade
+        )
+        interno = PAGINA.index(
+            "render_comunicado_interno(resultado, diagnostico_coleta)", validacao
+        )
+        novos = PAGINA.index("_render_comunicados_pos_documentos()", interno)
+        self.assertLess(grade, validacao)
+        self.assertLess(validacao, interno)
+        self.assertLess(interno, novos)
+        # So aparecem quando a minuta do Termo existe nesta execucao.
+        self.assertIn("if termo_disponivel:", PAGINA[interno:novos])
+
+    def test_separador_precede_os_dois_novos_expanders(self):
+        inicio = PAGINA.index("def _render_comunicados_pos_documentos()")
+        fim = PAGINA.index("def render_documentos_funcionais_upload(", inicio)
+        secao = PAGINA[inicio:fim]
+        divisor = secao.index("st.divider()")
+        tad = secao.index("E-mail para verificação final do TAD pelo fiscal")
+        rc = secao.index("E-mail solicitando RC atualizada ao fiscal")
+        self.assertLess(divisor, tad)
+        self.assertLess(tad, rc)
+        # Fechados por padrao, copiaveis, sem TXT e sem container auxiliar.
+        self.assertEqual(secao.count("expanded=False"), 2)
+        self.assertIn("st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)", secao)
+        self.assertIn("st.code(TEXTO_EMAIL_REQUISICAO_SAP, language=None)", secao)
+        self.assertNotIn("text/plain", secao)
+        self.assertNotIn(".txt", secao.lower())
+        self.assertNotIn("st.container(", secao)
+        self.assertNotIn("st.markdown(", secao)
+
+    def test_png_continua_dentro_do_segundo_expander(self):
+        inicio = PAGINA.index("def _render_comunicados_pos_documentos()")
+        fim = PAGINA.index("def render_documentos_funcionais_upload(", inicio)
+        secao = PAGINA[inicio:fim]
+        rc = secao.index("E-mail solicitando RC atualizada ao fiscal")
+        depois = secao[rc:]
+        self.assertIn("CAMINHO_ORIENTACAO_SAP.read_bytes()", depois)
+        self.assertIn('mime="image/png"', depois)
+        self.assertIn(
+            "Orientação visual do SAP indisponível nesta instalação.", depois
+        )
 
     def test_textos_aprovados_das_comunicacoes_do_termo(self):
         self.assertIn(

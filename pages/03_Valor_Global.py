@@ -5431,34 +5431,12 @@ def _render_acao_documento_upload(chave, documento, resultado):
                     use_container_width=True,
                     key="upload_docs_termo_apostila",
                 )
-                with st.expander(
-                    "E-mail para verificação final pelo fiscal", expanded=False
-                ):
-                    st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)
-
-                with st.container(border=True):
-                    st.markdown("#### Após a formalização")
-                    with st.expander(
-                        "E-mail ao fiscal — Requisição de Compras no SAP",
-                        expanded=False,
-                    ):
-                        st.code(TEXTO_EMAIL_REQUISICAO_SAP, language=None)
-                        if CAMINHO_ORIENTACAO_SAP.is_file():
-                            st.download_button(
-                                "Baixar orientação visual — Atualização da "
-                                "Requisição de Compras no SAP",
-                                data=CAMINHO_ORIENTACAO_SAP.read_bytes(),
-                                file_name=(
-                                    "Atualização da Requisição de Compra_E-MAIL.png"
-                                ),
-                                mime="image/png",
-                                use_container_width=True,
-                                key="upload_docs_orientacao_requisicao_sap",
-                            )
-                        else:
-                            st.warning(
-                                "Orientação visual do SAP indisponível nesta instalação."
-                            )
+                # O card guarda apenas titulo e acao principal, como os
+                # outros cinco — e o que mantem os seis com a mesma altura e
+                # os botoes alinhados. Os comunicados do fiscal ficam no fim
+                # do fluxo da pagina. Este retorno apenas sinaliza que a
+                # minuta existe nesta execucao.
+                return True
             except Exception:
                 _render_pendencia_documento(chave, documento)
         else:
@@ -5495,8 +5473,48 @@ def render_status_base_coleta(diagnostico):
         )
 
 
+def _render_comunicados_pos_documentos() -> None:
+    """Os dois comunicados do fiscal, no fim do fluxo da pagina.
+
+    Vem DEPOIS de "Validacao com a contratada" e "Comunicado interno": a
+    linha separadora ja distingue os dois grupos, entao aqui nao ha titulo de
+    secao, card nem container auxiliar — os expanders sao irmaos diretos do
+    fluxo. Conteudo identico ao aprovado: mesmos textos, mesmos blocos
+    copiaveis, mesmo download do PNG, fechados por padrao.
+    """
+    st.divider()
+
+    with st.expander(
+        "E-mail para verificação final do TAD pelo fiscal", expanded=False
+    ):
+        st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)
+
+    with st.expander(
+        "E-mail solicitando RC atualizada ao fiscal", expanded=False
+    ):
+        st.code(TEXTO_EMAIL_REQUISICAO_SAP, language=None)
+        if CAMINHO_ORIENTACAO_SAP.is_file():
+            st.download_button(
+                "Baixar orientação visual — Atualização da "
+                "Requisição de Compras no SAP",
+                data=CAMINHO_ORIENTACAO_SAP.read_bytes(),
+                file_name="Atualização da Requisição de Compra_E-MAIL.png",
+                mime="image/png",
+                use_container_width=True,
+                key="upload_docs_orientacao_requisicao_sap",
+            )
+        else:
+            st.warning(
+                "Orientação visual do SAP indisponível nesta instalação."
+            )
+
+
 def render_documentos_funcionais_upload(resultado):
     """Renderiza os seis destinos documentais após processamento explícito.
+
+    Devolve True quando a minuta do Termo de Apostila foi gerada nesta
+    execução — o fluxo da página usa esse sinal para decidir se renderiza os
+    comunicados do fiscal, bem depois da grade.
 
     Etapa 26H (limpeza da interface): o aviso de status da base foi retirado
     da tela — a política documental da PRÉVIA passa a comunicar o estado não
@@ -5506,6 +5524,7 @@ def render_documentos_funcionais_upload(resultado):
     documentos = (resultado.get("capacidades") or {}).get("documentos") or {}
     titulos = dict(DOCUMENTOS_FUNCIONAIS_UPLOAD)
 
+    termo_disponivel = False
     for grupo, chaves_do_grupo in GRUPOS_CARDS_UPLOAD:
         linha = st.columns(3)
         for coluna, chave in zip(linha, chaves_do_grupo):
@@ -5519,9 +5538,16 @@ def render_documentos_funcionais_upload(resultado):
                     )
                     st.markdown(f"#### {titulo}")
                     try:
-                        _render_acao_documento_upload(chave, documento, resultado)
+                        rendeu = _render_acao_documento_upload(chave, documento, resultado)
                     except Exception as exc:
                         st.error(f"Não foi possível preparar {titulo}: {exc}")
+                    else:
+                        if chave == "termo_apostila" and rendeu:
+                            termo_disponivel = True
+
+    # Quem decide ONDE os comunicados aparecem e o fluxo da pagina, nao a
+    # grade: aqui so se informa que a minuta existe nesta execucao.
+    return termo_disponivel
 
 
 def _invalidar_caso_antes_do_rerun_upload() -> None:
@@ -6177,9 +6203,11 @@ if resultado:
     # Etapa 26H (limpeza da interface): expander de cobertura temporal
     # confirmado na homologação e removido da tela; o diagnóstico permanece
     # em diagnostico_coleta["cobertura_temporal"] (camada sombra intacta).
-    render_documentos_funcionais_upload(resultado)
+    termo_disponivel = render_documentos_funcionais_upload(resultado)
     render_validacao_contratada(resultado, diagnostico_coleta)
     render_comunicado_interno(resultado, diagnostico_coleta)
+    if termo_disponivel:
+        _render_comunicados_pos_documentos()
     st.stop()
 
 if diagnostico_coleta:
