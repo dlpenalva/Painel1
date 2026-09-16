@@ -68,18 +68,20 @@ class TestEstruturaNaPagina(unittest.TestCase):
             bloco,
         )
 
-    def test_acoes_visualizar_e_baixar_txt(self):
+    def test_entrega_apenas_por_expander_copiavel(self):
+        """Padronizacao dos 4 comunicados: expander copiavel, sem TXT."""
         bloco = self._bloco_render()
         self.assertIn('with st.expander("Visualizar comunicado")', bloco)
         self.assertIn("st.code(texto_comunicado, language=None)", bloco)
-        self.assertIn('"Baixar TXT"', bloco)
-        self.assertIn("data=texto_comunicado.encode(", bloco)
+        self.assertNotIn('"Baixar TXT"', bloco)
+        self.assertNotIn("baixar_validacao_contratada_txt", bloco)
+        self.assertNotIn(".txt", bloco)
+        self.assertNotIn("st.download_button", bloco)
 
-    def test_txt_deriva_da_mesma_string_exibida(self):
-        # A garantia de "TXT identico ao texto exibido" e estrutural: st.code e
-        # st.download_button leem a MESMA variavel texto_comunicado, calculada
-        # uma unica vez por rerun -- sem widget com key propria, portanto sem a
-        # classe de bug de congelamento ja vista na aba 5 (Texto SIGA).
+    def test_texto_exibido_vem_de_uma_unica_apuracao(self):
+        # O texto e calculado UMA vez por rerun e exibido por st.code, sem
+        # widget com key propria -- portanto sem a classe de bug de
+        # congelamento ja vista na aba 5 (Texto SIGA).
         bloco = self._bloco_render()
         self.assertEqual(bloco.count("texto_comunicado = gerar_texto_validacao_contratada"), 1)
         self.assertNotIn("st.text_area", bloco)
@@ -196,8 +198,11 @@ class TestAppTestValidacaoContratada(unittest.TestCase):
         # Ordem: os 6 cards de documentos vêm antes do novo bloco.
         self.assertLess(markdowns.index("Termo de Apostila"), markdowns.index("Validação com a contratada"))
 
-        self.assertIn("Baixar TXT", [d.label for d in at.download_button])
         self.assertIn("Visualizar comunicado", [e.label for e in at.expander])
+        # Nenhum dos 4 comunicados oferece download de texto.
+        rotulos_download = [d.label for d in at.download_button]
+        self.assertNotIn("Baixar TXT", rotulos_download)
+        self.assertNotIn("Baixar TXT (interno)", rotulos_download)
 
         texto = next(c.value for c in at.code)
         self.assertIn("[a preencher]", texto)  # contrato sem fonte automática hoje

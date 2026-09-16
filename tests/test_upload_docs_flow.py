@@ -218,7 +218,10 @@ class TestFluxoUploadDocs(unittest.TestCase):
         self.assertNotIn("text/plain", secao)
         self.assertNotIn(".txt", secao.lower())
         self.assertNotIn("st.container(", secao)
-        self.assertNotIn("st.markdown(", secao)
+        # Nenhum titulo de secao: os unicos markdown do bloco sao o CSS
+        # escopado e o marcador invisivel de cada expander.
+        self.assertNotIn('st.markdown("', secao)
+        self.assertEqual(secao.count("st.markdown("), 3)
 
     def test_png_continua_dentro_do_segundo_expander(self):
         inicio = PAGINA.index("def _render_comunicados_pos_documentos()")
@@ -234,10 +237,12 @@ class TestFluxoUploadDocs(unittest.TestCase):
 
     def test_textos_aprovados_das_comunicacoes_do_termo(self):
         self.assertIn(
-            "Boa tarde! Encaminho a minuta do Termo de Apostila para verificação ",
+            "[PREENCHER: Bom dia / Boa tarde!] Encaminho a minuta do Termo de ",
             PAGINA,
         )
-        self.assertIn("final => TMP-1026436.\\n\\n", PAGINA)
+        self.assertIn(
+            "Apostila para verificação final => TMP-1026436.\\n\\n", PAGINA
+        )
         self.assertIn(
             "Com a formalização do reajuste e a assinatura do Termo de Apostila, ",
             PAGINA,
@@ -246,6 +251,69 @@ class TestFluxoUploadDocs(unittest.TestCase):
             "Após a conclusão, favor informar a GCC para vinculação da Requisição de ",
             PAGINA,
         )
+
+    def test_saudacao_dos_dois_novos_emails_e_placeholder(self):
+        """A saudacao vira campo a preencher; o resto do texto nao muda."""
+        saudacao = "[PREENCHER: Bom dia / Boa tarde!]"
+        inicio = PAGINA.index("TEXTO_EMAIL_VERIFICACAO_TERMO = (")
+        constantes = PAGINA[inicio:PAGINA.index("try:", inicio)]
+        self.assertEqual(constantes.count(saudacao), 2)
+        self.assertNotIn("Boa tarde!", constantes.replace(saudacao, ""))
+        # Restante do conteudo aprovado, intacto.
+        self.assertIn("final => TMP-1026436.", constantes)
+        self.assertIn(
+            "Solicito a confer\u00eancia e, n\u00e3o havendo ressalvas, a confirma\u00e7\u00e3o de ",
+            constantes,
+        )
+        self.assertIn(
+            "Ap\u00f3s a conclus\u00e3o, favor informar a GCC para vincula\u00e7\u00e3o da Requisi\u00e7\u00e3o de ",
+            constantes,
+        )
+        self.assertIn('"Obrigado."', constantes)
+
+    def test_comunicados_antigos_sem_download_de_texto(self):
+        """Os 4 blocos ficam padronizados: expander copiavel, sem TXT."""
+        for inicio_marca, fim_marca in (
+            ("def render_validacao_contratada", "# <<< VALIDACAO_CONTRATADA_POS_COLETA_V1"),
+            ("def render_comunicado_interno", "# <<< COMUNICADO_INTERNO_CONFERENCIA_V1"),
+        ):
+            inicio = PAGINA.index(inicio_marca)
+            bloco = PAGINA[inicio:PAGINA.index(fim_marca, inicio)]
+            self.assertNotIn("st.download_button", bloco)
+            self.assertNotIn("Baixar TXT", bloco)
+            self.assertNotIn("text/plain", bloco)
+            self.assertNotIn(".txt", bloco)
+            # Titulo, legenda e expander copiavel permanecem.
+            self.assertIn("st.caption(", bloco)
+            self.assertIn("st.expander(", bloco)
+            self.assertIn("language=None", bloco)
+        self.assertNotIn("baixar_validacao_contratada_txt", PAGINA)
+        self.assertNotIn("baixar_comunicado_interno_txt", PAGINA)
+
+    def test_destaque_suave_escopado_aos_dois_novos_expanders(self):
+        """O CSS so alcanca os expanders que carregam o marcador."""
+        inicio = PAGINA.index("_CSS_COMUNICADOS_FISCAL = ")
+        css = PAGINA[inicio:PAGINA.index("_MARCADOR_COMUNICADO_FISCAL", inicio)]
+        self.assertIn("#EEF5FA", css)
+        self.assertIn("#C8D9E8", css)
+        # Escopo: todo seletor de expander passa pelo marcador.
+        for linha in css.splitlines():
+            if '[data-testid="stExpander"]' in linha:
+                self.assertIn(":has(.comunicado-fiscal)", linha)
+        # Sem seletor posicional fragil, sem JS e sem cor de alerta.
+        self.assertNotIn("nth-child", css)
+        self.assertNotIn("<script", css)
+        for proibida in ("red", "green", "yellow", "#FF", "#F00", "#0F0"):
+            self.assertNotIn(proibida, css)
+
+    def test_marcador_presente_apenas_nos_dois_novos_expanders(self):
+        secao_ini = PAGINA.index("def _render_comunicados_pos_documentos()")
+        secao_fim = PAGINA.index("def render_documentos_funcionais_upload(", secao_ini)
+        secao = PAGINA[secao_ini:secao_fim]
+        self.assertEqual(secao.count("_MARCADOR_COMUNICADO_FISCAL"), 2)
+        # Fora desta secao o marcador nao e emitido em lugar nenhum.
+        fora = PAGINA[:secao_ini] + PAGINA[secao_fim:]
+        self.assertNotIn("st.markdown(_MARCADOR_COMUNICADO_FISCAL", fora)
 
     def test_asset_png_do_sap_e_downloadavel(self):
         asset = ROOT / "assets" / "Atualização da Requisição de Compra_E-MAIL.png"

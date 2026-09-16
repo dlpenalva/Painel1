@@ -37,14 +37,14 @@ CAMINHO_ORIENTACAO_SAP = (
     / "Atualização da Requisição de Compra_E-MAIL.png"
 )
 TEXTO_EMAIL_VERIFICACAO_TERMO = (
-    "Boa tarde! Encaminho a minuta do Termo de Apostila para verificação "
-    "final => TMP-1026436.\n\n"
+    "[PREENCHER: Bom dia / Boa tarde!] Encaminho a minuta do Termo de "
+    "Apostila para verificação final => TMP-1026436.\n\n"
     "Solicito a conferência e, não havendo ressalvas, a confirmação de "
     "concordância com as informações do documento. Após esse retorno, "
     "prosseguiremos com a formalização e assinatura do Termo."
 )
 TEXTO_EMAIL_REQUISICAO_SAP = (
-    "Boa tarde!\n\n"
+    "[PREENCHER: Bom dia / Boa tarde!]\n\n"
     "Com a formalização do reajuste e a assinatura do Termo de Apostila, "
     "faz-se necessária a criação/atualização da Requisição de Compras no SAP, "
     "contemplando os valores vigentes, o novo período contratual, os "
@@ -5473,6 +5473,27 @@ def render_status_base_coleta(diagnostico):
         )
 
 
+# Marcador + :has(): mesmo padrao de _CSS_DOCS_GRID. O seletor so alcanca o
+# expander que contem o marcador, entao os dois comunicados antigos e qualquer
+# outro expander da pagina seguem com o estilo padrao do tema. Fail-safe: se o
+# :has() deixar de casar numa versao futura do Streamlit, perde-se apenas a cor
+# suave — nenhum comportamento ou leiaute depende dela.
+_CSS_COMUNICADOS_FISCAL = """
+<style>
+.comunicado-fiscal { display:none; }
+[data-testid="stExpander"]:has(.comunicado-fiscal) summary {
+    background:#EEF5FA !important;
+    border:1px solid #C8D9E8 !important;
+    border-radius:0.65rem;
+}
+[data-testid="stExpander"]:has(.comunicado-fiscal) summary:hover {
+    background:#E6F0F7 !important;
+}
+</style>
+"""
+_MARCADOR_COMUNICADO_FISCAL = '<span class="comunicado-fiscal"></span>'
+
+
 def _render_comunicados_pos_documentos() -> None:
     """Os dois comunicados do fiscal, no fim do fluxo da pagina.
 
@@ -5483,15 +5504,18 @@ def _render_comunicados_pos_documentos() -> None:
     copiaveis, mesmo download do PNG, fechados por padrao.
     """
     st.divider()
+    st.markdown(_CSS_COMUNICADOS_FISCAL, unsafe_allow_html=True)
 
     with st.expander(
         "E-mail para verificação final do TAD pelo fiscal", expanded=False
     ):
+        st.markdown(_MARCADOR_COMUNICADO_FISCAL, unsafe_allow_html=True)
         st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)
 
     with st.expander(
         "E-mail solicitando RC atualizada ao fiscal", expanded=False
     ):
+        st.markdown(_MARCADOR_COMUNICADO_FISCAL, unsafe_allow_html=True)
         st.code(TEXTO_EMAIL_REQUISICAO_SAP, language=None)
         if CAMINHO_ORIENTACAO_SAP.is_file():
             st.download_button(
@@ -5972,13 +5996,6 @@ def render_validacao_contratada(resultado, diagnostico):
         texto_comunicado = gerar_texto_validacao_contratada(resultado, diagnostico)
         with st.expander("Visualizar comunicado"):
             st.code(texto_comunicado, language=None)
-        st.download_button(
-            "Baixar TXT",
-            data=texto_comunicado.encode("utf-8"),
-            file_name="Validacao_Contratada.txt",
-            mime="text/plain",
-            key="baixar_validacao_contratada_txt",
-        )
 # <<< VALIDACAO_CONTRATADA_POS_COLETA_V1
 
 
@@ -6080,20 +6097,14 @@ def gerar_texto_comunicado_interno(resultado, diagnostico):
 def render_comunicado_interno(resultado, diagnostico):
     """Bloco aditivo pos-Coleta, ao lado do comunicado a contratada: texto para
     conferencia interna da apuracao pela fiscalizacao/gestao. Mesmo padrao de
-    entrega (expander + TXT); nao altera nenhum card, calculo ou documento."""
+    entrega (expander copiavel); nao altera nenhum card, calculo ou
+    documento."""
     with st.container(border=True):
         st.markdown("### Comunicado interno")
         st.caption("Conferência da apuração pela fiscalização/gestão antes da formalização.")
         texto_interno = gerar_texto_comunicado_interno(resultado, diagnostico)
         with st.expander("Visualizar comunicado interno"):
             st.code(texto_interno, language=None)
-        st.download_button(
-            "Baixar TXT (interno)",
-            data=texto_interno.encode("utf-8"),
-            file_name="Comunicado_Interno_Conferencia.txt",
-            mime="text/plain",
-            key="baixar_comunicado_interno_txt",
-        )
 # <<< COMUNICADO_INTERNO_CONFERENCIA_V1
 
 
