@@ -585,7 +585,11 @@ def test_f3_comunicado_interno_e_entregue_ao_lado_do_da_contratada():
     trecho = trecho[:trecho.index("# <<< COMUNICADO_INTERNO_CONFERENCIA_V1")]
     assert 'st.markdown("### Comunicado interno")' in trecho
     assert 'with st.expander("Visualizar comunicado interno")' in trecho
-    assert '"Baixar TXT (interno)"' in trecho
+    # Padronizacao dos 4 comunicados: entrega apenas por expander
+    # copiavel, sem download de texto.
+    assert '"Baixar TXT (interno)"' not in trecho
+    assert "baixar_comunicado_interno_txt" not in trecho
+    assert ".txt" not in trecho
     assert trecho.count("texto_interno = gerar_texto_comunicado_interno") == 1
     # mesma classe de entrega do comunicado a contratada: sem widget com key
     # propria, portanto sem o bug de congelamento do st.text_area.
