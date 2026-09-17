@@ -2588,18 +2588,24 @@ def _ds_assunto_enxuto(doc: Document, dados: dict, cm: dict) -> None:
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     _adicionar_run(p, "Assunto: ", negrito=True)
-    _adicionar_run(p, "Saneamento para formalização de ")
-    tipo = _ds_tipo_atualizacao(dados, cm)
-    if tipo:
-        _adicionar_run(p, tipo)
-    else:
-        _run_campo_manual(p, "Tipo ou instrumento")
-    _adicionar_run(p, " — ")
-    contrato = _ds_valor_identificacao(
-        dados, cm, "contrato", "contrato", "numero_contrato"
+    _adicionar_run(
+        p, "Saneamento para formalização de atualização contratual - "
     )
-    _texto_ou_marcador(p, contrato, "Numero do contrato")
-    _adicionar_run(p, ".")
+    rotulos = _ds_rotulos_ciclos(dados)
+    if rotulos and len(rotulos) == 1:
+        _adicionar_run(p, f"reajuste do Ciclo {rotulos[0]}")
+    elif rotulos:
+        _adicionar_run(p, f"reajustes dos Ciclos {', '.join(rotulos)}")
+    else:
+        _adicionar_run(p, "reajuste(s) do(s) Ciclo(s) ")
+        _run_campo_manual(p, "Ciclos de reajuste")
+    _adicionar_run(p, " (")
+    contratada = _ds_valor_identificacao(
+        dados, cm, "empresa_contratada",
+        "empresa_contratada", "contratada",
+    )
+    _texto_ou_marcador(p, contratada, "Nome da empresa contratada")
+    _adicionar_run(p, ")")
 
     p_ref = doc.add_paragraph()
     p_ref.alignment = WD_ALIGN_PARAGRAPH.LEFT
@@ -2610,6 +2616,21 @@ def _ds_assunto_enxuto(doc: Document, dados: dict, cm: dict) -> None:
     doc.add_paragraph()
 
 
+def _ds_rotulos_ciclos(dados: dict) -> list[str] | None:
+    """Rotulos dos ciclos do documento, na ordem canonica do Quadro 1.
+
+    Fail-closed: modelo em branco, ausencia de ciclos ou ciclo sem rotulo
+    devolvem None, e o chamador usa marcador em vez de inventar ciclo.
+    """
+    if dados.get("_modo_branco"):
+        return None
+    ciclos = _ds_ciclos_relevantes(dados)
+    rotulos = [remover_emojis_leve(c.get("ciclo") or "").strip() for c in ciclos]
+    if not rotulos or not all(rotulos):
+        return None
+    return rotulos
+
+
 def _ds_titulo(doc: Document, numero: int, texto: str) -> Any:
     p = _titulo_secao(doc, f"{numero}. {texto.upper()}", tamanho=11)
     p.paragraph_format.keep_with_next = True
@@ -2617,10 +2638,11 @@ def _ds_titulo(doc: Document, numero: int, texto: str) -> Any:
 
 
 def _ds_titulo_quadro(doc: Document, texto: str) -> None:
+    """Titulo de quadro exclusivo do Saneador: esquerda, italico, sem negrito."""
     p = doc.add_paragraph()
-    p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
     p.paragraph_format.keep_with_next = True
-    _adicionar_run(p, texto, negrito=True, tamanho=10)
+    _adicionar_run(p, texto, negrito=False, italico=True, tamanho=10)
 
 
 def _ds_secao1_identificacao(doc: Document, dados: dict, cm: dict) -> None:
@@ -2767,7 +2789,7 @@ def _ds_secao2_pedido_parametros(doc: Document, dados: dict, cm: dict) -> None:
                 _run_campo_manual(p, "Indice ou referencia economica")
             _adicionar_run(p, ".")
 
-    _paragrafos_perda_efeitos(doc, dados)
+    _ds_paragrafos_perda_efeitos(doc, dados)
 
     if dados.get("metodo_pc") and dados.get("situacao_retroativos_pc"):
         p_metodo = doc.add_paragraph()
@@ -2805,7 +2827,99 @@ def _ds_secao2_pedido_parametros(doc: Document, dados: dict, cm: dict) -> None:
         destacar_placeholders=True,
         destacar_placeholders_embutidos=True,
     )
+    _ds_paragrafo_acumulado(doc, dados)
     doc.add_paragraph()
+
+
+def _ds_paragrafo_acumulado(doc: Document, dados: dict) -> None:
+    """Acumulado dos ciclos logo abaixo do Quadro 1.
+
+    Consome o percentual acumulado canonico (`var_acumulada`, o mesmo do
+    Termo): o gerador nao soma percentuais nem recompoe fatores. Ausencia
+    vira marcador, nunca 0,00%.
+    """
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    var = None if dados.get("_modo_branco") else _num_ou_none(
+        dados.get("var_acumulada")
+    )
+    if var is not None:
+        _adicionar_run(p, f"Acumulado dos ciclos: {_fmt_pct_doc(var)}", negrito=True)
+    else:
+        _adicionar_run(p, "Acumulado dos ciclos: ", negrito=True)
+        _run_campo_manual(p, "Percentual acumulado dos ciclos")
+    _adicionar_run(
+        p,
+        ", apurado pela composição dos fatores de reajuste de cada ciclo, e "
+        "não pela soma dos respectivos percentuais.",
+    )
+
+
+def _ds_tempestivo_asterisco(c: dict) -> bool:
+    """Situacao canonica do ciclo apresentada como TEMPESTIVO*."""
+    return "TEMPESTIVO*" in remover_emojis_leve(c.get("situacao") or "").upper()
+
+
+def _ds_paragrafo_tempestivo_asterisco(doc: Document, c: dict) -> None:
+    """Redacao do TEMPESTIVO*: mesmas fontes de `_frase_perda_efeitos`.
+
+    Ciclo, inicio dos efeitos e competencias sem efeito vem prontos do
+    sumario canonico; faltando algum, o trecho vira marcador.
+    """
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    _adicionar_run(
+        p,
+        "Em razão da data do pedido, os efeitos financeiros do reajuste "
+        "referente ao ciclo ",
+    )
+    _texto_ou_marcador(p, remover_emojis_leve(c.get("ciclo") or "").strip(), "Ciclo")
+    _adicionar_run(p, " iniciam-se em ")
+    _texto_ou_marcador(
+        p, _formatar_competencia(c.get("inicio_efeito_financeiro")),
+        "Competencia de inicio dos efeitos financeiros",
+    )
+    competencias = _competencias_sem_efeito(c)
+    _adicionar_run(
+        p,
+        ", não alcançando as competências de " if len(competencias) > 1
+        else ", não alcançando a competência de ",
+    )
+    _texto_ou_marcador(
+        p, _competencias_por_extenso(competencias),
+        "Competencia nao alcancada pelos efeitos financeiros",
+    )
+    _adicionar_run(
+        p,
+        ". Por essa razão, a situação indicada como TEMPESTIVO* é acompanhada "
+        "de asterisco, a fim de sinalizar essa particularidade quanto ao termo "
+        "inicial dos efeitos financeiros.",
+    )
+
+
+def _ds_paragrafos_perda_efeitos(doc: Document, dados: dict) -> None:
+    """Perda de competencias no Saneador.
+
+    Ciclo TEMPESTIVO* recebe a redacao propria do asterisco; os demais
+    seguem exatamente a redacao compartilhada com o Termo de Apostila.
+    """
+    ciclos = dados.get("ciclos_computados") or []
+    if dados.get("_modo_branco") or not any(
+        _ds_tempestivo_asterisco(c) for c in ciclos
+    ):
+        _paragrafos_perda_efeitos(doc, dados)
+        return
+    nomear = len(ciclos) > 1
+    for c in ciclos:
+        if _ds_tempestivo_asterisco(c):
+            _ds_paragrafo_tempestivo_asterisco(doc, c)
+            continue
+        frase = _frase_perda_efeitos(c, nomear_ciclo=nomear)
+        if not frase:
+            continue
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        _adicionar_run(p, frase)
 
 
 def _ds_total_presente(dados: dict, chave: str) -> float | None:
@@ -2822,7 +2936,7 @@ def _ds_total_presente(dados: dict, chave: str) -> float | None:
 
 
 def _ds_secao3_resultado(doc: Document, dados: dict, cm: dict) -> None:
-    _ds_titulo(doc, 3, "Resultado essencial")
+    _ds_titulo(doc, 3, "Resultado")
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     _adicionar_run(p, "Conforme memória de cálculo ")
@@ -2969,6 +3083,14 @@ def _ds_secao4_documentos(doc: Document, dados: dict, cm: dict) -> None:
              "Referencia da concordancia da contratada"),
             (_campo(cm, "concordancia_situacao"),
              "Situacao da concordancia da contratada"),
+        )],
+        # Sem fonte canonica de concordancia da area gestora: nunca preenchida
+        # automaticamente; fica como marcador, como as demais referencias.
+        ["Concordância da área gestora", _ds_juntar_campos(
+            (_campo(cm, "concordancia_gestora_ref"),
+             "Referencia da concordancia da area gestora"),
+            (_campo(cm, "concordancia_gestora_situacao"),
+             "Situacao da concordancia da area gestora"),
         )],
         [
             "Garantia contratual",
@@ -3181,15 +3303,20 @@ def _ds_secao7_conclusao(doc: Document, dados: dict, cm: dict) -> None:
         # data de efeitos — a redacao passa a ser neutra, preservando o
         # registro da proxima data canonica.
         ciclos = list(reversed(_ds_ciclos_relevantes(dados)))
-        inicio_efeito = next(
+        ciclo_referencia, inicio_efeito = next(
             (
-                data for data in (
-                    _data_canonica_ou_none(ciclo.get("inicio_efeito_financeiro"))
+                (ciclo, data) for ciclo, data in (
+                    (
+                        ciclo,
+                        _data_canonica_ou_none(
+                            ciclo.get("inicio_efeito_financeiro")
+                        ),
+                    )
                     for ciclo in ciclos if not _ciclo_precluso(ciclo)
                 )
                 if data
             ),
-            None,
+            (None, None),
         )
         proxima_data = next(
             (
@@ -3204,11 +3331,19 @@ def _ds_secao7_conclusao(doc: Document, dados: dict, cm: dict) -> None:
         if inicio_efeito:
             _adicionar_run(
                 p_marcos,
-                "Considerando que os efeitos financeiros do presente reajuste "
-                "são reconhecidos a partir de ",
+                "Considerando que, no âmbito da presente atualização "
+                "contratual, os efeitos financeiros relativos ao ciclo ",
             )
             _texto_ou_marcador(
-                p_marcos, inicio_efeito, "Data dos efeitos financeiros",
+                p_marcos,
+                remover_emojis_leve(ciclo_referencia.get("ciclo") or "").strip(),
+                "Ciclo de referencia",
+            )
+            _adicionar_run(p_marcos, " são reconhecidos a partir de ")
+            _texto_ou_marcador(
+                p_marcos,
+                _formatar_competencia(inicio_efeito) or inicio_efeito,
+                "Data dos efeitos financeiros",
             )
             _adicionar_run(
                 p_marcos,
@@ -3227,7 +3362,8 @@ def _ds_secao7_conclusao(doc: Document, dados: dict, cm: dict) -> None:
         )
         _adicionar_run(
             p_marcos,
-            ", observados os termos e a periodicidade previstos no contrato.",
+            ", observados os termos e a periodicidade previstos no contrato, "
+            "desde que o instrumento jurídico ainda esteja em vigência.",
         )
 
     p = doc.add_paragraph()
