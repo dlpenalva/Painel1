@@ -196,7 +196,7 @@ def test_neutralidade_integral_29c12():
     for titulo in (
         "1. IDENTIFICAÇÃO",
         "2. PEDIDO E PARÂMETROS DA ANÁLISE",
-        "3. RESULTADO ESSENCIAL",
+        "3. RESULTADO",
         "4. DOCUMENTOS E VERIFICAÇÕES",
         "5. CONTROLE DA ADEQUAÇÃO ORÇAMENTÁRIA",
         "6. PENDÊNCIAS",

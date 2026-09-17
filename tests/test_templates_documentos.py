@@ -540,7 +540,10 @@ def test_saneador_assunto_e_identificacao():
         leitura_simples_financeiro(), campos_manuais=CAMPOS_SANEADOR
     ))
     assert "DESPACHO SANEADOR" in texto
-    assert "Saneamento para formalização de reajuste — TLB-CTR-2025/00001" in texto
+    assert (
+        "Saneamento para formalização de atualização contratual - reajuste "
+        "do Ciclo C1 (Empresa XPTO S.A.)"
+    ) in texto
     assert "Referência(s): TLB-AUT-2025/00100" in texto
     assert "celebrado com Empresa XPTO S.A." in texto
     assert "cujo objeto é prestação de serviços especializados" in texto
@@ -555,7 +558,7 @@ def test_saneador_estrutura_final_1_a_7():
     assert titulos == [
         "1. IDENTIFICAÇÃO",
         "2. PEDIDO E PARÂMETROS DA ANÁLISE",
-        "3. RESULTADO ESSENCIAL",
+        "3. RESULTADO",
         "4. DOCUMENTOS E VERIFICAÇÕES",
         "5. CONTROLE DA ADEQUAÇÃO ORÇAMENTÁRIA",
         "6. PENDÊNCIAS",
@@ -669,10 +672,12 @@ def test_saneador_conclusao_transporta_marcos_temporais_canonicos():
         leitura, campos_manuais=CAMPOS_SANEADOR
     ))
     assert (
-        "Considerando que os efeitos financeiros do presente reajuste são "
-        "reconhecidos a partir de 27/08/2026, registra-se que o próximo ciclo "
-        "de reajuste contratual estará apto a partir de 27/08/2027, observados "
-        "os termos e a periodicidade previstos no contrato."
+        "Considerando que, no âmbito da presente atualização contratual, os "
+        "efeitos financeiros relativos ao ciclo C2 são reconhecidos a partir "
+        "de 08/2026, registra-se que o próximo ciclo de reajuste contratual "
+        "estará apto a partir de 27/08/2027, observados os termos e a "
+        "periodicidade previstos no contrato, desde que o instrumento "
+        "jurídico ainda esteja em vigência."
     ) in texto
     assert "data do pedido + 12 meses" not in texto
 
@@ -701,10 +706,11 @@ def test_saneador_conclusao_omite_efeitos_quando_ciclo_e_precluso():
         "Não há, nesta análise, data de início de efeitos financeiros a "
         "registrar. Registra-se que o próximo ciclo de reajuste contratual "
         "estará apto a partir de 01/05/2027, observados os termos e a "
-        "periodicidade previstos no contrato."
+        "periodicidade previstos no contrato, desde que o instrumento "
+        "jurídico ainda esteja em vigência."
     ) in texto
     # Nem afirmacao contraditoria, nem placeholder no lugar da data de efeitos.
-    assert "efeitos financeiros do presente reajuste são reconhecidos" not in texto
+    assert "efeitos financeiros relativos ao ciclo" not in texto
     assert "[PREENCHER: Data dos efeitos financeiros]" not in texto
     assert "reconhecidos a partir de Não informado" not in texto
 
@@ -719,9 +725,10 @@ def test_saneador_conclusao_preserva_redacao_quando_ha_efeitos_financeiros():
         leitura, campos_manuais=CAMPOS_SANEADOR
     ))
     assert (
-        "Considerando que os efeitos financeiros do presente reajuste são "
-        "reconhecidos a partir de 27/08/2026, registra-se que o próximo ciclo "
-        "de reajuste contratual estará apto a partir de 27/08/2027"
+        "Considerando que, no âmbito da presente atualização contratual, os "
+        "efeitos financeiros relativos ao ciclo C2 são reconhecidos a partir "
+        "de 08/2026, registra-se que o próximo ciclo de reajuste contratual "
+        "estará apto a partir de 27/08/2027"
     ) in texto
     assert "Não há, nesta análise, data de início de efeitos financeiros" not in texto
 
@@ -737,7 +744,7 @@ def test_saneador_conclusao_marca_proxima_data_ausente_sem_afirmar_efeitos():
         "registrar. Registra-se que o próximo ciclo de reajuste contratual "
         "estará apto a partir de [PREENCHER: Proxima data canonica de "
         "reajuste], observados os termos e a periodicidade previstos no "
-        "contrato."
+        "contrato, desde que o instrumento jurídico ainda esteja em vigência."
     ) in texto
     assert "apto a partir de Não informado" not in texto
 
