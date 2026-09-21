@@ -28,7 +28,7 @@ from _seguranca_xlsx import (
 
 from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
 from _capacidades_apuracao import avaliar_capacidades_apuracao
-from _reajuste_utils import fechar_percentual_oficial
+from _reajuste_utils import percentual_contexto_oficial, percentual_oficial_do_payload
 from _efeitos_financeiros_pc import (
     efeito_financeiro_pc,
     reconciliar_inicios_efeito,
@@ -211,15 +211,16 @@ def _ciclo_cronologico_financeiro(marco: datetime | None, competencia: Any) -> s
 
 
 def _percentual_ciclo(ciclo: dict[str, Any]) -> float | None:
-    """Percentual OFICIAL do ciclo (fechado em 2 casas — regra petrea)."""
-    for chave in ("percentual_aplicado", "percentual_indice", "variacao"):
-        valor = _numero(ciclo.get(chave))
-        if valor is not None:
-            return fechar_percentual_oficial(valor / 100 if abs(valor) > 1 else valor)
-    fator = _numero(ciclo.get("fator"))
-    if fator is not None:
-        return fechar_percentual_oficial(fator - 1 if fator >= 0.5 else fator)
-    return None
+    """Percentual OFICIAL do ciclo (fechado em 2 casas — regra petrea).
+
+    Negativo pendente permanece ``None`` (fail-closed): ver
+    ``percentual_oficial_do_payload``.
+    """
+    return percentual_oficial_do_payload(
+        ciclo,
+        chaves=("percentual_aplicado", "percentual_indice", "variacao"),
+        numero=_numero,
+    )
 
 
 def _ciclo_em_analise(ciclo: dict[str, Any]) -> bool:
@@ -294,16 +295,19 @@ def _montar_ciclos(dados: dict[str, Any]) -> tuple[list[dict[str, Any]], set[int
 
     contexto = dados.get("contexto_contratual_anterior") or {}
     ultimo_contexto = _numero_ciclo(contexto.get("ultimo_ciclo_concedido"))
-    percentual_contexto = _numero(contexto.get("percentual_ja_aplicado_pct"))
-    if percentual_contexto is not None and abs(percentual_contexto) > 1:
-        percentual_contexto /= 100
+    # Percentual historico do contexto: SEMPRE oficial (2 casas) antes de
+    # entrar na cadeia, e somente para ciclo ausente do payload.
+    percentual_contexto = percentual_contexto_oficial(contexto, numero=_numero)
 
     alertas: list[str] = []
     saida: list[dict[str, Any]] = []
     for numero in range(0, ultimo + 1):
         origem = fornecidos.get(numero, {})
         percentual = 0.0 if numero == 0 else _percentual_ciclo(origem)
-        if numero > 0 and percentual is None and numero == ultimo_contexto:
+        if (
+            numero > 0 and percentual is None and numero == ultimo_contexto
+            and numero not in fornecidos
+        ):
             percentual = percentual_contexto
         inicio = _primeiro_dia_mes(inicios[numero])
         fim = inicio + relativedelta(months=12) - relativedelta(days=1)

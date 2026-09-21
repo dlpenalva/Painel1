@@ -363,7 +363,10 @@ class ColetaReajusteTests(unittest.TestCase):
         self.assertIn('if fator is None and not computar:', adapter)
         self.assertIn('"Data-base": _data_br(parametros[f"C{row}"].value)', adapter)
         self.assertIn('"Situação": parametros[f"G{row}"].value or ""', adapter)
-        self.assertIn('"Variação": _numero(parametros[f"E{row}"].value)', adapter)
+        # Regra petrea: percentual e cadeia OFICIAIS (2 casas) tem precedencia
+        # sobre o valor gravado de uma Coleta legada com precisao bruta.
+        self.assertIn('"Variação": _variacao_oficial(parametros[f"E{row}"].value)', adapter)
+        self.assertIn("if row in cadeia_fator:", adapter)
 
 
 if __name__ == "__main__":

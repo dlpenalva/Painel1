@@ -281,8 +281,14 @@ def _pagina():
 
 def test_pagina_usa_fator_exato_e_nao_percentual_visual():
     pagina = _pagina()
-    assert 'percentual_reajuste = float(ctx["variacao"])' in pagina
+    # A decisao "campo intacto -> percentual canonico EXATO da apuracao" vive
+    # agora no helper canonico da regra petrea (ajuste manual: 2 casas).
+    assert "percentual_e_fator_da_adequacao(" in pagina
     assert "round-trip" in pagina   # comentario da correcao permanece
+    from _adequacao_ui import pct, percentual_e_fator_da_adequacao
+
+    exato = 0.028899355
+    assert percentual_e_fator_da_adequacao(exato, True, pct(exato)) == (exato, 1 + exato)
 
 
 def test_pagina_tem_premissa_de_projecao_com_estado_isolado():

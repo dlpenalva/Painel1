@@ -63,4 +63,5 @@ jobs:
             tests/test_vta_potencial_pc.py \
             tests/test_xls_pc_vta_align_1.py \
             tests/test_consumo_glosa_1.py \
-            tests/test_consumo_glosa_dv_1.py
+            tests/test_consumo_glosa_dv_1.py \
+            tests/test_percentual_oficial_duas_casas.py

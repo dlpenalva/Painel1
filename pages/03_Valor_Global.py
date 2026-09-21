@@ -11,6 +11,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
+from _reajuste_utils import fator_oficial, fator_oficial_de_fator
 from _estado_apuracao_upload import (
     apuracao_persistida_valida,
     assinatura_conteudo_upload,
@@ -201,15 +202,14 @@ def fator_de_valor(valor, variacao=None):
 
 
 def fator_operacional(valor):
-    """Fator financeiro operacional usado no Valor Global.
+    """Fator financeiro operacional (próprio do ciclo) usado no Valor Global.
 
-    Regra de estabilidade: preservar o padrão histórico da ferramenta,
-    usando o fator de cada ciclo com 4 casas decimais. Isso evita divergências
-    entre o XLS de coleta, a planilha executiva e o cálculo do site causadas
-    por casas decimais residuais dos índices.
+    REGRA PÉTREA: o fator do ciclo é o fator OFICIAL — 1 + percentual fechado
+    em 2 casas pela fonte canônica (Decimal + ROUND_HALF_UP). Não usa
+    ``round(fator, 4)``: 4,025% vira 4,03% (1,0403), nunca 1,0402.
     """
     try:
-        return round(float(valor), 4)
+        return fator_oficial_de_fator(float(valor))
     except Exception:
         return 1.0
 
@@ -3689,7 +3689,11 @@ def processar_arquivo_coleta(bytes_arquivo):
         perc_legacy = extrair_percentual_reajuste_legacy(bytes_arquivo, xls)
         fator = fator_de_valor(params.get("fator_acumulado_total") or params.get("fator_acumulado_final") or params.get("fator_acumulado") or params.get("fator"))
         if fator == 1.0 and perc_legacy is not None:
-            fator = 1 + perc_legacy
+            fator = fator_oficial(perc_legacy)
+        else:
+            # Coleta legada de ciclo único: o fator do C1 é o próprio fator
+            # do ciclo, sempre oficial (nunca o fator bruto gravado).
+            fator = fator_oficial_de_fator(fator)
         ciclos = pd.DataFrame([{
             "Ciclo": "C1",
             "Data-base": "",

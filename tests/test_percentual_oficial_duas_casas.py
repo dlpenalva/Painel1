@@ -504,3 +504,227 @@ def test_xlsx_real_recalculado_propaga_4_05_por_toda_a_cadeia(
         )
     finally:
         book.Close(False)
+
+
+# =================================================== revisao independente (P1/P2)
+
+from _coleta_oficial import normalizar_dados_calculadora  # noqa: E402
+from _coleta_reajuste import _montar_ciclos  # noqa: E402
+from _reajuste_utils import (  # noqa: E402
+    fator_oficial_de_fator,
+    percentual_contexto_oficial,
+    percentual_oficial_do_payload,
+)
+
+
+def _dados_c2_com_c1_so_no_contexto() -> dict:
+    dados = _dados(RAW_C1, RAW_C2)
+    c2 = dados["ciclos"][1]
+    dados["ciclos"] = [c2]
+    dados["contexto_contratual_anterior"] = {
+        "ultimo_ciclo_concedido": "C1",
+        "percentual_ja_aplicado_pct": RAW_C1 * 100,  # 4,052187881255853 (pontos)
+    }
+    return dados
+
+
+def test_contexto_percentual_historico_e_fechado():
+    contexto = {"percentual_ja_aplicado_pct": 4.052187881255853}
+    assert percentual_contexto_oficial(contexto) == 0.0405
+    assert percentual_contexto_oficial({"percentual_ja_aplicado_pct": RAW_C1}) == 0.0405
+    assert percentual_contexto_oficial({}) is None
+
+
+def test_contexto_c1_entra_oficial_no_montador_da_coleta_legada():
+    ciclos, _alvos, _alertas = _montar_ciclos(_dados_c2_com_c1_so_no_contexto())
+    por_nome = {c["nome"]: c for c in ciclos}
+    assert por_nome["C1"]["percentual"] == 0.0405
+    assert por_nome["C2"]["percentual"] == 0.045
+
+
+def test_contexto_c1_nao_se_perde_na_coleta_oficial():
+    normalizado = normalizar_dados_calculadora(_dados_c2_com_c1_so_no_contexto())
+    por_nome = {c["ciclo"]: c for c in normalizado["ciclos"]}
+    assert por_nome["C1"]["percentual"] == 0.0405
+    assert por_nome["C2"]["percentual"] == 0.045
+
+    conteudo = gerar_coleta_oficial_preenchida(_dados_c2_com_c1_so_no_contexto())
+    par = load_workbook(io.BytesIO(conteudo))["parametros"]
+    assert par["E3"].value == 0.0405
+    assert par["E4"].value == 0.045
+    por_ciclo = ler_masterfile_v10(conteudo)["parametros_v10"]["por_ciclo"]
+    assert por_ciclo["C1"]["percentual_reajuste"] == 0.0405
+    assert por_ciclo["C2"]["percentual_reajuste"] == 0.045
+    from _reajuste_utils import cadeia_fatores_oficiais
+
+    cadeia = cadeia_fatores_oficiais([0.0, 0.0405, 0.045])
+    assert cadeia[2] == pytest.approx(fator_oficial(RAW_C1) * fator_oficial(RAW_C2), abs=1e-15)
+
+
+PAYLOAD_NEGATIVO_PENDENTE = {
+    "percentual_aplicado": None,
+    "percentual_indice": -0.020349,
+    "tratamento_negativo": None,
+}
+
+
+def test_negativo_pendente_permanece_fail_closed_nas_fronteiras():
+    assert percentual_oficial_do_payload(dict(PAYLOAD_NEGATIVO_PENDENTE)) is None
+    assert _percentual(dict(PAYLOAD_NEGATIVO_PENDENTE)) is None
+    assert _percentual_ciclo(dict(PAYLOAD_NEGATIVO_PENDENTE)) is None
+    # payload legado sem a chave percentual_aplicado: bruto negativo sem
+    # tratamento tambem e pendente
+    legado = {"percentual_indice": -0.020349}
+    assert _percentual(legado) is None
+    assert _percentual_ciclo(legado) is None
+    # com tratamento aprovado, os estados existentes sao preservados
+    aplicar = {**legado, "tratamento_ciclo_negativo": APLICAR_VARIACAO_NEGATIVA}
+    neutralizar = {**legado, "tratamento_ciclo_negativo": NEUTRALIZAR_VARIACAO_NEGATIVA}
+    assert _percentual(aplicar) == -0.0203
+    assert _percentual(neutralizar) == 0.0
+
+
+def test_negativo_pendente_nao_vira_percentual_na_coleta():
+    dados = _dados(RAW_C1)
+    dados["ciclos"][0].update(PAYLOAD_NEGATIVO_PENDENTE)
+    par = load_workbook(io.BytesIO(gerar_coleta_oficial_preenchida(dados)))["parametros"]
+    assert par["E3"].value in (None, "")
+
+
+def test_fator_de_fator_usa_decimal_e_meio_para_cima():
+    assert fator_oficial_de_fator(1.04025) == 1.0403
+    assert fator_oficial_de_fator(FATOR_BRUTO_C1) == 1.0405
+    assert _percentual({"fator": 1.04025}) == 0.0403
+
+
+# ------------------------------------------------------------- XLS legado
+
+def _coleta_legada_bruta(conteudo: bytes) -> bytes:
+    """Coleta 'antiga' ja calculada pelo Excel: E e F com precisao bruta."""
+    wb = load_workbook(io.BytesIO(conteudo))
+    par = wb["parametros"]
+    par["E3"] = RAW_C1
+    par["F2"] = 1.0
+    par["F3"] = FATOR_BRUTO_C1
+    saida = io.BytesIO()
+    wb.save(saida)
+    return saida.getvalue()
+
+
+def test_xls_legado_bruto_e_oficializado_na_leitura(coleta_c1):
+    legado = _coleta_legada_bruta(coleta_c1)
+    leitura = ler_masterfile_v10(legado)
+    c1 = leitura["parametros_v10"]["por_ciclo"]["C1"]
+    assert c1["percentual_reajuste"] == 0.0405
+    assert c1["fator_acumulado"] == 1.0405
+    # memoria tecnica preservada
+    assert c1["percentual_reajuste_bruto"] == RAW_C1
+    assert c1["fator_acumulado_bruto"] == pytest.approx(FATOR_BRUTO_C1, abs=1e-15)
+    assert any("precisao bruta" in a for a in leitura["parametros_v10"]["alertas"])
+    # o arquivo fisico nao e regravado
+    par = load_workbook(io.BytesIO(legado))["parametros"]
+    assert par["E3"].value == pytest.approx(RAW_C1, abs=1e-16)
+    assert par["F3"].value == pytest.approx(FATOR_BRUTO_C1, abs=1e-15)
+
+
+def test_xls_legado_multiciclo_reconstroi_acumulado_pelos_oficiais(coleta_multiciclo):
+    wb = load_workbook(io.BytesIO(coleta_multiciclo))
+    par = wb["parametros"]
+    par["E3"], par["E4"], par["E5"] = RAW_C1, RAW_C2, RAW_C3
+    par["F2"] = 1.0
+    par["F3"] = 1 + RAW_C1
+    par["F4"] = (1 + RAW_C1) * (1 + RAW_C2)
+    par["F5"] = (1 + RAW_C1) * (1 + RAW_C2) * (1 + RAW_C3)
+    saida = io.BytesIO()
+    wb.save(saida)
+    por_ciclo = ler_masterfile_v10(saida.getvalue())["parametros_v10"]["por_ciclo"]
+    assert por_ciclo["C2"]["fator_acumulado"] == pytest.approx(1.0405 * 1.045, abs=1e-15)
+    oficial_c3 = 1.0405 * 1.045 * 1.0381
+    assert por_ciclo["C3"]["fator_acumulado"] == pytest.approx(oficial_c3, abs=1e-15)
+    # nao e o fator bruto acumulado apenas arredondado
+    bruto_c3 = (1 + RAW_C1) * (1 + RAW_C2) * (1 + RAW_C3)
+    assert abs(por_ciclo["C3"]["fator_acumulado"] - fator_oficial_de_fator(bruto_c3)) > 1e-6
+
+
+def test_xls_legado_pc_documentos_e_objeto_recebem_oficial(coleta_c1):
+    legado = _com_pc(_coleta_legada_bruta(coleta_c1), datetime(2025, 9, 15), 737983.34)
+    leitura = ler_masterfile_v10(legado)
+    pc = next(p for p in leitura["itens_pc_v10"]["itens"] if p.get("numero_pc") == "PC-0001")
+    assert pc["fator_acumulado"] == 1.0405
+    assert pc["valor_atualizado"] == 767871.67
+    dados = _extrair_dados(leitura, None)
+    assert next(c for c in dados["ciclos"] if c["ciclo"] == "C1")["percentual_reajuste"] == 0.0405
+    objeto = leitura.get("objeto_processo") or {}
+    indice = (objeto.get("resultados") or {}).get("indice_acumulado") or {}
+    if indice.get("fator_acumulado") is not None:
+        assert indice["fator_acumulado"] == 1.0405
+
+
+def test_xls_legado_adaptador_valor_global_usa_cadeia_oficial():
+    from openpyxl import Workbook
+
+    from _coleta_reajuste_documentos import _cadeia_fator_acumulado
+
+    ws = Workbook().active
+    ws["E3"], ws["E4"] = RAW_C1, RAW_C2
+    cadeia = _cadeia_fator_acumulado(ws)
+    assert cadeia[2] == 1.0
+    assert cadeia[3] == 1.0405
+    assert cadeia[4] == pytest.approx(1.0405 * 1.045, abs=1e-15)
+    assert 5 not in cadeia  # E5 ausente: a cadeia para, como a formula
+
+
+# ------------------------------------------------ Valor Global / Adequacao
+
+def _funcao_da_pagina(pagina: str, nome: str, globais: dict):
+    import ast
+
+    fonte = (ROOT / "pages" / pagina).read_text(encoding="utf-8")
+    arvore = ast.parse(fonte)
+    no = next(n for n in arvore.body if isinstance(n, ast.FunctionDef) and n.name == nome)
+    espaco = dict(globais)
+    exec(compile(ast.Module(body=[no], type_ignores=[]), f"<{pagina}>", "exec"), espaco)
+    return espaco[nome], fonte
+
+
+def test_valor_global_fator_operacional_usa_round_half_up_canonico():
+    fator_operacional, fonte = _funcao_da_pagina(
+        "03_Valor_Global.py", "fator_operacional",
+        {"fator_oficial_de_fator": fator_oficial_de_fator},
+    )
+    assert fator_operacional(1.04025) == 1.0403          # 4,025% -> 4,03%
+    assert fator_operacional(FATOR_BRUTO_C1) == 1.0405
+    assert round(1.04025, 4) == 1.0402                   # o comportamento antigo
+    assert "round(float(valor), 4)" not in fonte
+    assert "fator = 1 + perc_legacy" not in fonte
+
+
+def test_adequacao_ajuste_manual_passa_pelo_helper_canonico():
+    from _adequacao_ui import percentual_e_fator_da_adequacao
+
+    assert percentual_e_fator_da_adequacao(0.1, False, "4,052187881255853%") == (0.0405, 1.0405)
+    assert percentual_e_fator_da_adequacao(0.1, True, "4,025%") == (0.0403, 1.0403)
+    # campo intacto: o percentual canonico importado da apuracao segue exato
+    assert percentual_e_fator_da_adequacao(0.0289, True, "2,89%") == (0.0289, 1.0289)
+    fonte = (ROOT / "pages" / "12_Adequacao_Orcamentaria.py").read_text(encoding="utf-8")
+    assert "fator_reajuste = 1 + percentual_reajuste" not in fonte
+    assert "parse_moeda_br(percentual_txt) / 100" not in fonte
+
+
+# ------------------------------------------------------------- Garantia / DOU
+
+def test_garantia_nao_forma_percentual_nem_fator_de_reajuste():
+    for arquivo in (ROOT / "_garantia_calculo.py", ROOT / "pages" / "05_Garantia.py"):
+        fonte = arquivo.read_text(encoding="utf-8")
+        assert "_indice_utils" not in fonte
+        assert "fator_oficial" not in fonte and "fator_acumulado" not in fonte
+        assert "1 + percentual" not in fonte and "1.0 + percentual" not in fonte
+
+
+def test_dou_so_apresenta_percentual_e_fator_da_cadeia_oficial():
+    fonte = (ROOT / "pages" / "13_DOU.py").read_text(encoding="utf-8")
+    assert "_indice_utils" not in fonte
+    assert "1 + percentual" not in fonte and "1.0 + percentual" not in fonte
+    assert "1 + pct" not in fonte and "1.0 + pct" not in fonte
+    # o texto do DOU le 'Percentual aplicado' / 'Fator acumulado' do resultado
+    assert '"Percentual aplicado"' in fonte and '"Fator acumulado"' in fonte

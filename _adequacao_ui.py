@@ -21,6 +21,7 @@ import re
 import pandas as pd
 
 from _seguranca_xlsx import opcoes_excel_writer_seguro
+from _reajuste_utils import fator_oficial, fechar_percentual_oficial
 
 # A matematica vive no motor. A UI (esta camada) apenas delega.
 from _adequacao_orcamentaria import (
@@ -615,3 +616,20 @@ def gerar_xlsx_projecao(df_ultimos, df_projecao, resumo):
                 ws_p.set_column(c, c, max(16, min(32, len(str(col)) + 4)))
     output.seek(0)
     return output.getvalue()
+
+
+def percentual_e_fator_da_adequacao(variacao_apuracao, tem_apuracao, percentual_txt):
+    """Percentual e fator de reajuste usados na Adequacao.
+
+    * Campo intacto com apuracao: vale o percentual canonico importado da
+      apuracao (ja composto pelos fatores OFICIAIS de cada ciclo), exato —
+      regra da Etapa 51B preservada.
+    * Ajuste manual: o percentual digitado entra na cadeia financeira somente
+      fechado em 2 casas pela fonte canonica (4,052187...% -> 4,05% ->
+      1,0405); nenhum fator local ``1 + percentual`` bruto.
+    """
+    if tem_apuracao and percentual_txt == pct(variacao_apuracao):
+        percentual = float(variacao_apuracao)
+        return percentual, 1 + percentual
+    percentual = fechar_percentual_oficial(parse_moeda_br(percentual_txt) / 100)
+    return percentual, fator_oficial(percentual)

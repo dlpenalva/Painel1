@@ -229,6 +229,71 @@ def fator_oficial(percentual_decimal):
     return float(Decimal(1) + _decimal_exato(oficial))
 
 
+def fechar_percentual_na_unidade(valor):
+    """Fecha o percentual preservando a unidade recebida.
+
+    Valores com modulo > 1 estao em pontos percentuais (4,0521 -> 4,05);
+    os demais sao decimais (0,040521 -> 0,0405). Mesma heuristica de unidade
+    ja usada pelos leitores do projeto.
+    """
+    if valor is None:
+        return None
+    numero = float(valor)
+    if abs(numero) > 1:
+        oficial = float(_decimal_exato(numero).quantize(
+            _QUANTUM_PERCENTUAL_OFICIAL, rounding=ROUND_HALF_UP
+        ))
+        return oficial if oficial != 0 else 0.0
+    return fechar_percentual_oficial(numero)
+
+
+def percentual_de_fator(fator):
+    """Percentual (decimal) contido num fator proprio, SEM fechamento.
+
+    Subtracao em Decimal: em float, 1,04025 - 1 vira 0,0402499... e o
+    fechamento posterior cairia para 4,02% em vez de 4,03%.
+    """
+    if fator is None:
+        return None
+    return float(_decimal_exato(fator) - 1)
+
+
+def fator_oficial_de_fator(fator):
+    """Fator proprio OFICIAL a partir de um fator (possivelmente bruto)."""
+    if fator is None:
+        return None
+    pontos = ((_decimal_exato(fator) - 1) * 100).quantize(
+        _QUANTUM_PERCENTUAL_OFICIAL, rounding=ROUND_HALF_UP
+    )
+    return float(1 + pontos / 100)
+
+
+def cadeia_fatores_oficiais(percentuais):
+    """Cadeia do FATOR_ACUMULADO historico recomposta com fatores OFICIAIS.
+
+    ``percentuais`` segue a ordem C0..Cn. Espelha a formula de
+    parametros!F (C0 = 1; Cn = F(n-1) * (1 + E(n)); vazio a partir do
+    primeiro ciclo sem percentual), mas com cada E fechado em 2 casas.
+    """
+    cadeia = []
+    anterior = 1.0
+    for indice, percentual in enumerate(percentuais):
+        if indice == 0:
+            cadeia.append(1.0)
+            continue
+        fator = fator_oficial(percentual) if anterior is not None else None
+        anterior = anterior * fator if fator is not None else None
+        cadeia.append(anterior)
+    return cadeia
+
+
+def tem_precisao_superior_a_oficial(percentual_decimal) -> bool:
+    """True quando o percentual (decimal) tem mais de 2 casas de pontos."""
+    if percentual_decimal is None:
+        return False
+    return fechar_percentual_oficial(percentual_decimal) != float(percentual_decimal)
+
+
 def fator_acumulado_oficial(percentuais):
     """Produto dos fatores OFICIAIS de cada ciclo (cada um fechado antes).
 
@@ -315,6 +380,83 @@ def situacao_com_tratamento_variacao_negativa(situacao_base, tratamento):
     else:
         raise ValueError("Tratamento de variação negativa inválido.")
     return f"{base} — {qualificador}"
+
+
+_CHAVES_TRATAMENTO_NEGATIVO = (
+    "tratamento_ciclo_negativo", "tratamento_negativo",
+    "tratamento_variacao_negativa",
+)
+
+
+def _numero_payload(valor):
+    if valor in (None, "") or isinstance(valor, bool):
+        return None
+    try:
+        return float(valor)
+    except (TypeError, ValueError):
+        return None
+
+
+def _decimal_payload(numero):
+    return numero / 100 if abs(numero) > 1 else numero
+
+
+def percentual_oficial_do_payload(
+    ciclo,
+    chaves=("percentual_aplicado", "percentual_indice", "percentual", "variacao"),
+    numero=_numero_payload,
+):
+    """Percentual OFICIAL de um ciclo vindo de payload (fronteira fail-closed).
+
+    * ``percentual_aplicado`` PRESENTE e vazio/None = decisao pendente (ou
+      percentual inexistente): devolve ``None``, sem cair para a variacao
+      bruta do indice.
+    * Payload sem ``percentual_aplicado`` cuja variacao bruta e NEGATIVA so
+      produz percentual se houver tratamento aprovado (aplicar/neutralizar);
+      sem ele o ciclo esta pendente e devolve ``None``.
+    * Demais casos: primeira chave numerica (ou o fator), sempre fechada em 2
+      casas pela fonte unica.
+    """
+    ciclo = ciclo or {}
+    if "percentual_aplicado" in ciclo and numero(ciclo.get("percentual_aplicado")) is None:
+        return None
+    if "percentual_aplicado" not in ciclo:
+        bruto = numero(ciclo.get("percentual_indice"))
+        if bruto is not None and _decimal_payload(bruto) < 0:
+            tratamento = next(
+                (ciclo.get(chave) for chave in _CHAVES_TRATAMENTO_NEGATIVO
+                 if ciclo.get(chave) in (APLICAR_VARIACAO_NEGATIVA,
+                                         NEUTRALIZAR_VARIACAO_NEGATIVA)),
+                None,
+            )
+            if tratamento is None:
+                return None
+            return resolver_tratamento_variacao_negativa(
+                _decimal_payload(bruto), tratamento
+            )["percentual_aplicado"]
+    for chave in chaves:
+        valor = numero(ciclo.get(chave))
+        if valor is not None:
+            return fechar_percentual_oficial(_decimal_payload(valor))
+    fator = numero(ciclo.get("fator"))
+    if fator is None:
+        return None
+    if fator >= 0.5:
+        return fechar_percentual_oficial(percentual_de_fator(fator))
+    return fechar_percentual_oficial(fator)
+
+
+def percentual_contexto_oficial(contexto, numero=_numero_payload):
+    """Percentual OFICIAL (decimal) do ultimo ciclo ja formalizado no contexto.
+
+    ``contexto_contratual_anterior.percentual_ja_aplicado_pct`` chega em
+    pontos (4,0521...) ou decimal; em qualquer caso entra na cadeia somente
+    fechado em 2 casas (0,0405). ``None`` quando ausente.
+    """
+    valor = numero((contexto or {}).get("percentual_ja_aplicado_pct"))
+    if valor is None:
+        return None
+    return fechar_percentual_oficial(_decimal_payload(valor))
 
 
 # --- Ciclo sem pedido da contratada -----------------------------------------
