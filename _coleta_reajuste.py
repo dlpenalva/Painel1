@@ -28,6 +28,7 @@ from _seguranca_xlsx import (
 
 from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
 from _capacidades_apuracao import avaliar_capacidades_apuracao
+from _reajuste_utils import fechar_percentual_oficial
 from _efeitos_financeiros_pc import (
     efeito_financeiro_pc,
     reconciliar_inicios_efeito,
@@ -210,13 +211,14 @@ def _ciclo_cronologico_financeiro(marco: datetime | None, competencia: Any) -> s
 
 
 def _percentual_ciclo(ciclo: dict[str, Any]) -> float | None:
+    """Percentual OFICIAL do ciclo (fechado em 2 casas — regra petrea)."""
     for chave in ("percentual_aplicado", "percentual_indice", "variacao"):
         valor = _numero(ciclo.get(chave))
         if valor is not None:
-            return valor / 100 if abs(valor) > 1 else valor
+            return fechar_percentual_oficial(valor / 100 if abs(valor) > 1 else valor)
     fator = _numero(ciclo.get("fator"))
     if fator is not None:
-        return fator - 1 if fator >= 0.5 else fator
+        return fechar_percentual_oficial(fator - 1 if fator >= 0.5 else fator)
     return None
 
 

@@ -1,6 +1,7 @@
 import re
 import unicodedata
 from datetime import datetime
+from decimal import ROUND_HALF_UP, Decimal
 from zoneinfo import ZoneInfo
 
 FUSO_BRASILIA = ZoneInfo("America/Sao_Paulo")
@@ -183,6 +184,65 @@ def _formatar_data(valor):
         return str(valor)
 
 
+# --- Percentual OFICIAL do ciclo (REGRA PETREA) -----------------------------
+# O percentual que rege o contrato e o percentual do ciclo FECHADO em 2 casas
+# decimais em pontos percentuais (4,052187...% -> 4,05%). O fator proprio do
+# ciclo e SEMPRE 1 + percentual oficial (1,0405), nunca o fator bruto do
+# indice (1,0405218...). A variacao bruta do indice sobrevive apenas como
+# memoria tecnica da apuracao (percentual_indice / memoria de calculo).
+#
+# Ordem canonica: variacao bruta -> tratamento negocial (inclusive variacao
+# negativa) -> percentual aplicavel -> FECHAMENTO -> fator oficial. Multiciclo:
+# cada ciclo e fechado individualmente e o acumulado e o PRODUTO dos fatores
+# oficiais — nunca soma de percentuais nem composicao de fatores brutos.
+#
+# Arredondamento: Decimal(str(float)) + ROUND_HALF_UP, a mesma politica
+# decimal ja usada para valores financeiros no projeto.
+CASAS_PERCENTUAL_OFICIAL = 2
+_QUANTUM_PERCENTUAL_OFICIAL = Decimal(1).scaleb(-CASAS_PERCENTUAL_OFICIAL)
+
+
+def _decimal_exato(valor) -> Decimal:
+    return Decimal(repr(float(valor)))
+
+
+def fechar_percentual_oficial(percentual_decimal):
+    """Fecha o percentual (decimal, 0.0405218...) em 2 casas de pontos (0.0405).
+
+    ``None`` permanece ``None`` (ciclo pendente/sem percentual). Idempotente:
+    fechar um percentual ja oficial devolve o mesmo valor.
+    """
+    if percentual_decimal is None:
+        return None
+    pontos = (_decimal_exato(percentual_decimal) * 100).quantize(
+        _QUANTUM_PERCENTUAL_OFICIAL, rounding=ROUND_HALF_UP
+    )
+    oficial = float(pontos / 100)
+    return oficial if oficial != 0 else 0.0
+
+
+def fator_oficial(percentual_decimal):
+    """Fator proprio oficial = 1 + percentual FECHADO em 2 casas."""
+    oficial = fechar_percentual_oficial(percentual_decimal)
+    if oficial is None:
+        return None
+    return float(Decimal(1) + _decimal_exato(oficial))
+
+
+def fator_acumulado_oficial(percentuais):
+    """Produto dos fatores OFICIAIS de cada ciclo (cada um fechado antes).
+
+    Devolve ``None`` se algum percentual estiver ausente (fail-closed).
+    """
+    acumulado = 1.0
+    for percentual in percentuais:
+        fator = fator_oficial(percentual)
+        if fator is None:
+            return None
+        acumulado *= fator
+    return acumulado
+
+
 # --- Tratamento da variacao final negativa ----------------------------------
 APLICAR_VARIACAO_NEGATIVA = "APLICAR_VARIACAO_NEGATIVA"
 NEUTRALIZAR_VARIACAO_NEGATIVA = "NEUTRALIZAR_VARIACAO_NEGATIVA"
@@ -199,6 +259,11 @@ def resolver_tratamento_variacao_negativa(percentual_indice, tratamento=None):
     O chamador continua responsavel por indice, competencias, admissibilidade e
     acumulado. Resultado negativo sem decisao fica explicitamente pendente, sem
     percentual aplicado nem fator provisorio.
+
+    ``percentual_indice`` preserva a variacao BRUTA (memoria tecnica);
+    ``percentual_aplicado`` e o percentual OFICIAL fechado em 2 casas e
+    ``fator`` deriva exclusivamente dele. A decisao sobre o negativo usa a
+    variacao bruta (regra existente); o fechamento vem depois.
     """
     percentual = float(percentual_indice)
     if percentual >= 0:
@@ -206,8 +271,8 @@ def resolver_tratamento_variacao_negativa(percentual_indice, tratamento=None):
             "ciclo_negativo": False,
             "pendente": False,
             "percentual_indice": percentual,
-            "percentual_aplicado": percentual,
-            "fator": 1.0 + percentual,
+            "percentual_aplicado": fechar_percentual_oficial(percentual),
+            "fator": fator_oficial(percentual),
             "tratamento": None,
         }
 
@@ -232,8 +297,8 @@ def resolver_tratamento_variacao_negativa(percentual_indice, tratamento=None):
         "ciclo_negativo": True,
         "pendente": False,
         "percentual_indice": percentual,
-        "percentual_aplicado": percentual_aplicado,
-        "fator": 1.0 + percentual_aplicado,
+        "percentual_aplicado": fechar_percentual_oficial(percentual_aplicado),
+        "fator": fator_oficial(percentual_aplicado),
         "tratamento": tratamento,
     }
 

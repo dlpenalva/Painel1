@@ -499,7 +499,10 @@ def test_etapa46_percentual_do_acordo_continua_vindo_do_campo_negocial():
     "Percentual aplicado por acordo") permanece a mesma linha de sempre.
     """
     fonte = (RAIZ / "pages" / "02_Calculo_Represados.py").read_text(encoding="utf-8")
-    assert "percentual_aplicado = percentual_negocial" in fonte
+    # Regra petrea: a origem continua sendo o campo negocial, agora fechada
+    # em 2 casas e com o fator derivado do percentual oficial.
+    assert "percentual_aplicado = fechar_percentual_oficial(percentual_negocial)" in fonte
+    assert "fator_ciclo = fator_oficial(percentual_aplicado)" in fonte
     # a mensalizacao financeira do acordo tambem segue intacta
     assert (
         "inicio_efeito_financeiro = data_inicio_efeito_negocial.replace(day=1)" in fonte

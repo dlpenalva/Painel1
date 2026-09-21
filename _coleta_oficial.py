@@ -36,7 +36,7 @@ from openpyxl.utils import get_column_letter
 from dateutil.relativedelta import relativedelta
 
 from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
-from _reajuste_utils import FUSO_BRASILIA
+from _reajuste_utils import FUSO_BRASILIA, fechar_percentual_oficial
 
 ROOT = Path(__file__).resolve().parent
 TEMPLATE_COLETA_OFICIAL = ROOT / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
@@ -885,6 +885,13 @@ def _numero_ciclo(valor: Any) -> int | None:
 
 
 def _percentual(ciclo: dict[str, Any]) -> float | None:
+    """Percentual OFICIAL do ciclo gravado em parametros!E.
+
+    Toda a cadeia do XLS (fatores, historico_VU, itens, financeiro,
+    RESULTADOS) deriva de parametros!E; por isso o valor sai daqui SEMPRE
+    fechado em 2 casas (regra petrea), inclusive quando o payload so traz a
+    variacao bruta ou o fator. Idempotente para payloads ja oficiais.
+    """
     for chave in ("percentual_aplicado", "percentual_indice", "percentual", "variacao"):
         valor = ciclo.get(chave)
         if valor in (None, "") or isinstance(valor, bool):
@@ -893,12 +900,12 @@ def _percentual(ciclo: dict[str, Any]) -> float | None:
             numero = float(valor)
         except (TypeError, ValueError):
             continue
-        return numero / 100 if abs(numero) > 1 else numero
+        return fechar_percentual_oficial(numero / 100 if abs(numero) > 1 else numero)
     try:
         fator = float(ciclo.get("fator"))
     except (TypeError, ValueError):
         return None
-    return fator - 1 if fator >= 0.5 else fator
+    return fechar_percentual_oficial(fator - 1 if fator >= 0.5 else fator)
 
 
 def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]:

@@ -41,6 +41,10 @@ from _templates_documentos import gerar_despacho_saneador, gerar_termo_apostila
 
 CICLO = "C1"
 PERCENTUAL_C1 = 0.0307853139440224
+# Regra petrea: a variacao bruta (3,0785...%) entra no payload, mas a Coleta
+# grava o percentual OFICIAL fechado em 2 casas e o fator deriva dele.
+PERCENTUAL_OFICIAL_C1 = 0.0308
+FATOR_OFICIAL_C1 = 1.0308
 # Marco temporal do cenario: unica fonte tanto da Coleta gerada quanto do
 # valor esperado nos documentos. Nada de data fixa repetida a mao.
 FINANCEIRO_INICIO_C1 = date(2026, 4, 1)
@@ -139,15 +143,15 @@ def test_percentual_do_ciclo_e_literal_e_fator_acumulado_e_formula(
     """Fixa a assimetria que origina o defeito: E literal, F formula."""
     com_formula = load_workbook(io.BytesIO(coleta_sem_cache), data_only=False)
     parametros = com_formula["parametros"]
-    assert parametros["E3"].value == pytest.approx(PERCENTUAL_C1)
+    assert parametros["E3"].value == PERCENTUAL_OFICIAL_C1
     assert str(parametros["F3"].value or "").startswith("=")
 
 
 # --- dado disponivel na Coleta chega ao documento ---
 
 def test_payload_recompoe_o_percentual_acumulado(payload: dict) -> None:
-    assert payload.get("variacao_acumulada") == pytest.approx(PERCENTUAL_C1)
-    assert payload.get("fator_acumulado") == pytest.approx(1.0 + PERCENTUAL_C1)
+    assert payload.get("variacao_acumulada") == pytest.approx(PERCENTUAL_OFICIAL_C1, abs=1e-12)
+    assert payload.get("fator_acumulado") == pytest.approx(FATOR_OFICIAL_C1, abs=1e-12)
 
 
 def test_saneador_traz_a_variacao_acumulada(texto_saneador: str) -> None:
