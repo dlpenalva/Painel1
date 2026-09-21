@@ -509,6 +509,9 @@ def _oficializar_parametros_v10(
             oficial = fechar_percentual_na_unidade(bruto)
             decimal_bruto = bruto / 100 if abs(bruto) > 1 else bruto
             if tem_precisao_superior_a_oficial(decimal_bruto):
+                # Sinal estruturado para a politica de entrega: os valores ja
+                # calculados pelo Excel neste arquivo usam a regra anterior.
+                resultado.setdefault("ciclos_precisao_bruta", []).append(f"C{indice}")
                 resultado["alertas"].append(
                     f"parametros: percentual de C{indice} com precisao bruta "
                     f"({bruto!r}); o runtime usa o percentual OFICIAL "

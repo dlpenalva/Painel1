@@ -728,3 +728,78 @@ def test_dou_so_apresenta_percentual_e_fator_da_cadeia_oficial():
     assert "1 + pct" not in fonte and "1.0 + pct" not in fonte
     # o texto do DOU le 'Percentual aplicado' / 'Fator acumulado' do resultado
     assert '"Percentual aplicado"' in fonte and '"Fator acumulado"' in fonte
+
+
+# ======================================== Coleta Financeiro antiga (bloqueio)
+
+from _politica_entrega_segura import MENSAGEM_COLETA_PRECISAO_ANTERIOR  # noqa: E402
+
+
+def _coleta_com_metodo(conteudo: bytes, modo: str, *, bruta: bool) -> bytes:
+    wb = load_workbook(io.BytesIO(conteudo))
+    wb["CONTROLE"]["B1"] = modo
+    if bruta:
+        par = wb["parametros"]
+        par["E3"], par["F2"], par["F3"] = RAW_C1, 1.0, FATOR_BRUTO_C1
+    saida = io.BytesIO()
+    wb.save(saida)
+    return saida.getvalue()
+
+
+def test_coleta_financeiro_antiga_e_lida_mas_formalizacao_bloqueada(coleta_c1):
+    from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
+
+    antiga = _coleta_com_metodo(coleta_c1, "Financeiro", bruta=True)
+    # leitura/upload permitidos: o runtime nao rejeita o arquivo
+    resultado, diagnostico = processar_coleta_oficial_runtime(antiga)
+    # diagnostico da precisao bruta exibido
+    assert any("precisao bruta" in aviso for aviso in diagnostico.get("avisos") or [])
+    # formalizacao bloqueada com a orientacao para regenerar
+    assert resultado["formalizacao_bloqueada"] is True
+    assert MENSAGEM_COLETA_PRECISAO_ANTERIOR in resultado["bloqueios_formalizacao"]
+    assert "Regere a Coleta e faça novo upload" in MENSAGEM_COLETA_PRECISAO_ANTERIOR
+    formalizacao = resultado["resultado_consolidado"]["formalizacao"]
+    assert formalizacao["bloqueada"] is True and formalizacao["status"] == "BLOQUEADA"
+    assert MENSAGEM_COLETA_PRECISAO_ANTERIOR in resultado["resultado_consolidado"]["bloqueios"]
+    # o arquivo fisico continua intacto (nada e regravado)
+    assert load_workbook(io.BytesIO(antiga))["parametros"]["E3"].value == pytest.approx(RAW_C1, abs=1e-16)
+
+
+def test_coleta_financeiro_pela_regra_vigente_nao_recebe_o_bloqueio(coleta_c1):
+    from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
+
+    resultado, diagnostico = processar_coleta_oficial_runtime(
+        _coleta_com_metodo(coleta_c1, "Financeiro", bruta=False)
+    )
+    assert MENSAGEM_COLETA_PRECISAO_ANTERIOR not in resultado["bloqueios_formalizacao"]
+    assert not any("precisao bruta" in a for a in diagnostico.get("avisos") or [])
+
+
+def test_metodo_pc_mantem_a_regra_existente(coleta_c1):
+    """No PC o efeito ja decorre da reconciliacao XLS x Python; nada muda."""
+    from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
+
+    resultado, _diagnostico = processar_coleta_oficial_runtime(
+        _coleta_com_metodo(coleta_c1, "PCs", bruta=True)
+    )
+    assert MENSAGEM_COLETA_PRECISAO_ANTERIOR not in resultado["bloqueios_formalizacao"]
+
+
+def test_golden_financeiro_real_antigo_bloqueia_sem_recalcular_o_vta():
+    """Coleta Financeiro REAL (C3 com 2,8899...% bruto), recalculada no Excel."""
+    import test_baseline_resultados_goldens as goldens
+
+    arquivo = goldens.GOLDENS["financeiro_multiciclo_validado"]
+    if not arquivo.exists():
+        pytest.skip(f"golden externo ausente: {arquivo}")
+    from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
+
+    resultado, diagnostico = processar_coleta_oficial_runtime(arquivo.read_bytes())
+    assert any("precisao bruta" in a for a in diagnostico.get("avisos") or [])
+    assert resultado["bloqueios_formalizacao"] == [MENSAGEM_COLETA_PRECISAO_ANTERIOR]
+    consolidado = resultado["resultado_consolidado"]
+    assert consolidado["formalizacao"]["status"] == "BLOQUEADA"
+    assert consolidado["formalizacao"]["mensagem"] == MENSAGEM_COLETA_PRECISAO_ANTERIOR
+    # o VTA gravado no XLS antigo NAO e recalculado silenciosamente
+    web = goldens._fotografar("financeiro_multiciclo_validado")["web"]
+    assert web["vta_oficial"] == goldens.VTA_FINANCEIRO_HOMOLOGADO
