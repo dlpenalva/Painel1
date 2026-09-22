@@ -28,7 +28,12 @@ from _objeto_processo_reajuste import (
     montar_objeto_processo_reajuste,
     obter_objeto_processo_reajuste,
 )
-from _reajuste_utils import gerado_em_brasilia, tem_sem_pedido
+from _reajuste_utils import (
+    fator_oficial,
+    gerado_em_brasilia,
+    tem_precisao_superior_a_oficial,
+    tem_sem_pedido,
+)
 from _reconciliacao_xls_python import campos_nao_confiaveis_para_documentos
 
 NAO_INFORMADO = "Não informado"
@@ -855,6 +860,50 @@ def _observacoes_reajuste_negativo(
     return observacoes
 
 
+TEXTO_PERCENTUAL_FATOR = (
+    "Para o cálculo, o percentual de reajuste de cada ciclo é considerado com "
+    "duas casas decimais, sendo o fator correspondente aplicado aos valores "
+    "unitários."
+)
+
+
+def texto_percentual_fator(
+    ciclos: list[dict[str, Any]] | None, *, com_exemplo: bool
+) -> str:
+    """Paragrafo documental unico sobre percentual (2 casas) e fator do ciclo.
+
+    Apenas CONSOME o percentual oficial ja publicado em ``ciclos`` (leitura
+    oficializada pelo leitor v10) e o fator oficial da regra canonica
+    (``fator_oficial``) — nada e recalculado aqui. O exemplo usa o ultimo
+    ciclo computado com percentual oficial valido; sem ele, so a frase geral.
+    """
+    if not com_exemplo:
+        return TEXTO_PERCENTUAL_FATOR
+    exemplo = None
+    for ciclo in ciclos or []:
+        nome = str(ciclo.get("ciclo") or "").strip().upper()
+        if ciclo.get("eh_base") or nome not in ("C1", "C2", "C3", "C4"):
+            continue
+        if str(ciclo.get("computar")) != "Sim":
+            continue
+        percentual = _num_ou_none(ciclo.get("percentual_reajuste"))
+        if percentual is None or tem_precisao_superior_a_oficial(percentual):
+            continue
+        fator = fator_oficial(percentual)
+        if fator is None:
+            continue
+        exemplo = (nome, percentual, fator)
+    if exemplo is None:
+        return TEXTO_PERCENTUAL_FATOR
+    nome, percentual, fator = exemplo
+    pct = f"{percentual * 100:.2f}".replace(".", ",")
+    fat = f"{fator:.4f}".replace(".", ",")
+    return (
+        f"{TEXTO_PERCENTUAL_FATOR} No ciclo {nome}, por exemplo, o percentual "
+        f"de {pct}% corresponde ao fator {fat}."
+    )
+
+
 # ---------------------------------------------------------------------------
 # Formatadores de exibicao
 # ---------------------------------------------------------------------------
@@ -1312,6 +1361,9 @@ def _bloco_ciclos(historia, dados, estilos) -> None:
         [largura * 0.10, largura * 0.28, largura * 0.16, largura * 0.16,
          largura * 0.15, largura * 0.15],
         estilos, alinhamentos_direita={4, 5},
+    ))
+    historia.append(_paragrafo(
+        texto_percentual_fator(ciclos, com_exemplo=True), estilos["normal"],
     ))
 
     historia.append(_paragrafo(

@@ -34,6 +34,7 @@ from _sumario_executivo import (
     NAO_INFORMADO,
     formatar_moeda,
     montar_dados_sumario_executivo,
+    texto_percentual_fator,
     _num_ou_none,
 )
 from _objeto_processo_reajuste import (
@@ -1672,8 +1673,18 @@ def _ta_secao1_reajustes(doc: Document, dados: dict, cm: dict) -> None:
         "Percentual acumulado apurado",
     ])
     _adicionar_tabela(doc, cabecalho, linhas)
+    _paragrafo_percentual_fator(doc, dados, com_exemplo=False)
     _paragrafos_perda_efeitos(doc, dados)
     doc.add_paragraph()
+
+
+def _paragrafo_percentual_fator(doc: Document, dados: dict, *, com_exemplo: bool) -> None:
+    """Explicacao do percentual (2 casas) e do fator; texto de fonte unica."""
+    if dados.get("_modo_branco"):
+        return
+    p = doc.add_paragraph()
+    p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+    _adicionar_run(p, texto_percentual_fator(dados.get("ciclos"), com_exemplo=com_exemplo))
 
 
 def _data_documental(valor: Any) -> str:
@@ -2828,6 +2839,7 @@ def _ds_secao2_pedido_parametros(doc: Document, dados: dict, cm: dict) -> None:
         destacar_placeholders_embutidos=True,
     )
     _ds_paragrafo_acumulado(doc, dados)
+    _paragrafo_percentual_fator(doc, dados, com_exemplo=True)
     doc.add_paragraph()
 
 
