@@ -856,7 +856,7 @@ def test_p1_golden_financeiro_real_antigo_sem_documentos_formalizadores():
         assert documentos[chave]["motivo"] == MENSAGEM_COLETA_PRECISAO_ANTERIOR
 
 
-# ------------------------------------------ P1.2 negativo pendente no Valor Global
+# ------------------------- Valor Global: negativo preservado como no main
 
 def _funcoes_valor_global() -> dict:
     """Funcoes/constantes de modulo da pagina, sem executar a interface."""
@@ -890,75 +890,61 @@ def _padronizar(linha_c1: dict, *, situacao_c1: str = "TEMPESTIVO"):
     return funcoes, {r["Ciclo"]: r for r in ciclos.to_dict("records")}
 
 
-def test_p1_valor_global_negativo_pendente_fica_indefinido():
-    import pandas as pd
-
-    funcoes, ciclos = _padronizar(
-        {"Percentual aplicado": None, "Tratamento ciclo negativo": None}
-    )
-    c1 = ciclos["C1"]
-    for campo in ("Percentual aplicado", "Variação", "Fator", "Fator acumulado",
-                  "Fator acumulado efetivo", "Fator ciclo efetivo"):
-        assert pd.isna(c1[campo]), campo              # nunca 0,00% / 1,0
-    # nenhum fator 1,0 formado depois: o acumulado dependente fica indefinido
-    assert pd.isna(ciclos["C2"]["Fator acumulado"])
-    assert pd.isna(ciclos["C2"]["Fator acumulado efetivo"])
-    # e o calculo do Valor Global recusa o ciclo pendente (fail-closed)
-    df = pd.DataFrame(list(ciclos.values()))
-    assert funcoes["ciclos_com_decisao_negativa_pendente"](df) == ["C1"]
-
-
-def test_p1_valor_global_processamento_recusa_negativo_pendente():
-    import types
-
-    import pandas as pd
-
-    funcoes, ciclos = _padronizar(
-        {"Percentual aplicado": None, "Tratamento ciclo negativo": None}
-    )
-    df = pd.DataFrame(list(ciclos.values()))
-    # Executa o entry point real ate o gate, isolando somente as leituras que o
-    # antecedem. Se o gate sair do fluxo, o teste avanca e falha em dependencias
-    # nao mockadas — portanto nao e mera verificacao textual da implementacao.
-    funcoes["pd"] = types.SimpleNamespace(
-        DataFrame=pd.DataFrame,
-        ExcelFile=lambda _conteudo: object(),
-    )
-    funcoes["BytesIO"] = lambda conteudo: conteudo
-    funcoes["ler_parametros"] = lambda *_args: {}
-    funcoes["contexto_contratual_de_parametros"] = lambda *_args: {}
-    funcoes["ler_ciclos"] = lambda *_args: (df, "teste")
-    with pytest.raises(ValueError, match="variação negativa sem decisão"):
-        funcoes["processar_arquivo_coleta"](b"xlsx")
-
-
-def test_p1_valor_global_negativo_neutralizado_continua_zero():
-    _funcoes, ciclos = _padronizar(
-        {"Percentual aplicado": 0.0, "Tratamento ciclo negativo": NEUTRALIZAR_VARIACAO_NEGATIVA}
-    )
+def _assert_negativo_como_no_main(ciclos):
+    """Valor Global (regra preexistente do main): ciclo negativo sem acordo
+    negocial entra com 0,00% / fator 1,0000; o ciclo seguinte compoe
+    normalmente a partir dele."""
     assert ciclos["C1"]["Percentual aplicado"] == 0.0
+    assert ciclos["C1"]["Variação"] == 0.0
     assert ciclos["C1"]["Fator"] == 1.0
+    assert ciclos["C1"]["Fator acumulado"] == 1.0
+    assert ciclos["C2"]["Fator"] == 1.05
     assert ciclos["C2"]["Fator acumulado"] == 1.05
 
 
-def test_p1_valor_global_negativo_aplicado_usa_percentual_oficial():
+def test_valor_global_negativo_sem_decisao_mantem_regra_do_main():
+    _funcoes, ciclos = _padronizar(
+        {"Percentual aplicado": None, "Tratamento ciclo negativo": None}
+    )
+    _assert_negativo_como_no_main(ciclos)
+    assert ciclos["C1"]["Situação aplicada"].endswith("CICLO NEGATIVO (APLICADO 0,00%)")
+
+
+def test_valor_global_negativo_neutralizado_mantem_regra_do_main():
+    _funcoes, ciclos = _padronizar(
+        {"Percentual aplicado": 0.0, "Tratamento ciclo negativo": NEUTRALIZAR_VARIACAO_NEGATIVA}
+    )
+    _assert_negativo_como_no_main(ciclos)
+
+
+def test_valor_global_negativo_aplicado_mantem_regra_do_main():
     _funcoes, ciclos = _padronizar(
         {"Percentual aplicado": -0.020349, "Tratamento ciclo negativo": APLICAR_VARIACAO_NEGATIVA}
     )
-    assert ciclos["C1"]["Percentual aplicado"] == -0.0203
-    assert ciclos["C1"]["Fator"] == 0.9797
-    assert ciclos["C2"]["Fator acumulado"] == pytest.approx(0.9797 * 1.05, abs=1e-15)
+    _assert_negativo_como_no_main(ciclos)
 
 
-def test_p1_valor_global_precluso_sem_pedido_continua_zero_sem_percentual_explicito():
-    """PRECLUSO/SEM PEDIDO ja impoe zero e nao exige nova decisao negativa."""
+def test_valor_global_precluso_sem_pedido_mantem_regra_do_main():
     _funcoes, ciclos = _padronizar(
         {"Percentual aplicado": None, "Tratamento ciclo negativo": None},
         situacao_c1="PRECLUSO | SEM PEDIDO",
     )
-    assert ciclos["C1"]["Percentual aplicado"] == 0.0
-    assert ciclos["C1"]["Fator"] == 1.0
-    assert not ciclos["C1"].get("Decisão negativa pendente", False)
+    _assert_negativo_como_no_main(ciclos)
+
+
+def test_valor_global_ciclo_positivo_usa_fator_oficial_de_duas_casas():
+    import pandas as pd
+
+    funcoes = _funcoes_valor_global()
+    df = pd.DataFrame([
+        {"Ciclo": "C1", "Situação": "TEMPESTIVO",
+         "Percentual apurado pelo índice": RAW_C1, "Percentual aplicado": RAW_C1,
+         "Tratamento ciclo negativo": ""},
+    ])
+    c1 = funcoes["padronizar_ciclos"](df).to_dict("records")[0]
+    assert c1["Fator"] == 1.0405
+    assert c1["Percentual aplicado"] == 0.0405
+    assert c1["Fator acumulado"] == 1.0405
 
 
 # ------------------------------------- P1.3 fator acumulado legado sem percentual

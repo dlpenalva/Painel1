@@ -11,13 +11,7 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
-from _reajuste_utils import (
-    APLICAR_VARIACAO_NEGATIVA,
-    NEUTRALIZAR_VARIACAO_NEGATIVA,
-    fator_oficial,
-    fator_oficial_de_fator,
-    percentual_de_fator,
-)
+from _reajuste_utils import fator_oficial, fator_oficial_de_fator, percentual_de_fator
 from _politica_entrega_segura import MENSAGEM_COLETA_PRECISAO_ANTERIOR
 from _estado_apuracao_upload import (
     apuracao_persistida_valida,
@@ -615,74 +609,6 @@ def ler_ciclos(bytes_arquivo, xls):
     return padronizar_ciclos(df), "arquivo"
 
 
-def _valor_ausente(valor):
-    """True para None/NaN/texto vazio — ausencia, nunca zero."""
-    if valor is None:
-        return True
-    try:
-        if pd.isna(valor):
-            return True
-    except (TypeError, ValueError):
-        pass
-    return str(valor).strip() == ""
-
-
-MENSAGEM_NEGATIVO_PENDENTE_VALOR_GLOBAL = (
-    "Há ciclo com variação negativa sem decisão registrada (aplicar ou "
-    "neutralizar). O percentual e o fator desse ciclo permanecem indefinidos; "
-    "registre a decisão na Calculadora antes de calcular o Valor Global."
-)
-
-
-def _linha_ciclo_negativo_pendente(row, ciclo, situacao, situacao_automatica,
-                                   situacao_aplicada, variacao_indice, tratamento,
-                                   tratamento_negativo, cols):
-    """Ciclo negativo com decisao PENDENTE: percentual/fator indefinidos."""
-    def _campo(chave):
-        coluna = cols.get(chave)
-        return row.get(coluna, "") if coluna else ""
-
-    return {
-        "Ciclo": ciclo,
-        "Data-base": _campo("base"),
-        "Intervalo do índice": _campo("intervalo"),
-        "Janela de admissibilidade": _campo("janela"),
-        "Data do pedido": _campo("pedido"),
-        "Início financeiro": _campo("inicio"),
-        "Fim financeiro": _campo("fim"),
-        "Situação": situacao,
-        "Situação automática": situacao_automatica,
-        "Acordo negocial": "Não",
-        "Situação aplicada": situacao_aplicada,
-        "Percentual apurado pelo índice": variacao_indice,
-        "Percentual aplicado": None,
-        "Ciclo negativo": "Sim",
-        "Tratamento ciclo negativo": tratamento_negativo or "Decisão pendente",
-        "Justificativa negocial": _campo("justificativa"),
-        "Referência documental": _campo("referencia"),
-        "Tratamento financeiro do ciclo": tratamento,
-        "Variação": None,
-        "Fator": None,
-        "Fator acumulado": None,
-        "Fator acumulado efetivo": None,
-        "Fator ciclo efetivo": None,
-        "Decisão negativa pendente": True,
-    }
-
-
-def ciclos_com_decisao_negativa_pendente(ciclos):
-    """Ciclos cujo percentual aplicado ainda nao foi definido (fail-closed)."""
-    if not isinstance(ciclos, pd.DataFrame) or ciclos.empty:
-        return []
-    if "Decisão negativa pendente" not in ciclos.columns:
-        return []
-    return [
-        str(r.get("Ciclo", ""))
-        for _, r in ciclos.iterrows()
-        if r.get("Decisão negativa pendente") is True
-    ]
-
-
 def padronizar_ciclos(df):
     if df.empty:
         return pd.DataFrame()
@@ -728,69 +654,23 @@ def padronizar_ciclos(df):
         ciclo_negativo_txt = row.get(col_ciclo_negativo, "") if col_ciclo_negativo else ""
         ciclo_negativo = normalizar_texto(ciclo_negativo_txt) in ["sim", "s", "true", "1", "yes"] or variacao_indice < 0 or (col_percentual_indice is None and variacao < 0)
         tratamento_negativo = row.get(col_tratamento_negativo, "") if col_tratamento_negativo else ""
-        # REGRA PETREA (fail-closed): "zero decidido" != "percentual ainda nao
-        # definido". Percentual aplicado AUSENTE num ciclo negativo, sem
-        # tratamento aprovado, e decisao PENDENTE — nunca neutralizacao.
-        valor_aplicado = row.get(col_percentual_aplicado) if col_percentual_aplicado else None
-        aplicado_definido = not _valor_ausente(valor_aplicado)
-        tratamento_decidido = str(tratamento_negativo or "").strip()
-        zero_imposto_pela_situacao = (
-            contem_preclusao_ou_adiantamento(situacao_automatica or situacao)
-            or tratamento_sem_retroativo(
-                tratamento, situacao_automatica or situacao
-            )
-        )
-        negativo_pendente = False
-        negativo_aplicado = False
         if ciclo_negativo and not superacao_negocial:
-            if tratamento_decidido == APLICAR_VARIACAO_NEGATIVA or (
-                aplicado_definido
-                and tratamento_decidido != NEUTRALIZAR_VARIACAO_NEGATIVA
-                and variacao < 0
-            ):
-                negativo_aplicado = True
-            elif not (
-                tratamento_decidido == NEUTRALIZAR_VARIACAO_NEGATIVA
-                or aplicado_definido
-                or zero_imposto_pela_situacao
-            ):
-                negativo_pendente = True
-        if negativo_pendente:
-            linhas.append(_linha_ciclo_negativo_pendente(
-                row, ciclo, situacao, situacao_automatica, situacao_aplicada,
-                variacao_indice, tratamento, tratamento_negativo,
-                {"base": col_base, "intervalo": col_intervalo, "janela": col_janela_adm,
-                 "pedido": col_pedido, "inicio": col_inicio_financeiro,
-                 "fim": col_fim_financeiro, "justificativa": col_justificativa_negocial,
-                 "referencia": col_referencia_documental},
-            ))
-            fator_acumulado_calculado = None
-            continue
-        if negativo_aplicado and not aplicado_definido:
-            # APLICAR registrado sem o percentual: vale a variacao apurada,
-            # fechada adiante pelo fator oficial — nunca 0,00% implicito.
-            variacao = variacao_indice
-        if ciclo_negativo and not superacao_negocial and not negativo_aplicado:
             variacao = 0.0
             if not tratamento_negativo:
                 tratamento_negativo = "Ciclo negativo - percentual aplicado 0,00% no acumulado"
             if "ciclo negativo" not in normalizar_texto(str(situacao_aplicada)):
                 situacao_aplicada = f"{situacao_aplicada} | CICLO NEGATIVO (APLICADO 0,00%)"
         fator = fator_operacional(fator_de_valor(row.get(col_fator, None) if col_fator else None, variacao=variacao))
-        # Fator OFICIAL do ciclo (regra petrea); o percentual deriva dele em
-        # Decimal, sem ruido de ponto flutuante.
+        # Fator OFICIAL do ciclo (regra petrea das 2 casas); o percentual
+        # deriva dele em Decimal, sem ruido de ponto flutuante.
         variacao = percentual_de_fator(fator)
-        if ciclo_negativo and not superacao_negocial and not negativo_aplicado:
+        if ciclo_negativo and not superacao_negocial:
             fator = 1.0
             variacao = 0.0
 
         # Não usar o fator acumulado importado com casas residuais para cálculo financeiro:
-        # produto dos fatores OFICIAIS de cada ciclo. Depois de um ciclo com
-        # decisao pendente, o acumulado permanece indefinido (fail-closed).
-        fator_acum = (
-            fator_acumulado_calculado * fator
-            if fator_acumulado_calculado is not None else None
-        )
+        # produto dos fatores OFICIAIS de cada ciclo.
+        fator_acum = fator_acumulado_calculado * fator
 
         # Fator acumulado efetivo para cálculos financeiros: não aplica ciclo precluso/adiantado comum.
         if (not superacao_negocial) and (contem_preclusao_ou_adiantamento(situacao_automatica or situacao) or tratamento_sem_retroativo(tratamento, situacao_automatica or situacao)):
@@ -798,10 +678,7 @@ def padronizar_ciclos(df):
             fator_acum_efetivo = fator_acumulado_calculado
             fator_efetivo = 1.0
         else:
-            fator_acumulado_calculado = (
-                fator_acumulado_calculado * fator
-                if fator_acumulado_calculado is not None else None
-            )
+            fator_acumulado_calculado = fator_acumulado_calculado * fator
             fator_acum_efetivo = fator_acumulado_calculado
             fator_efetivo = fator
 
@@ -3761,13 +3638,6 @@ def processar_arquivo_coleta(bytes_arquivo):
     params = ler_parametros(bytes_arquivo, xls)
     contexto_contratual = contexto_contratual_de_parametros(params, bytes_arquivo, xls)
     ciclos, origem_ciclos = ler_ciclos(bytes_arquivo, xls)
-    pendentes = ciclos_com_decisao_negativa_pendente(ciclos)
-    if pendentes:
-        # Fail-closed: sem percentual/fator definidos nao ha calculo financeiro
-        # possivel — nada de fator 1,0 implicito mais adiante.
-        raise ValueError(
-            f"{MENSAGEM_NEGATIVO_PENDENTE_VALOR_GLOBAL} Ciclo(s): {', '.join(pendentes)}."
-        )
     config_ciclo_em_execucao = ler_ciclo_em_execucao_config_segura(bytes_arquivo)
     corte_operacional_solicitado = bool(config_ciclo_em_execucao.get('aplicar', False))
     validar_config_corte_operacional(config_ciclo_em_execucao)
