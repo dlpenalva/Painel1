@@ -129,8 +129,8 @@ def test_fluxo_e_puramente_explicativo():
 
 def test_pictogramas_sao_svg_inline_sem_dependencia_nem_emoji():
     blob = _blob(_home())
-    # 3 etapas + 2 setas + lampada + ilustracao da Coleta.
-    assert blob.count("<svg") == 7
+    # 3 etapas + 2 setas + lampada + ilustracao da Coleta + alerta de apuracoes.
+    assert blob.count("<svg") == 8
     assert blob.count('class="home-seta"') == 2
     assert "home-ico" in blob
     # Nada externo e nada de emoji como substituto visual.
@@ -154,6 +154,50 @@ def test_ilustracao_da_coleta_tem_pilha_folha_e_escudo():
     assert blob.count("<rect") == 2          # pilha de documentos
     assert 'viewBox="0 0 122 92"' in blob    # folha principal + escudo
     assert "#E9F2F9" in blob                 # preenchimento do escudo
+
+
+# ---------------------------------------------------------------------------
+# Alerta permanente sobre apuracoes anteriores
+# ---------------------------------------------------------------------------
+
+ALERTA_TITULO = "Atenção ao utilizar apurações anteriores"
+ALERTA_CORPO = (
+    "O cl8us e seus arquivos de cálculo são continuamente atualizados. "
+    "Por isso, uma Coleta/XLS gerada em versão anterior pode ter sido "
+    "processada com parâmetros ou premissas diferentes dos atualmente adotados."
+)
+ALERTA_DESTAQUE = (
+    "<strong>Para novas análises ou formalizações, recomenda-se refazer a "
+    "apuração desde a Calculadora.</strong>"
+)
+
+
+def test_alerta_apuracoes_anteriores_texto_e_unicidade():
+    blob = _blob(_home())
+    assert blob.count('class="home-alerta"') == 1
+    assert blob.count(ALERTA_TITULO) == 2  # h2 + aria-label
+    assert f"<h2>{ALERTA_TITULO}</h2>" in blob
+    assert ALERTA_CORPO in blob
+    assert ALERTA_DESTAQUE in blob
+
+
+def test_alerta_fica_entre_o_aviso_de_sigilo_e_as_tres_etapas():
+    at = _home()
+    blocos = [str(m.value) for m in at.markdown]
+    i_hero = next(i for i, b in enumerate(blocos) if "home-hero" in b and "<section" in b)
+    i_alerta = next(i for i, b in enumerate(blocos) if 'class="home-alerta"' in b)
+    i_fluxo = next(i for i, b in enumerate(blocos) if 'class="home-fluxo"' in b)
+    assert i_hero < i_alerta < i_fluxo
+    assert i_alerta == i_hero + 1 and i_fluxo == i_alerta + 1
+
+
+def test_alerta_e_apenas_informativo():
+    at = _home()
+    # Nenhum controle novo: segue so o download da Coleta, sem botoes.
+    assert len(list(at.get("download_button"))) == 1
+    assert not list(at.button)
+    assert not list(at.warning) and not list(at.error)
+    assert 'role="note"' in _blob(at)
 
 
 # ---------------------------------------------------------------------------
