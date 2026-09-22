@@ -11,7 +11,13 @@ import streamlit as st
 import streamlit.components.v1 as components
 
 from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
-from _reajuste_utils import fator_oficial, fator_oficial_de_fator, percentual_de_fator
+from _reajuste_utils import (
+    APLICAR_VARIACAO_NEGATIVA,
+    NEUTRALIZAR_VARIACAO_NEGATIVA,
+    fator_oficial,
+    fator_oficial_de_fator,
+    percentual_de_fator,
+)
 from _politica_entrega_segura import MENSAGEM_COLETA_PRECISAO_ANTERIOR
 from _estado_apuracao_upload import (
     apuracao_persistida_valida,
@@ -654,33 +660,62 @@ def padronizar_ciclos(df):
         ciclo_negativo_txt = row.get(col_ciclo_negativo, "") if col_ciclo_negativo else ""
         ciclo_negativo = normalizar_texto(ciclo_negativo_txt) in ["sim", "s", "true", "1", "yes"] or variacao_indice < 0 or (col_percentual_indice is None and variacao < 0)
         tratamento_negativo = row.get(col_tratamento_negativo, "") if col_tratamento_negativo else ""
+        sem_retroativo = (not superacao_negocial) and (contem_preclusao_ou_adiantamento(situacao_automatica or situacao) or tratamento_sem_retroativo(tratamento, situacao_automatica or situacao))
+        # Variacao negativa sem acordo negocial segue a decisao do usuario:
+        # APLICAR -> percentual negativo oficial; NEUTRALIZAR -> 0,00%;
+        # sem decisao -> percentual/fator indefinidos (nunca negativo ou 0% implicito).
+        negativo_aplicado = negativo_pendente = False
         if ciclo_negativo and not superacao_negocial:
+            decisao_negativa = str(tratamento_negativo or "").strip()
+            if col_percentual_aplicado:
+                valor_aplicado = row.get(col_percentual_aplicado)
+            else:
+                valor_aplicado = row.get(col_variacao) if col_variacao else None
+            aplicado_definido = not (valor_aplicado is None or pd.isna(valor_aplicado) or str(valor_aplicado).strip() == "")
+            if decisao_negativa == NEUTRALIZAR_VARIACAO_NEGATIVA:
+                pass
+            elif decisao_negativa == APLICAR_VARIACAO_NEGATIVA or (aplicado_definido and variacao < 0):
+                negativo_aplicado = True
+                if not aplicado_definido:
+                    variacao = variacao_indice
+            elif not aplicado_definido and not sem_retroativo:
+                negativo_pendente = True
+        if ciclo_negativo and not superacao_negocial and not negativo_aplicado and not negativo_pendente:
             variacao = 0.0
             if not tratamento_negativo:
                 tratamento_negativo = "Ciclo negativo - percentual aplicado 0,00% no acumulado"
             if "ciclo negativo" not in normalizar_texto(str(situacao_aplicada)):
                 situacao_aplicada = f"{situacao_aplicada} | CICLO NEGATIVO (APLICADO 0,00%)"
-        fator = fator_operacional(fator_de_valor(row.get(col_fator, None) if col_fator else None, variacao=variacao))
-        # Fator OFICIAL do ciclo (regra petrea das 2 casas); o percentual
-        # deriva dele em Decimal, sem ruido de ponto flutuante.
-        variacao = percentual_de_fator(fator)
-        if ciclo_negativo and not superacao_negocial:
-            fator = 1.0
-            variacao = 0.0
-
-        # Não usar o fator acumulado importado com casas residuais para cálculo financeiro:
-        # produto dos fatores OFICIAIS de cada ciclo.
-        fator_acum = fator_acumulado_calculado * fator
-
-        # Fator acumulado efetivo para cálculos financeiros: não aplica ciclo precluso/adiantado comum.
-        if (not superacao_negocial) and (contem_preclusao_ou_adiantamento(situacao_automatica or situacao) or tratamento_sem_retroativo(tratamento, situacao_automatica or situacao)):
-            fator_acumulado_calculado = fator_acumulado_calculado
-            fator_acum_efetivo = fator_acumulado_calculado
-            fator_efetivo = 1.0
+        if negativo_pendente:
+            variacao = fator = fator_acum = fator_acum_efetivo = fator_efetivo = None
+            fator_acumulado_calculado = None
         else:
-            fator_acumulado_calculado = fator_acumulado_calculado * fator
-            fator_acum_efetivo = fator_acumulado_calculado
-            fator_efetivo = fator
+            fator = fator_operacional(fator_de_valor(row.get(col_fator, None) if col_fator else None, variacao=variacao))
+            # Fator OFICIAL do ciclo (regra petrea das 2 casas); o percentual
+            # deriva dele em Decimal, sem ruido de ponto flutuante.
+            variacao = percentual_de_fator(fator)
+            if ciclo_negativo and not superacao_negocial and not negativo_aplicado:
+                fator = 1.0
+                variacao = 0.0
+
+        if negativo_pendente or fator_acumulado_calculado is None:
+            # Ciclo sem decisao (ou posterior a ele): acumulado indefinido.
+            fator_acum = fator_acum_efetivo = None
+            fator_efetivo = None if negativo_pendente else (1.0 if sem_retroativo else fator)
+        else:
+            # Não usar o fator acumulado importado com casas residuais para cálculo financeiro:
+            # produto dos fatores OFICIAIS de cada ciclo.
+            fator_acum = fator_acumulado_calculado * fator
+
+            # Fator acumulado efetivo para cálculos financeiros: não aplica ciclo precluso/adiantado comum.
+            if sem_retroativo:
+                fator_acumulado_calculado = fator_acumulado_calculado
+                fator_acum_efetivo = fator_acumulado_calculado
+                fator_efetivo = 1.0
+            else:
+                fator_acumulado_calculado = fator_acumulado_calculado * fator
+                fator_acum_efetivo = fator_acumulado_calculado
+                fator_efetivo = fator
 
         linhas.append({
             "Ciclo": ciclo,
@@ -3638,6 +3673,14 @@ def processar_arquivo_coleta(bytes_arquivo):
     params = ler_parametros(bytes_arquivo, xls)
     contexto_contratual = contexto_contratual_de_parametros(params, bytes_arquivo, xls)
     ciclos, origem_ciclos = ler_ciclos(bytes_arquivo, xls)
+    if not ciclos.empty and ciclos["Fator"].isna().any():
+        # Variacao negativa sem decisao: percentual/fator indefinidos, sem calculo.
+        pendentes = ", ".join(ciclos.loc[ciclos["Fator"].isna(), "Ciclo"].astype(str))
+        raise ValueError(
+            "Há ciclo com variação negativa sem decisão registrada (aplicar ou "
+            "neutralizar); registre a decisão na Calculadora antes de calcular "
+            f"o Valor Global. Ciclo(s): {pendentes}."
+        )
     config_ciclo_em_execucao = ler_ciclo_em_execucao_config_segura(bytes_arquivo)
     corte_operacional_solicitado = bool(config_ciclo_em_execucao.get('aplicar', False))
     validar_config_corte_operacional(config_ciclo_em_execucao)

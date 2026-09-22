@@ -856,7 +856,7 @@ def test_p1_golden_financeiro_real_antigo_sem_documentos_formalizadores():
         assert documentos[chave]["motivo"] == MENSAGEM_COLETA_PRECISAO_ANTERIOR
 
 
-# ------------------------- Valor Global: negativo preservado como no main
+# ------------------------- Valor Global: variacao negativa nos 3 estados
 
 def _funcoes_valor_global() -> dict:
     """Funcoes/constantes de modulo da pagina, sem executar a interface."""
@@ -890,10 +890,14 @@ def _padronizar(linha_c1: dict, *, situacao_c1: str = "TEMPESTIVO"):
     return funcoes, {r["Ciclo"]: r for r in ciclos.to_dict("records")}
 
 
-def _assert_negativo_como_no_main(ciclos):
-    """Valor Global (regra preexistente do main): ciclo negativo sem acordo
-    negocial entra com 0,00% / fator 1,0000; o ciclo seguinte compoe
-    normalmente a partir dele."""
+def pd_isna(valor):
+    import pandas as pd
+
+    return valor is None or pd.isna(valor)
+
+
+def _assert_negativo_zerado(ciclos):
+    """Ciclo negativo zerado: 0,00% / fator 1,0000; o seguinte compoe dele."""
     assert ciclos["C1"]["Percentual aplicado"] == 0.0
     assert ciclos["C1"]["Variação"] == 0.0
     assert ciclos["C1"]["Fator"] == 1.0
@@ -902,26 +906,45 @@ def _assert_negativo_como_no_main(ciclos):
     assert ciclos["C2"]["Fator acumulado"] == 1.05
 
 
-def test_valor_global_negativo_sem_decisao_mantem_regra_do_main():
-    _funcoes, ciclos = _padronizar(
-        {"Percentual aplicado": None, "Tratamento ciclo negativo": None}
-    )
-    _assert_negativo_como_no_main(ciclos)
-    assert ciclos["C1"]["Situação aplicada"].endswith("CICLO NEGATIVO (APLICADO 0,00%)")
-
-
-def test_valor_global_negativo_neutralizado_mantem_regra_do_main():
-    _funcoes, ciclos = _padronizar(
-        {"Percentual aplicado": 0.0, "Tratamento ciclo negativo": NEUTRALIZAR_VARIACAO_NEGATIVA}
-    )
-    _assert_negativo_como_no_main(ciclos)
-
-
-def test_valor_global_negativo_aplicado_mantem_regra_do_main():
+def test_valor_global_negativo_aplicado_usa_percentual_oficial_negativo():
     _funcoes, ciclos = _padronizar(
         {"Percentual aplicado": -0.020349, "Tratamento ciclo negativo": APLICAR_VARIACAO_NEGATIVA}
     )
-    _assert_negativo_como_no_main(ciclos)
+    assert ciclos["C1"]["Percentual aplicado"] == -0.0203
+    assert ciclos["C1"]["Fator"] == 0.9797
+    assert ciclos["C1"]["Fator acumulado"] == 0.9797
+    assert ciclos["C2"]["Fator acumulado"] == pytest.approx(0.9797 * 1.05, abs=1e-15)
+    assert "APLICADO 0,00%" not in str(ciclos["C1"]["Situação aplicada"])
+
+
+def test_valor_global_negativo_aplicado_vindo_do_xls_reflete_a_decisao():
+    """parametros!E negativo so existe quando o usuario escolheu APLICAR."""
+    import pandas as pd
+
+    funcoes = _funcoes_valor_global()
+    df = pd.DataFrame([{"CICLO": "C1", "PERCENTUAL_DO_CICLO": -0.0203,
+                        "SITUACAO": "TEMPESTIVO — VARIAÇÃO NEGATIVA"}])
+    c1 = funcoes["padronizar_ciclos"](df).to_dict("records")[0]
+    assert c1["Percentual aplicado"] == -0.0203
+    assert c1["Fator"] == 0.9797
+
+
+def test_valor_global_negativo_neutralizado_usa_zero():
+    _funcoes, ciclos = _padronizar(
+        {"Percentual aplicado": 0.0, "Tratamento ciclo negativo": NEUTRALIZAR_VARIACAO_NEGATIVA}
+    )
+    _assert_negativo_zerado(ciclos)
+
+
+def test_valor_global_negativo_sem_decisao_nao_inventa_percentual_nem_fator():
+    _funcoes, ciclos = _padronizar(
+        {"Percentual aplicado": None, "Tratamento ciclo negativo": None}
+    )
+    for campo in ("Percentual aplicado", "Variação", "Fator", "Fator acumulado",
+                  "Fator acumulado efetivo", "Fator ciclo efetivo"):
+        assert pd_isna(ciclos["C1"][campo]), campo
+    # o acumulado posterior tambem fica indefinido (nada de 1,0 implicito)
+    assert pd_isna(ciclos["C2"]["Fator acumulado"])
 
 
 def test_valor_global_precluso_sem_pedido_mantem_regra_do_main():
@@ -929,7 +952,17 @@ def test_valor_global_precluso_sem_pedido_mantem_regra_do_main():
         {"Percentual aplicado": None, "Tratamento ciclo negativo": None},
         situacao_c1="PRECLUSO | SEM PEDIDO",
     )
-    _assert_negativo_como_no_main(ciclos)
+    _assert_negativo_zerado(ciclos)
+
+
+def test_coleta_negativo_aplicado_grava_percentual_oficial_negativo():
+    dados = _dados(RAW_C1)
+    dados["ciclos"][0].update({
+        "percentual_aplicado": -0.020349, "percentual_indice": -0.020349,
+        "tratamento_ciclo_negativo": APLICAR_VARIACAO_NEGATIVA,
+    })
+    par = load_workbook(io.BytesIO(gerar_coleta_oficial_preenchida(dados)))["parametros"]
+    assert par["E3"].value == -0.0203
 
 
 def test_valor_global_ciclo_positivo_usa_fator_oficial_de_duas_casas():
