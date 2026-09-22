@@ -254,18 +254,27 @@ def test_mensagem_informa_contagem_quando_ha_muitas_celulas():
     )
 
 
-def test_varredura_acomoda_grade_menor_de_coleta_anterior():
-    # Coleta oficial anterior a 26G: formulas so ate a linha 101.
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "itens_PC"
-    for linha in range(2, 102):
+def test_upload_bloqueia_ultima_linha_sem_nenhuma_formula_automatica(bytes_preenchida):
+    # Review P2 (Codex): a extensao da varredura nao pode encolher quando as
+    # formulas validadas somem. Ultima linha da grade com TODAS as formulas
+    # automaticas removidas e valores fixos em C/U, sem dado manual.
+    ultima = ULTIMA_LINHA_PCS
+
+    def sobrescrever(ws):
         for coluna in COLS_AUTOMATICAS_ITENS_PC:
-            ws[f"{coluna}{linha}"] = "=ROW()"
-    ws["A150"] = "PC-FORA"  # alem da grade: fora desta regra
-    assert _celulas_automaticas_itens_pc_sobrescritas(ws, _formulas(wb)) == []
-    ws["E50"] = 1.0
-    assert _celulas_automaticas_itens_pc_sobrescritas(ws, _formulas(wb)) == ["E50"]
+            ws[f"{coluna}{ultima}"] = None
+        ws[f"C{ultima}"] = "C1"
+        ws[f"U{ultima}"] = 2066146.03
+
+    resultado = ler_coleta_reajuste(_coleta_com_pc(bytes_preenchida, sobrescrever))
+
+    assert resultado["valido"] is False
+    assert resultado["bloqueios_estruturais"] == [
+        "Há células automáticas sobrescritas na aba itens_PC "
+        f"(ex.: C{ultima}, U{ultima}). "
+        "Preencha somente NUMERO_PC, DATA_PC, VALOR_PC e PC_PAGO_A_CONTRATADA. "
+        "Regere a Coleta antes do upload."
+    ]
 
 
 # --------------------------------------------------------------------------- #

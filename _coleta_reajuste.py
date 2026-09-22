@@ -356,8 +356,13 @@ def _celulas_automaticas_itens_pc_sobrescritas(ws, formulas: dict[str, str]) -> 
     """Celulas automaticas da grade oficial de itens_PC sem a formula.
 
     Usada apenas no layout oficial (``eh_layout_itens_pc_protegivel``). A
-    extensao da grade e a ultima linha que ainda tem formula nas colunas
-    automaticas, o que acomoda Coletas oficiais anteriores a 26G. Aponta:
+    extensao da grade e a capacidade canonica (linhas 2..ULTIMA_LINHA_PCS),
+    nunca derivada das formulas sobreviventes: se a extensao viesse da
+    ultima linha com formula, apagar/sobrescrever TODAS as formulas da
+    ultima linha a tiraria da varredura. Todo template que passa pela
+    assinatura oficial (U1 = VALOR_CONSIDERADO, desde b24f24f) ja nasceu com
+    a grade de 26G ate ULTIMA_LINHA_PCS; grades menores (pre-26G) nao tem U1
+    e seguem pela checagem legada. Aponta:
 
     * valor fixo no lugar da formula, em qualquer linha da grade;
     * celula vazia na linha 2 (ancora estrutural) ou em linha com dado manual.
@@ -365,17 +370,8 @@ def _celulas_automaticas_itens_pc_sobrescritas(ws, formulas: dict[str, str]) -> 
     Nao repara nada: so diagnostica.
     """
     prefixo = f"{ws.title}!"
-    automaticas = set(COLS_AUTOMATICAS_ITENS_PC)
-    linhas_com_formula = []
-    for chave in formulas:
-        if not chave.startswith(prefixo):
-            continue
-        coordenada = re.fullmatch(r"([A-Z]+)(\d+)", chave[len(prefixo):])
-        if coordenada and coordenada.group(1) in automaticas:
-            linhas_com_formula.append(int(coordenada.group(2)))
-    ultima = min(max(linhas_com_formula, default=2), ULTIMA_LINHA_PCS)
     sobrescritas: list[str] = []
-    for linha in range(2, ultima + 1):
+    for linha in range(2, ULTIMA_LINHA_PCS + 1):
         com_dado_manual = any(
             ws[f"{coluna}{linha}"].value not in (None, "")
             for coluna in COLS_MANUAIS_ITENS_PC
