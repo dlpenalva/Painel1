@@ -28,6 +28,11 @@ from _seguranca_xlsx import (
 
 from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
 from _capacidades_apuracao import avaliar_capacidades_apuracao
+from _coleta_oficial import (
+    COLS_AUTOMATICAS_ITENS_PC,
+    COLS_MANUAIS_ITENS_PC,
+    eh_layout_itens_pc_protegivel,
+)
 from _reajuste_utils import percentual_contexto_oficial, percentual_oficial_do_payload
 from _efeitos_financeiros_pc import (
     efeito_financeiro_pc,
@@ -347,6 +352,55 @@ def _formulas(wb) -> dict[str, str]:
     }
 
 
+def _celulas_automaticas_itens_pc_sobrescritas(ws, formulas: dict[str, str]) -> list[str]:
+    """Celulas automaticas da grade oficial de itens_PC sem a formula.
+
+    Usada apenas no layout oficial (``eh_layout_itens_pc_protegivel``). A
+    extensao da grade e a ultima linha que ainda tem formula nas colunas
+    automaticas, o que acomoda Coletas oficiais anteriores a 26G. Aponta:
+
+    * valor fixo no lugar da formula, em qualquer linha da grade;
+    * celula vazia na linha 2 (ancora estrutural) ou em linha com dado manual.
+
+    Nao repara nada: so diagnostica.
+    """
+    prefixo = f"{ws.title}!"
+    automaticas = set(COLS_AUTOMATICAS_ITENS_PC)
+    linhas_com_formula = []
+    for chave in formulas:
+        if not chave.startswith(prefixo):
+            continue
+        coordenada = re.fullmatch(r"([A-Z]+)(\d+)", chave[len(prefixo):])
+        if coordenada and coordenada.group(1) in automaticas:
+            linhas_com_formula.append(int(coordenada.group(2)))
+    ultima = min(max(linhas_com_formula, default=2), ULTIMA_LINHA_PCS)
+    sobrescritas: list[str] = []
+    for linha in range(2, ultima + 1):
+        com_dado_manual = any(
+            ws[f"{coluna}{linha}"].value not in (None, "")
+            for coluna in COLS_MANUAIS_ITENS_PC
+        )
+        for coluna in COLS_AUTOMATICAS_ITENS_PC:
+            chave = f"{coluna}{linha}"
+            if f"{prefixo}{chave}" in formulas:
+                continue
+            valor = ws[chave].value
+            if valor not in (None, "") or linha == 2 or com_dado_manual:
+                sobrescritas.append(chave)
+    return sobrescritas
+
+
+def _mensagem_itens_pc_sobrescritas(celulas: list[str]) -> str:
+    exemplos = ", ".join(celulas[:6])
+    total = f"{len(celulas)} células; " if len(celulas) > 6 else ""
+    manuais = list(COLS_MANUAIS_ITENS_PC.values())
+    return (
+        f"Há células automáticas sobrescritas na aba itens_PC ({total}ex.: {exemplos}). "
+        f"Preencha somente {', '.join(manuais[:-1])} e {manuais[-1]}. "
+        "Regere a Coleta antes do upload."
+    )
+
+
 def _validar_resultados_integra(wb, etapa: str) -> dict[str, Any]:
     if "RESULTADOS" not in wb.sheetnames:
         raise ValueError(f"A aba RESULTADOS desapareceu na etapa {etapa}.")
@@ -598,6 +652,12 @@ def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
         and str(_ws_ipc["L1"].value or "").strip().upper()
         == "EFEITO_FINANCEIRO_PC"
     )
+    # Grade oficial atual: a varredura completa das colunas automaticas
+    # substitui as checagens pontuais de C2/L2 (mesmo bloqueio, com
+    # diagnostico de todas as celulas sobrescritas).
+    _grade_pc_oficial = bool(
+        _ws_ipc is not None and eh_layout_itens_pc_protegivel(_ws_ipc)
+    )
 
     formulas = _formulas(wb)
     if len(formulas) < 1000:
@@ -611,7 +671,7 @@ def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
         "financeiro!D2",
         "itens_Remanesc!D2",
         "itens_Consumidos!O2",
-        _chave_ciclo_pc,
+        *(() if _grade_pc_oficial else (_chave_ciclo_pc,)),
         f"{aba_resultados_tecnicos}!B15",
         f"{aba_resultados_tecnicos}!B16",
         f"{aba_resultados_tecnicos}!B23",
@@ -623,7 +683,11 @@ def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
     ):
         if chave not in formulas:
             bloqueios_estruturais.append(f"Fórmula estrutural ausente em {chave}.")
-    if _modelo_pc_etapa3 and "itens_PC!L2" not in formulas:
+    if _grade_pc_oficial:
+        _sobrescritas_pc = _celulas_automaticas_itens_pc_sobrescritas(_ws_ipc, formulas)
+        if _sobrescritas_pc:
+            bloqueios_estruturais.append(_mensagem_itens_pc_sobrescritas(_sobrescritas_pc))
+    elif _modelo_pc_etapa3 and "itens_PC!L2" not in formulas:
         bloqueios_estruturais.append(
             "Formula estrutural ausente em itens_PC!L2."
         )

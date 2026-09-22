@@ -782,6 +782,70 @@ def _garantir_colunas_tecnicas_itens_pc_ocultas(wb) -> None:
         )
 
 
+# itens_PC: unicas colunas de ENTRADA MANUAL da grade oficial (A, B, D, G).
+# Todas as demais colunas da grade sao formulas automaticas; a sobrescrita
+# acidental de uma delas (ex.: colar valores em C2/E2/F2) remove a formula e
+# bloqueia o upload. A copia entregue protege a aba mantendo so estas
+# colunas editaveis.
+COLS_MANUAIS_ITENS_PC = {
+    "A": "NUMERO_PC",
+    "B": "DATA_PC",
+    "D": "VALOR_PC",
+    "G": "PC_PAGO_A_CONTRATADA",
+}
+# Colunas automaticas por linha da grade oficial (A:L e U).
+COLS_AUTOMATICAS_ITENS_PC = ("C", "E", "F", "H", "I", "J", "K", "L", "U")
+
+
+def eh_layout_itens_pc_protegivel(ws) -> bool:
+    """True quando a aba itens_PC segue a grade oficial atual.
+
+    Exige NUMERO_PC/DATA_PC/CICLO_PC/VALOR_PC/FATOR_ACUMULADO/
+    VALOR_ATUALIZADO/PC_PAGO_A_CONTRATADA em A1:G1, EFEITO_FINANCEIRO_PC em
+    L1 e VALOR_CONSIDERADO em U1. H1/J1 nao entram na assinatura porque a
+    copia entregue os renomeia para apresentacao. Layouts legados
+    (v9/v10.x, sem NUMERO_PC ou sem EFEITO_FINANCEIRO_PC) ficam de fora.
+    """
+    esperados = dict(zip("ABCDEFG", COLUNAS_ITENS_PC_OFICIAL[:7]))
+    esperados["L"] = "EFEITO_FINANCEIRO_PC"
+    esperados["U"] = "VALOR_CONSIDERADO"
+    return all(
+        str(ws[f"{coluna}1"].value or "").strip().upper() == rotulo
+        for coluna, rotulo in esperados.items()
+    )
+
+
+def _garantir_protecao_formulas_itens_pc(wb) -> None:
+    """Protege as formulas automaticas de itens_PC contra edicao acidental.
+
+    Somente no layout oficial: libera (locked=False) A, B, D e G nas linhas
+    da grade e ativa a protecao da aba, sem senha — igual ao padrao ja usado
+    em CONTROLE e CICLO_EM_EXECUCAO. Nao altera valores, formulas, estilos
+    visuais, validacoes nem dimensoes. Redimensionar colunas/linhas segue
+    permitido. Layout legado ou aba ausente atravessa sem alteracao.
+    """
+    from openpyxl.styles import Protection
+
+    if "itens_PC" not in wb.sheetnames:
+        return
+    ws = wb["itens_PC"]
+    if not eh_layout_itens_pc_protegivel(ws):
+        return
+    for coluna in COLS_MANUAIS_ITENS_PC:
+        for linha in range(2, ULTIMA_LINHA_PCS + 1):
+            celula = ws[f"{coluna}{linha}"]
+            celula.protection = Protection(
+                locked=False, hidden=celula.protection.hidden
+            )
+    # Em OOXML selectLockedCells/selectUnlockedCells sao flags de BLOQUEIO de
+    # selecao: False mantem ambas selecionaveis (ver _ciclo_em_execucao).
+    ws.protection.sheet = True
+    ws.protection.selectLockedCells = False
+    ws.protection.selectUnlockedCells = False
+    ws.protection.formatColumns = False
+    ws.protection.formatRows = False
+
+
 def _validar_estrutura_itens_pc(wb) -> None:
     """Barreira contra regressao critica: itens_PC jamais pode sair esvaziada.
 
@@ -858,6 +922,7 @@ def obter_coleta_oficial_bytes() -> bytes:
     from _apresentacao_pc_xls import garantir_apresentacao_pc
     garantir_apresentacao_pc(wb)
     _garantir_colunas_tecnicas_itens_pc_ocultas(wb)
+    _garantir_protecao_formulas_itens_pc(wb)
     _validar_validacoes_aditivos_criticas(wb)
 
     wb.calculation.calcMode = "auto"
