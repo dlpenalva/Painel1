@@ -525,6 +525,10 @@ def _oficializar_parametros_v10(
         reg["fator_proprio_bruto"] = reg.get("fator_proprio")
         if fator_proprio_e_percentual:
             reg["fator_proprio"] = reg["percentual_reajuste"]
+        elif fator_proprio is not None and bruto is None and fator_proprio >= 0.5:
+            # Sem percentual do ciclo: nenhum percentual e inferido de um
+            # fator gravado; o bruto fica so em memoria (fail-closed).
+            reg["fator_proprio"] = None
         elif fator_proprio is not None:
             reg["fator_proprio"] = (
                 fator_oficial_de_fator(fator_proprio)
@@ -535,12 +539,27 @@ def _oficializar_parametros_v10(
     # So SUBSTITUI um fator acumulado efetivamente gravado (bruto -> oficial).
     # Coleta nunca recalculada (F sem valor) continua sem fator: ausencia
     # permanece ausencia (fail-closed preservado; nada e inventado aqui).
+    #
+    # SEM percentual suficiente para reconstruir a cadeia: o fator gravado NAO
+    # permanece no campo canonico (um FATOR_ACUMULADO isolado pode compor mais
+    # de um ciclo; nao se infere percentual dele). Fica so em *_bruto, com
+    # diagnostico de dado legado/incompleto — fail-closed.
     cadeia = cadeia_fatores_oficiais(percentuais) if percentuais else []
     for indice, fator in enumerate(cadeia):
         reg = por_ciclo[f"C{indice}"]
-        reg["fator_acumulado_bruto"] = reg.get("fator_acumulado")
-        if fator is not None and _numero_parametro(reg.get("fator_acumulado")) is not None:
+        gravado = reg.get("fator_acumulado")
+        reg["fator_acumulado_bruto"] = gravado
+        if _numero_parametro(gravado) is None:
+            continue
+        if fator is not None:
             reg["fator_acumulado"] = fator
+        else:
+            reg["fator_acumulado"] = None
+            resultado["alertas"].append(
+                f"parametros: C{indice} tem FATOR_ACUMULADO gravado ({gravado!r}) "
+                "sem percentual do ciclo suficiente para reconstruir a cadeia "
+                "oficial; o fator nao e usado (dado legado/incompleto)."
+            )
 
 
 def _ler_itens_consumidos_v10(wb) -> dict[str, Any]:

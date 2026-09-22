@@ -17,7 +17,10 @@ from openpyxl import load_workbook
 from _coleta_reajuste import ler_coleta_reajuste
 from _contexto_coleta import ContextoColeta
 from _leitor_masterfile_v10 import ler_masterfile_v10
-from _politica_entrega_segura import avaliar_entrega_segura
+from _politica_entrega_segura import (
+    MENSAGEM_COLETA_PRECISAO_ANTERIOR,
+    avaliar_entrega_segura,
+)
 from _reajuste_utils import cadeia_fatores_oficiais, fechar_percentual_na_unidade
 from _reconciliacao_xls_python import campos_nao_confiaveis_para_documentos
 from _resultado_consolidado import montar_resultado_consolidado
@@ -603,9 +606,17 @@ def aplicar_bloqueio_documental(capacidades: dict[str, Any], bloqueios: list[str
     apenas mantem a formalizacao condicionada e o alerta visivel. Qualquer
     outro bloqueio (inclusive coleta estruturalmente invalida, ja tratada a
     montante) continua bloqueando todos os documentos, como hoje.
+
+    REGRA PETREA — Coleta com precisao de reajuste anterior a regra vigente:
+    os valores financeiros gravados no arquivo (VTA, retroativo) foram
+    calculados com o percentual/fator bruto. Nenhum documento formalizador
+    pode ser gerado com eles — nem Sumario, Saneador ou Apostila — e o motivo
+    exibido e a orientacao canonica de regenerar a Coleta.
     """
     if not bloqueios:
         return capacidades
+    precisao_anterior = MENSAGEM_COLETA_PRECISAO_ANTERIOR in bloqueios
+    motivo = MENSAGEM_COLETA_PRECISAO_ANTERIOR if precisao_anterior else bloqueios[0]
     for chave, documento in (capacidades.get("documentos") or {}).items():
         # Documentos diagnosticos (Sumario, Saneador, Apostila) permanecem
         # DISPONIVEIS diante de QUALQUER bloqueio de FORMALIZACAO — divergencia
@@ -613,13 +624,13 @@ def aplicar_bloqueio_documental(capacidades: dict[str, Any], bloqueios: list[str
         # Disponibilidade documental != aptidao para formalizar: a formalizacao
         # segue condicionada e o alerta permanece visivel. Coleta estruturalmente
         # invalida ja foi barrada a montante (nao chega aqui).
-        if chave in DOCS_LIBERADOS_APESAR_DIVERGENCIA:
+        if chave in DOCS_LIBERADOS_APESAR_DIVERGENCIA and not precisao_anterior:
             continue
         documento["habilitado"] = False
         documento["estado"] = "bloqueado"
         documento["rotulo"] = "Bloqueado para formalização"
         documento["classificacao"] = "BLOQUEADO PARA FORMALIZAÇÃO"
-        documento["motivo"] = bloqueios[0]
+        documento["motivo"] = motivo
     return capacidades
 
 

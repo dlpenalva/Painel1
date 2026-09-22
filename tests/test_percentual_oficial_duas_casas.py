@@ -803,3 +803,211 @@ def test_golden_financeiro_real_antigo_bloqueia_sem_recalcular_o_vta():
     # o VTA gravado no XLS antigo NAO e recalculado silenciosamente
     web = goldens._fotografar("financeiro_multiciclo_validado")["web"]
     assert web["vta_oficial"] == goldens.VTA_FINANCEIRO_HOMOLOGADO
+
+
+# ============================== revisao final: 3 bypasses P1 (docs/negativo/fator)
+
+DOCS_FORMALIZADORES = ("sumario_executivo", "despacho_saneador", "termo_apostila")
+
+
+# ---------------------------------------------------- P1.1 documentos formalizadores
+
+def test_p1_coleta_antiga_nao_libera_nenhum_documento_formalizador(coleta_c1):
+    from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
+
+    resultado, diagnostico = processar_coleta_oficial_runtime(
+        _coleta_com_metodo(coleta_c1, "Financeiro", bruta=True)
+    )
+    # leitura permitida e diagnostico presente
+    assert any("precisao bruta" in a for a in diagnostico.get("avisos") or [])
+    assert resultado["formalizacao_bloqueada"] is True
+    documentos = resultado["capacidades"]["documentos"]
+    for chave in DOCS_FORMALIZADORES:
+        assert documentos[chave]["habilitado"] is False, chave
+        assert documentos[chave]["motivo"] == MENSAGEM_COLETA_PRECISAO_ANTERIOR, chave
+    # a pagina exibe a mesma orientacao canonica junto aos documentos
+    fonte = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
+    assert "st.warning(MENSAGEM_COLETA_PRECISAO_ANTERIOR)" in fonte
+
+
+def test_p1_coleta_vigente_mantem_os_tres_documentos_disponiveis(coleta_c1):
+    from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
+
+    resultado, _diagnostico = processar_coleta_oficial_runtime(
+        _coleta_com_metodo(coleta_c1, "Financeiro", bruta=False)
+    )
+    documentos = resultado["capacidades"]["documentos"]
+    for chave in DOCS_FORMALIZADORES:
+        assert documentos[chave]["habilitado"] is True, chave
+
+
+def test_p1_golden_financeiro_real_antigo_sem_documentos_formalizadores():
+    import test_baseline_resultados_goldens as goldens
+
+    arquivo = goldens.GOLDENS["financeiro_multiciclo_validado"]
+    if not arquivo.exists():
+        pytest.skip(f"golden externo ausente: {arquivo}")
+    from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
+
+    resultado, _diagnostico = processar_coleta_oficial_runtime(arquivo.read_bytes())
+    documentos = resultado["capacidades"]["documentos"]
+    for chave in DOCS_FORMALIZADORES:
+        assert documentos[chave]["habilitado"] is False, chave
+        assert documentos[chave]["motivo"] == MENSAGEM_COLETA_PRECISAO_ANTERIOR
+
+
+# ------------------------------------------ P1.2 negativo pendente no Valor Global
+
+def _funcoes_valor_global() -> dict:
+    """Funcoes/constantes de modulo da pagina, sem executar a interface."""
+    import ast
+
+    caminho = (ROOT / "pages" / "03_Valor_Global.py").resolve()
+    fonte = caminho.read_text(encoding="utf-8")
+    arvore = ast.parse(fonte)
+    corpo = [
+        n for n in arvore.body
+        if isinstance(n, (ast.Import, ast.ImportFrom, ast.FunctionDef))
+        or (isinstance(n, ast.Assign) and "st." not in ast.get_source_segment(fonte, n))
+    ]
+    espaco = {"__name__": "valor_global_funcoes", "__file__": str(caminho)}
+    exec(compile(ast.Module(body=corpo, type_ignores=[]), "<valor_global>", "exec"), espaco)
+    return espaco
+
+
+def _padronizar(linha_c1: dict, *, situacao_c1: str = "TEMPESTIVO"):
+    import pandas as pd
+
+    funcoes = _funcoes_valor_global()
+    df = pd.DataFrame([
+        {"Ciclo": "C1", "Situação": situacao_c1,
+         "Percentual apurado pelo índice": -0.020349, **linha_c1},
+        {"Ciclo": "C2", "Situação": "TEMPESTIVO",
+         "Percentual apurado pelo índice": 0.05, "Percentual aplicado": 0.05,
+         "Tratamento ciclo negativo": ""},
+    ])
+    ciclos = funcoes["padronizar_ciclos"](df)
+    return funcoes, {r["Ciclo"]: r for r in ciclos.to_dict("records")}
+
+
+def test_p1_valor_global_negativo_pendente_fica_indefinido():
+    import pandas as pd
+
+    funcoes, ciclos = _padronizar(
+        {"Percentual aplicado": None, "Tratamento ciclo negativo": None}
+    )
+    c1 = ciclos["C1"]
+    for campo in ("Percentual aplicado", "Variação", "Fator", "Fator acumulado",
+                  "Fator acumulado efetivo", "Fator ciclo efetivo"):
+        assert pd.isna(c1[campo]), campo              # nunca 0,00% / 1,0
+    # nenhum fator 1,0 formado depois: o acumulado dependente fica indefinido
+    assert pd.isna(ciclos["C2"]["Fator acumulado"])
+    assert pd.isna(ciclos["C2"]["Fator acumulado efetivo"])
+    # e o calculo do Valor Global recusa o ciclo pendente (fail-closed)
+    df = pd.DataFrame(list(ciclos.values()))
+    assert funcoes["ciclos_com_decisao_negativa_pendente"](df) == ["C1"]
+
+
+def test_p1_valor_global_processamento_recusa_negativo_pendente():
+    import types
+
+    import pandas as pd
+
+    funcoes, ciclos = _padronizar(
+        {"Percentual aplicado": None, "Tratamento ciclo negativo": None}
+    )
+    df = pd.DataFrame(list(ciclos.values()))
+    # Executa o entry point real ate o gate, isolando somente as leituras que o
+    # antecedem. Se o gate sair do fluxo, o teste avanca e falha em dependencias
+    # nao mockadas — portanto nao e mera verificacao textual da implementacao.
+    funcoes["pd"] = types.SimpleNamespace(
+        DataFrame=pd.DataFrame,
+        ExcelFile=lambda _conteudo: object(),
+    )
+    funcoes["BytesIO"] = lambda conteudo: conteudo
+    funcoes["ler_parametros"] = lambda *_args: {}
+    funcoes["contexto_contratual_de_parametros"] = lambda *_args: {}
+    funcoes["ler_ciclos"] = lambda *_args: (df, "teste")
+    with pytest.raises(ValueError, match="variação negativa sem decisão"):
+        funcoes["processar_arquivo_coleta"](b"xlsx")
+
+
+def test_p1_valor_global_negativo_neutralizado_continua_zero():
+    _funcoes, ciclos = _padronizar(
+        {"Percentual aplicado": 0.0, "Tratamento ciclo negativo": NEUTRALIZAR_VARIACAO_NEGATIVA}
+    )
+    assert ciclos["C1"]["Percentual aplicado"] == 0.0
+    assert ciclos["C1"]["Fator"] == 1.0
+    assert ciclos["C2"]["Fator acumulado"] == 1.05
+
+
+def test_p1_valor_global_negativo_aplicado_usa_percentual_oficial():
+    _funcoes, ciclos = _padronizar(
+        {"Percentual aplicado": -0.020349, "Tratamento ciclo negativo": APLICAR_VARIACAO_NEGATIVA}
+    )
+    assert ciclos["C1"]["Percentual aplicado"] == -0.0203
+    assert ciclos["C1"]["Fator"] == 0.9797
+    assert ciclos["C2"]["Fator acumulado"] == pytest.approx(0.9797 * 1.05, abs=1e-15)
+
+
+def test_p1_valor_global_precluso_sem_pedido_continua_zero_sem_percentual_explicito():
+    """PRECLUSO/SEM PEDIDO ja impoe zero e nao exige nova decisao negativa."""
+    _funcoes, ciclos = _padronizar(
+        {"Percentual aplicado": None, "Tratamento ciclo negativo": None},
+        situacao_c1="PRECLUSO | SEM PEDIDO",
+    )
+    assert ciclos["C1"]["Percentual aplicado"] == 0.0
+    assert ciclos["C1"]["Fator"] == 1.0
+    assert not ciclos["C1"].get("Decisão negativa pendente", False)
+
+
+# ------------------------------------- P1.3 fator acumulado legado sem percentual
+
+FATOR_LEGADO_ISOLADO = 1.040521878812559
+
+
+def _coleta_so_com_fator(conteudo: bytes) -> bytes:
+    wb = load_workbook(io.BytesIO(conteudo))
+    par = wb["parametros"]
+    par["E3"] = None                      # percentual ausente
+    par["F2"] = 1.0
+    par["F3"] = FATOR_LEGADO_ISOLADO      # so o fator acumulado bruto
+    saida = io.BytesIO()
+    wb.save(saida)
+    return saida.getvalue()
+
+
+def test_p1_fator_legado_sem_percentual_nao_vira_canonico(coleta_c1):
+    leitura = ler_masterfile_v10(_coleta_so_com_fator(coleta_c1))
+    c1 = leitura["parametros_v10"]["por_ciclo"]["C1"]
+    assert c1["percentual_reajuste"] is None
+    assert c1["fator_acumulado"] is None
+    assert c1["fator_acumulado_bruto"] == pytest.approx(FATOR_LEGADO_ISOLADO, abs=1e-15)
+    assert any("sem percentual do ciclo suficiente" in a
+               for a in leitura["parametros_v10"]["alertas"])
+
+
+def test_p1_fator_legado_sem_percentual_nao_chega_aos_consumidores(coleta_c1):
+    def _contem_fator_bruto(valor) -> bool:
+        if isinstance(valor, float):
+            return abs(valor - FATOR_LEGADO_ISOLADO) < 1e-12
+        if isinstance(valor, dict):
+            return any(
+                _contem_fator_bruto(v) for k, v in valor.items()
+                if not str(k).endswith("_bruto")
+            )
+        if isinstance(valor, (list, tuple)):
+            return any(_contem_fator_bruto(v) for v in valor)
+        return False
+
+    leitura = ler_masterfile_v10(_coleta_so_com_fator(coleta_c1))
+    # objeto do processo, VTA sombra, potencial, composicao e PCs nunca veem o
+    # fator bruto fora de campo *_bruto
+    for chave in ("objeto_processo", "vta_sombra", "potencial_futuro",
+                  "composicao_vta", "itens_pc_v10"):
+        assert not _contem_fator_bruto(leitura.get(chave)), chave
+    assert not _contem_fator_bruto(leitura["parametros_v10"]["por_ciclo"])
+    dados = _extrair_dados(leitura, None)
+    assert not _contem_fator_bruto(dados)
+    c1 = next(c for c in dados["ciclos"] if c["ciclo"] == "C1")
+    assert c1["percentual_reajuste"] is None
