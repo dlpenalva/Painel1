@@ -1067,6 +1067,7 @@ def gerar_masterfile_preenchido(
     # de linhagem anterior a 26H.2 (WrapText/dimensoes ausentes).
     from _coleta_oficial import (
         _garantir_colunas_tecnicas_itens_pc_ocultas,
+        _garantir_protecao_formulas_itens_pc,
         garantir_formatacao_orientacao_aditivos,
     )
     garantir_formatacao_orientacao_aditivos(wb)
@@ -1075,6 +1076,7 @@ def gerar_masterfile_preenchido(
     # restringe sozinho ao layout oficial: workbook legado suportado
     # (v9/v10.1/v10.2) atravessa sem alteracao e sem erro.
     _garantir_colunas_tecnicas_itens_pc_ocultas(wb)
+    _garantir_protecao_formulas_itens_pc(wb)
 
     saida = BytesIO()
     wb.save(saida)
