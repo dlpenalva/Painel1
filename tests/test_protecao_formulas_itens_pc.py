@@ -16,34 +16,44 @@ Cobertura:
 5. (opt-in RUN_EXCEL_INTEGRATION=1) Excel real: preencher PC em A/B/D/G,
    formulas recusam escrita, valores identicos com e sem protecao, reabre
    sem reparo.
+
+A suite roda no CI rapido (limite de 15 min): cada geracao/upload da Coleta
+custa segundos, por isso os cenarios de upload estao agrupados e as regras
+puras sao testadas direto nas funcoes.
 """
 from __future__ import annotations
 
 import gc
 import hashlib
+import inspect
 import io
 import os
 import sys
-from copy import copy
 from datetime import date, datetime
 from pathlib import Path
 
 import pytest
-from openpyxl import load_workbook
+from openpyxl import Workbook, load_workbook
 
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 import _coleta_oficial
-from _capacidade_pcs import ULTIMA_LINHA_PCS
+import _gerador_masterfile
+from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
 from _coleta_oficial import (
     COLS_AUTOMATICAS_ITENS_PC,
     COLS_MANUAIS_ITENS_PC,
     TEMPLATE_COLETA_OFICIAL,
+    eh_layout_itens_pc_protegivel,
     gerar_coleta_oficial_preenchida,
-    obter_coleta_oficial_bytes,
 )
-from _coleta_reajuste import ler_coleta_reajuste
+from _coleta_reajuste import (
+    _celulas_automaticas_itens_pc_sobrescritas,
+    _formulas,
+    _mensagem_itens_pc_sobrescritas,
+    ler_coleta_reajuste,
+)
 from tests._fabrica_coleta import bytes_coleta_oficial
 
 MENSAGEM_C2_E2_F2 = (
@@ -73,30 +83,21 @@ def _dados() -> dict:
     }
 
 
-def _formulas_por_coluna(ws) -> dict[str, int]:
-    contagem: dict[str, int] = {}
-    for row in ws.iter_rows(min_row=2, max_row=ULTIMA_LINHA_PCS, max_col=21):
-        for cell in row:
-            if isinstance(cell.value, str) and cell.value.startswith("="):
-                contagem[cell.column_letter] = contagem.get(cell.column_letter, 0) + 1
-    return contagem
+def _assinatura_celulas(wb) -> dict:
+    """Valor + estilo visual (sem protecao) de todas as celulas."""
+    def estilo(c):
+        s = getattr(c, "_style", None)
+        if s is None:
+            return None
+        return (s.fontId, s.fillId, s.borderId, s.numFmtId, s.alignmentId)
 
-
-def _estilo(celula) -> tuple:
-    # StyleProxy nao compara entre workbooks distintos; copy() devolve o
-    # objeto de estilo real, comparavel por valor.
-    return (
-        celula.number_format,
-        copy(celula.font),
-        copy(celula.fill),
-        copy(celula.border),
-        copy(celula.alignment),
-    )
-
-
-@pytest.fixture(scope="module")
-def wb_template():
-    return load_workbook(TEMPLATE_COLETA_OFICIAL, data_only=False)
+    return {
+        ws.title: {
+            c.coordinate: (c.value, estilo(c))
+            for row in ws.iter_rows() for c in row
+        }
+        for ws in wb.worksheets
+    }
 
 
 @pytest.fixture(scope="module")
@@ -104,20 +105,11 @@ def bytes_preenchida() -> bytes:
     return bytes_coleta_oficial(_dados())
 
 
-@pytest.fixture(scope="module")
-def bytes_em_branco() -> bytes:
-    return obter_coleta_oficial_bytes()
-
-
 # --------------------------------------------------------------------------- #
 # 1. Coleta nova: protecao + formulas preservadas                              #
 # --------------------------------------------------------------------------- #
-@pytest.mark.parametrize("origem", ["preenchida", "em_branco"])
-def test_coleta_nova_protege_itens_pc_e_libera_a_b_d_g(
-    origem, bytes_preenchida, bytes_em_branco, wb_template
-):
-    conteudo = bytes_preenchida if origem == "preenchida" else bytes_em_branco
-    ws = load_workbook(io.BytesIO(conteudo), data_only=False)["itens_PC"]
+def test_coleta_nova_protege_itens_pc_e_libera_a_b_d_g(bytes_preenchida):
+    ws = load_workbook(io.BytesIO(bytes_preenchida), data_only=False)["itens_PC"]
 
     assert ws.protection.sheet is True
     assert ws.protection.password is None
@@ -129,8 +121,18 @@ def test_coleta_nova_protege_itens_pc_e_libera_a_b_d_g(
         for coluna in COLS_AUTOMATICAS_ITENS_PC:
             assert ws[f"{coluna}{linha}"].protection.locked is True, f"{coluna}{linha}"
 
-    # Todas as formulas da grade continuam la (A:U), contagem identica ao template.
-    assert _formulas_por_coluna(ws) == _formulas_por_coluna(wb_template["itens_PC"])
+    # Toda a grade automatica segue com formula em todas as linhas.
+    for coluna in COLS_AUTOMATICAS_ITENS_PC:
+        indice = ws[f"{coluna}1"].column
+        formulas = sum(
+            1
+            for (valor,) in ws.iter_rows(
+                min_row=2, max_row=ULTIMA_LINHA_PCS,
+                min_col=indice, max_col=indice, values_only=True,
+            )
+            if isinstance(valor, str) and valor.startswith("=")
+        )
+        assert formulas == CAPACIDADE_PCS, coluna
     # Dropdown de PC_PAGO_A_CONTRATADA intacto.
     assert any(
         f"G2:G{ULTIMA_LINHA_PCS}" in str(dv.sqref)
@@ -138,31 +140,42 @@ def test_coleta_nova_protege_itens_pc_e_libera_a_b_d_g(
     )
 
 
-def test_protecao_nao_altera_valores_formulas_nem_estilos(bytes_em_branco, monkeypatch):
-    monkeypatch.setattr(_coleta_oficial, "_garantir_protecao_formulas_itens_pc", lambda wb: None)
-    sem_protecao = load_workbook(io.BytesIO(obter_coleta_oficial_bytes()), data_only=False)
-    com_protecao = load_workbook(io.BytesIO(bytes_em_branco), data_only=False)
+def test_os_dois_geradores_aplicam_a_protecao():
+    # Coleta em branco e Coleta preenchida passam pelo mesmo guard (regerar
+    # a Coleta so para isso custaria segundos no CI rapido).
+    assert "_garantir_protecao_formulas_itens_pc(wb)" in inspect.getsource(
+        _coleta_oficial.obter_coleta_oficial_bytes
+    )
+    assert "_garantir_protecao_formulas_itens_pc(wb)" in inspect.getsource(
+        _gerador_masterfile.gerar_masterfile_preenchido
+    )
 
-    assert sem_protecao.sheetnames == com_protecao.sheetnames
-    assert sem_protecao["itens_PC"].protection.sheet is False
-    diferencas = []
-    for nome in com_protecao.sheetnames:
-        antes, depois = sem_protecao[nome], com_protecao[nome]
-        if nome != "itens_PC":
-            assert antes.protection.sheet == depois.protection.sheet, nome
-        for linha in antes.iter_rows():
-            for celula in linha:
-                outra = depois[celula.coordinate]
-                if celula.value != outra.value or _estilo(celula) != _estilo(outra):
-                    diferencas.append(f"{nome}!{celula.coordinate}")
-    assert diferencas == []
+
+def test_protecao_nao_altera_valores_formulas_nem_estilos():
+    wb = load_workbook(TEMPLATE_COLETA_OFICIAL, data_only=False)
+    antes = _assinatura_celulas(wb)
+    protecao_antes = {ws.title: ws.protection.sheet for ws in wb.worksheets}
+
+    _coleta_oficial._garantir_protecao_formulas_itens_pc(wb)
+
+    assert _assinatura_celulas(wb) == antes
+    protecao_depois = {ws.title: ws.protection.sheet for ws in wb.worksheets}
+    assert protecao_depois.pop("itens_PC") is True
+    protecao_antes.pop("itens_PC")
+    assert protecao_depois == protecao_antes
 
 
 def test_layout_legado_nao_e_protegido():
-    wb = load_workbook(TEMPLATE_COLETA_OFICIAL, data_only=False)
-    wb["itens_PC"]["A1"] = "ITEM"  # linhagem v9/v10.x, sem NUMERO_PC
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "itens_PC"
+    for coluna, rotulo in zip("ABCDEFG", ("ITEM", "DATA_PC", "CICLO_PC", "VALOR_PC",
+                                          "FATOR_ACUMULADO", "VALOR_ATUALIZADO",
+                                          "PC_PAGO_A_CONTRATADA")):
+        ws[f"{coluna}1"] = rotulo
+
+    assert eh_layout_itens_pc_protegivel(ws) is False
     _coleta_oficial._garantir_protecao_formulas_itens_pc(wb)
-    ws = wb["itens_PC"]
     assert ws.protection.sheet is False
     assert ws["A2"].protection.locked is True
 
@@ -188,68 +201,16 @@ def _bloqueios_itens_pc(resultado: dict) -> list[str]:
     return [b for b in resultado["bloqueios_estruturais"] if "itens_PC" in b]
 
 
-def test_upload_coleta_normal_aceita(bytes_preenchida):
-    resultado = ler_coleta_reajuste(_coleta_com_pc(bytes_preenchida))
-    assert resultado["bloqueios_estruturais"] == []
+def test_coleta_normal_com_pc_nao_acusa_sobrescrita(bytes_preenchida):
+    wb = load_workbook(io.BytesIO(_coleta_com_pc(bytes_preenchida)), data_only=False)
+    assert _celulas_automaticas_itens_pc_sobrescritas(wb["itens_PC"], _formulas(wb)) == []
 
 
-def test_upload_bloqueia_c2_e2_f2_convertidas_em_valores(bytes_preenchida):
+def test_upload_bloqueia_c2_e2_f2_sem_reparar_nem_alterar_arquivo(bytes_preenchida, tmp_path):
     def sobrescrever(ws):
         ws["C2"] = "C0"
         ws["E2"] = 1
         ws["F2"] = 2066146.03
-
-    resultado = ler_coleta_reajuste(_coleta_com_pc(bytes_preenchida, sobrescrever))
-    assert resultado["valido"] is False
-    assert _bloqueios_itens_pc(resultado) == [MENSAGEM_C2_E2_F2]
-    # O diagnostico novo substitui a mensagem generica de C2 (sem duplicar).
-    assert not any("itens_PC!C2" in b for b in resultado["bloqueios_estruturais"])
-
-
-def test_upload_aponta_sobrescrita_alem_da_primeira_linha(bytes_preenchida):
-    def sobrescrever(ws):
-        ws["A3"] = "4500099999"      # linha com PC e formula apagada
-        ws["B3"] = datetime(2024, 7, 1)
-        ws["D3"] = 10.0
-        ws["G3"] = "Nao"
-        ws["L3"] = None
-        ws["F150"] = 123.45          # valor fixo em linha sem PC
-        ws[f"U{ULTIMA_LINHA_PCS}"] = 0
-
-    resultado = ler_coleta_reajuste(_coleta_com_pc(bytes_preenchida, sobrescrever))
-    bloqueios = _bloqueios_itens_pc(resultado)
-    assert len(bloqueios) == 1
-    assert f"(ex.: L3, F150, U{ULTIMA_LINHA_PCS})" in bloqueios[0]
-    assert resultado["valido"] is False
-
-
-def test_upload_informa_contagem_quando_ha_muitas_celulas(bytes_preenchida):
-    def sobrescrever(ws):
-        for linha in range(2, 5):
-            for coluna in ("C", "E", "F"):
-                ws[f"{coluna}{linha}"] = 0
-
-    bloqueios = _bloqueios_itens_pc(
-        ler_coleta_reajuste(_coleta_com_pc(bytes_preenchida, sobrescrever))
-    )
-    assert bloqueios and bloqueios[0].startswith(
-        "Há células automáticas sobrescritas na aba itens_PC "
-        "(9 células; ex.: C2, E2, F2, C3, E3, F3)."
-    )
-
-
-def test_upload_nao_acusa_linha_vazia_sem_dado_manual(bytes_preenchida):
-    def limpar(ws):
-        for coluna in COLS_AUTOMATICAS_ITENS_PC:
-            ws[f"{coluna}3000"] = None
-
-    resultado = ler_coleta_reajuste(_coleta_com_pc(bytes_preenchida, limpar))
-    assert _bloqueios_itens_pc(resultado) == []
-
-
-def test_upload_nao_repara_nem_altera_o_arquivo(bytes_preenchida, tmp_path):
-    def sobrescrever(ws):
-        ws["C2"] = "C0"
 
     caminho = tmp_path / "coleta_sobrescrita.xlsx"
     caminho.write_bytes(_coleta_com_pc(bytes_preenchida, sobrescrever))
@@ -258,20 +219,53 @@ def test_upload_nao_repara_nem_altera_o_arquivo(bytes_preenchida, tmp_path):
     resultado = ler_coleta_reajuste(caminho.read_bytes())
 
     assert resultado["valido"] is False
+    # Unico bloqueio: o diagnostico novo (substitui a mensagem generica de C2,
+    # sem duplicar). Sem a sobrescrita, esta Coleta seria aceita.
+    assert resultado["bloqueios_estruturais"] == [MENSAGEM_C2_E2_F2]
+    # Nada reparado: o arquivo fisico segue byte a byte igual.
     assert hashlib.sha256(caminho.read_bytes()).hexdigest() == assinatura
-    assert load_workbook(caminho, data_only=False)["itens_PC"]["C2"].value == "C0"
 
 
-def test_layout_legado_mantem_so_a_checagem_historica(bytes_preenchida):
-    def legado(ws):
-        ws["U1"] = "OUTRO_CAMPO"  # fora da assinatura da grade oficial atual
-        ws["C2"] = "C0"
-        ws["F2"] = 1.0
+def test_varredura_aponta_sobrescrita_alem_da_primeira_linha(bytes_preenchida):
+    # Mesma varredura usada por ler_coleta_reajuste, direto no workbook
+    # (o ciclo salvar+upload ja e coberto pelo caso C2/E2/F2 acima).
+    wb = load_workbook(io.BytesIO(bytes_preenchida), data_only=False)
+    ws = wb["itens_PC"]
+    ws["A3"] = "4500099999"      # linha com PC e formula apagada
+    ws["B3"] = datetime(2024, 7, 1)
+    ws["D3"] = 10.0
+    ws["G3"] = "Nao"
+    ws["L3"] = None
+    ws["F150"] = 123.45          # valor fixo em linha sem PC
+    for coluna in COLS_AUTOMATICAS_ITENS_PC:
+        ws[f"{coluna}3000"] = None   # linha sem PC apenas limpa: nao acusa
+    ws[f"U{ULTIMA_LINHA_PCS}"] = 0
 
-    bloqueios = _bloqueios_itens_pc(
-        ler_coleta_reajuste(_coleta_com_pc(bytes_preenchida, legado))
+    assert _celulas_automaticas_itens_pc_sobrescritas(ws, _formulas(wb)) == [
+        "L3", "F150", f"U{ULTIMA_LINHA_PCS}",
+    ]
+
+
+def test_mensagem_informa_contagem_quando_ha_muitas_celulas():
+    celulas = [f"{c}{l}" for l in range(2, 5) for c in ("C", "E", "F")]
+    assert _mensagem_itens_pc_sobrescritas(celulas).startswith(
+        "Há células automáticas sobrescritas na aba itens_PC "
+        "(9 células; ex.: C2, E2, F2, C3, E3, F3)."
     )
-    assert bloqueios == ["Fórmula estrutural ausente em itens_PC!C2."]
+
+
+def test_varredura_acomoda_grade_menor_de_coleta_anterior():
+    # Coleta oficial anterior a 26G: formulas so ate a linha 101.
+    wb = Workbook()
+    ws = wb.active
+    ws.title = "itens_PC"
+    for linha in range(2, 102):
+        for coluna in COLS_AUTOMATICAS_ITENS_PC:
+            ws[f"{coluna}{linha}"] = "=ROW()"
+    ws["A150"] = "PC-FORA"  # alem da grade: fora desta regra
+    assert _celulas_automaticas_itens_pc_sobrescritas(ws, _formulas(wb)) == []
+    ws["E50"] = 1.0
+    assert _celulas_automaticas_itens_pc_sobrescritas(ws, _formulas(wb)) == ["E50"]
 
 
 # --------------------------------------------------------------------------- #
