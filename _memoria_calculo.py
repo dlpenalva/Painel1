@@ -13,8 +13,13 @@ Tipos de registro:
     MES       - competencia mensal; N = taxa mensal como decimal (0,45% -> 0.0045);
                 O/P somente quando ja existem na memoria (ICTI); Q vazio.
     INDICE    - IST: numero-indice inicial (ordem 1) e final (ordem 2) em N.
+    VARIACAO_BRUTA - memoria tecnica (regra petrea do percentual oficial):
+                P = fator bruto do indice; Q = variacao bruta sem perda de
+                precisao. Presente SO quando o fechamento em 2 casas alterou
+                o numero; NAO alimenta nenhum calculo financeiro.
     RESULTADO - ultima linha do ciclo; P = fator final; Q = variacao final
-                canonica do payload; R = metodologia/fonte canonica.
+                canonica do payload (percentual OFICIAL fechado em 2 casas);
+                R = metodologia/fonte canonica.
 """
 
 from __future__ import annotations
@@ -23,6 +28,14 @@ from datetime import date, datetime
 from typing import Any
 
 from openpyxl.styles import PatternFill
+
+from _reajuste_utils import fechar_percentual_oficial
+
+TIPO_VARIACAO_BRUTA = "VARIACAO_BRUTA"
+FONTE_VARIACAO_BRUTA = (
+    "Memória técnica: variação bruta do índice — não alimenta os cálculos "
+    "financeiros (percentual oficial fechado em 2 casas)"
+)
 
 CABECALHOS_MEMORIA_CALCULO = (
     "CICLO", "TIPO_REGISTRO", "ORDEM", "COMPETENCIA", "VALOR_INDICE",
@@ -140,6 +153,29 @@ def normalizar_memoria_calculo(
     if not registros:
         return None
 
+    # Regra petrea: a precisao bruta do indice permanece como MEMORIA quando
+    # o fechamento em 2 casas a alterou. Tratamentos que substituem o
+    # percentual (precluso, neutralizacao, acordo) nao se confundem com o
+    # fechamento e seguem sem esta linha.
+    bruta = _numero(res.get("variacao", res.get("var")))
+    final = _numero(variacao_final)
+    if (
+        bruta is not None
+        and final is not None
+        and bruta != final
+        and fechar_percentual_oficial(bruta) == final
+    ):
+        registros.append({
+            "tipo": TIPO_VARIACAO_BRUTA,
+            "ordem": len(registros) + 1,
+            "competencia": None,
+            "valor_indice": None,
+            "fator_mensal": None,
+            "fator_acumulado": 1.0 + bruta,
+            "variacao_final": bruta,
+            "metodo_fonte": FONTE_VARIACAO_BRUTA,
+        })
+
     registros.append({
         "tipo": "RESULTADO",
         "ordem": len(registros) + 1,
@@ -218,14 +254,19 @@ def escrever_memoria_calculo(ws_parametros, ciclos: dict[str, Any]) -> None:
         if fator_mensal is not None:
             ws_parametros[f"O{linha}"] = fator_mensal
             ws_parametros[f"O{linha}"].number_format = "0.000000"
+        bruta = tipo == TIPO_VARIACAO_BRUTA
         fator_acumulado = _numero(registro.get("fator_acumulado"))
         if fator_acumulado is not None:
             ws_parametros[f"P{linha}"] = fator_acumulado
-            ws_parametros[f"P{linha}"].number_format = "0.000000"
+            ws_parametros[f"P{linha}"].number_format = (
+                "0.000000000000" if bruta else "0.000000"
+            )
         variacao = _numero(registro.get("variacao_final"))
         if variacao is not None:
             ws_parametros[f"Q{linha}"] = variacao
-            ws_parametros[f"Q{linha}"].number_format = "0.00%"
+            ws_parametros[f"Q{linha}"].number_format = (
+                "0.000000000000%" if bruta else "0.00%"
+            )
         metodo_fonte = registro.get("metodo_fonte")
         if metodo_fonte:
             ws_parametros[f"R{linha}"] = str(metodo_fonte)

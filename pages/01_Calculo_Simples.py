@@ -59,6 +59,8 @@ from _reajuste_utils import (
     _parse_moeda_br,
     SITUACAO_SEM_PEDIDO,
     classificar_pedido_por_data_exata,
+    fator_oficial,
+    fechar_percentual_oficial,
     referencia_exata_pedido_subsequente,
     resolver_tratamento_variacao_negativa,
     situacao_com_tratamento_variacao_negativa,
@@ -1792,7 +1794,6 @@ render_aviso_fallback_indice(validacao_indice)
 
 if res:
     v_fmt = f"{res['variacao']*100:,.2f}%".replace('.', ',')
-    fator_ciclo = 1 + res['variacao']
     st.metric("Variação Apurada", v_fmt)
 
     st.markdown("### Dados do Ciclo")
@@ -1815,8 +1816,10 @@ if res:
     superacao_negocial = False
     percentual_indice = float(res['variacao'])
     ciclo_negativo = percentual_indice < 0
-    percentual_aplicado = 0.0 if ciclo_negativo else percentual_indice
-    fator_ciclo_efetivo = 1.0 if ciclo_negativo else float(fator_ciclo)
+    # REGRA PETREA: percentual oficial do ciclo fechado em 2 casas; o fator
+    # proprio deriva SOMENTE dele (a variacao bruta fica como memoria).
+    percentual_aplicado = 0.0 if ciclo_negativo else fechar_percentual_oficial(percentual_indice)
+    fator_ciclo_efetivo = 1.0 if ciclo_negativo else fator_oficial(percentual_indice)
     situacao_automatica = status_ped
     situacao_aplicada = status_ped
     tratamento_negativo = "Ciclo negativo - percentual aplicado 0,00% no acumulado" if ciclo_negativo else ""
@@ -1884,8 +1887,8 @@ if res:
                 )
                 if not justificativa_negocial.strip():
                     st.info("A justificativa deve ser preenchida para fins de memória processual antes da instrução final.")
-                percentual_aplicado = float(percentual_manual_pct) / 100
-                fator_ciclo_efetivo = 1 + percentual_aplicado
+                percentual_aplicado = fechar_percentual_oficial(float(percentual_manual_pct) / 100)
+                fator_ciclo_efetivo = fator_oficial(percentual_aplicado)
                 situacao_aplicada = "🟣 CICLO ADMITIDO POR NEGOCIAÇÃO ENTRE AS PARTES"
         if not superacao_negocial:
             percentual_aplicado = 0.0

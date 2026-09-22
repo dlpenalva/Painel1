@@ -36,7 +36,11 @@ from openpyxl.utils import get_column_letter
 from dateutil.relativedelta import relativedelta
 
 from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
-from _reajuste_utils import FUSO_BRASILIA
+from _reajuste_utils import (
+    FUSO_BRASILIA,
+    percentual_contexto_oficial,
+    percentual_oficial_do_payload,
+)
 
 ROOT = Path(__file__).resolve().parent
 TEMPLATE_COLETA_OFICIAL = ROOT / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
@@ -885,20 +889,15 @@ def _numero_ciclo(valor: Any) -> int | None:
 
 
 def _percentual(ciclo: dict[str, Any]) -> float | None:
-    for chave in ("percentual_aplicado", "percentual_indice", "percentual", "variacao"):
-        valor = ciclo.get(chave)
-        if valor in (None, "") or isinstance(valor, bool):
-            continue
-        try:
-            numero = float(valor)
-        except (TypeError, ValueError):
-            continue
-        return numero / 100 if abs(numero) > 1 else numero
-    try:
-        fator = float(ciclo.get("fator"))
-    except (TypeError, ValueError):
-        return None
-    return fator - 1 if fator >= 0.5 else fator
+    """Percentual OFICIAL do ciclo gravado em parametros!E.
+
+    Toda a cadeia do XLS (fatores, historico_VU, itens, financeiro,
+    RESULTADOS) deriva de parametros!E; por isso o valor sai daqui SEMPRE
+    fechado em 2 casas (regra petrea), inclusive quando o payload so traz a
+    variacao bruta ou o fator. Idempotente para payloads ja oficiais.
+    Negativo pendente (percentual_aplicado=None) permanece ``None``.
+    """
+    return percentual_oficial_do_payload(ciclo)
 
 
 def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]:
@@ -991,6 +990,13 @@ def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]
         # blocos teoricos de 12 meses para tras (comportamento preservado).
         inicios[numero] = inicios[numero + 1] - relativedelta(months=12)
 
+    # Ciclo historico informado SOMENTE no contexto contratual anterior (ex.:
+    # analise de C2 com C1 ja formalizado): o percentual entra na cadeia do
+    # XLS (parametros!E -> F historico) e sempre OFICIAL, nunca bruto.
+    contexto = origem.get("contexto_contratual_anterior") or {}
+    ciclo_contexto = _numero_ciclo(contexto.get("ultimo_ciclo_concedido"))
+    percentual_contexto = percentual_contexto_oficial(contexto)
+
     ciclos = []
     for numero in range(1, ultimo + 1):
         bruto = fornecidos.get(numero, {})
@@ -1019,7 +1025,11 @@ def normalizar_dados_calculadora(dados: dict[str, Any] | None) -> dict[str, Any]
             # COMPETENCIA (dia 1). O gerador apenas a propaga; nao recria
             # tempestividade, negociacao ou excecoes.
             "inicio_efeito_financeiro": _efeito_competencia(numero),
-            "percentual": _percentual(bruto),
+            "percentual": (
+                percentual_contexto
+                if numero not in fornecidos and numero == ciclo_contexto
+                else _percentual(bruto)
+            ),
             "possui_efeito_financeiro": "Sim" if objeto_atual else "Não",
             "situacao": bruto.get("situacao_aplicada") or bruto.get("situacao") or "",
             # Apresentacao TEMPESTIVO*: flag interna (a exibicao usa o

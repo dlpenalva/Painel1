@@ -64,6 +64,8 @@ from _reajuste_utils import (
     _percentual_formatado,
     SITUACAO_SEM_PEDIDO,
     classificar_pedido_por_data_exata,
+    fator_oficial,
+    fechar_percentual_oficial,
     referencia_exata_pedido_subsequente,
     resolver_tratamento_variacao_negativa,
     situacao_com_tratamento_variacao_negativa,
@@ -2440,10 +2442,12 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
         ciclo_calculado = False
 
         if res_c:
-            fator_indice = 1 + res_c['var']
             percentual_indice = float(res_c['var'])
+            # REGRA PETREA: cada ciclo e fechado em 2 casas ANTES da
+            # composicao; fator_acum e o produto dos fatores OFICIAIS.
+            fator_indice = fator_oficial(percentual_indice)
             ciclo_negativo = percentual_indice < 0
-            percentual_aplicado = 0.0 if ciclo_negativo else percentual_indice
+            percentual_aplicado = 0.0 if ciclo_negativo else fechar_percentual_oficial(percentual_indice)
             situacao_aplicada = sit_emoji
             tratamento_negativo = "Ciclo negativo - percentual aplicado 0,00% no acumulado" if ciclo_negativo else ""
             if situacao_limpa == "PRECLUSO":
@@ -2454,8 +2458,8 @@ for idx_ciclo, dados_ciclo in enumerate(input_ciclos):
                     f"assinatura_variacao_negativa_multiplos_c{i}", None
                 )
             if situacao_limpa == "PRECLUSO" and superacao_negocial:
-                percentual_aplicado = percentual_negocial
-                fator_ciclo = 1 + percentual_aplicado
+                percentual_aplicado = fechar_percentual_oficial(percentual_negocial)
+                fator_ciclo = fator_oficial(percentual_aplicado)
                 situacao_aplicada = "🟣 CICLO ADMITIDO POR NEGOCIAÇÃO ENTRE AS PARTES"
             elif situacao_limpa == "PRECLUSO":
                 percentual_aplicado = 0.0

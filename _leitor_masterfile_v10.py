@@ -448,8 +448,118 @@ def _ler_parametros_v10(wb) -> dict[str, Any]:
     if not resultado["ciclos"]:
         resultado["alertas"].append("parametros: nenhum ciclo C0-C4 preenchido.")
 
+    _oficializar_parametros_v10(resultado, fator_proprio_e_percentual=bool(percentual_fallback))
     resultado["ok"] = bool(resultado["ciclos"])
     return resultado
+
+
+def _numero_parametro(valor: Any) -> float | None:
+    """Numero literal de parametros (numero, ou texto '4,05%'/'0,0405')."""
+    if valor in (None, "") or isinstance(valor, bool):
+        return None
+    if isinstance(valor, (int, float)):
+        return float(valor)
+    texto = str(valor).strip().replace("%", "").replace(" ", "")
+    if "," in texto:
+        texto = texto.replace(".", "").replace(",", ".")
+    try:
+        return float(texto)
+    except ValueError:
+        return None
+
+
+def _oficializar_parametros_v10(
+    resultado: dict[str, Any], *, fator_proprio_e_percentual: bool
+) -> None:
+    """REGRA PETREA na FRONTEIRA DE LEITURA: o runtime so recebe o oficial.
+
+    O arquivo fisico NAO e alterado. Uma Coleta legada pode trazer em
+    parametros o percentual BRUTO (0,0405218788...) e o FATOR_ACUMULADO
+    calculado sobre ele; daqui em diante:
+
+    * ``percentual_reajuste`` = percentual fechado em 2 casas (mesma unidade
+      do arquivo); o bruto fica em ``percentual_reajuste_bruto`` (memoria);
+    * ``fator_acumulado`` = cadeia RECONSTRUIDA pelo produto dos fatores
+      oficiais de cada ciclo (espelho de parametros!F), nunca o fator bruto
+      gravado — que fica em ``fator_acumulado_bruto``. Sem percentual
+      suficiente para reconstruir, o valor lido e mantido (sem inventar);
+    * ``fator_proprio`` segue a mesma regra (percentual ou fator oficial).
+
+    Consumidores (PC, objeto do processo, documentos, VTA sombra) recebem os
+    valores ja oficiais — nenhum precisa de regra propria.
+    """
+    from _reajuste_utils import (
+        cadeia_fatores_oficiais,
+        fator_oficial_de_fator,
+        fechar_percentual_na_unidade,
+        tem_precisao_superior_a_oficial,
+    )
+
+    por_ciclo = resultado.get("por_ciclo") or {}
+    percentuais: list[float | None] = []
+    for indice in range(5):
+        reg = por_ciclo.get(f"C{indice}")
+        if reg is None:
+            break
+        bruto = _numero_parametro(reg.get("percentual_reajuste"))
+        reg["percentual_reajuste_bruto"] = reg.get("percentual_reajuste")
+        if bruto is None:
+            percentuais.append(None)
+        else:
+            oficial = fechar_percentual_na_unidade(bruto)
+            decimal_bruto = bruto / 100 if abs(bruto) > 1 else bruto
+            if tem_precisao_superior_a_oficial(decimal_bruto):
+                # Sinal estruturado para a politica de entrega: os valores ja
+                # calculados pelo Excel neste arquivo usam a regra anterior.
+                resultado.setdefault("ciclos_precisao_bruta", []).append(f"C{indice}")
+                resultado["alertas"].append(
+                    f"parametros: percentual de C{indice} com precisao bruta "
+                    f"({bruto!r}); o runtime usa o percentual OFICIAL "
+                    f"({oficial!r}). Valores ja calculados pelo Excel neste "
+                    "arquivo derivam do percentual bruto: regere a Coleta."
+                )
+            reg["percentual_reajuste"] = oficial
+            percentuais.append(oficial / 100 if abs(bruto) > 1 else oficial)
+
+        fator_proprio = _numero_parametro(reg.get("fator_proprio"))
+        reg["fator_proprio_bruto"] = reg.get("fator_proprio")
+        if fator_proprio_e_percentual:
+            reg["fator_proprio"] = reg["percentual_reajuste"]
+        elif fator_proprio is not None and bruto is None and fator_proprio >= 0.5:
+            # Sem percentual do ciclo: nenhum percentual e inferido de um
+            # fator gravado; o bruto fica so em memoria (fail-closed).
+            reg["fator_proprio"] = None
+        elif fator_proprio is not None:
+            reg["fator_proprio"] = (
+                fator_oficial_de_fator(fator_proprio)
+                if fator_proprio >= 0.5
+                else fechar_percentual_na_unidade(fator_proprio)
+            )
+
+    # So SUBSTITUI um fator acumulado efetivamente gravado (bruto -> oficial).
+    # Coleta nunca recalculada (F sem valor) continua sem fator: ausencia
+    # permanece ausencia (fail-closed preservado; nada e inventado aqui).
+    #
+    # SEM percentual suficiente para reconstruir a cadeia: o fator gravado NAO
+    # permanece no campo canonico (um FATOR_ACUMULADO isolado pode compor mais
+    # de um ciclo; nao se infere percentual dele). Fica so em *_bruto, com
+    # diagnostico de dado legado/incompleto — fail-closed.
+    cadeia = cadeia_fatores_oficiais(percentuais) if percentuais else []
+    for indice, fator in enumerate(cadeia):
+        reg = por_ciclo[f"C{indice}"]
+        gravado = reg.get("fator_acumulado")
+        reg["fator_acumulado_bruto"] = gravado
+        if _numero_parametro(gravado) is None:
+            continue
+        if fator is not None:
+            reg["fator_acumulado"] = fator
+        else:
+            reg["fator_acumulado"] = None
+            resultado["alertas"].append(
+                f"parametros: C{indice} tem FATOR_ACUMULADO gravado ({gravado!r}) "
+                "sem percentual do ciclo suficiente para reconstruir a cadeia "
+                "oficial; o fator nao e usado (dado legado/incompleto)."
+            )
 
 
 def _ler_itens_consumidos_v10(wb) -> dict[str, Any]:

@@ -17,7 +17,11 @@ from openpyxl import load_workbook
 from _coleta_reajuste import ler_coleta_reajuste
 from _contexto_coleta import ContextoColeta
 from _leitor_masterfile_v10 import ler_masterfile_v10
-from _politica_entrega_segura import avaliar_entrega_segura
+from _politica_entrega_segura import (
+    MENSAGEM_COLETA_PRECISAO_ANTERIOR,
+    avaliar_entrega_segura,
+)
+from _reajuste_utils import cadeia_fatores_oficiais, fechar_percentual_na_unidade
 from _reconciliacao_xls_python import campos_nao_confiaveis_para_documentos
 from _resultado_consolidado import montar_resultado_consolidado
 from _seguranca_xlsx import (
@@ -48,6 +52,16 @@ def _numero_opcional(valor: Any) -> float | None:
     return _numero(valor, None)  # type: ignore[arg-type]
 
 
+def _variacao_oficial(valor: Any) -> float:
+    """Percentual do ciclo lido de parametros!E, sempre OFICIAL (2 casas).
+
+    Uma Coleta legada com E bruto (0,0405218...) chega ao runtime como 0,0405;
+    ausencia segue o comportamento historico de ``_numero`` (0,0).
+    """
+    numero = _numero_opcional(valor)
+    return fechar_percentual_na_unidade(numero) if numero is not None else _numero(valor)
+
+
 def _data_br(valor: Any) -> str:
     if isinstance(valor, datetime):
         return valor.strftime("%d/%m/%Y")
@@ -67,16 +81,23 @@ def _cadeia_fator_acumulado(parametros) -> dict[int, float]:
         F{r} = "" se E{r} nao for numero ou se F{r-1} nao for numero;
                senao F{r-1} * (1 + E{r})
     Linhas sem valor ficam ausentes do dicionario, como a formula deixa "".
+
+    REGRA PETREA: cada E e fechado em 2 casas antes da composicao (fonte
+    unica ``cadeia_fatores_oficiais``); uma Coleta legada com E bruto nao
+    reintroduz o fator bruto no runtime.
     """
-    cadeia: dict[int, float] = {2: 1.0}
-    anterior = 1.0
+    percentuais: list[float | None] = [0.0]
     for row in range(3, 7):
         pct = parametros[f"E{row}"].value
         if isinstance(pct, bool) or not isinstance(pct, (int, float)):
-            break
-        anterior = anterior * (1.0 + float(pct))
-        cadeia[row] = anterior
-    return cadeia
+            percentuais.append(None)
+            continue
+        percentuais.append(float(pct))
+    return {
+        indice + 2: fator
+        for indice, fator in enumerate(cadeia_fatores_oficiais(percentuais))
+        if fator is not None
+    }
 
 
 def _retroativo_python(memoria: dict[str, Any], metodo: str) -> float | None:
@@ -158,8 +179,10 @@ def adaptar_coleta_reajuste_para_documentos(
 
     ciclos_rows = []
     fatores: dict[str, float | None] = {}
-    # Fallback acionado apenas quando a formula nao tem valor calculado: o
-    # valor gravado no arquivo continua tendo precedencia absoluta.
+    # REGRA PETREA: a cadeia recomposta com percentuais OFICIAIS tem
+    # precedencia sobre o F gravado (que numa Coleta legada deriva do
+    # percentual bruto). O F gravado so e usado quando a cadeia nao pode ser
+    # recomposta (percentual ausente).
     cadeia_fator = _cadeia_fator_acumulado(parametros)
     for row in range(2, 7):
         ciclo = str(parametros[f"B{row}"].value or "").upper()
@@ -167,7 +190,9 @@ def adaptar_coleta_reajuste_para_documentos(
             continue
         computar = str(parametros[f"A{row}"].value or "").strip().lower() == "sim"
         fator_gravado = parametros[f"F{row}"].value
-        if fator_gravado in (None, ""):
+        if row in cadeia_fator:
+            fator = cadeia_fator[row]
+        elif fator_gravado in (None, ""):
             fator = cadeia_fator.get(row)
             # C0 e ciclos fora da apuracao preservam o fallback historico de
             # apresentacao. Em ciclo efetivamente computado, ausencia da cadeia
@@ -186,7 +211,7 @@ def adaptar_coleta_reajuste_para_documentos(
                 "Data do pedido": "",
                 "Situação": parametros[f"G{row}"].value or "",
                 "Tratamento financeiro do ciclo": "Apurar" if str(parametros[f"A{row}"].value).lower() == "sim" else "Fora da apuração",
-                "Variação": _numero(parametros[f"E{row}"].value),
+                "Variação": _variacao_oficial(parametros[f"E{row}"].value),
                 "Fator": fator,
                 "Fator acumulado": fator,
                 "Fator acumulado efetivo": fator,
@@ -581,9 +606,17 @@ def aplicar_bloqueio_documental(capacidades: dict[str, Any], bloqueios: list[str
     apenas mantem a formalizacao condicionada e o alerta visivel. Qualquer
     outro bloqueio (inclusive coleta estruturalmente invalida, ja tratada a
     montante) continua bloqueando todos os documentos, como hoje.
+
+    REGRA PETREA — Coleta com precisao de reajuste anterior a regra vigente:
+    os valores financeiros gravados no arquivo (VTA, retroativo) foram
+    calculados com o percentual/fator bruto. Nenhum documento formalizador
+    pode ser gerado com eles — nem Sumario, Saneador ou Apostila — e o motivo
+    exibido e a orientacao canonica de regenerar a Coleta.
     """
     if not bloqueios:
         return capacidades
+    precisao_anterior = MENSAGEM_COLETA_PRECISAO_ANTERIOR in bloqueios
+    motivo = MENSAGEM_COLETA_PRECISAO_ANTERIOR if precisao_anterior else bloqueios[0]
     for chave, documento in (capacidades.get("documentos") or {}).items():
         # Documentos diagnosticos (Sumario, Saneador, Apostila) permanecem
         # DISPONIVEIS diante de QUALQUER bloqueio de FORMALIZACAO — divergencia
@@ -591,13 +624,13 @@ def aplicar_bloqueio_documental(capacidades: dict[str, Any], bloqueios: list[str
         # Disponibilidade documental != aptidao para formalizar: a formalizacao
         # segue condicionada e o alerta permanece visivel. Coleta estruturalmente
         # invalida ja foi barrada a montante (nao chega aqui).
-        if chave in DOCS_LIBERADOS_APESAR_DIVERGENCIA:
+        if chave in DOCS_LIBERADOS_APESAR_DIVERGENCIA and not precisao_anterior:
             continue
         documento["habilitado"] = False
         documento["estado"] = "bloqueado"
         documento["rotulo"] = "Bloqueado para formalização"
         documento["classificacao"] = "BLOQUEADO PARA FORMALIZAÇÃO"
-        documento["motivo"] = bloqueios[0]
+        documento["motivo"] = motivo
     return capacidades
 
 

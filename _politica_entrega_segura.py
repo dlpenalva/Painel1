@@ -11,6 +11,15 @@ STATUS_FORMALIZACAO = "APTO_PARA_FORMALIZACAO"
 
 _METODOS = ("financeiro", "pc", "consumidos")
 
+# Coleta gerada antes da regra petrea do percentual oficial (2 casas): os
+# valores financeiros gravados pelo Excel usam o percentual/fator bruto.
+MENSAGEM_COLETA_PRECISAO_ANTERIOR = (
+    "Esta Coleta foi gerada com precisão de reajuste anterior à regra vigente. "
+    "Os valores financeiros gravados no arquivo podem divergir dos valores "
+    "calculados com o percentual oficial de duas casas. Regere a Coleta e faça "
+    "novo upload antes da formalização."
+)
+
 # STATUS-CANON-1.1: CONTROLE!B1 -> metodo da apuracao. A fonte de execucao a
 # consultar depende dele; nao existe fonte universal.
 _MODO_PARA_METODO = {
@@ -205,6 +214,17 @@ def avaliar_entrega_segura(
     composicao = leitura.get("composicao_vta") or {}
     if composicao.get("bloqueia_formalizacao"):
         bloqueios.append("A composição do valor contratual possui diferença material pendente.")
+    # REGRA PETREA — Coleta antiga (metodo Financeiro): os valores financeiros
+    # gravados pelo Excel foram calculados com o percentual/fator BRUTO do
+    # ciclo. O runtime nao os recalcula silenciosamente; a leitura e o
+    # diagnostico seguem disponiveis, mas a formalizacao fica bloqueada ate a
+    # Coleta ser regenerada pela regra vigente. (No metodo PC o mesmo efeito
+    # ja decorre da reconciliacao XLS x Python.)
+    ciclos_precisao_bruta = list(
+        (leitura.get("parametros_v10") or {}).get("ciclos_precisao_bruta") or []
+    )
+    if _metodo_da_apuracao(leitura) == "financeiro" and ciclos_precisao_bruta:
+        bloqueios.append(MENSAGEM_COLETA_PRECISAO_ANTERIOR)
     posicao = leitura.get("posicao_contratual") or {}
     # VTA-C2.2 (item 8-10): posicao_contratual e derivada de itens_Remanesc,
     # sheet exclusiva de Financeiro/PC. No metodo Consumido ela e legitimamente

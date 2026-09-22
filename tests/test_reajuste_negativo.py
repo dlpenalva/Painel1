@@ -51,7 +51,7 @@ import _indice_utils
 
 ANOS_NEGATIVOS = {sorted(anos_negativos)!r}
 
-def _ist_deterministico(data_inicio):
+def _ist_deterministico(data_inicio, *args, **kwargs):
     inicio = pd.Timestamp(data_inicio).replace(day=1)
     fim = inicio + pd.DateOffset(months=12)
     variacao = -0.02 if inicio.year in ANOS_NEGATIVOS else 0.05
@@ -258,7 +258,9 @@ def test_meses_negativos_isolados_nao_abrem_decisao_se_final_for_positivo():
     assert percentual_final > 0
     resolvido = resolver_tratamento_variacao_negativa(percentual_final)
     assert resolvido["pendente"] is False
-    assert resolvido["percentual_aplicado"] == percentual_final
+    # Regra petrea: o bruto fica como memoria; o aplicado e o oficial (2 casas).
+    assert resolvido["percentual_indice"] == percentual_final
+    assert resolvido["percentual_aplicado"] == 0.0401
 
 
 def test_calculadora_simples_exige_decisao_e_invalida_estado_no_novo_resultado():

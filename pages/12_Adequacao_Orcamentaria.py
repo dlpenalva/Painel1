@@ -48,6 +48,7 @@ from _adequacao_ui import (
     moeda,
     parse_moeda_br,
     pct,
+    percentual_e_fator_da_adequacao,
     texto_seguro,
     extrair_contexto_valores,
     carregar_itens_pc_da_sessao,
@@ -343,10 +344,10 @@ with tab_base:
                  "automaticamente da apuração e permanece em grandeza separada.")
         percentual_txt = st.text_input("Ajustar percentual de reajuste aplicado",
                                        value=pct(ctx["variacao"]), key="adequacao_v3_percentual")
-        percentual_prev = (float(ctx["variacao"])
-                           if (tem_apuracao and percentual_txt == pct(ctx["variacao"]))
-                           else parse_moeda_br(percentual_txt) / 100)
-        st.caption(f"Fator usado: {(1 + percentual_prev):.6f}".replace(".", ",")
+        _percentual_prev, fator_prev = percentual_e_fator_da_adequacao(
+            ctx["variacao"], tem_apuracao, percentual_txt
+        )
+        st.caption(f"Fator usado: {fator_prev:.6f}".replace(".", ",")
                    + " · informação técnica (não é necessária no fluxo normal).")
         st.markdown("**Metodologia do Valor Total Atualizado importado**")
         st.caption(_metodologia_valor_importado_texto(resultado))
@@ -359,11 +360,10 @@ with tab_base:
     # 0.028899355) so e substituido quando o usuario EDITA o campo. O
     # round-trip float -> "2,89%" -> float degradava o fator e o valor
     # reajustado; percentual exibido e apresentacao, nunca fonte matematica.
-    if tem_apuracao and percentual_txt == pct(ctx["variacao"]):
-        percentual_reajuste = float(ctx["variacao"])
-    else:
-        percentual_reajuste = parse_moeda_br(percentual_txt) / 100
-    fator_reajuste = 1 + percentual_reajuste
+    # REGRA PETREA: ajuste manual passa pela fonte canonica (2 casas).
+    percentual_reajuste, fator_reajuste = percentual_e_fator_da_adequacao(
+        ctx["variacao"], tem_apuracao, percentual_txt
+    )
 
 
 # ================================================================ TAB 2 — HISTORICO

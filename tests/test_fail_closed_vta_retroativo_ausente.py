@@ -225,7 +225,13 @@ def test_d_goldens_reais_inalterados(caminho, ciclos_esperados):
     assert consolidado["status_confiabilidade"] == "VALIDADO"
     assert consolidado["status_apuracao"]["codigo"] == "VALIDADO"
     assert consolidado["status_apuracao"]["origem"] == "resultados_xls"
-    assert consolidado["formalizacao"]["bloqueada"] is False
+    # Regra petrea do percentual oficial: estes goldens sao Coletas ANTIGAS
+    # (percentual bruto no C3). Apuracao, VTA e retroativo seguem intactos,
+    # mas a formalizacao fica bloqueada ate a Coleta ser regenerada.
+    from _politica_entrega_segura import MENSAGEM_COLETA_PRECISAO_ANTERIOR
+
+    assert consolidado["formalizacao"]["bloqueada"] is True
+    assert consolidado["formalizacao"]["mensagem"] == MENSAGEM_COLETA_PRECISAO_ANTERIOR
     assert diagnostico["metadados"]["ciclos_em_analise"] == ciclos_esperados
 
 
