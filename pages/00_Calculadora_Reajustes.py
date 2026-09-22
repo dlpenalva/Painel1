@@ -80,6 +80,13 @@ ICONE_LAMPADA = (
     "</svg>"
 )
 
+ICONE_ATENCAO = (
+    _SVG_ABRE
+    + '<circle cx="16" cy="16" r="11.5"/>'
+    '<path d="M16 10v7.5"/><path d="M16 22h.01"/>'
+    "</svg>"
+)
+
 SETA_ETAPA = (
     '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" '
     'stroke="currentColor" stroke-width="1.9" stroke-linecap="round" '
@@ -135,6 +142,13 @@ def _estilos_home() -> None:
         ".home-hero-linha{display:flex;align-items:center;flex-wrap:wrap;gap:.45rem .75rem;}"
         ".home-hero h1{color:var(--cl8us-navy);font-size:1.6rem;letter-spacing:-.015em;margin:0;padding:0;}"
         ".home-hero .cl8us-page-privacy{font-size:.65rem;padding:.18rem .5rem;}"
+        # -- Alerta permanente sobre apuracoes anteriores (ambar suave) -------
+        ".home-alerta{align-items:flex-start;background:#FFF8E7;border:1px solid rgba(183,121,31,.26);"
+        "border-radius:13px;display:flex;gap:.7rem;margin:-.4rem 0 .95rem;padding:.62rem .9rem .66rem;}"
+        ".home-alerta .home-ico{background:#FCEBC4;color:#9A6414;height:30px;width:30px;}"
+        ".home-alerta h2{color:#6B4610;font-size:.9rem;font-weight:800;margin:.08rem 0 .16rem;padding:0;}"
+        ".home-alerta p{color:#5E4B26;font-size:.86rem;line-height:1.4;margin:0;}"
+        ".home-alerta p strong{color:#6B4610;font-weight:700;}"
         # -- Tres etapas: compactas, horizontais, mesma altura ---------------
         ".home-fluxo{display:flex;align-items:stretch;gap:.35rem;margin:0 0 .85rem;}"
         ".home-etapa{background:#FFFFFF;border:1px solid rgba(18,59,99,.13);border-radius:13px;"
@@ -207,6 +221,23 @@ def _render_hero() -> None:
     )
 
 
+def _render_alerta_apuracoes_anteriores() -> None:
+    """Orientacao permanente e puramente textual: nao detecta versao do XLS,
+    nao compara arquivos e nao bloqueia upload nem formalizacao."""
+    st.markdown(
+        '<aside class="home-alerta" role="note" aria-label="Atenção ao utilizar apurações anteriores">'
+        f'<span class="home-ico">{ICONE_ATENCAO}</span>'
+        "<div><h2>Atenção ao utilizar apurações anteriores</h2>"
+        "<p>O cl8us e seus arquivos de cálculo são continuamente atualizados. "
+        "Por isso, uma Coleta/XLS gerada em versão anterior pode ter sido "
+        "processada com parâmetros ou premissas diferentes dos atualmente adotados. "
+        "<strong>Para novas análises ou formalizações, recomenda-se refazer a "
+        "apuração desde a Calculadora.</strong></p></div>"
+        "</aside>",
+        unsafe_allow_html=True,
+    )
+
+
 def _render_fluxo() -> None:
     """Tres etapas ligadas por setas discretas. Bloco puramente explicativo:
     sem botoes e sem links — a navegacao permanece no menu lateral."""
@@ -226,6 +257,7 @@ def _render_fluxo() -> None:
 
 _estilos_home()
 _render_hero()
+_render_alerta_apuracoes_anteriores()
 _render_fluxo()
 
 coluna_coleta, coluna_dica = st.columns([2.3, 1], gap="medium")
