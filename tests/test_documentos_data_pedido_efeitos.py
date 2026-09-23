@@ -235,11 +235,12 @@ def test_termo_de_apostila_declara_a_mesma_perda():
         )
         if p.startswith(FRASE_INICIO)
     ]
+    # No Termo a frase e o item numerado "1.3."; o texto em si e o mesmo.
     frase_termo = [
-        p for p in _paragrafos(
+        p[len("1.3. "):] for p in _paragrafos(
             gerar_termo_apostila(leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO)
         )
-        if p.startswith(FRASE_INICIO)
+        if p.startswith("1.3. " + FRASE_INICIO)
     ]
     assert frase_saneador == frase_termo
     assert len(frase_termo) == 1

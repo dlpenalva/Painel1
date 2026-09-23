@@ -934,11 +934,19 @@ def _frase_perda_efeitos(c: dict, *, nomear_ciclo: bool) -> str | None:
     )
 
 
-def _paragrafos_perda_efeitos(doc: Document, dados: dict) -> None:
+def _paragrafos_perda_efeitos(
+    doc: Document,
+    dados: dict,
+    *,
+    secao: str | None = None,
+    primeiro_item: int = 1,
+) -> None:
     """Declara, ciclo a ciclo, as competencias sem efeitos financeiros.
 
     Compartilhada pelo Despacho Saneador e pelo Termo de Apostila para que os
     dois documentos declarem a mesma perda a partir da mesma fonte temporal.
+    Por padrao os paragrafos saem sem numeracao (Despacho Saneador); o Termo
+    informa `secao` e `primeiro_item` para emiti-los como itens "1.3.", "1.4."
     """
     if dados.get("_modo_branco"):
         p = doc.add_paragraph()
@@ -952,12 +960,16 @@ def _paragrafos_perda_efeitos(doc: Document, dados: dict) -> None:
         return
     ciclos = dados.get("ciclos_computados") or []
     nomear = len(ciclos) > 1
+    numero = primeiro_item
     for c in ciclos:
         frase = _frase_perda_efeitos(c, nomear_ciclo=nomear)
         if not frase:
             continue
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        if secao is not None:
+            frase = f"{secao}.{numero}. {frase}"
+            numero += 1
         _adicionar_run(p, frase)
 
 
@@ -1378,6 +1390,18 @@ def _ta_qualificacao(doc: Document, cm: dict) -> None:
     doc.add_paragraph()
 
 
+TEXTO_CONSIDERANDO_ATA_1869 = (
+    "A deliberação da Diretoria Executiva da Telebras, consignada na Ata da "
+    "1869ª Reunião Ordinária, de 13 de janeiro de 2026, que revogou a "
+    "suspensão anteriormente imposta à tramitação dos reajustes contratuais e "
+    "restabeleceu a normalidade do respectivo processamento;"
+)
+TEXTO_CONSIDERANDO_DUAS_CASAS = (
+    "A adoção, em cada ciclo de reajuste, do respectivo percentual apurado "
+    "com duas casas decimais;"
+)
+
+
 def _ta_considerandos(doc: Document, dados: dict, cm: dict) -> None:
     """CONSIDERANDO do modelo aprovado, com numeracao sempre sequencial.
 
@@ -1409,6 +1433,10 @@ def _ta_considerandos(doc: Document, dados: dict, cm: dict) -> None:
     _adicionar_run(p1,
         ", que disciplina o reajuste contratual, os ciclos de apuração, a "
         "admissibilidade dos pedidos e os respectivos efeitos financeiros;")
+
+    # Deliberacao da Diretoria Executiva (texto institucional fixo; nao depende
+    # de `deliberacao_institucional`, reservado a deliberacao adicional).
+    _adicionar_run(item(), TEXTO_CONSIDERANDO_ATA_1869)
 
     # 2 — solicitacao da CONTRATADA (situacao e data canonicas)
     p3 = item()
@@ -1591,6 +1619,9 @@ def _ta_considerandos(doc: Document, dados: dict, cm: dict) -> None:
     )
     _adicionar_run(p11, ".")
 
+    # Percentual de cada ciclo com duas casas decimais (texto fixo).
+    _adicionar_run(item(), TEXTO_CONSIDERANDO_DUAS_CASAS)
+
     # Itens adicionais permanecem condicionais e vêm depois dos itens fixos.
     if branco:
         p_del = item()
@@ -1599,7 +1630,12 @@ def _ta_considerandos(doc: Document, dados: dict, cm: dict) -> None:
         )
         _run_campo_manual(p_del, "Deliberacao institucional aplicavel")
         _adicionar_run(p_del, ";")
-    elif deliberacao is not None:
+    elif deliberacao is not None and not re.search(
+        r"1869\s*[ªº°a]?\s*(?:reuni|R\.?O\b)", str(deliberacao), re.IGNORECASE
+    ):
+        # A Ata da 1869ª RO ja e emitida como considerando fixo: uma
+        # deliberacao adicional que a repita nao gera item duplicado. Apenas
+        # citar o numero (ex.: um processo "1869/2026") nao a descarta.
         p_del = item()
         texto_del = remover_emojis_leve(deliberacao).strip().rstrip(".;")
         _adicionar_run(p_del, texto_del + ";")
@@ -1673,18 +1709,28 @@ def _ta_secao1_reajustes(doc: Document, dados: dict, cm: dict) -> None:
         "Percentual acumulado apurado",
     ])
     _adicionar_tabela(doc, cabecalho, linhas)
-    _paragrafo_percentual_fator(doc, dados, com_exemplo=False)
-    _paragrafos_perda_efeitos(doc, dados)
+    # Itens 1.2 (duas casas decimais) e 1.3+ (perda de efeitos) ficam abaixo do
+    # Quadro 1; a numeracao pertence ao Termo, nao ao Despacho Saneador.
+    _paragrafo_percentual_fator(doc, dados, com_exemplo=False, prefixo="1.2. ")
+    _paragrafos_perda_efeitos(doc, dados, secao="1", primeiro_item=3)
     doc.add_paragraph()
 
 
-def _paragrafo_percentual_fator(doc: Document, dados: dict, *, com_exemplo: bool) -> None:
-    """Explicacao do percentual (2 casas) e do fator; texto de fonte unica."""
+def _paragrafo_percentual_fator(
+    doc: Document, dados: dict, *, com_exemplo: bool, prefixo: str = ""
+) -> None:
+    """Explicacao do percentual (2 casas) e do fator; texto de fonte unica.
+
+    `prefixo` permite ao Termo emitir o mesmo texto como item numerado ("1.2. ").
+    """
     if dados.get("_modo_branco"):
         return
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-    _adicionar_run(p, texto_percentual_fator(dados.get("ciclos"), com_exemplo=com_exemplo))
+    _adicionar_run(
+        p,
+        prefixo + texto_percentual_fator(dados.get("ciclos"), com_exemplo=com_exemplo),
+    )
 
 
 def _data_documental(valor: Any) -> str:
@@ -2234,8 +2280,11 @@ def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
             rotulo,
             formatar_moeda(valor) if valor is not None else "",
         ])
+    # O rotulo do Total cita as referencias das parcelas efetivamente presentes
+    # acima, sem quantidade fixa; o valor do Total nao muda.
+    refs_parcelas = [linha[0] for linha in linhas]
     linhas.append([
-        "Total",
+        f"Total ({' + '.join(refs_parcelas)})" if refs_parcelas else "Total",
         "Valor Total Atualizado do Contrato",
         _vta_texto_doc(dados),
     ])
@@ -2272,11 +2321,11 @@ def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
                 else "O retroativo reconhecido"
             )
             _adicionar_run(p,
-                f"{rotulo_retro} de {formatar_moeda(retro)} não é "
-                "somado como parcela autônoma no Quadro 3, pois seus efeitos já "
-                "estão incorporados à execução atualizada considerada na "
-                "composição. Sua inclusão adicional representaria dupla "
-                "contagem.")
+                f"{rotulo_retro} de {formatar_moeda(retro)} já está "
+                "incorporado ao valor da execução atualizada considerado na "
+                "composição do Quadro 3. Por essa razão, ele não é somado "
+                "novamente como parcela separada, pois isso resultaria em "
+                "dupla contagem do mesmo valor.")
     doc.add_paragraph()
 
 
