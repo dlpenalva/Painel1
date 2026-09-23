@@ -187,6 +187,7 @@ def test_apostila_considerandos_na_ordem_aprovada():
     ))
     chaves_ordenadas = (
         "Cláusula Oitava",
+        "1869ª Reunião Ordinária",
         "solicitação da CONTRATADA",
         "informações encaminhadas pela área gestora",
         "memória de cálculo",
@@ -195,6 +196,7 @@ def test_apostila_considerandos_na_ordem_aprovada():
         "certidões de regularidade",
         "adequação orçamentária",
         "Despacho Saneador",
+        "duas casas decimais",
     )
     assert len(considerandos) == len(chaves_ordenadas)
     for numero, (paragrafo, chave) in enumerate(
@@ -203,9 +205,9 @@ def test_apostila_considerandos_na_ordem_aprovada():
         assert paragrafo.startswith(f"{numero}. ")
         assert chave in paragrafo
     texto = "\n".join(considerandos)
-    # A deliberacao institucional deixou de ser afirmada por hardcode.
-    assert "1869ª Reunião Ordinária" not in texto
-    assert "deliberação da Diretoria Executiva" not in texto
+    # A Ata da 1869ª RO e considerando institucional fixo (uma unica vez); a
+    # deliberacao adicional segue dependendo do campo manual.
+    assert texto.count("1869ª Reunião Ordinária") == 1
     assert "10/10/2025" in texto
     assert "TLB-AUT-2025/00100" in texto
     # Considerando herdado do documento antigo: removido do modelo aprovado.
@@ -217,13 +219,13 @@ def test_apostila_considerandos_8_e_9_usam_referencias_sem_inventar_dados():
     completos = _considerandos(gerar_termo_apostila(
         leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO
     ))
-    assert completos[7] == (
-        "8. A manifestação da Gerência Financeira e Orçamentária – GFO "
+    assert completos[8] == (
+        "9. A manifestação da Gerência Financeira e Orçamentária – GFO "
         "relativa à adequação orçamentária da presente atualização contratual, "
         "constante do documento TLB-DES-2026/00300."
     )
-    assert completos[8] == (
-        "9. O Despacho Saneador relativo à presente matéria, constante do "
+    assert completos[9] == (
+        "10. O Despacho Saneador relativo à presente matéria, constante do "
         "documento TLB-DES-2026/00600."
     )
 
@@ -235,8 +237,8 @@ def test_apostila_considerandos_8_e_9_usam_referencias_sem_inventar_dados():
         leitura_multiciclo_pc(), campos_manuais=sem_referencias
     )
     pendentes = _considerandos(termo_pendente)
-    assert "[PREENCHER: Referencia da adequacao orcamentaria]" in pendentes[7]
-    assert "[PREENCHER: Referencia do Despacho Saneador]" in pendentes[8]
+    assert "[PREENCHER: Referencia da adequacao orcamentaria]" in pendentes[8]
+    assert "[PREENCHER: Referencia do Despacho Saneador]" in pendentes[9]
     placeholders = {
         "[PREENCHER: Referencia da adequacao orcamentaria]",
         "[PREENCHER: Referencia do Despacho Saneador]",
@@ -289,12 +291,13 @@ def test_apostila_deliberacao_institucional_condicional_e_sequencial():
     considerandos = _considerandos(gerar_termo_apostila(
         leitura_multiciclo_pc(), campos_manuais=cm
     ))
-    assert considerandos[9].startswith("10. ")
-    assert "Ata nº 1" in considerandos[9]
+    # 11 fixos (incluindo Ata da 1869ª RO e duas casas decimais) + adicional.
+    assert considerandos[11].startswith("12. ")
+    assert "Ata nº 1" in considerandos[11]
     # Numeracao permanece sequencial, sem lacuna.
     for numero, paragrafo in enumerate(considerandos, start=1):
         assert paragrafo.startswith(f"{numero}. ")
-    assert len(considerandos) == 10
+    assert len(considerandos) == 12
 
 
 def test_apostila_instrumentos_posteriores_condicionais():
@@ -302,7 +305,8 @@ def test_apostila_instrumentos_posteriores_condicionais():
         leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO
     ))
     assert not any("instrumentos posteriores considerados" in c for c in sem)
-    assert sem[-1].endswith(".")
+    # Sem instrumentos, o ultimo considerando e o das duas casas decimais.
+    assert sem[-1].endswith("duas casas decimais;")
     cm = dict(CAMPOS_TERMO, instrumentos_posteriores="Termo Aditivo nº 3")
     com = _considerandos(gerar_termo_apostila(
         leitura_multiciclo_pc(), campos_manuais=cm
@@ -1306,7 +1310,8 @@ def test_apostila_modelo_branco_reflete_a_nova_estrutura_sem_afirmar_fato():
     ):
         assert titulo in texto
     assert LABEL_POTENCIAL_PROIBIDO not in texto
-    assert "1869ª Reunião Ordinária" not in texto
+    # Ata da 1869ª RO e texto institucional fixo: integra tambem o modelo.
+    assert texto.count("1869ª Reunião Ordinária") == 1
     assert "[PREENCHER: Deliberacao institucional aplicavel]" in texto
     assert "[PREENCHER: Clausula contratual do reajuste]" in texto
     # Nao afirma potencial, aditivos, apuracao nem VTA apurado.
@@ -1938,8 +1943,8 @@ def test_consumidos_nao_rotula_o_retroativo_como_reconhecido():
         _leitura_consumidos_bruta(), campos_manuais=CAMPOS_TERMO
     ))
     assert "R$ 8.000,00" in texto
-    assert "O retroativo de R$ 8.000,00 não é somado como parcela autônoma" \
-        in texto
+    assert "O retroativo de R$ 8.000,00 já está incorporado ao valor da " \
+        "execução atualizada considerado na composição do Quadro 3" in texto
     assert "retroativo reconhecido" not in texto
 
 
