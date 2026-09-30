@@ -6,6 +6,7 @@ from pathlib import Path
 import pandas as pd
 import streamlit as st
 
+from _versao import CL8US_VERSION, COLETA_VERSION
 from _versao import atualizado_em
 
 
@@ -92,6 +93,8 @@ def render_versao_sidebar():
     """Exibe o carimbo obrigatório da versão efetivamente publicada."""
     st.markdown('<div class="cl8us-version-rule"></div>', unsafe_allow_html=True)
     st.caption(f"Última atualização publicada em {atualizado_em()}")
+    st.caption(f"Cl8us {CL8US_VERSION}")
+    st.caption(f"Modelo de Coleta {COLETA_VERSION}")
 
 
 def _normalizar_mes_ano_ist(valor):

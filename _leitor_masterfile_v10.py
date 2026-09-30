@@ -3795,6 +3795,16 @@ def _detectar_versao(wb) -> str:
     return "v9"
 
 
+def _ler_coleta_version(wb) -> str | None:
+    """Le o marcador publico explicito sem inferir versao pela estrutura."""
+    if "CONTROLE" not in wb.sheetnames:
+        return None
+    valor = _achar_valor(wb["CONTROLE"], "Modelo de Coleta")
+    if valor in (None, ""):
+        return None
+    return str(valor).strip()
+
+
 # ---------------------------------------------------------------------------
 # Entrada publica
 # ---------------------------------------------------------------------------
@@ -3879,6 +3889,9 @@ def ler_masterfile_v10(
         return res
 
     res["versao_detectada"] = _detectar_versao(wb)
+    coleta_version = _ler_coleta_version(wb)
+    if coleta_version is not None:
+        res["coleta_version"] = coleta_version
 
     abas_lower = {a.lower() for a in wb.sheetnames}
 

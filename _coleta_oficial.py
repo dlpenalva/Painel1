@@ -41,6 +41,7 @@ from _reajuste_utils import (
     percentual_contexto_oficial,
     percentual_oficial_do_payload,
 )
+from _versao import CL8US_VERSION, COLETA_VERSION
 
 ROOT = Path(__file__).resolve().parent
 TEMPLATE_COLETA_OFICIAL = ROOT / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
@@ -48,6 +49,43 @@ TEMPLATE_COLETA_OFICIAL = ROOT / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
 NOME_ARQUIVO_COLETA_OFICIAL = "COLETA_REAJUSTE_OFICIAL.xlsx"
 # Nome user-facing entregue nos botoes de download da interface (§15).
 NOME_DOWNLOAD_COLETA = "Coleta_Reajuste.xlsx"
+
+# Marcadores publicos do XLS gerado. As coordenadas foram escolhidas apos
+# confirmar que CONTROLE!A24:B25 nao possui conteudo, formulas, validacoes,
+# nomes definidos, merges, tabelas ou desenhos no template oficial.
+_MARCADORES_VERSAO_COLETA = {
+    "A24": "Modelo de Coleta",
+    "B24": COLETA_VERSION,
+    "A25": "Gerado pelo Cl8us",
+    "B25": CL8US_VERSION,
+}
+
+
+def registrar_versoes_coleta(wb) -> None:
+    """Registra versoes visiveis no XLS sem sobrescrever conteudo existente."""
+    if "CONTROLE" not in wb.sheetnames:
+        raise ValueError("Template oficial invalido; aba CONTROLE ausente.")
+
+    ws = wb["CONTROLE"]
+    conflitos = [
+        coordenada
+        for coordenada, esperado in _MARCADORES_VERSAO_COLETA.items()
+        if ws[coordenada].value not in (None, esperado)
+    ]
+    if conflitos:
+        raise ValueError(
+            "Area reservada aos marcadores de versao nao esta livre: "
+            + ", ".join(conflitos)
+        )
+
+    from openpyxl.styles import Font
+
+    fonte_rotulo = Font(name="Calibri", size=9, italic=True, color="FF666666")
+    fonte_valor = Font(name="Calibri", size=9, color="FF666666")
+    for coordenada, valor in _MARCADORES_VERSAO_COLETA.items():
+        celula = ws[coordenada]
+        celula.value = valor
+        celula.font = fonte_rotulo if coordenada.startswith("A") else fonte_valor
 
 
 def nome_download_coleta(dados_admissibilidade=None):
@@ -924,6 +962,7 @@ def obter_coleta_oficial_bytes() -> bytes:
     _garantir_colunas_tecnicas_itens_pc_ocultas(wb)
     _garantir_protecao_formulas_itens_pc(wb)
     _validar_validacoes_aditivos_criticas(wb)
+    registrar_versoes_coleta(wb)
 
     wb.calculation.calcMode = "auto"
     wb.calculation.fullCalcOnLoad = True

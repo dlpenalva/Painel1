@@ -1,8 +1,17 @@
-"""Carimbo da versao publicada do Master 2.0.
+"""Versoes publicas e carimbo da versao publicada do Cl8us.
 
 O commit mais recente e a fonte primaria no Streamlit Cloud. O fallback deve
 ser atualizado em toda entrega para manter o marcador mesmo quando o Git nao
 estiver disponivel no ambiente de execucao.
+
+Politica de versionamento publico (sempre no formato ``XX.X``):
+
+* mudanca apenas visual, textual ou de interface pode alterar
+  ``CL8US_VERSION`` sem alterar ``COLETA_VERSION``;
+* mudanca estrutural relevante do XLS altera ``COLETA_VERSION``.
+
+``MASTERFILE_VERSION`` continua sendo um marcador tecnico legado onde ainda
+for necessario; nao deve ser substituido automaticamente por estas versoes.
 """
 
 from __future__ import annotations
@@ -12,7 +21,12 @@ from datetime import datetime
 from pathlib import Path
 
 
-ATUALIZADO_EM_FALLBACK = "03/09/2026 13:13"
+CL8US_VERSION = "11.0"
+COLETA_VERSION = "11.0"
+# Politica preparada para a proxima etapa. Ainda nao altera nenhum gate.
+COLETA_COMPATIBILIDADE_ANTERIORES = 2
+
+ATUALIZADO_EM_FALLBACK = "30/09/2026 16:50"
 
 
 def _data_ultimo_commit() -> str | None:
