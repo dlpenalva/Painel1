@@ -42,7 +42,7 @@ LEITOR_CONSUMO_ITENS_CICLO_VERSAO = "20260516_0207"
 CAMINHO_ORIENTACAO_SAP = (
     Path(__file__).resolve().parents[1]
     / "assets"
-    / "Atualização da Requisição de Compra_E-MAIL.png"
+    / "Orientacao_Criar_RC_no_SAP.png"
 )
 TEXTO_EMAIL_VERIFICACAO_TERMO = (
     "[PREENCHER: Bom dia / Boa tarde!] Encaminho a minuta do Termo de "
@@ -54,12 +54,23 @@ TEXTO_EMAIL_VERIFICACAO_TERMO = (
 TEXTO_EMAIL_REQUISICAO_SAP = (
     "[PREENCHER: Bom dia / Boa tarde!]\n\n"
     "Com a formalização do reajuste e a assinatura do Termo de Apostila, "
-    "faz-se necessária a criação/atualização da Requisição de Compras no SAP, "
+    "faz-se necessária a criação da Requisição de Compras no SAP, "
     "contemplando os valores vigentes, o novo período contratual, os "
     "retroativos, se houver, e os demais ajustes financeiros aplicáveis.\n\n"
     "Após a conclusão, favor informar a GCC para vinculação da Requisição de "
     "Compras ao contrato no SAP.\n\n"
     "Obrigado."
+)
+TEXTO_EMAIL_APOSTILA_CONTRATADA = (
+    "[PREENCHER: Bom dia / Boa tarde!]\n\n"
+    "Prezados,\n\n"
+    "Encaminhamos, anexo, o Termo de Apostila [PREENCHER: nº do Termo de "
+    "Apostila], devidamente assinado pela Telebras, que formaliza o reajuste "
+    "contratual.\n\n"
+    "Solicitamos a gentileza de providenciar o endosso da garantia "
+    "contratual, observando os valores e prazos previstos no Contrato, com "
+    "posterior envio do respectivo documento.\n\n"
+    "Atenciosamente,"
 )
 
 try:
@@ -5542,13 +5553,13 @@ _MARCADOR_COMUNICADO_FISCAL = '<span class="comunicado-fiscal"></span>'
 
 
 def _render_comunicados_pos_documentos() -> None:
-    """Os dois comunicados do fiscal, no fim do fluxo da pagina.
+    """Comunicações pós-formalização exibidas no fim do fluxo da página.
 
     Vem DEPOIS de "Validacao com a contratada" e "Comunicado interno": a
     linha separadora ja distingue os dois grupos, entao aqui nao ha titulo de
     secao, card nem container auxiliar — os expanders sao irmaos diretos do
-    fluxo. Conteudo identico ao aprovado: mesmos textos, mesmos blocos
-    copiaveis, mesmo download do PNG, fechados por padrao.
+    fluxo. Dois comunicados ao fiscal e um à contratada, todos copiaveis e
+    fechados por padrao.
     """
     st.divider()
     st.markdown(_CSS_COMUNICADOS_FISCAL, unsafe_allow_html=True)
@@ -5561,16 +5572,15 @@ def _render_comunicados_pos_documentos() -> None:
         st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)
 
     with st.expander(
-        "E-mail solicitando RC atualizada ao fiscal", expanded=False
+        "E-mail solicitando RC ao fiscal", expanded=False
     ):
         st.markdown(_MARCADOR_COMUNICADO_FISCAL, unsafe_allow_html=True)
         st.code(TEXTO_EMAIL_REQUISICAO_SAP, language=None)
         if CAMINHO_ORIENTACAO_SAP.is_file():
             st.download_button(
-                "Baixar orientação visual — Atualização da "
-                "Requisição de Compras no SAP",
+                "Baixar orientação visual — Criar RC no SAP",
                 data=CAMINHO_ORIENTACAO_SAP.read_bytes(),
-                file_name="Atualização da Requisição de Compra_E-MAIL.png",
+                file_name="Orientacao_Criar_RC_no_SAP.png",
                 mime="image/png",
                 use_container_width=True,
                 key="upload_docs_orientacao_requisicao_sap",
@@ -5579,6 +5589,14 @@ def _render_comunicados_pos_documentos() -> None:
             st.warning(
                 "Orientação visual do SAP indisponível nesta instalação."
             )
+
+    with st.expander(
+        "E-mail à contratada — envio do Termo de Apostila assinado e "
+        "endosso da garantia",
+        expanded=False,
+    ):
+        st.markdown(_MARCADOR_COMUNICADO_FISCAL, unsafe_allow_html=True)
+        st.code(TEXTO_EMAIL_APOSTILA_CONTRATADA, language=None)
 
 
 def render_documentos_funcionais_upload(resultado):

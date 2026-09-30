@@ -202,7 +202,7 @@ class TestFluxoUploadDocs(unittest.TestCase):
         # So aparecem quando a minuta do Termo existe nesta execucao.
         self.assertIn("if termo_disponivel:", PAGINA[interno:novos])
 
-    def test_separador_precede_os_dois_novos_expanders(self):
+    def test_separador_precede_os_tres_expanders(self):
         inicio = PAGINA.index("def _render_comunicados_pos_documentos()")
         fim = PAGINA.index("def render_documentos_funcionais_upload(", inicio)
         secao = PAGINA[inicio:fim]
@@ -210,33 +210,44 @@ class TestFluxoUploadDocs(unittest.TestCase):
         tad = secao.index(
             '"E-mail ao fiscal — conferência final do Termo de Apostila"'
         )
-        rc = secao.index('"E-mail solicitando RC atualizada ao fiscal"')
+        rc = secao.index('"E-mail solicitando RC ao fiscal"')
+        contratada = secao.index(
+            '"E-mail à contratada — envio do Termo de Apostila assinado e "'
+        )
         self.assertLess(divisor, tad)
         self.assertLess(tad, rc)
+        self.assertLess(rc, contratada)
         # Titulo anterior nao sobrevive em lugar nenhum da pagina.
         self.assertNotIn("verificação final do TAD pelo fiscal", PAGINA)
+        self.assertNotIn("RC atualizada", PAGINA)
         # Fechados por padrao, copiaveis, sem TXT e sem container auxiliar.
-        self.assertEqual(secao.count("expanded=False"), 2)
+        self.assertEqual(secao.count("expanded=False"), 3)
         self.assertIn("st.code(TEXTO_EMAIL_VERIFICACAO_TERMO, language=None)", secao)
         self.assertIn("st.code(TEXTO_EMAIL_REQUISICAO_SAP, language=None)", secao)
+        self.assertIn("st.code(TEXTO_EMAIL_APOSTILA_CONTRATADA, language=None)", secao)
         self.assertNotIn("text/plain", secao)
         self.assertNotIn(".txt", secao.lower())
         self.assertNotIn("st.container(", secao)
         # Nenhum titulo de secao: os unicos markdown do bloco sao o CSS
         # escopado e o marcador invisivel de cada expander.
         self.assertNotIn('st.markdown("', secao)
-        self.assertEqual(secao.count("st.markdown("), 3)
+        self.assertEqual(secao.count("st.markdown("), 4)
 
-    def test_png_continua_dentro_do_segundo_expander(self):
+    def test_png_continua_dentro_do_expander_de_rc(self):
         inicio = PAGINA.index("def _render_comunicados_pos_documentos()")
         fim = PAGINA.index("def render_documentos_funcionais_upload(", inicio)
         secao = PAGINA[inicio:fim]
-        rc = secao.index("E-mail solicitando RC atualizada ao fiscal")
-        depois = secao[rc:]
-        self.assertIn("CAMINHO_ORIENTACAO_SAP.read_bytes()", depois)
-        self.assertIn('mime="image/png"', depois)
+        rc = secao.index("E-mail solicitando RC ao fiscal")
+        contratada = secao.index("E-mail à contratada")
+        bloco_rc = secao[rc:contratada]
+        self.assertIn("CAMINHO_ORIENTACAO_SAP.read_bytes()", bloco_rc)
+        self.assertIn('mime="image/png"', bloco_rc)
         self.assertIn(
-            "Orientação visual do SAP indisponível nesta instalação.", depois
+            "Orientação visual do SAP indisponível nesta instalação.", bloco_rc
+        )
+        # A imagem anterior nao e mais referenciada neste fluxo.
+        self.assertNotIn(
+            "Atualização da Requisição de Compra_E-MAIL.png", PAGINA
         )
 
     def test_textos_aprovados_das_comunicacoes_do_termo(self):
@@ -256,12 +267,45 @@ class TestFluxoUploadDocs(unittest.TestCase):
             PAGINA,
         )
 
-    def test_saudacao_dos_dois_novos_emails_e_placeholder(self):
+    def test_texto_rc_usa_criacao_sem_atualizacao(self):
+        self.assertIn(
+            "faz-se necessária a criação da Requisição de Compras no SAP, ",
+            PAGINA,
+        )
+        self.assertNotIn("criação/atualização", PAGINA)
+
+    def test_novo_expander_email_apostila_contratada(self):
+        """Terceiro expander: envio do Termo assinado + endosso da garantia."""
+        self.assertIn(
+            '"E-mail à contratada — envio do Termo de Apostila assinado e "',
+            PAGINA,
+        )
+        self.assertIn('"endosso da garantia"', PAGINA)
+        inicio = PAGINA.index("TEXTO_EMAIL_APOSTILA_CONTRATADA = (")
+        fim = PAGINA.index("\n)", inicio)
+        texto = PAGINA[inicio:fim]
+        self.assertIn("Termo de Apostila", texto)
+        self.assertIn("devidamente assinado pela Telebras", texto)
+        self.assertIn("endosso da garantia ", texto)
+        self.assertIn(
+            "contratual, observando os valores e prazos previstos no "
+            "Contrato",
+            texto,
+        )
+        self.assertIn("posterior envio do respectivo documento", texto)
+        self.assertIn("[PREENCHER: nº do Termo de ", texto)
+        self.assertIn("Apostila], devidamente assinado", texto)
+        self.assertIn("formaliza o reajuste ", texto)
+        self.assertIn('"contratual.\\n\\n"', texto)
+        self.assertNotIn("C1", texto)
+        self.assertNotIn("R$", texto)
+
+    def test_saudacao_dos_tres_novos_emails_e_placeholder(self):
         """A saudacao vira campo a preencher; o resto do texto nao muda."""
         saudacao = "[PREENCHER: Bom dia / Boa tarde!]"
         inicio = PAGINA.index("TEXTO_EMAIL_VERIFICACAO_TERMO = (")
         constantes = PAGINA[inicio:PAGINA.index("try:", inicio)]
-        self.assertEqual(constantes.count(saudacao), 2)
+        self.assertEqual(constantes.count(saudacao), 3)
         self.assertNotIn("Boa tarde!", constantes.replace(saudacao, ""))
         # Restante do conteudo aprovado, intacto.
         self.assertIn("final => TMP-1026436.", constantes)
@@ -325,29 +369,36 @@ class TestFluxoUploadDocs(unittest.TestCase):
         for proibida in ("red", "green", "yellow", "#FF", "#F00", "#0F0"):
             self.assertNotIn(proibida, css)
 
-    def test_marcador_presente_apenas_nos_dois_novos_expanders(self):
+    def test_marcador_presente_nos_tres_expanders(self):
         secao_ini = PAGINA.index("def _render_comunicados_pos_documentos()")
         secao_fim = PAGINA.index("def render_documentos_funcionais_upload(", secao_ini)
         secao = PAGINA[secao_ini:secao_fim]
-        self.assertEqual(secao.count("_MARCADOR_COMUNICADO_FISCAL"), 2)
+        self.assertEqual(secao.count("_MARCADOR_COMUNICADO_FISCAL"), 3)
         # Fora desta secao o marcador nao e emitido em lugar nenhum.
         fora = PAGINA[:secao_ini] + PAGINA[secao_fim:]
         self.assertNotIn("st.markdown(_MARCADOR_COMUNICADO_FISCAL", fora)
 
     def test_asset_png_do_sap_e_downloadavel(self):
-        asset = ROOT / "assets" / "Atualização da Requisição de Compra_E-MAIL.png"
+        asset = ROOT / "assets" / "Orientacao_Criar_RC_no_SAP.png"
         dados = asset.read_bytes()
         self.assertTrue(dados.startswith(b"\x89PNG\r\n\x1a\n"))
         self.assertGreater(len(dados), 100)
         self.assertEqual(
             hashlib.sha256(dados).hexdigest(),
-            "1255c4ca4a6ad1abe4b4db624e9b6ad1c0518607eaeb1a5b15bbcc3da9aa4587",
+            "1d5f87b1ebbef90f1f4493127c91f83a0c9f029b7989d22f50b5cac13f9bc731",
         )
         self.assertIn("CAMINHO_ORIENTACAO_SAP.read_bytes()", PAGINA)
         self.assertIn(
-            "Baixar orientação visual — Atualização da ", PAGINA
+            "Baixar orientação visual — Criar RC no SAP", PAGINA
         )
         self.assertIn('mime="image/png"', PAGINA)
+        self.assertIn('file_name="Orientacao_Criar_RC_no_SAP.png"', PAGINA)
+        self.assertNotIn("Atualização", PAGINA[PAGINA.index(
+            "def _render_comunicados_pos_documentos()"
+        ):PAGINA.index("def render_documentos_funcionais_upload(")])
+        self.assertFalse(
+            (ROOT / "assets" / "Atualização da Requisição de Compra_E-MAIL.png").exists()
+        )
 
 
 if __name__ == "__main__":
