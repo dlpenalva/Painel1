@@ -76,6 +76,13 @@ class ContextoColeta:
             # caminho hostil e justamente onde o workbook nao pode sobreviver.
             wb.close()
             raise
+        if data_only:
+            # Coleta anterior ao 11.0 com precisao de reajuste antiga: os
+            # derivados em cache sao recompostos UMA vez, em memoria, antes de
+            # qualquer leitor. Idempotente; o arquivo fisico nao e tocado.
+            from _compatibilidade_valores import aplicar_compatibilidade_valores
+
+            aplicar_compatibilidade_valores(wb)
         return wb
 
     @property

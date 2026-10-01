@@ -10,7 +10,10 @@ Evolucoes em relacao ao v9:
   - Le itens_Consumidos no novo formato Qtd+Valor por ciclo
   - Le itens_PC com TIPO_PC: Unitario e Global/Multi-item
   - Retorna alertas estruturados quando campos obrigatorios ausentes
-  - Nao recalcula nada; le valores ja calculados pelo Excel (data_only=True)
+  - Nao recalcula nada; le valores ja calculados pelo Excel (data_only=True).
+    Unica excecao: Coleta de linhagem anterior ao 11.0 com precisao de
+    reajuste anterior a regra vigente tem os derivados recompostos EM MEMORIA
+    (_compatibilidade_valores); entradas e arquivo fisico ficam intactos.
 """
 
 from __future__ import annotations
@@ -26,6 +29,14 @@ from _seguranca_xlsx import (
     ErroSegurancaXlsx,
     garantir_xlsx_validado,
     validar_geometria_workbook,
+)
+from _compatibilidade_coleta import (
+    detectar_linhagem_coleta,
+    mensagem_linhagem_nao_homologada,
+)
+from _compatibilidade_valores import (
+    aplicar_compatibilidade_valores,
+    restricoes_compatibilidade,
 )
 
 from _masterfile_config_v10 import (
@@ -3848,6 +3859,12 @@ def ler_masterfile_v10(
         "objeto_processo": {},
         "execucao_saldo": {},          # v10.1 — entrada fiscal consolidada
         "versao_detectada": "",
+        "coleta_linhagem": {},
+        "coleta_modelo_canonico": None,
+        "compatibilidade_aplicada": False,
+        "derivados_recalculados": [],
+        "compatibilidade_valores": {},
+        "compatibilidade_restricoes": [],
         # Etapa 4 — memoria de calculo persistida (parametros!J2:R80);
         # leitura opcional: arquivos legados sem o bloco retornam {}.
         "memoria_calculo": {},
@@ -3887,6 +3904,25 @@ def ler_masterfile_v10(
     except Exception:
         res["erro"] = "O arquivo enviado não é um XLSX válido ou está corrompido."
         return res
+
+    deteccao_linhagem = detectar_linhagem_coleta(wb)
+    res["coleta_linhagem"] = deteccao_linhagem
+    res["coleta_modelo_canonico"] = deteccao_linhagem.get("modelo_canonico")
+    res["compatibilidade_aplicada"] = bool(
+        deteccao_linhagem.get("compatibilidade_aplicada")
+    )
+    if exigir_modelo_oficial and not deteccao_linhagem.get("suportada"):
+        res["erro"] = mensagem_linhagem_nao_homologada(deteccao_linhagem)
+        return res
+    if res["compatibilidade_aplicada"]:
+        # Idempotente: no caminho do upload o contexto ja aplicou; em chamada
+        # isolada e aqui que o workbook de valores e adaptado.
+        res["compatibilidade_valores"] = aplicar_compatibilidade_valores(
+            wb, deteccao_linhagem
+        )
+        res["compatibilidade_restricoes"] = restricoes_compatibilidade(
+            wb, deteccao_linhagem
+        )
 
     res["versao_detectada"] = _detectar_versao(wb)
     coleta_version = _ler_coleta_version(wb)
@@ -4261,6 +4297,26 @@ def ler_masterfile_v10(
         res["avisos"].append(
             f"Modo nao reconhecido: '{res['controle']['modo']}' (esperados: {modos_str})."
         )
+
+    if res["compatibilidade_aplicada"]:
+        auditoria = res.get("compatibilidade_valores") or {}
+        res["derivados_recalculados"] = list(auditoria.get("blocos_adaptados") or [])
+        res["avisos"].append(
+            "Coleta anterior ao modelo 11.0 reconhecida por assinatura "
+            f"estrutural ({deteccao_linhagem.get('codigo')}); entradas do "
+            "fiscal preservadas. "
+            + (
+                "Derivados recompostos pela regra vigente (percentual oficial "
+                f"de duas casas) nos blocos: {', '.join(res['derivados_recalculados'])}."
+                if res["derivados_recalculados"]
+                else "Nenhum derivado precisou ser recomposto."
+            )
+        )
+        for bloco in (auditoria.get("blocos_nao_reproduziveis") or {}):
+            res["avisos"].append(
+                f"Compatibilidade: o bloco '{bloco}' nao reproduz o cache do "
+                "Excel deste arquivo e foi mantido como gravado; regere a Coleta."
+            )
 
     res["ok"] = True
     res["objeto_processo"] = montar_objeto_processo_reajuste(res)

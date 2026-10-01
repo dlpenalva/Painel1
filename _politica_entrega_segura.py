@@ -225,6 +225,12 @@ def avaliar_entrega_segura(
     )
     if _metodo_da_apuracao(leitura) == "financeiro" and ciclos_precisao_bruta:
         bloqueios.append(MENSAGEM_COLETA_PRECISAO_ANTERIOR)
+    # Compatibilidade retroativa: a linhagem anterior nao tem a regra vigente e
+    # o dado que a exigiria existe no arquivo (ex.: aditivo no L2). Fail-closed.
+    for restricao in leitura.get("compatibilidade_restricoes") or []:
+        mensagem = restricao.get("mensagem") if isinstance(restricao, dict) else None
+        if mensagem and mensagem not in bloqueios:
+            bloqueios.append(mensagem)
     posicao = leitura.get("posicao_contratual") or {}
     # VTA-C2.2 (item 8-10): posicao_contratual e derivada de itens_Remanesc,
     # sheet exclusiva de Financeiro/PC. No metodo Consumido ela e legitimamente

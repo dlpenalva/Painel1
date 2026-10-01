@@ -21,3 +21,4 @@ __pycache__/
 *_backup*
 *_restore*
 08.clausula_BACKUPS/.streamlit\secrets.toml
+!tests/fixtures/coletas_compat/*.xlsx

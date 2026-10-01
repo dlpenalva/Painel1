@@ -23,10 +23,12 @@ from pathlib import Path
 
 CL8US_VERSION = "11.0"
 COLETA_VERSION = "11.0"
-# Politica preparada para a proxima etapa. Ainda nao altera nenhum gate.
+# Janela de compatibilidade retroativa: a versao atual e DUAS linhagens anteriores
+# homologadas (PRE_11_L1 e PRE_11_L2, ver _compatibilidade_coleta). Estrutura fora
+# desta janela e rejeitada; a liberacao de documentos pertence a etapa seguinte.
 COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
-ATUALIZADO_EM_FALLBACK = "30/09/2026 16:50"
+ATUALIZADO_EM_FALLBACK = "30/09/2026 22:36"
 
 
 def _data_ultimo_commit() -> str | None:
