@@ -508,8 +508,8 @@
     "justificativa_metodologia": "Execucao estrutural por PCs validos, independente do pagamento; o pagamento classifica apenas o retroativo (reconhecido x potencial).",
     "metodo_vta": "Pedido de Compras",
     "resumo_executivo": "Conclusao recomendada: Aguardar pagamento ou comprovacao de execucao. Ha retroativo em analise; reconhecimento depende de evidencia ou ato administrativo. Metodologia: Pedidos de Compra (PC). Valor recomendado pela metodologia: R$ 62.165,70.",
-    "retroativo_estado": "Valor não exibido: divergência relevante XLS × Python pendente de equalização antes da formalização.",
-    "retroativo_total": null,
+    "retroativo_estado": "em análise",
+    "retroativo_total": 1386.32,
     "situacao_processo": "aguardar_evidencia_ou_ato",
     "variacao_acumulada": 0.08896904,
     "vta": null,
@@ -543,6 +543,7 @@
     "2.7. A inclusão dessa parcela no Valor Total Atualizado não representa reconhecimento definitivo da obrigação nem autoriza, por si só, o pagamento. A conversão do retroativo potencial em retroativo reconhecido dependerá da validação dos respectivos Pedidos de Compra pela área gestora, a quem competem a confirmação desses eventos e os procedimentos relacionados ao eventual pagamento.",
     "3.2. O Valor Total Atualizado do Contrato corresponde a R$ 17.364,98 — PRÉVIA e inclui expressamente R$ 1.779,38 de retroativo potencial.",
     "3.3. A parcela de R$ 1.779,38 integra o Valor Total Atualizado do Contrato e a adequação orçamentária, mas permanece destacada em razão de sua natureza potencial e não integra, nesta data, o valor reconhecido a pagar à CONTRATADA.",
+    "3.4. O retroativo reconhecido de R$ 1.386,32 já está incorporado ao valor da execução atualizada considerado na composição do Quadro 3. Por essa razão, ele não é somado novamente como parcela separada, pois isso resultaria em dupla contagem do mesmo valor.",
     "5.2. Os aditivos e supressões computáveis integram o Valor Total Atualizado quando não estiverem refletidos na execução atualizada, no saldo remanescente ou no valor formalizado anterior, vedada a dupla contagem.",
     "7.1. A CONTRATADA deverá atualizar a garantia contratual, prevista na cláusula própria do Contrato, no prazo contratualmente estabelecido, observado o Valor Total Atualizado do Contrato de R$ 17.364,98 — PRÉVIA, que inclui R$ 1.779,38 de retroativo potencial.",
     "ANEXO 1 - HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO",
@@ -626,14 +627,8 @@
    "composicao_vta: Composicao VTA-PC: 3 PC(s) no ciclo vigente (C2) ou posteriores nao entram na execucao (mesmo corte temporal; evita dupla contagem contra o remanescente). Seguem como diagnostico/projecao.",
    "Coleta anterior ao modelo 11.0 reconhecida por assinatura estrutural (PRE_11_L1); entradas do fiscal preservadas. Derivados recompostos pela regra vigente (percentual oficial de duas casas) nos blocos: parametros, financeiro, historico_VU, itens_Remanesc, itens_RC, itens_Consumidos, itens_PC, CICLO_EM_EXECUCAO."
   ],
-  "bloqueios": [
-   "Divergência relevante XLS × Python em RETRO_PC (Retroativo por PCs): XLS=1387.15 vs Python=1386.32. Nenhum dos resultados é adotado automaticamente; equalizar antes de formalizar.",
-   "Divergência relevante XLS × Python em RETRO_OFICIAL (Retroativo oficial): XLS=1387.15 vs Python=1386.32. Nenhum dos resultados é adotado automaticamente; equalizar antes de formalizar."
-  ],
-  "campos_nao_confiaveis": [
-   "RETRO_OFICIAL",
-   "RETRO_PC"
-  ],
+  "bloqueios": [],
+  "campos_nao_confiaveis": [],
   "ciclo_vigente": "C2",
   "ciclos": [
    {
@@ -769,10 +764,12 @@
     },
     {
      "campo": "RETRO_PC",
-     "nota": null,
+     "causa": "precisao_percentual_anterior",
+     "nota": "O XLS legado calculou este valor com a precisão de reajuste anterior; o mesmo motor reproduz o valor do XLS com os derivados legados e o recompõe pela regra vigente.",
      "python": 1386.32,
+     "python_legado_reproduzido": 1387.15,
      "rotulo": "Retroativo por PCs",
-     "status": "DIVERGENCIA_RELEVANTE",
+     "status": "DIVERGENCIA_COMPATIBILIZADA",
      "xls": 1387.15
     },
     {
@@ -785,10 +782,12 @@
     },
     {
      "campo": "RETRO_OFICIAL",
-     "nota": null,
+     "causa": "precisao_percentual_anterior",
+     "nota": "O XLS legado calculou este valor com a precisão de reajuste anterior; o mesmo motor reproduz o valor do XLS com os derivados legados e o recompõe pela regra vigente.",
      "python": 1386.32,
+     "python_legado_reproduzido": 1387.15,
      "rotulo": "Retroativo oficial",
-     "status": "DIVERGENCIA_RELEVANTE",
+     "status": "DIVERGENCIA_COMPATIBILIZADA",
      "xls": 1387.15
     },
     {
@@ -825,26 +824,9 @@
     }
    ],
    "disponivel": true,
-   "divergencias_relevantes": [
-    {
-     "campo": "RETRO_PC",
-     "nota": null,
-     "python": 1386.32,
-     "rotulo": "Retroativo por PCs",
-     "status": "DIVERGENCIA_RELEVANTE",
-     "xls": 1387.15
-    },
-    {
-     "campo": "RETRO_OFICIAL",
-     "nota": null,
-     "python": 1386.32,
-     "rotulo": "Retroativo oficial",
-     "status": "DIVERGENCIA_RELEVANTE",
-     "xls": 1387.15
-    }
-   ],
+   "divergencias_relevantes": [],
    "sem_cache": false,
-   "status_geral": "DIVERGENCIA_RELEVANTE",
+   "status_geral": "DIVERGENCIA_COMPATIBILIZADA",
    "tolerancia": 0.005
   },
   "data_corte": "2026-09-30",
@@ -857,9 +839,9 @@
    "valor_informado": 0.0
   },
   "formalizacao": {
-   "bloqueada": true,
-   "mensagem": "Divergência relevante XLS × Python em RETRO_PC (Retroativo por PCs): XLS=1387.15 vs Python=1386.32. Nenhum dos resultados é adotado automaticamente; equalizar antes de formalizar.",
-   "status": "BLOQUEADA"
+   "bloqueada": false,
+   "mensagem": "A aba RESULTADOS concluiu REVISE: o próprio cálculo do XLS aponta eixos a revisar.",
+   "status": "AGUARDA CONFIRMAÇÃO"
   },
   "indice": "IST (Anatel)",
   "informacoes": [],
@@ -911,8 +893,8 @@
   "ressalvas": [
    "Remanescentes não demonstrados; o valor futuro e o VTA permanecem indisponíveis.",
    "Há valor potencial sujeito à aceitação pela área gestora e à condução do eventual pagamento por essa área; ele integra o VTA por critério prudencial e não é retroativo reconhecido a pagar.",
-   "Há campos materiais que dependem de confirmação.",
-   "A leitura da Coleta registrou informações insuficientes em parte dos blocos."
+   "A leitura da Coleta registrou informações insuficientes em parte dos blocos.",
+   "Coleta de versão anterior compatibilizada com o modelo atual. Os resultados foram recalculados pelas regras vigentes."
   ],
   "retroativo_por_ciclo": [
    {
@@ -1086,7 +1068,7 @@
    "mensagem": "A aba RESULTADOS concluiu REVISE: o próprio cálculo do XLS aponta eixos a revisar.",
    "origem": "resultados_xls",
    "rotulo": "PENDENTE DE CONFIRMAÇÃO",
-   "status_politica": "BLOQUEADO_PARA_FORMALIZACAO"
+   "status_politica": "APURACAO_PARCIAL"
   },
   "status_confiabilidade": "PENDENTE DE CONFIRMAÇÃO",
   "status_resultados_xls": {

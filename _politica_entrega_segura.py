@@ -91,6 +91,46 @@ def _unicos(valores: list[str]) -> list[str]:
     return saida
 
 
+def _mensagem_blocos_nao_reproduziveis(compat: dict[str, Any]) -> str:
+    return (
+        "Esta Coleta pertence a uma versão anterior e o(s) bloco(s) "
+        + ", ".join(sorted(compat.get("blocos_nao_reproduziveis") or {}))
+        + " não puderam ser reproduzidos com segurança; os valores "
+        "derivados dele não são adotados."
+    )
+
+
+def mensagens_bloqueio_documental_duro(leitura: dict[str, Any]) -> list[str]:
+    """Bloqueios que impedem a GERACAO dos documentos formalizadores.
+
+    Sao os casos em que o valor que o documento publicaria seria o do XLS
+    legado ou estaria incompleto: precisao anterior NAO compatibilizada
+    (Financeiro), restricao de modelo (ex.: aditivo no L2) e bloco que nao
+    reproduz o cache. Uma unica fonte: a pagina e o runtime apenas consomem.
+    """
+    compat = leitura.get("compatibilidade_formalizacao") or {}
+    mensagens: list[str] = []
+    restricoes = [
+        str(r.get("mensagem"))
+        for r in (leitura.get("compatibilidade_restricoes") or [])
+        if isinstance(r, dict) and r.get("mensagem")
+    ]
+    if compat.get("blocos_nao_reproduziveis"):
+        mensagens.append(_mensagem_blocos_nao_reproduziveis(compat))
+    mensagens.extend(restricoes)
+    ciclos_precisao_bruta = list(
+        (leitura.get("parametros_v10") or {}).get("ciclos_precisao_bruta") or []
+    )
+    if (
+        _metodo_da_apuracao(leitura) == "financeiro"
+        and ciclos_precisao_bruta
+        and not compat.get("elegivel")
+        and not mensagens
+    ):
+        mensagens.append(MENSAGEM_COLETA_PRECISAO_ANTERIOR)
+    return mensagens
+
+
 def avaliar_entrega_segura(
     leitura: dict[str, Any],
     confirmacao_fiscal: bool = False,
@@ -223,14 +263,20 @@ def avaliar_entrega_segura(
     ciclos_precisao_bruta = list(
         (leitura.get("parametros_v10") or {}).get("ciclos_precisao_bruta") or []
     )
-    if _metodo_da_apuracao(leitura) == "financeiro" and ciclos_precisao_bruta:
-        bloqueios.append(MENSAGEM_COLETA_PRECISAO_ANTERIOR)
-    # Compatibilidade retroativa: a linhagem anterior nao tem a regra vigente e
-    # o dado que a exigiria existe no arquivo (ex.: aditivo no L2). Fail-closed.
-    for restricao in leitura.get("compatibilidade_restricoes") or []:
-        mensagem = restricao.get("mensagem") if isinstance(restricao, dict) else None
-        if mensagem and mensagem not in bloqueios:
+    # Etapa 3/03: a precisao anterior so deixa de bloquear quando a decisao
+    # canonica de compatibilidade a COMPROVOU (blocos reproduzidos, nenhuma
+    # restricao, divergencias XLS x Python integralmente explicadas pela causa).
+    # Em qualquer outro caso a regra petrea segue valendo, como antes.
+    # O motivo ESPECIFICO (restricao de modelo, bloco nao reproduzivel) substitui
+    # a orientacao generica de regerar a Coleta; sem motivo especifico a regra
+    # petrea continua valendo como antes.
+    compat = leitura.get("compatibilidade_formalizacao") or {}
+    compatibilizada = bool(compat.get("elegivel"))
+    for mensagem in mensagens_bloqueio_documental_duro(leitura):
+        if mensagem not in bloqueios:
             bloqueios.append(mensagem)
+    if compatibilizada:
+        informacoes.append(compat.get("mensagem") or "")
     posicao = leitura.get("posicao_contratual") or {}
     # VTA-C2.2 (item 8-10): posicao_contratual e derivada de itens_Remanesc,
     # sheet exclusiva de Financeiro/PC. No metodo Consumido ela e legitimamente

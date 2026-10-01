@@ -387,6 +387,10 @@ _IGNORADAS = {
     "derivados_recalculados", "compatibilidade_valores", "versao_detectada",
     "origem_coleta", "diagnostico_coleta", "hash_entrada", "processo_ref",
     "chave_canonica", "avisos", "alertas", "painel_executivo",
+    # Etapa 3: decisao de formalizacao e auditoria da compatibilidade descrevem
+    # o ARQUIVO (linhagem, causa, valor legado), nao o calculo Python
+    "compatibilidade_formalizacao", "compatibilidade_auditoria",
+    "bloqueios_documentais_duros",
     # texto dos cabecalhos de itens_PC (renomeados entre modelos): metadado de
     # estrutura, nao calculo
     "campos_detectados",
@@ -548,45 +552,77 @@ def test_restricao_do_l2_so_existe_com_aditivo_em_ciclo_de_reajuste():
 # --------------------------------------------------------------------------- #
 # 6. Nenhum gate foi removido; a divergencia fica exposta.
 # --------------------------------------------------------------------------- #
-@pytest.mark.parametrize("nome", ["pre11_l1_financeiro", "pre11_l1_pc", "pre11_l1_consumidos",
-                                  "pre11_l2_financeiro"])
-def test_precisao_antiga_segue_bloqueada_para_formalizacao(nome):
+@pytest.mark.parametrize("nome", ["pre11_l1_financeiro", "pre11_l1_pc", "pre11_l2_consumidos"])
+def test_precisao_antiga_comprovada_libera_a_formalizacao_pelo_canonico(nome):
+    """Etapa 3: a causa (precisao anterior) e PROVADA, entao nada bloqueia."""
     resultado = _runtime(nome)[0]
+    decisao = resultado["compatibilidade_formalizacao"]
+    assert decisao["status"] == "FORMALIZAVEL_COMPATIBILIZADA"
+    assert decisao["elegivel"] is True and decisao["formalizacao_liberada"] is True
+    assert decisao["divergencias_nao_explicadas"] == []
+    assert resultado["bloqueios_formalizacao"] == []
+    assert resultado["formalizacao_bloqueada"] is False
+    assert resultado["politica_entrega_segura"]["pode_confirmar"] is True
+    documentos = resultado["capacidades"]["documentos"]
+    for chave in ("sumario_executivo", "despacho_saneador", "termo_apostila"):
+        assert documentos[chave]["habilitado"] is True, chave
+
+
+@pytest.mark.parametrize("nome", ["pre11_l1_consumidos", "pre11_l2_financeiro"])
+def test_precisao_antiga_sem_prova_completa_segue_bloqueada(nome):
+    """Fail-closed: divergencia que a causa nao explica continua bloqueando."""
+    resultado = _runtime(nome)[0]
+    decisao = resultado["compatibilidade_formalizacao"]
+    assert decisao["status"] == "NAO_COMPATIBILIZADA" and decisao["elegivel"] is False
+    assert decisao["divergencias_nao_explicadas"] != []
     assert resultado["formalizacao_bloqueada"] is True
     assert resultado["politica_entrega_segura"]["pode_confirmar"] is False
-    documentos = resultado["capacidades"]["documentos"]
-    if MENSAGEM_COLETA_PRECISAO_ANTERIOR in resultado["bloqueios_formalizacao"]:
-        for chave in ("sumario_executivo", "despacho_saneador", "termo_apostila"):
-            assert documentos[chave]["habilitado"] is False, chave
-            assert documentos[chave]["motivo"] == MENSAGEM_COLETA_PRECISAO_ANTERIOR
 
 
-@pytest.mark.parametrize("nome", ["pre11_l1_financeiro", "pre11_l2_financeiro"])
-def test_bloqueio_de_precisao_anterior_permanece_no_metodo_financeiro(nome):
-    """Politica existente (inalterada): a mensagem de precisao vale para o Financeiro."""
-    resultado, diagnostico, _ = _runtime(nome)
+def test_financeiro_l1_nao_exibe_mais_a_mensagem_generica_de_precisao():
+    """A mensagem generica era o proxy; agora vale a decisao pela causa."""
+    resultado, diagnostico, _ = _runtime("pre11_l1_financeiro")
+    # o aviso de auditoria (precisao bruta) continua registrado ...
     assert any("precisao bruta" in a for a in diagnostico.get("avisos") or [])
-    assert MENSAGEM_COLETA_PRECISAO_ANTERIOR in resultado["bloqueios_formalizacao"]
+    # ... mas nao bloqueia: a compatibilidade esta provada
+    assert MENSAGEM_COLETA_PRECISAO_ANTERIOR not in resultado["bloqueios_formalizacao"]
+    assert resultado["bloqueios_documentais_duros"] == []
 
 
-@pytest.mark.parametrize("nome", ["pre11_l1_pc", "pre11_l1_consumidos", "pre11_l2_consumidos"])
-def test_pc_e_consumidos_com_precisao_antiga_sao_bloqueados_pela_divergencia(nome):
-    """PC/Consumidos: a protecao e a reconciliacao XLS x Python (regra ja existente)."""
-    resultado, diagnostico, _ = _runtime(nome)
+def test_l2_financeiro_com_aditivo_mantem_o_bloqueio_especifico_e_duro():
+    resultado, diagnostico, _ = _runtime("pre11_l2_financeiro")
+    assert any("precisao bruta" in a for a in diagnostico.get("avisos") or [])
+    assert MENSAGEM_L2_ADITIVO in resultado["bloqueios_documentais_duros"]
+    documentos = resultado["capacidades"]["documentos"]
+    for chave in ("sumario_executivo", "despacho_saneador", "termo_apostila"):
+        assert documentos[chave]["habilitado"] is False, chave
+
+
+def test_consumidos_multi_item_segue_bloqueado_pela_divergencia_nao_explicada():
+    """XLS legado soma so o 1o item em QTD_REM_OFICIAL: defeito de modelo, nao precisao."""
+    resultado, diagnostico, _ = _runtime("pre11_l1_consumidos")
     assert any("precisao bruta" in a for a in diagnostico.get("avisos") or [])
     assert any("Divergência relevante XLS × Python" in b
-               for b in resultado["bloqueios_formalizacao"]), nome
+               for b in resultado["bloqueios_formalizacao"])
     assert resultado["formalizacao_bloqueada"] is True
 
 
 def test_divergencia_xls_python_fica_exposta_e_nao_e_adotada():
-    """O XLS antigo diz 26.131,44; o Python, 26.112,00: ambos ficam visiveis."""
+    """O XLS antigo diz 26.131,44; o Python, 26.112,00: ambos ficam visiveis.
+
+    Etapa 3: a divergencia deixa de ser "relevante" porque a CAUSA foi provada
+    (status DIVERGENCIA_COMPATIBILIZADA), mas o valor do XLS e o legado
+    reproduzido seguem registrados e o valor adotado e sempre o canonico.
+    """
     _, _, web = _runtime("pre11_l1_financeiro")
     convergencia = web["convergencia_xls_python"]
-    assert convergencia["status_geral"] == "DIVERGENCIA_RELEVANTE"
+    assert convergencia["status_geral"] == "DIVERGENCIA_COMPATIBILIZADA"
     campos = {c["campo"]: c for c in convergencia["campos"]}
     assert campos["RETRO_FIN"]["xls"] == 26_131.44 and campos["RETRO_FIN"]["python"] == 26_112.00
     assert campos["VTA_FINAL"]["xls"] == 1_341_003.94 and campos["VTA_FINAL"]["python"] == 1_340_973.60
+    assert campos["RETRO_FIN"]["status"] == "DIVERGENCIA_COMPATIBILIZADA"
+    assert campos["RETRO_FIN"]["python_legado_reproduzido"] == pytest.approx(26_131.44, abs=0.01)
+    assert campos["RETRO_FIN"]["causa"] == "precisao_percentual_anterior"
     assert web["vta_oficial"] == 1_340_973.60            # a web usa o canonico, nao o XLS
     assert campos["QTD_REM_OFICIAL"]["status"] == "CONCILIADO"
 

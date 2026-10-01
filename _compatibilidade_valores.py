@@ -34,6 +34,7 @@ XLS x Python exponha a diferenca em vez de esconde-la.
 
 from __future__ import annotations
 
+from contextlib import contextmanager
 from datetime import date, datetime, timedelta
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Any
@@ -49,6 +50,10 @@ from _reajuste_utils import (
 )
 
 ATRIBUTO_AUDITORIA = "_cl8us_compat_valores"
+# Lista COMPLETA (aba, linha, coluna, valor_xls, valor_recomposto) das celulas
+# alteradas. Fica no workbook (nao na auditoria serializavel) e permite
+# reproduzir o resultado do XLS legado: ver `valores_legados`.
+ATRIBUTO_ALTERACOES = "_cl8us_compat_alteracoes"
 
 _CICLOS = ("C0", "C1", "C2", "C3", "C4")
 _TOLERANCIA_DINHEIRO = 0.005
@@ -801,6 +806,7 @@ def aplicar_compatibilidade_valores(wb, deteccao: dict | None = None) -> dict[st
             alteracoes.append((aba, linha, coluna, antigo, novo))
         adaptados.append(nome)
 
+    setattr(wb, ATRIBUTO_ALTERACOES, alteracoes)
     return _registrar({
         "aplicada": bool(adaptados),
         "motivo": "precisao de reajuste anterior a regra vigente",
@@ -814,3 +820,22 @@ def aplicar_compatibilidade_valores(wb, deteccao: dict | None = None) -> dict[st
             for (a, l, c, antigo, novo) in alteracoes[:_AMOSTRA_AUDITORIA]
         ],
     })
+
+
+@contextmanager
+def valores_legados(wb):
+    """Restaura TEMPORARIAMENTE o cache original do XLS no workbook adaptado.
+
+    Dentro do bloco, o workbook de valores volta a ser exatamente o que o Excel
+    gravou. Serve para provar uma divergencia XLS x Python por CAUSA: o mesmo
+    motor, alimentado com os derivados legados, precisa reproduzir o valor do
+    XLS. Ao sair (inclusive em excecao) os valores recompostos voltam.
+    """
+    alteracoes = getattr(wb, ATRIBUTO_ALTERACOES, None) or []
+    for aba, linha, coluna, antigo, _novo in alteracoes:
+        wb[aba].cell(linha, coluna).value = antigo
+    try:
+        yield wb
+    finally:
+        for aba, linha, coluna, _antigo, novo in alteracoes:
+            wb[aba].cell(linha, coluna).value = novo

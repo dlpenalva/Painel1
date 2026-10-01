@@ -5613,10 +5613,12 @@ def render_documentos_funcionais_upload(resultado):
     st.markdown(_CSS_DOCS_GRID, unsafe_allow_html=True)
     documentos = (resultado.get("capacidades") or {}).get("documentos") or {}
     titulos = dict(DOCUMENTOS_FUNCIONAIS_UPLOAD)
-    # Regra petrea: Coleta com precisao anterior a regra vigente nao gera
-    # nenhum documento formalizador; a orientacao canonica fica visivel.
-    if MENSAGEM_COLETA_PRECISAO_ANTERIOR in (resultado.get("bloqueios_formalizacao") or []):
-        st.warning(MENSAGEM_COLETA_PRECISAO_ANTERIOR)
+    # Regra petrea: Coleta que publicaria o valor do XLS legado ou um valor
+    # incompleto (precisao anterior NAO compatibilizada, restricao de modelo,
+    # bloco nao reproduzivel) nao gera documento formalizador; o motivo real,
+    # decidido no motor, fica visivel. A pagina so exibe a lista pronta.
+    for mensagem_bloqueio in resultado.get("bloqueios_documentais_duros") or []:
+        st.warning(mensagem_bloqueio)
 
     termo_disponivel = False
     for grupo, chaves_do_grupo in GRUPOS_CARDS_UPLOAD:
@@ -6262,10 +6264,15 @@ if resultado:
     _st_res = (metadados.get("status_resultados") or {})
     # Fonte canonica do retroativo reconhecido: o bloco "ate o corte" do payload
     # unico dos PCs — ja sem os PCs sem efeito financeiro, sem os do intervalo
-    # precluso e sem os posteriores a data de corte. O valor do XLS permanece
-    # como queda para arquivos anteriores a essa medida (sem regressao).
+    # precluso e sem os posteriores a data de corte. Na sequencia, o MESMO valor
+    # do painel consolidado (Etapa 3/03: numa Coleta anterior compatibilizada o
+    # XLS legado guarda o retroativo da regra antiga e nunca pode ser exibido no
+    # lugar do canonico). O valor do XLS e so a ultima queda, para arquivos
+    # anteriores a essas medidas (sem regressao).
     _tc_pc = (resultado.get("totais_canonicos_pc") or {}) if resultado else {}
     _retro_val = (_tc_pc.get("ate_o_corte") or {}).get("retroativo")
+    if _retro_val is None:
+        _retro_val = (resultado.get("resultado_consolidado") or {}).get("retroativo_reconhecido")
     if _retro_val is None:
         _retro_val = (_st_res.get("valores") or {}).get("retroativo_oficial")
     _retro_str = (

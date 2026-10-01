@@ -19,6 +19,7 @@ Evolucoes em relacao ao v9:
 from __future__ import annotations
 
 import unicodedata
+from contextvars import ContextVar
 from datetime import date, datetime
 from io import BytesIO
 from typing import Any
@@ -37,6 +38,11 @@ from _compatibilidade_coleta import (
 from _compatibilidade_valores import (
     aplicar_compatibilidade_valores,
     restricoes_compatibilidade,
+    valores_legados,
+)
+from _formalizacao_compatibilidade import (
+    aplicar_reclassificacao,
+    decidir_formalizacao_compatibilidade,
 )
 
 from _masterfile_config_v10 import (
@@ -479,6 +485,13 @@ def _numero_parametro(valor: Any) -> float | None:
         return None
 
 
+# Replay LEGADO (Etapa 3/03): a leitura roda com a PRECISAO ORIGINAL da Coleta
+# (percentuais e fatores brutos do XLS), sem a oficializacao do runtime, para
+# provar que o motor reproduz os valores gravados no XLS legado. ContextVar:
+# isolado por contexto/thread, nunca vaza entre sessoes concorrentes.
+_REPLAY_LEGADO: ContextVar[bool] = ContextVar("cl8us_replay_legado", default=False)
+
+
 def _oficializar_parametros_v10(
     resultado: dict[str, Any], *, fator_proprio_e_percentual: bool
 ) -> None:
@@ -499,6 +512,8 @@ def _oficializar_parametros_v10(
     Consumidores (PC, objeto do processo, documentos, VTA sombra) recebem os
     valores ja oficiais — nenhum precisa de regra propria.
     """
+    if _REPLAY_LEGADO.get():
+        return
     from _reajuste_utils import (
         cadeia_fatores_oficiais,
         fator_oficial_de_fator,
@@ -3825,6 +3840,7 @@ def ler_masterfile_v10(
     *,
     exigir_modelo_oficial: bool = False,
     contexto=None,
+    adaptar_compatibilidade: bool = True,
 ) -> dict[str, Any]:
     """
     Le Masterfile v10 RC. Aceita bytes (upload) ou caminho.
@@ -3865,6 +3881,7 @@ def ler_masterfile_v10(
         "derivados_recalculados": [],
         "compatibilidade_valores": {},
         "compatibilidade_restricoes": [],
+        "compatibilidade_formalizacao": {},
         # Etapa 4 — memoria de calculo persistida (parametros!J2:R80);
         # leitura opcional: arquivos legados sem o bloco retornam {}.
         "memoria_calculo": {},
@@ -3915,11 +3932,12 @@ def ler_masterfile_v10(
         res["erro"] = mensagem_linhagem_nao_homologada(deteccao_linhagem)
         return res
     if res["compatibilidade_aplicada"]:
-        # Idempotente: no caminho do upload o contexto ja aplicou; em chamada
-        # isolada e aqui que o workbook de valores e adaptado.
-        res["compatibilidade_valores"] = aplicar_compatibilidade_valores(
-            wb, deteccao_linhagem
-        )
+        if adaptar_compatibilidade:
+            # Idempotente: no caminho do upload o contexto ja aplicou; em
+            # chamada isolada e aqui que o workbook de valores e adaptado.
+            res["compatibilidade_valores"] = aplicar_compatibilidade_valores(
+                wb, deteccao_linhagem
+            )
         res["compatibilidade_restricoes"] = restricoes_compatibilidade(
             wb, deteccao_linhagem
         )
@@ -4325,9 +4343,50 @@ def ler_masterfile_v10(
     # nunca fonte de calculo; divergencia relevante bloqueia na politica.
     from _reconciliacao_xls_python import reconciliar_xls_python
     res["reconciliacao_xls_python"] = reconciliar_xls_python(res)
+
+    # Etapa 3/03 — decisao canonica de compatibilidade formalizavel. So a
+    # leitura ADAPTADA decide; o replay legado (adaptar_compatibilidade=False)
+    # nunca decide, o que tambem impede recursao.
+    if res["compatibilidade_aplicada"] and adaptar_compatibilidade:
+        legada = None
+        if (res.get("compatibilidade_valores") or {}).get("aplicada"):
+            legada = _replay_leitura_legada(origem, exigir_modelo_oficial, contexto, wb)
+        decisao = decidir_formalizacao_compatibilidade(res, legada)
+        res["compatibilidade_formalizacao"] = decisao
+        aplicar_reclassificacao(res["reconciliacao_xls_python"], decisao)
+
     if isinstance(origem, (bytes, bytearray)):
         res["_bytes_arquivo"] = bytes(origem)
     return res
+
+
+def _replay_leitura_legada(origem, exigir_modelo_oficial, contexto, wb):
+    """Mesma leitura, mas com os derivados ORIGINAIS do XLS (cache do Excel).
+
+    Prova de causa: o motor, alimentado com o cache legado, precisa reproduzir
+    os valores gravados no XLS. Com contexto, o cache original e restaurado em
+    memoria so durante a leitura; sem contexto, o arquivo e lido de novo sem
+    adaptacao. Qualquer falha devolve None (a decisao fica fail-closed).
+    """
+    token = _REPLAY_LEGADO.set(True)
+    try:
+        if contexto is not None:
+            with valores_legados(wb):
+                return ler_masterfile_v10(
+                    origem,
+                    exigir_modelo_oficial=exigir_modelo_oficial,
+                    contexto=contexto,
+                    adaptar_compatibilidade=False,
+                )
+        return ler_masterfile_v10(
+            origem,
+            exigir_modelo_oficial=exigir_modelo_oficial,
+            adaptar_compatibilidade=False,
+        )
+    except Exception:
+        return None
+    finally:
+        _REPLAY_LEGADO.reset(token)
 
 
 if __name__ == "__main__":

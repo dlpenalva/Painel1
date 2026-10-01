@@ -207,6 +207,8 @@ def _aditivo_simples(wb) -> None:
 
 
 def _extras_completo(wb) -> None:
+    if _SEM_EXTRAS:
+        return
     """Cenario COMPLETO: alem do metodo, preenche PCs, consumo e um aditivo.
 
     Serve a um proposito so: o par (antigo x regerada) cobre TODOS os blocos de
@@ -230,7 +232,50 @@ def _preencher_ciclo_em_execucao(wb, *, data: date, linhas) -> None:
         ws.cell(13 + indice, 3).value = cen.RESTANTE_PADRAO[item["codigo"]]
 
 
+_SEM_EXTRAS = False
+
+
 def _montar_xlsx_entrada(linhagem: str, construtor: str, percentual: float) -> bytes:
+    """Monta a entrada; `*_item_unico` usa um unico item (ITEM-001).
+
+    `*_sem_extras` monta o Financeiro SO com financeiro (sem PCs, consumo nem
+    aditivo): o caso do L2 Financeiro sem a limitacao do aditivo.
+
+    O QTD_REM_OFICIAL do XLS para Itens Consumidos usa `N(intervalo)` dentro de
+    SUMPRODUCT e so enxerga o primeiro item: com varios itens o XLS diverge do
+    Python mesmo no modelo 11.0 (defeito pre-existente do template). O cenario
+    de item unico e o caso integro desse metodo.
+    """
+    global _SEM_EXTRAS
+    if construtor.endswith("_sem_extras"):
+        _SEM_EXTRAS = True
+        try:
+            return _montar_xlsx_entrada(
+                linhagem, construtor[: -len("_sem_extras")], percentual
+            )
+        finally:
+            _SEM_EXTRAS = False
+    unico = construtor.endswith("_item_unico")
+    if not unico:
+        return _montar_xlsx_entrada_base(linhagem, construtor, percentual)
+    # Quantidades pequenas (10 contratadas, 2+4 consumidas, 4 restantes): a
+    # diferenca de ORDEM DE ARREDONDAMENTO entre o agregado do XLS (soma x fator)
+    # e o Python (VU arredondado x quantidade) fica abaixo de 1 centavo.
+    itens, restante, consumo = cen.ITENS_PADRAO, cen.RESTANTE_PADRAO, dict(CONSUMO_PADRAO)
+    cen.ITENS_PADRAO = [dict(itens[0], quantidade=10.0, por_ciclo=(10.0,) * 5)]
+    cen.RESTANTE_PADRAO = {"ITEM-001": 4.0}
+    CONSUMO_PADRAO["ITEM-001"] = (2.0, 4.0)
+    try:
+        return _montar_xlsx_entrada_base(
+            linhagem, construtor[: -len("_item_unico")], percentual
+        )
+    finally:
+        cen.ITENS_PADRAO, cen.RESTANTE_PADRAO = itens, restante
+        CONSUMO_PADRAO.clear()
+        CONSUMO_PADRAO.update(consumo)
+
+
+def _montar_xlsx_entrada_base(linhagem: str, construtor: str, percentual: float) -> bytes:
     wb = load_workbook(io.BytesIO(_bytes_template(linhagem)), data_only=False)
     if linhagem == "pre11_l2":
         _preencher_l2(wb, construtor)
@@ -312,6 +357,13 @@ FIXTURES = {
     "pre11_l2_consumidos": ("pre11_l2", "03_itens_consumidos", PERCENTUAL_BRUTO),
     # Regeneracao oficial do mesmo caso (percentual fechado em 2 casas): base
     # da prova de equivalencia "arquivo antigo adaptado == Coleta regerada".
+    # Etapa 3/03: Itens Consumidos INTEGRO (item unico) no 11.0 e no L1 antigo.
+    "coleta_11_consumidos_item_unico": (
+        "coleta_11", "03_itens_consumidos_item_unico", PERCENTUAL_OFICIAL),
+    "pre11_l1_consumidos_item_unico": (
+        "pre11_l1", "03_itens_consumidos_item_unico", PERCENTUAL_BRUTO),
+    "pre11_l2_financeiro_sem_extras": (
+        "pre11_l2", "01_financeiro_normal_sem_extras", PERCENTUAL_BRUTO),
     "pre11_l1_financeiro_regerada": ("pre11_l1", "01_financeiro_normal", PERCENTUAL_OFICIAL),
     "pre11_l2_financeiro_regerada": ("pre11_l2", "01_financeiro_normal", PERCENTUAL_OFICIAL),
 }
