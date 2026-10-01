@@ -1,0 +1,90 @@
+{
+  "coleta_11_consumidos": {
+    "arquivo": "coleta_11_consumidos.xlsx",
+    "bytes": 2265270,
+    "cenario": "03_itens_consumidos",
+    "linhagem_esperada": "coleta_11",
+    "percentual_c1": 0.0512,
+    "sha256": "afe6ef74b3fc78e05d0eb79a08447961323854cb60a829b02ef02b4d86106b04"
+  },
+  "coleta_11_financeiro": {
+    "arquivo": "coleta_11_financeiro.xlsx",
+    "bytes": 2268156,
+    "cenario": "01_financeiro_normal",
+    "linhagem_esperada": "coleta_11",
+    "percentual_c1": 0.0512,
+    "sha256": "9626dd91a8f22a39184f83075c2822e8bf4008007185b72a1a5fe59bffb57d84"
+  },
+  "coleta_11_pc": {
+    "arquivo": "coleta_11_pc.xlsx",
+    "bytes": 2266554,
+    "cenario": "02_pc",
+    "linhagem_esperada": "coleta_11",
+    "percentual_c1": 0.0512,
+    "sha256": "53356c41cb00c01ee55c059cfd23ca7a1c2d561a1c3c2b454b5e89d5a441bc38"
+  },
+  "pre11_l1_consumidos": {
+    "arquivo": "pre11_l1_consumidos.xlsx",
+    "bytes": 2409065,
+    "cenario": "03_itens_consumidos",
+    "linhagem_esperada": "pre11_l1",
+    "percentual_c1": 0.05123816,
+    "sha256": "99f01a905c24e54351f3f2eee81a7d7c246fc772d6972e71ddefc688c852b54d"
+  },
+  "pre11_l1_financeiro": {
+    "arquivo": "pre11_l1_financeiro.xlsx",
+    "bytes": 2411819,
+    "cenario": "01_financeiro_normal",
+    "linhagem_esperada": "pre11_l1",
+    "percentual_c1": 0.05123816,
+    "sha256": "c139b99beecd05c88e081ee3fc1bdbf86f5fa742d5d39b86f5f76c86116ecd03"
+  },
+  "pre11_l1_financeiro_regerada": {
+    "arquivo": "pre11_l1_financeiro_regerada.xlsx",
+    "bytes": 2411680,
+    "cenario": "01_financeiro_normal",
+    "linhagem_esperada": "pre11_l1",
+    "percentual_c1": 0.0512,
+    "sha256": "71ec8d34a0fc75944544a4883b3cf15708f6ba23d8cb36046ad822522a84231f"
+  },
+  "pre11_l1_pc": {
+    "arquivo": "pre11_l1_pc.xlsx",
+    "bytes": 2409294,
+    "cenario": "02_pc",
+    "linhagem_esperada": "pre11_l1",
+    "percentual_c1": 0.05123816,
+    "sha256": "1dabe108be3abb21ae17ba17230d68c36b6ad94273fdccd2e1445cea10b49047"
+  },
+  "pre11_l2_consumidos": {
+    "arquivo": "pre11_l2_consumidos.xlsx",
+    "bytes": 452688,
+    "cenario": "03_itens_consumidos",
+    "linhagem_esperada": "pre11_l2",
+    "percentual_c1": 0.05123816,
+    "sha256": "6a70800e02efcd21064d2ba022fc941aab91a170b9226bbc4308737b92a32d79"
+  },
+  "pre11_l2_financeiro": {
+    "arquivo": "pre11_l2_financeiro.xlsx",
+    "bytes": 452733,
+    "cenario": "01_financeiro_normal",
+    "linhagem_esperada": "pre11_l2",
+    "percentual_c1": 0.05123816,
+    "sha256": "97483d670e023b8c4d7ce318bbec27a720f7c9c16e4cfb889c33dbee87e0c876"
+  },
+  "pre11_l2_financeiro_regerada": {
+    "arquivo": "pre11_l2_financeiro_regerada.xlsx",
+    "bytes": 453766,
+    "cenario": "01_financeiro_normal",
+    "linhagem_esperada": "pre11_l2",
+    "percentual_c1": 0.0512,
+    "sha256": "ee21f2f1b410674f73b9e5f5648bac171b75314a3619608760576d5a1bab4b3b"
+  },
+  "pre11_l2_pc": {
+    "arquivo": "pre11_l2_pc.xlsx",
+    "bytes": 452003,
+    "cenario": "02_pc",
+    "linhagem_esperada": "pre11_l2",
+    "percentual_c1": 0.05123816,
+    "sha256": "5d436a755cce685d1a395418c19640c2bbb2d169c6e7c6795b7a447657a59e1a"
+  }
+}

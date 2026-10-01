@@ -51,8 +51,19 @@ DIR_GOLDENS = Path(
 GOLDEN_25 = DIR_GOLDENS / "Coleta_Reajuste_C3_ICTI_25agosto2026.xlsx"
 GOLDEN_26 = DIR_GOLDENS / "Coleta_Reajuste_C1_C2_C3_ICTI_26-08-2026.xlsx"
 
-VTA_ESPERADO = 8_713_820.26
-RETROATIVO_ESPERADO = 24_678.92
+# Valores GRAVADOS NO XLS legado (Excel recalculou com o percentual bruto de C3,
+# 2,8899...%). Sao o "lado XLS" e NAO sao mais o que o runtime publica.
+VTA_XLS_LEGADO = 8_713_820.26
+RETROATIVO_XLS_LEGADO = 24_678.92
+REMANESCENTE_XLS_LEGADO = 1_388_251.07
+
+# Compatibilidade retroativa (Etapa 2/03): a Coleta antiga e adaptada em memoria
+# e os derivados sao recompostos pela regra VIGENTE (C3 = 2,89%). O runtime
+# publica estes valores; a diferenca para o XLS legado (< R$ 2,00) decorre so da
+# precisao do percentual e fica exposta como divergencia, nunca adotada.
+VTA_ESPERADO = 8_713_821.69
+RETROATIVO_ESPERADO = 24_679.47
+REMANESCENTE_ESPERADO = 1_388_251.95
 
 
 def _coleta_sem_cache_de_formulas() -> bytes:
@@ -220,14 +231,20 @@ def test_d_goldens_reais_inalterados(caminho, ciclos_esperados):
     assert consolidado["retroativo_reconhecido"] == pytest.approx(
         RETROATIVO_ESPERADO, abs=0.005
     )
+    # O valor do XLS legado difere do da regra vigente apenas pela precisao do
+    # percentual de C3 (R$ 1,43 no VTA; R$ 0,55 no retroativo) — e continua
+    # visivel na conferencia XLS x Python, sem ser adotado.
+    assert 0 < consolidado["vta"] - VTA_XLS_LEGADO < 2.0
+    assert 0 < consolidado["retroativo_reconhecido"] - RETROATIVO_XLS_LEGADO < 2.0
     assert consolidado["vta_origem"] == ORIGEM_VTA_CANONICA
     # STATUS-CANON-1: vocabulario do painel = vocabulario da aba RESULTADOS.
     assert consolidado["status_confiabilidade"] == "VALIDADO"
     assert consolidado["status_apuracao"]["codigo"] == "VALIDADO"
     assert consolidado["status_apuracao"]["origem"] == "resultados_xls"
     # Regra petrea do percentual oficial: estes goldens sao Coletas ANTIGAS
-    # (percentual bruto no C3). Apuracao, VTA e retroativo seguem intactos,
-    # mas a formalizacao fica bloqueada ate a Coleta ser regenerada.
+    # (percentual bruto no C3). Status VALIDADO, bloqueio de formalizacao e a
+    # mensagem de precisao permanecem; VTA e retroativo seguem a regra vigente
+    # e a formalizacao fica bloqueada ate a Coleta ser regenerada.
     from _politica_entrega_segura import MENSAGEM_COLETA_PRECISAO_ANTERIOR
 
     assert consolidado["formalizacao"]["bloqueada"] is True
@@ -249,8 +266,9 @@ def test_d_golden_26_preserva_execucao_dos_ciclos_preclusos():
         RETROATIVO_ESPERADO, abs=0.005
     )
     assert resultado["remanescente_reajustado"] == pytest.approx(
-        1_388_251.07, abs=0.005
+        REMANESCENTE_ESPERADO, abs=0.005
     )
+    assert 0 < REMANESCENTE_ESPERADO - REMANESCENTE_XLS_LEGADO < 2.0
     assert resultado["valor_atualizado_contrato"] == pytest.approx(
         VTA_ESPERADO, abs=0.005
     )

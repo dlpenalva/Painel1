@@ -398,19 +398,23 @@
   },
   "despacho_saneador": {
    "linhas_negociais": [
+    "Assunto: Saneamento para formalização de atualização contratual - reajustes dos Ciclos C1, C2, C3 ([PREENCHER: Nome da empresa contratada])",
+    "Acumulado dos ciclos: 2,89%, apurado pela composição dos fatores de reajuste de cada ciclo, e não pela soma dos respectivos percentuais.",
+    "Para o cálculo, o percentual de reajuste de cada ciclo é considerado com duas casas decimais, sendo o fator correspondente aplicado aos valores unitários. No ciclo C3, por exemplo, o percentual de 2,89% corresponde ao fator 1,0289.",
+    "Considerando que, no âmbito da presente atualização contratual, os efeitos financeiros relativos ao ciclo C3 são reconhecidos a partir de 02/2026, registra-se que o próximo ciclo de reajuste contratual estará apto a partir de [PREENCHER: Proxima data canonica de reajuste], observados os termos e a periodicidade previstos no contrato, desde que o instrumento jurídico ainda esteja em vigência.",
     "Ciclo | Data-base | Data do pedido | Situação | Efeito financeiro | Percentual",
     "C1 | 01/02/2024 | 03/07/2025 | PRECLUSO | Sem efeitos financeiros | 0,00%",
     "C2 | 01/02/2025 | 03/07/2025 | PRECLUSO | Sem efeitos financeiros | 0,00%",
     "C3 | 01/02/2026 | 13/02/2026 | TEMPESTIVO | A partir de 02/2026 | 2,89%",
     "Valor pago no período analisado | R$ 7.300.890,27",
-    "Valor devido após a atualização contratual | R$ 7.325.569,19",
-    "Retroativo a pagar | R$ 24.678,92",
-    "Valor Total Atualizado do Contrato | R$ 8.713.820,26"
+    "Valor devido após a atualização contratual | R$ 7.325.569,74",
+    "Retroativo a pagar | [PREENCHER: Valor retroativo a pagar]",
+    "Valor Total Atualizado do Contrato | R$ 8.713.820,26 — PRÉVIA"
    ]
   },
   "dou": {
    "reajuste_contratual": "C1: 0,00%; C2: 0,00%; C3: 2,89%. Percentual acumulado: 2,89%",
-   "valor_total_atualizado": 8713820.26
+   "valor_total_atualizado": 8713821.69
   },
   "sumario_executivo": {
    "ciclos": [
@@ -430,6 +434,7 @@
       "status": "Não aplicável"
      },
      "percentual_reajuste": "Não aplicável",
+     "proxima_data_reajuste": "Não informado",
      "situacao": "Base"
     },
     {
@@ -448,6 +453,7 @@
       "status": "Não informado"
      },
      "percentual_reajuste": 0.0,
+     "proxima_data_reajuste": "Não informado",
      "situacao": "PRECLUSO"
     },
     {
@@ -466,6 +472,7 @@
       "status": "Não informado"
      },
      "percentual_reajuste": 0.0,
+     "proxima_data_reajuste": "Não informado",
      "situacao": "PRECLUSO"
     },
     {
@@ -475,15 +482,16 @@
      "data_inicio": "01/02/2026",
      "data_pedido": "13/02/2026",
      "eh_base": false,
-     "fator_acumulado": 1.028899355437093,
-     "indice_acumulado": 0.0288993554,
+     "fator_acumulado": 1.0289,
+     "indice_acumulado": 0.0289,
      "inicio_efeito_financeiro": "01/02/2026",
      "meses_sem_efeito": {
       "competencias": [],
       "quantidade": 0,
       "status": "ok"
      },
-     "percentual_reajuste": 0.0288993554370931,
+     "percentual_reajuste": 0.0289,
+     "proxima_data_reajuste": "Não informado",
      "situacao": "TEMPESTIVO"
     },
     {
@@ -502,27 +510,15 @@
       "status": "Não informado"
      },
      "percentual_reajuste": null,
+     "proxima_data_reajuste": "Não informado",
      "situacao": "Fora da apuracao"
     }
    ],
    "composicao_vta": {
-    "componentes": [
-     {
-      "descricao": "Executado apurado",
-      "valor": 7300890.27
-     },
-     {
-      "descricao": "Ajustes ainda devidos",
-      "valor": 24678.92
-     },
-     {
-      "descricao": "Remanescente atualizado",
-      "valor": 1388251.07
-     }
-    ],
-    "exibivel": true,
+    "componentes": [],
+    "exibivel": false,
     "metodo": "financeiro",
-    "total": 8713820.26
+    "total": null
    },
    "observacoes": {
     "advertencias": [],
@@ -537,6 +533,7 @@
      "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 13: 'SIM'.",
      "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 14: 'SIM'.",
      "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 15: 'NAO'.",
+     "parametros: parametros: percentual de C3 com precisao bruta (0.0288993554370931); o runtime usa o percentual OFICIAL (0.0289). Valores ja calculados pelo Excel neste arquivo derivam do percentual bruto: regere a Coleta.",
      "historico_VU: historico_VU: item '1' sem VU original.",
      "historico_VU: historico_VU: item '2' sem VU original.",
      "historico_VU: historico_VU: item '3' sem VU original.",
@@ -545,7 +542,8 @@
      "historico_VU: historico_VU: item '6' sem VU original.",
      "historico_VU: historico_VU: item '7' sem VU original.",
      "historico_VU: historico_VU: item '8' sem VU original.",
-     "execucao_saldo: Aba 'itens_Execucao_Saldo' nao presente — entrada XLS consolidada nao preenchida (opcional em v10.1; ciclos e indices devem ser fornecidos pela GCC)."
+     "execucao_saldo: Aba 'itens_Execucao_Saldo' nao presente — entrada XLS consolidada nao preenchida (opcional em v10.1; ciclos e indices devem ser fornecidos pela GCC).",
+     "Coleta anterior ao modelo 11.0 reconhecida por assinatura estrutural (PRE_11_L1); entradas do entrada_xls preservadas. Derivados recompostos pela regra vigente (percentual oficial de duas casas) nos blocos: parametros, financeiro, historico_VU, itens_Remanesc, itens_RC, itens_Consumidos, itens_PC, CICLO_EM_EXECUCAO."
     ],
     "reajuste_negativo": [],
     "ressalvas": []
@@ -554,28 +552,35 @@
     "ciclo_referencia_acumulado": "C3",
     "justificativa_metodologia": "Usa financeiro para o que ja ocorreu e remanescente para a parcela futura.",
     "metodo_vta": "Financeiro",
-    "resumo_executivo": "Conclusao recomendada: Preparar apostilamento. Ha retroativo reconhecido e evidencias suficientes para preparar a formalizacao. Metodologia: Financeiro + Remanescentes. Valor recomendado pela metodologia: R$ 8.689.141,34.",
-    "retroativo_estado": "reconhecido",
-    "retroativo_total": 24678.92,
+    "resumo_executivo": "Conclusao recomendada: Preparar apostilamento. Ha retroativo reconhecido e evidencias suficientes para preparar a formalizacao. Metodologia: Financeiro + Remanescentes. Valor recomendado pela metodologia: R$ 8.689.142,22.",
+    "retroativo_estado": "Valor não exibido: divergência relevante XLS × Python pendente de equalização antes da formalização.",
+    "retroativo_total": null,
     "situacao_processo": "apto_para_confirmacao",
-    "variacao_acumulada": 0.0288993554,
-    "vta": 8713820.26,
-    "vta_execucao_atualizada": 7325569.19,
-    "vta_motivo": null,
+    "variacao_acumulada": 0.0289,
+    "vta": null,
+    "vta_execucao_atualizada": 7325569.74,
+    "vta_motivo": "Valor não exibido: divergência relevante XLS × Python pendente de equalização antes da formalização.",
     "vta_natureza": "VALOR_TOTAL_ATUALIZADO_COM_RESSALVA",
-    "vta_saldo_remanescente_atualizado": 1388251.07
+    "vta_previa": 8713820.26,
+    "vta_retroativo_potencial": null,
+    "vta_retroativo_potencial_apurado": null,
+    "vta_saldo_remanescente_atualizado": 1388251.95,
+    "vta_sem_potencial": null,
+    "vta_tem_parcela_potencial": false,
+    "vta_tem_potencial_apurado": false
    },
    "status_vta": null
   },
   "termo_apostila": {
    "linhas_negociais": [
-    "5. As informações encaminhadas pela área gestora do contrato quanto à execução, ao saldo remanescente, aos itens contratuais, aos aditivos/supressões e aos documentos de suporte da apuração;",
-    "6. A memória de cálculo constante em [PREENCHER: Referencia da memoria de calculo], que apurou os ciclos de reajuste, os percentuais aplicáveis, os efeitos financeiros, o saldo retroativo a pagar e a composição do Valor Total Atualizado do Contrato;",
-    "7. O índice contratual utilizado na análise, qual seja ICTI (Ipeadata), e o percentual acumulado apurado de 2,89%;",
-    "2. Da apuração financeira do retroativo",
-    "2.1. A apuração financeira consolidada indicou valor pago efetivo de R$ 7.300.890,27 e valor devido após o reajuste de R$ 7.325.569,19, resultando em valor retroativo a pagar de R$ 24.678,92, conforme Quadro 2.",
-    "HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO",
+    "4. As informações encaminhadas pela área gestora do contrato quanto à execução, ao saldo remanescente, aos itens contratuais, aos aditivos/supressões e aos documentos de suporte da apuração;",
+    "5. A memória de cálculo constante em [PREENCHER: Referencia da memoria de calculo], que apurou os ciclos de reajuste, os percentuais aplicáveis, os efeitos financeiros, o retroativo reconhecido e a composição do Valor Total Atualizado do Contrato;",
+    "6. O índice contratual utilizado na análise, qual seja ICTI (Ipeadata), e o percentual acumulado apurado de 2,89%;",
+    "2. Da apuração financeira dos valores retroativos",
+    "2.1. A apuração financeira consolidada indicou, na execução realizada por competência, valor pago efetivo de R$ 7.300.890,27 e valor devido após o reajuste de R$ 7.325.569,74, resultando em valor retroativo a pagar de [PREENCHER: Valor retroativo a pagar], conforme Quadro 2.",
     "5.2. Os aditivos e supressões computáveis integram o Valor Total Atualizado quando não estiverem refletidos na execução atualizada, no saldo remanescente ou no valor formalizado anterior, vedada a dupla contagem.",
+    "7.1. A CONTRATADA deverá atualizar a garantia contratual, prevista na cláusula própria do Contrato, no prazo contratualmente estabelecido, observado o Valor Total Atualizado do Contrato de R$ 8.713.820,26 — PRÉVIA.",
+    "ANEXO 1 - HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO",
     "Ref. | Ciclo | Percentual aplicado | Efeitos financeiros | Situação",
     "A | C1 | 0,00% | Sem efeitos financeiros | PRECLUSO",
     "B | C2 | 0,00% | Sem efeitos financeiros | PRECLUSO",
@@ -585,20 +590,22 @@
     "C0 | R$ 4.739.007,27 | R$ 4.739.007,27 | R$ 0,00",
     "C1 | R$ 853.961,00 | R$ 853.961,00 | R$ 0,00",
     "C2 | R$ 853.961,00 | R$ 853.961,00 | R$ 0,00",
-    "C3 | R$ 853.961,00 | R$ 878.639,92 | R$ 24.678,92",
-    "Total | R$ 7.300.890,27 | R$ 7.325.569,19 | R$ 24.678,92",
-    "A | Execução atualizada anterior ao corte | R$ 7.325.569,19",
-    "B | Saldo remanescente atualizado no corte | R$ 1.388.251,07",
-    "Total | Valor Total Atualizado do Contrato | R$ 8.713.820,26",
+    "C3 | R$ 853.961,00 | R$ 878.640,47 | R$ 24.679,47",
+    "Total | R$ 7.300.890,27 | R$ 7.325.569,74 | R$ 24.679,47",
+    "A | C0 - execução atualizada | R$ 4.739.007,27",
+    "B | C1 - execução atualizada | R$ 853.961,00",
+    "C | C2 - execução atualizada | R$ 853.961,00",
+    "D | C3 - execução atualizada | R$ 903.319,94",
+    "Total (A + B + C + D) | Valor Total Atualizado do Contrato | R$ 8.713.820,26 — PRÉVIA",
     "Item | VU_C0 | VU_C1 | VU_C2 | VU_C3",
-    "1 | R$ 229.784,40 | R$ 229.784,40 | R$ 229.784,40 | R$ 236.425,02",
-    "2 | R$ 1.817.722,00 | R$ 1.817.722,00 | R$ 1.817.722,00 | R$ 1.870.252,99",
-    "3 | R$ 392.703,20 | R$ 392.703,20 | R$ 392.703,20 | R$ 404.052,07",
-    "4 | R$ 37.664,60 | R$ 37.664,60 | R$ 37.664,60 | R$ 38.753,08",
-    "5 | R$ 140.535,00 | R$ 140.535,00 | R$ 140.535,00 | R$ 144.596,37",
-    "6 | R$ 281.356,00 | R$ 281.356,00 | R$ 281.356,00 | R$ 289.487,01",
-    "7 | R$ 53.273,80 | R$ 53.273,80 | R$ 53.273,80 | R$ 54.813,38",
-    "8 | R$ 37.291,50 | R$ 37.291,50 | R$ 37.291,50 | R$ 38.369,20"
+    "1 | R$ 229.784,40 | R$ 229.784,40 | R$ 229.784,40 | R$ 236.425,17",
+    "2 | R$ 1.817.722,00 | R$ 1.817.722,00 | R$ 1.817.722,00 | R$ 1.870.254,17",
+    "3 | R$ 392.703,20 | R$ 392.703,20 | R$ 392.703,20 | R$ 404.052,32",
+    "4 | R$ 37.664,60 | R$ 37.664,60 | R$ 37.664,60 | R$ 38.753,11",
+    "5 | R$ 140.535,00 | R$ 140.535,00 | R$ 140.535,00 | R$ 144.596,46",
+    "6 | R$ 281.356,00 | R$ 281.356,00 | R$ 281.356,00 | R$ 289.487,19",
+    "7 | R$ 53.273,80 | R$ 53.273,80 | R$ 53.273,80 | R$ 54.813,41",
+    "8 | R$ 37.291,50 | R$ 37.291,50 | R$ 37.291,50 | R$ 38.369,22"
    ]
   }
  },
@@ -652,6 +659,7 @@
    "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 13: 'SIM'.",
    "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 14: 'SIM'.",
    "parametros: parametros: ciclo fora do catalogo C0-C4 ignorado em linha 15: 'NAO'.",
+   "parametros: parametros: percentual de C3 com precisao bruta (0.0288993554370931); o runtime usa o percentual OFICIAL (0.0289). Valores ja calculados pelo Excel neste arquivo derivam do percentual bruto: regere a Coleta.",
    "historico_VU: historico_VU: item '1' sem VU original.",
    "historico_VU: historico_VU: item '2' sem VU original.",
    "historico_VU: historico_VU: item '3' sem VU original.",
@@ -660,10 +668,22 @@
    "historico_VU: historico_VU: item '6' sem VU original.",
    "historico_VU: historico_VU: item '7' sem VU original.",
    "historico_VU: historico_VU: item '8' sem VU original.",
-   "execucao_saldo: Aba 'itens_Execucao_Saldo' nao presente — entrada XLS consolidada nao preenchida (opcional em v10.1; ciclos e indices devem ser fornecidos pela GCC)."
+   "execucao_saldo: Aba 'itens_Execucao_Saldo' nao presente — entrada XLS consolidada nao preenchida (opcional em v10.1; ciclos e indices devem ser fornecidos pela GCC).",
+   "Coleta anterior ao modelo 11.0 reconhecida por assinatura estrutural (PRE_11_L1); entradas do fiscal preservadas. Derivados recompostos pela regra vigente (percentual oficial de duas casas) nos blocos: parametros, financeiro, historico_VU, itens_Remanesc, itens_RC, itens_Consumidos, itens_PC, CICLO_EM_EXECUCAO."
   ],
-  "bloqueios": [],
-  "campos_nao_confiaveis": [],
+  "bloqueios": [
+   "Esta Coleta foi gerada com precisão de reajuste anterior à regra vigente. Os valores financeiros gravados no arquivo podem divergir dos valores calculados com o percentual oficial de duas casas. Regere a Coleta e faça novo upload antes da formalização.",
+   "Divergência relevante XLS × Python em RETRO_FIN (Retroativo financeiro): XLS=24678.92 vs Python=24679.47. Nenhum dos resultados é adotado automaticamente; equalizar antes de formalizar.",
+   "Divergência relevante XLS × Python em RETRO_OFICIAL (Retroativo oficial): XLS=24678.92 vs Python=24679.47. Nenhum dos resultados é adotado automaticamente; equalizar antes de formalizar.",
+   "Divergência relevante XLS × Python em REM_ATUALIZADO_OFICIAL (Valor remanescente atualizado): XLS=1388251.07 vs Python=1388251.95. Nenhum dos resultados é adotado automaticamente; equalizar antes de formalizar.",
+   "Divergência relevante XLS × Python em VTA_FINAL (VTA final): XLS=8713820.26 vs Python=8713821.69. Nenhum dos resultados é adotado automaticamente; equalizar antes de formalizar."
+  ],
+  "campos_nao_confiaveis": [
+   "REM_ATUALIZADO_OFICIAL",
+   "RETRO_FIN",
+   "RETRO_OFICIAL",
+   "VTA_FINAL"
+  ],
   "ciclo_vigente": "C3",
   "ciclos": [
    {
@@ -716,15 +736,15 @@
     "data_base": "01/02/2026",
     "data_do_pedido": null,
     "efeito_financeiro": "Apurar",
-    "fator_acumulado": 1.028899355437093,
-    "fator_acumulado_efetivo": 1.028899355437093,
-    "fator_ciclo_efetivo": 1.028899355437093,
-    "fator_proprio": 1.028899355437093,
+    "fator_acumulado": 1.0289,
+    "fator_acumulado_efetivo": 1.0289,
+    "fator_ciclo_efetivo": 1.0289,
+    "fator_proprio": 1.0289,
     "intervalo_do_indice": null,
     "janela_de_admissibilidade": null,
-    "percentual_efetivamente_aplicado": 0.0288993554370931,
+    "percentual_efetivamente_aplicado": 0.028899999999999926,
     "situacao": "✅ TEMPESTIVO",
-    "variacao_apurada": 0.0288993554370931
+    "variacao_apurada": 0.0289
    },
    {
     "ciclo": "C4",
@@ -772,18 +792,18 @@
      "fonte": "retroativo",
      "ref": "B",
      "tipo": "ajustes_devidos",
-     "valor_atualizado": 24678.92,
-     "valor_base": 24678.92
+     "valor_atualizado": 24679.47,
+     "valor_base": 24679.47
     },
     {
      "ciclo": "C3",
      "descricao": "Remanescente atualizado",
      "explicacao": "Saldo que ainda falta executar, ja atualizado.",
-     "fator_acumulado": 1.028899355437093,
+     "fator_acumulado": 1.0289,
      "fonte": "posicao_contratual",
      "ref": "C",
      "tipo": "saldo_remanescente",
-     "valor_atualizado": 1388251.07,
+     "valor_atualizado": 1388251.95,
      "valor_base": 1349258.38
     }
    ],
@@ -794,9 +814,9 @@
     {
      "campo": "RETRO_FIN",
      "nota": null,
-     "python": 24678.92,
+     "python": 24679.47,
      "rotulo": "Retroativo financeiro",
-     "status": "CONCILIADO",
+     "status": "DIVERGENCIA_RELEVANTE",
      "xls": 24678.92
     },
     {
@@ -818,9 +838,9 @@
     {
      "campo": "RETRO_OFICIAL",
      "nota": null,
-     "python": 24678.92,
+     "python": 24679.47,
      "rotulo": "Retroativo oficial",
-     "status": "CONCILIADO",
+     "status": "DIVERGENCIA_RELEVANTE",
      "xls": 24678.92
     },
     {
@@ -842,29 +862,62 @@
     {
      "campo": "REM_ATUALIZADO_OFICIAL",
      "nota": null,
-     "python": 1388251.07,
+     "python": 1388251.95,
      "rotulo": "Valor remanescente atualizado",
-     "status": "CONCILIADO",
+     "status": "DIVERGENCIA_RELEVANTE",
      "xls": 1388251.07
     },
     {
      "campo": "VTA_FINAL",
      "nota": null,
-     "python": 8713820.26,
+     "python": 8713821.69,
      "rotulo": "VTA final",
-     "status": "CONCILIADO",
+     "status": "DIVERGENCIA_RELEVANTE",
      "xls": 8713820.26
     }
    ],
    "disponivel": true,
-   "divergencias_relevantes": [],
+   "divergencias_relevantes": [
+    {
+     "campo": "RETRO_FIN",
+     "nota": null,
+     "python": 24679.47,
+     "rotulo": "Retroativo financeiro",
+     "status": "DIVERGENCIA_RELEVANTE",
+     "xls": 24678.92
+    },
+    {
+     "campo": "RETRO_OFICIAL",
+     "nota": null,
+     "python": 24679.47,
+     "rotulo": "Retroativo oficial",
+     "status": "DIVERGENCIA_RELEVANTE",
+     "xls": 24678.92
+    },
+    {
+     "campo": "REM_ATUALIZADO_OFICIAL",
+     "nota": null,
+     "python": 1388251.95,
+     "rotulo": "Valor remanescente atualizado",
+     "status": "DIVERGENCIA_RELEVANTE",
+     "xls": 1388251.07
+    },
+    {
+     "campo": "VTA_FINAL",
+     "nota": null,
+     "python": 8713821.69,
+     "rotulo": "VTA final",
+     "status": "DIVERGENCIA_RELEVANTE",
+     "xls": 8713820.26
+    }
+   ],
    "sem_cache": false,
-   "status_geral": "CONCILIADO",
+   "status_geral": "DIVERGENCIA_RELEVANTE",
    "tolerancia": 0.005
   },
   "data_corte": "2026-08-12",
-  "execucao_atualizada_do_ciclo": 7325569.1899999995,
-  "fator_acumulado_global": 1.028899355437093,
+  "execucao_atualizada_do_ciclo": 7325569.739999999,
+  "fator_acumulado_global": 1.0289,
   "fora_do_corte": {
    "aplicavel": false,
    "data_corte": "2026-08-12",
@@ -872,9 +925,9 @@
    "valor_informado": null
   },
   "formalizacao": {
-   "bloqueada": false,
-   "mensagem": "Sem bloqueio explícito à formalização.",
-   "status": "SEM BLOQUEIO"
+   "bloqueada": true,
+   "mensagem": "Esta Coleta foi gerada com precisão de reajuste anterior à regra vigente. Os valores financeiros gravados no arquivo podem divergir dos valores calculados com o percentual oficial de duas casas. Regere a Coleta e faça novo upload antes da formalização.",
+   "status": "BLOQUEADA"
   },
   "indice": "ICTI (Ipeadata)",
   "informacoes": [],
@@ -921,9 +974,11 @@
    "reconciliacao_status": "RECONCILIADO",
    "reconciliacao_valor": 0.0
   },
-  "remanescente_atualizado": 1388251.07,
+  "remanescente_atualizado": 1388251.95,
   "remanescente_original": 1349258.38,
-  "ressalvas": [],
+  "ressalvas": [
+   "Há campos materiais que dependem de confirmação."
+  ],
   "retroativo_por_ciclo": [
    {
     "ciclo": "C0",
@@ -1025,11 +1080,11 @@
     "ciclo": "C3",
     "data_fim": "2027-01-31",
     "data_inicio": "2026-02-01",
-    "fator_acumulado": 1.028899355437093,
+    "fator_acumulado": 1.0289,
     "residuais": {
      "itens": 8,
      "quantidade": 7.9,
-     "valor_atualizado": 1388251.07,
+     "valor_atualizado": 1388251.95,
      "valor_original": 1349258.38
     },
     "retroativo": {
@@ -1042,8 +1097,8 @@
      "financeiro": {
       "base_original": 853961.0,
       "evidencias": 1,
-      "retroativo": 24678.92,
-      "valor_atualizado": 878639.92
+      "retroativo": 24679.47,
+      "valor_atualizado": 878640.47
      },
      "pc": {
       "base_original": 0.0,
@@ -1087,7 +1142,7 @@
    }
   ],
   "retroativo_potencial": null,
-  "retroativo_total": 24678.92,
+  "retroativo_total": 24679.47,
   "status_apuracao": {
    "bruto": "VALIDADO",
    "codigo": "VALIDADO",
@@ -1096,7 +1151,7 @@
    "mensagem": "Conclusão reproduzida da aba RESULTADOS do XLS.",
    "origem": "resultados_xls",
    "rotulo": "VALIDADO",
-   "status_politica": "PRONTO_PARA_VALIDACAO_FISCAL"
+   "status_politica": "BLOQUEADO_PARA_FORMALIZACAO"
   },
   "status_confiabilidade": "VALIDADO",
   "status_resultados_xls": {
@@ -1128,10 +1183,10 @@
    "vta": "CALCULADO — CONFERIR"
   },
   "totais_canonicos_pc": {},
-  "valor_atualizado_contrato": 8713820.26,
+  "valor_atualizado_contrato": 8713821.69,
   "valor_atualizado_em_analise": null,
-  "variacao_acumulada_global": 0.0288993554370931,
-  "vta_oficial": 8713820.26,
+  "variacao_acumulada_global": 0.028899999999999926,
+  "vta_oficial": 8713821.69,
   "vta_origem": "vta_canonico",
   "vta_usa_ultima_posicao": false
  }

@@ -785,8 +785,17 @@ def test_metodo_pc_mantem_a_regra_existente(coleta_c1):
     assert MENSAGEM_COLETA_PRECISAO_ANTERIOR not in resultado["bloqueios_formalizacao"]
 
 
-def test_golden_financeiro_real_antigo_bloqueia_sem_recalcular_o_vta():
-    """Coleta Financeiro REAL (C3 com 2,8899...% bruto), recalculada no Excel."""
+def test_golden_financeiro_real_antigo_bloqueia_e_expoe_a_divergencia_de_precisao():
+    """Coleta Financeiro REAL (C3 com 2,8899...% bruto), recalculada no Excel.
+
+    Antes da compatibilidade retroativa o Python copiava os valores do XLS e so
+    sobrava o bloqueio de precisao. Agora a Coleta e adaptada em memoria e os
+    derivados sao recompostos pela regra vigente (2,89%): o Python publica o
+    seu proprio numero e a diferenca para o XLS antigo (R$ 1,43 no VTA) vira
+    divergencia EXPOSTA. A expectativa antiga ("somente o bloqueio de precisao")
+    ficou obsoleta — o bloqueio segue sendo o PRIMEIRO item e a formalizacao
+    continua bloqueada; nada e adotado automaticamente.
+    """
     import test_baseline_resultados_goldens as goldens
 
     arquivo = goldens.GOLDENS["financeiro_multiciclo_validado"]
@@ -796,13 +805,22 @@ def test_golden_financeiro_real_antigo_bloqueia_sem_recalcular_o_vta():
 
     resultado, diagnostico = processar_coleta_oficial_runtime(arquivo.read_bytes())
     assert any("precisao bruta" in a for a in diagnostico.get("avisos") or [])
-    assert resultado["bloqueios_formalizacao"] == [MENSAGEM_COLETA_PRECISAO_ANTERIOR]
+    bloqueios = resultado["bloqueios_formalizacao"]
+    assert bloqueios[0] == MENSAGEM_COLETA_PRECISAO_ANTERIOR
+    extras = bloqueios[1:]
+    assert len(extras) == 4 and all(
+        item.startswith("Divergência relevante XLS × Python em ") for item in extras
+    )
+    for campo in goldens.CAMPOS_DIVERGENTES_POR_PRECISAO:
+        assert any(f" em {campo} " in item for item in extras), campo
     consolidado = resultado["resultado_consolidado"]
     assert consolidado["formalizacao"]["status"] == "BLOQUEADA"
     assert consolidado["formalizacao"]["mensagem"] == MENSAGEM_COLETA_PRECISAO_ANTERIOR
-    # o VTA gravado no XLS antigo NAO e recalculado silenciosamente
     web = goldens._fotografar("financeiro_multiciclo_validado")["web"]
-    assert web["vta_oficial"] == goldens.VTA_FINANCEIRO_HOMOLOGADO
+    # Python: regra vigente. XLS: valor gravado com a regra antiga, NAO adotado.
+    assert web["vta_oficial"] == goldens.VTA_FINANCEIRO_REGRA_VIGENTE
+    xls = {c["campo"]: c["xls"] for c in web["convergencia_xls_python"]["campos"]}
+    assert xls["VTA_FINAL"] == goldens.VTA_FINANCEIRO_HOMOLOGADO
 
 
 # ============================== revisao final: 3 bypasses P1 (docs/negativo/fator)
