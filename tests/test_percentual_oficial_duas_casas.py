@@ -785,16 +785,16 @@ def test_metodo_pc_mantem_a_regra_existente(coleta_c1):
     assert MENSAGEM_COLETA_PRECISAO_ANTERIOR not in resultado["bloqueios_formalizacao"]
 
 
-def test_golden_financeiro_real_antigo_bloqueia_e_expoe_a_divergencia_de_precisao():
+def test_golden_financeiro_real_antigo_formaliza_pelo_canonico_e_expoe_a_divergencia():
     """Coleta Financeiro REAL (C3 com 2,8899...% bruto), recalculada no Excel.
 
     Antes da compatibilidade retroativa o Python copiava os valores do XLS e so
-    sobrava o bloqueio de precisao. Agora a Coleta e adaptada em memoria e os
-    derivados sao recompostos pela regra vigente (2,89%): o Python publica o
-    seu proprio numero e a diferenca para o XLS antigo (R$ 1,43 no VTA) vira
-    divergencia EXPOSTA. A expectativa antiga ("somente o bloqueio de precisao")
-    ficou obsoleta — o bloqueio segue sendo o PRIMEIRO item e a formalizacao
-    continua bloqueada; nada e adotado automaticamente.
+    sobrava o bloqueio de precisao. Na Etapa 2 a Coleta passou a ser adaptada em
+    memoria (derivados recompostos pela regra vigente, 2,89%) e a diferenca para
+    o XLS antigo (R$ 1,43 no VTA) virou divergencia exposta. Na Etapa 3 a CAUSA
+    dessa divergencia e provada (o motor reproduz o XLS com os derivados
+    legados), entao ela passa a DIVERGENCIA_COMPATIBILIZADA e a formalizacao e
+    liberada pelo valor canonico. Nada do XLS e adotado: ele fica na auditoria.
     """
     import test_baseline_resultados_goldens as goldens
 
@@ -805,22 +805,23 @@ def test_golden_financeiro_real_antigo_bloqueia_e_expoe_a_divergencia_de_precisa
 
     resultado, diagnostico = processar_coleta_oficial_runtime(arquivo.read_bytes())
     assert any("precisao bruta" in a for a in diagnostico.get("avisos") or [])
-    bloqueios = resultado["bloqueios_formalizacao"]
-    assert bloqueios[0] == MENSAGEM_COLETA_PRECISAO_ANTERIOR
-    extras = bloqueios[1:]
-    assert len(extras) == 4 and all(
-        item.startswith("Divergência relevante XLS × Python em ") for item in extras
+    assert resultado["bloqueios_formalizacao"] == []
+    assert resultado["bloqueios_documentais_duros"] == []
+    decisao = resultado["compatibilidade_formalizacao"]
+    assert decisao["status"] == "FORMALIZAVEL_COMPATIBILIZADA"
+    assert {d["campo"] for d in decisao["divergencias_esperadas"]} == (
+        goldens.CAMPOS_DIVERGENTES_POR_PRECISAO
     )
-    for campo in goldens.CAMPOS_DIVERGENTES_POR_PRECISAO:
-        assert any(f" em {campo} " in item for item in extras), campo
+    assert decisao["divergencias_nao_explicadas"] == []
     consolidado = resultado["resultado_consolidado"]
-    assert consolidado["formalizacao"]["status"] == "BLOQUEADA"
-    assert consolidado["formalizacao"]["mensagem"] == MENSAGEM_COLETA_PRECISAO_ANTERIOR
+    assert consolidado["formalizacao"]["bloqueada"] is False
+    assert MENSAGEM_COLETA_PRECISAO_ANTERIOR not in consolidado["formalizacao"]["mensagem"]
     web = goldens._fotografar("financeiro_multiciclo_validado")["web"]
     # Python: regra vigente. XLS: valor gravado com a regra antiga, NAO adotado.
     assert web["vta_oficial"] == goldens.VTA_FINANCEIRO_REGRA_VIGENTE
-    xls = {c["campo"]: c["xls"] for c in web["convergencia_xls_python"]["campos"]}
-    assert xls["VTA_FINAL"] == goldens.VTA_FINANCEIRO_HOMOLOGADO
+    campos = {c["campo"]: c for c in web["convergencia_xls_python"]["campos"]}
+    assert campos["VTA_FINAL"]["xls"] == goldens.VTA_FINANCEIRO_HOMOLOGADO
+    assert campos["VTA_FINAL"]["status"] == "DIVERGENCIA_COMPATIBILIZADA"
 
 
 # ============================== revisao final: 3 bypasses P1 (docs/negativo/fator)
@@ -843,9 +844,13 @@ def test_p1_coleta_antiga_nao_libera_nenhum_documento_formalizador(coleta_c1):
     for chave in DOCS_FORMALIZADORES:
         assert documentos[chave]["habilitado"] is False, chave
         assert documentos[chave]["motivo"] == MENSAGEM_COLETA_PRECISAO_ANTERIOR, chave
-    # a pagina exibe a mesma orientacao canonica junto aos documentos
+    # a pagina exibe a mesma orientacao canonica junto aos documentos: Etapa 3/03
+    # centralizou a lista no motor (`bloqueios_documentais_duros`), que contem a
+    # mensagem de precisao quando a Coleta NAO foi compatibilizada.
+    assert MENSAGEM_COLETA_PRECISAO_ANTERIOR in resultado["bloqueios_documentais_duros"]
     fonte = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
-    assert "st.warning(MENSAGEM_COLETA_PRECISAO_ANTERIOR)" in fonte
+    assert 'resultado.get("bloqueios_documentais_duros")' in fonte
+    assert "st.warning(mensagem_bloqueio)" in fonte
 
 
 def test_p1_coleta_vigente_mantem_os_tres_documentos_disponiveis(coleta_c1):
@@ -859,7 +864,12 @@ def test_p1_coleta_vigente_mantem_os_tres_documentos_disponiveis(coleta_c1):
         assert documentos[chave]["habilitado"] is True, chave
 
 
-def test_p1_golden_financeiro_real_antigo_sem_documentos_formalizadores():
+def test_p1_golden_financeiro_real_antigo_libera_documentos_pela_compatibilidade_provada():
+    """Etapa 3/03: a precisao anterior comprovada nao bloqueia mais os 3 documentos.
+
+    O bloqueio por precisao permanece para a Coleta antiga SEM prova (ver
+    `test_p1_coleta_antiga_nao_libera_nenhum_documento_formalizador`).
+    """
     import test_baseline_resultados_goldens as goldens
 
     arquivo = goldens.GOLDENS["financeiro_multiciclo_validado"]
@@ -870,8 +880,8 @@ def test_p1_golden_financeiro_real_antigo_sem_documentos_formalizadores():
     resultado, _diagnostico = processar_coleta_oficial_runtime(arquivo.read_bytes())
     documentos = resultado["capacidades"]["documentos"]
     for chave in DOCS_FORMALIZADORES:
-        assert documentos[chave]["habilitado"] is False, chave
-        assert documentos[chave]["motivo"] == MENSAGEM_COLETA_PRECISAO_ANTERIOR
+        assert documentos[chave]["habilitado"] is True, chave
+        assert documentos[chave]["motivo"] != MENSAGEM_COLETA_PRECISAO_ANTERIOR
 
 
 # ------------------------- Valor Global: variacao negativa nos 3 estados

@@ -242,13 +242,20 @@ def test_d_goldens_reais_inalterados(caminho, ciclos_esperados):
     assert consolidado["status_apuracao"]["codigo"] == "VALIDADO"
     assert consolidado["status_apuracao"]["origem"] == "resultados_xls"
     # Regra petrea do percentual oficial: estes goldens sao Coletas ANTIGAS
-    # (percentual bruto no C3). Status VALIDADO, bloqueio de formalizacao e a
-    # mensagem de precisao permanecem; VTA e retroativo seguem a regra vigente
-    # e a formalizacao fica bloqueada ate a Coleta ser regenerada.
+    # (percentual bruto no C3). Etapa 3/03: a precisao anterior e uma causa
+    # PROVADA (o motor reproduz o XLS com os derivados legados), entao a
+    # formalizacao e liberada pelo valor CANONICO. A auditoria do XLS e a causa
+    # permanecem registradas; o valor do XLS nunca e adotado.
     from _politica_entrega_segura import MENSAGEM_COLETA_PRECISAO_ANTERIOR
 
-    assert consolidado["formalizacao"]["bloqueada"] is True
-    assert consolidado["formalizacao"]["mensagem"] == MENSAGEM_COLETA_PRECISAO_ANTERIOR
+    assert consolidado["formalizacao"]["bloqueada"] is False
+    assert consolidado["formalizacao"]["mensagem"] != MENSAGEM_COLETA_PRECISAO_ANTERIOR
+    decisao = resultado["compatibilidade_formalizacao"]
+    assert decisao["status"] == "FORMALIZAVEL_COMPATIBILIZADA"
+    assert decisao["formalizacao_liberada"] is True
+    assert resultado["reconciliacao_xls_python"]["status_geral"] == (
+        "DIVERGENCIA_COMPATIBILIZADA"
+    )
     assert diagnostico["metadados"]["ciclos_em_analise"] == ciclos_esperados
 
 

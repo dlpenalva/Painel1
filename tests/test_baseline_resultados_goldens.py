@@ -76,8 +76,10 @@ VALOR_RECOMENDADO_ANTERIOR = 14_626_459.46
 # Compatibilidade retroativa (Etapa 2/03): a Coleta antiga e adaptada em memoria
 # e os derivados sao recompostos pela regra VIGENTE (C3 = 2,89%). O lado Python
 # passa a publicar estes valores; a diferenca para o XLS (centavos, apenas por
-# causa da precisao do percentual) fica exposta como divergencia e mantem a
-# formalizacao bloqueada — nunca e escondida nem adotada automaticamente.
+# causa da precisao do percentual) fica exposta na auditoria. Etapa 3/03: a
+# causa e PROVADA (o mesmo motor, com os derivados legados, reproduz o XLS), a
+# divergencia vira DIVERGENCIA_COMPATIBILIZADA e a formalizacao e liberada pelo
+# valor CANONICO — o valor do XLS nunca e adotado nem escondido.
 VTA_FINANCEIRO_REGRA_VIGENTE = 8_713_821.69
 RETROATIVO_FINANCEIRO_REGRA_VIGENTE = 24_679.47
 REMANESCENTE_FINANCEIRO_REGRA_VIGENTE = 1_388_251.95
@@ -122,15 +124,16 @@ def test_vta_e_retroativo_seguem_a_regra_vigente_com_o_xls_antigo_visivel():
     """O Python publica a regra vigente; o XLS antigo segue visivel e divergente.
 
     A diferenca para os valores gravados no XLS (R$ 1,43 no VTA) decorre SO da
-    precisao do percentual de C3 (2,8899...% x 2,89%) e nunca e adotada sem
-    equalizacao: a formalizacao permanece bloqueada.
+    precisao do percentual de C3 (2,8899...% x 2,89%). Etapa 3: a causa esta
+    provada, entao a formalizacao e liberada pelo valor canonico; o valor do XLS
+    permanece visivel na auditoria e nunca e adotado.
     """
     web = _fotografar("financeiro_multiciclo_validado")["web"]
     assert web["vta_oficial"] == VTA_FINANCEIRO_REGRA_VIGENTE
     assert web["retroativo_total"] == RETROATIVO_FINANCEIRO_REGRA_VIGENTE
     assert web["vta_origem"] == "vta_canonico"
     assert web["status_apuracao"]["codigo"] == "VALIDADO"
-    assert web["status_apuracao"]["status_politica"] == "BLOQUEADO_PARA_FORMALIZACAO"
+    assert web["status_apuracao"]["status_politica"] == "PRONTO_PARA_VALIDACAO_FISCAL"
     # o efeito da precisao e minusculo e esta explicado: < 2 reais sobre 8,7 mi
     assert 0 < web["vta_oficial"] - VTA_FINANCEIRO_HOMOLOGADO < 2.0
     assert 0 < web["retroativo_total"] - RETROATIVO_FINANCEIRO_HOMOLOGADO < 2.0
@@ -154,19 +157,24 @@ def test_xls_e_python_divergem_so_pela_precisao_do_percentual():
     As grandezas que nao dependem do fator continuam CONCILIADAS ao centavo; as
     quatro que dependem dele divergem por menos de R$ 2 — exatamente o
     deslocamento de 2,8899...% para 2,89% — e sao expostas, nunca escondidas.
+    Etapa 3: a causa e provada pelo replay legado (DIVERGENCIA_COMPATIBILIZADA).
     """
     convergencia = _fotografar("financeiro_multiciclo_validado")["web"][
         "convergencia_xls_python"
     ]
     assert convergencia["disponivel"] is True
     assert convergencia["sem_cache"] is False
-    assert convergencia["status_geral"] == "DIVERGENCIA_RELEVANTE"
+    assert convergencia["status_geral"] == "DIVERGENCIA_COMPATIBILIZADA"
+    assert convergencia["divergencias_relevantes"] == []
     divergentes = {c["campo"] for c in convergencia["campos"]
-                   if c.get("status") == "DIVERGENCIA_RELEVANTE"}
+                   if c.get("status") == "DIVERGENCIA_COMPATIBILIZADA"}
     assert divergentes == CAMPOS_DIVERGENTES_POR_PRECISAO
     for campo in convergencia["campos"]:
         if campo["campo"] in CAMPOS_DIVERGENTES_POR_PRECISAO:
             assert 0 < campo["python"] - campo["xls"] < 2.0, campo
+            # a auditoria guarda o valor do XLS e o legado reproduzido pelo motor
+            assert campo["causa"] == "precisao_percentual_anterior"
+            assert abs(campo["python_legado_reproduzido"] - campo["xls"]) <= 0.01
     conciliados = {c["campo"] for c in convergencia["campos"]
                    if c.get("status") == "CONCILIADO"}
     assert conciliados >= {"QTD_REM_OFICIAL", "REM_BASE_OFICIAL"}, (
@@ -247,16 +255,16 @@ def test_referencias_auditaveis_nao_sao_o_vta_oficial():
 def test_documentos_usam_o_valor_canonico_e_nunca_o_xls_antigo():
     """Com XLS x Python divergentes, nenhum documento publica o valor do XLS.
 
-    O Sumario retem VTA e retroativo divergentes; o Termo de Apostila carrega o
-    retroativo canonico (regra vigente), jamais o gravado no XLS antigo. A
-    geracao destes documentos segue bloqueada pela politica de entrega (teste
-    `test_p1_golden_financeiro_real_antigo_sem_documentos_formalizadores`).
+    Etapa 3: com a causa provada, o Sumario deixa de reter VTA e retroativo e
+    publica os valores CANONICOS (regra vigente); o Termo de Apostila tambem. O
+    valor gravado no XLS antigo (8.713.820,26 / 24.678,92) nao aparece em nenhum.
     """
     fotografia = _fotografar("financeiro_multiciclo_validado")
     web, documentos = fotografia["web"], fotografia["documentos"]
     sintese = documentos["sumario_executivo"]["sintese"]
-    assert sintese["vta"] is None
-    assert sintese["retroativo_total"] is None
+    assert sintese["vta"] == VTA_FINANCEIRO_REGRA_VIGENTE
+    assert sintese["retroativo_total"] == RETROATIVO_FINANCEIRO_REGRA_VIGENTE
+    assert sintese["vta"] != VTA_FINANCEIRO_HOMOLOGADO
     assert sintese["vta_saldo_remanescente_atualizado"] == web["remanescente_atualizado"]
 
     corpo = " ".join(documentos["termo_apostila"]["linhas_negociais"])

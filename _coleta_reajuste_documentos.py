@@ -20,6 +20,7 @@ from _leitor_masterfile_v10 import ler_masterfile_v10
 from _politica_entrega_segura import (
     MENSAGEM_COLETA_PRECISAO_ANTERIOR,
     avaliar_entrega_segura,
+    mensagens_bloqueio_documental_duro,
 )
 from _reajuste_utils import cadeia_fatores_oficiais, fechar_percentual_na_unidade
 from _reconciliacao_xls_python import campos_nao_confiaveis_para_documentos
@@ -598,7 +599,11 @@ DOCS_LIBERADOS_APESAR_DIVERGENCIA = (
 _PREFIXO_BLOQUEIO_DIVERGENCIA = "Divergência relevante XLS × Python"
 
 
-def aplicar_bloqueio_documental(capacidades: dict[str, Any], bloqueios: list[str]) -> dict[str, Any]:
+def aplicar_bloqueio_documental(
+    capacidades: dict[str, Any],
+    bloqueios: list[str],
+    bloqueios_duros: list[str] | None = None,
+) -> dict[str, Any]:
     """Distingue bloqueio de formalizacao de disponibilidade documental.
 
     Regra da Etapa 5: uma divergencia relevante XLS x Python NAO pode tornar
@@ -615,8 +620,15 @@ def aplicar_bloqueio_documental(capacidades: dict[str, Any], bloqueios: list[str
     """
     if not bloqueios:
         return capacidades
-    precisao_anterior = MENSAGEM_COLETA_PRECISAO_ANTERIOR in bloqueios
-    motivo = MENSAGEM_COLETA_PRECISAO_ANTERIOR if precisao_anterior else bloqueios[0]
+    # Bloqueio DURO: o documento publicaria o valor do XLS legado ou um valor
+    # incompleto. Alem da precisao anterior (Financeiro), vale para restricao de
+    # modelo e bloco nao reproduzivel; o motivo exibido e o ESPECIFICO.
+    duros = list(bloqueios_duros or [])
+    if MENSAGEM_COLETA_PRECISAO_ANTERIOR in bloqueios and MENSAGEM_COLETA_PRECISAO_ANTERIOR not in duros:
+        duros.append(MENSAGEM_COLETA_PRECISAO_ANTERIOR)
+    duros = [b for b in bloqueios if b in duros]
+    precisao_anterior = bool(duros)
+    motivo = duros[0] if precisao_anterior else bloqueios[0]
     for chave, documento in (capacidades.get("documentos") or {}).items():
         # Documentos diagnosticos (Sumario, Saneador, Apostila) permanecem
         # DISPONIVEIS diante de QUALQUER bloqueio de FORMALIZACAO — divergencia
@@ -684,6 +696,17 @@ def _processar_com_contexto(
 
     diagnostico["reconciliacao_xls_python"] = reconciliacao
     diagnostico["politica_entrega_segura"] = politica
+    # Etapa 3/03: decisao canonica de compatibilidade formalizavel (motor), com
+    # a auditoria da adaptacao. A UI apenas consome estes campos.
+    compat_formalizacao = dict(leitura.get("compatibilidade_formalizacao") or {})
+    if compat_formalizacao:
+        # `elegivel` = a compatibilidade foi comprovada; a liberacao final exige
+        # tambem que nenhum outro bloqueio do motor permaneca (ex.: PC sem inicio
+        # de efeito financeiro).
+        compat_formalizacao["formalizacao_liberada"] = bool(
+            compat_formalizacao.get("elegivel")
+        ) and not bloqueios
+    diagnostico["compatibilidade_formalizacao"] = compat_formalizacao
     diagnostico["campos_nao_confiaveis_documentos"] = campos_nao_confiaveis
     diagnostico["avisos"] = list(diagnostico.get("avisos") or []) + list(leitura.get("avisos") or [])
     diagnostico["bloqueios_criticos"] = list(diagnostico.get("bloqueios_criticos") or []) + bloqueios
@@ -701,16 +724,25 @@ def _processar_com_contexto(
         diagnostico["cobertura_temporal"] = {"ok": False, "erro": str(exc)}
 
     capacidades = resultado.get("capacidades") or {}
-    aplicar_bloqueio_documental(capacidades, bloqueios)
+    bloqueios_duros = mensagens_bloqueio_documental_duro(leitura)
+    aplicar_bloqueio_documental(capacidades, bloqueios, bloqueios_duros)
 
     resultado.update({
         "capacidades": capacidades,
         "diagnostico_coleta": diagnostico,
         "reconciliacao_xls_python": reconciliacao,
         "politica_entrega_segura": politica,
+        "compatibilidade_formalizacao": compat_formalizacao,
+        "compatibilidade_auditoria": {
+            "linhagem": (leitura.get("coleta_linhagem") or {}).get("codigo"),
+            "compatibilidade_aplicada": bool(leitura.get("compatibilidade_aplicada")),
+            "valores": leitura.get("compatibilidade_valores") or {},
+            "restricoes": leitura.get("compatibilidade_restricoes") or [],
+        },
         "campos_nao_confiaveis_documentos": campos_nao_confiaveis,
         "formalizacao_bloqueada": bool(bloqueios),
         "bloqueios_formalizacao": bloqueios,
+        "bloqueios_documentais_duros": [b for b in bloqueios if b in bloqueios_duros],
     })
     resultado["resultado_consolidado"] = montar_resultado_consolidado(
         resultado, diagnostico
