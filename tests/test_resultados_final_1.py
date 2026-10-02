@@ -175,8 +175,11 @@ def test_retroativo_potencial_fica_ao_lado_do_reconhecido_sem_deslocar(res):
     assert res["D22"].value == '=IFERROR(RETRO_OFICIAL,"")'
     mesclas = {str(m) for m in res.merged_cells.ranges}
     assert {"E22:F22", "G22:H22"} <= mesclas
-    # As mesclas vizinhas nao foram tocadas nem absorvidas.
-    assert {"E16:H21", "E23:H23"} <= mesclas
+    # As mesclas vizinhas nao foram absorvidas. E16:H21 (texto antigo do PC) foi
+    # substituida pelo quadro "Execucao sem efeito financeiro" (RESULTADOS-SEM-
+    # EFEITO-150): nota em E16:H16 e mensagem de caso em E21:H21.
+    assert {"E16:H16", "E21:H21", "E23:H23"} <= mesclas
+    assert "E16:H21" not in mesclas
 
 
 # --------------------------------------------------- 7. CONTRATOS

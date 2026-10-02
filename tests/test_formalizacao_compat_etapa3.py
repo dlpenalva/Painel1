@@ -487,17 +487,37 @@ def test_replay_nao_vaza_estado_nem_altera_arquivo_ou_entradas():
 
 
 # --------------------------------------------------------------------------- #
-# Versionamento: Cl8us 11.2 gera Coleta no Modelo 11.0 (independentes).
+# Versionamento: Cl8us 11.4 gera Coleta no Modelo 11.1; a Coleta 11.0 (fixture)
+# continua aceita como COLETA_11, sem adaptacao.
 # --------------------------------------------------------------------------- #
-def test_cl8us_11_2_e_modelo_de_coleta_11_0_sao_independentes():
-    assert CL8US_VERSION == "11.2" and COLETA_VERSION == "11.0"
+def test_cl8us_11_4_e_modelo_de_coleta_11_1_sao_independentes():
+    assert CL8US_VERSION == "11.4" and COLETA_VERSION == "11.1"
     wb = load_workbook(PASTA / "coleta_11_financeiro.xlsx")
     assert cc.detectar_linhagem_coleta(wb)["codigo"] == cc.LINHAGEM_COLETA_11
-    wb["CONTROLE"]["B25"] = CL8US_VERSION            # quem GEROU a Coleta: Cl8us 11.2
-    assert wb["CONTROLE"]["B24"].value == COLETA_VERSION == "11.0"
+    wb["CONTROLE"]["B25"] = CL8US_VERSION            # quem GEROU a Coleta: Cl8us 11.4
+    # A fixture e uma Coleta 11.0 (gerada antes do quadro "sem efeito"): o
+    # marcador dela NAO e reescrito e ela segue sendo COLETA_11.
+    assert wb["CONTROLE"]["B24"].value == "11.0" != COLETA_VERSION
     # O modelo continua COLETA_11: a versao do gerador nao define a linhagem.
-    assert cc.detectar_linhagem_coleta(wb)["codigo"] == cc.LINHAGEM_COLETA_11
-    assert cc.detectar_linhagem_coleta(wb)["marcador_publico"] == "11.0"
+    deteccao = cc.detectar_linhagem_coleta(wb)
+    assert deteccao["codigo"] == cc.LINHAGEM_COLETA_11
+    assert deteccao["marcador_publico"] == "11.0"
+    assert deteccao["suportada"] is True
+    assert deteccao["compatibilidade_aplicada"] is False
+
+
+def test_coleta_11_1_e_coleta_11_0_sao_a_mesma_linhagem_sem_adaptacao():
+    for marcador in ("11.0", "11.1"):
+        wb = load_workbook(PASTA / "coleta_11_financeiro.xlsx")
+        wb["CONTROLE"]["B24"] = marcador
+        deteccao = cc.detectar_linhagem_coleta(wb)
+        assert deteccao["codigo"] == cc.LINHAGEM_COLETA_11, marcador
+        assert deteccao["suportada"] is True and not deteccao["compatibilidade_aplicada"]
+        assert deteccao["modelo_canonico"] == COLETA_VERSION
+    # Marcador fora da familia 11.x continua rejeitado (nada e inferido).
+    wb = load_workbook(PASTA / "coleta_11_financeiro.xlsx")
+    wb["CONTROLE"]["B24"] = "11.9"
+    assert cc.detectar_linhagem_coleta(wb)["codigo"] == cc.LINHAGEM_NAO_HOMOLOGADA
 
 
 # --------------------------------------------------------------------------- #

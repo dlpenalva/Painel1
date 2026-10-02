@@ -44,6 +44,7 @@ from _compatibilidade_coleta import (
     LINHAGEM_PRE_11_L2,
     detectar_linhagem_coleta,
 )
+from _versao import COLETA_VERSION
 from _reajuste_utils import (
     fator_oficial,
     tem_precisao_superior_a_oficial,
@@ -705,7 +706,7 @@ MENSAGEM_L2_ADITIVO = (
     "ciclo de reajuste. Esse modelo não incorporava o efeito do aditivo na "
     "quantidade remanescente ajustada do ciclo; o valor remanescente e o VTA "
     "apurados a partir dela podem estar incompletos. Regere a Coleta no modelo "
-    "11.0 e faça novo upload antes da formalização."
+    f"{COLETA_VERSION} e faça novo upload antes da formalização."
 )
 
 

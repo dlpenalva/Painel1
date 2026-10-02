@@ -65,7 +65,7 @@ MERGES = [
     "A1:F1", "A2:F2", "A39:H39", "A53:H53", "A68:H68", "A69:H69",
     "A71:H71", "A79:H79", "A80:H80", "A81:H81", "A9:H9", "B7:H7",
     "C10:E10", "C11:E11", "C12:E12", "C13:E13", "C34:D34", "C35:D35",
-    "C36:D36", "C37:D37", "C38:D38", "D5:E5", "E16:H21", "E23:H23",
+    "C36:D36", "C37:D37", "C38:D38", "D5:E5", "E16:H16", "E21:H21", "E23:H23",
     "E25:H25", "E34:H34", "E35:H38", "F10:G10", "F11:G11", "F12:G12",
     "F13:G13", "G1:H1", "G2:H2", "G3:H3",
 ]
@@ -96,6 +96,10 @@ CF_SQREFS = sorted(CF_SQREFS + ["A84:C84", "C86"])
 # (#FFF4CC) so o que e especificamente POTENCIAL; D8:E8 recebe o cinza
 # claro dos cards, porque "considerado no VTA" NAO e so potencial.
 CF_SQREFS = sorted(CF_SQREFS + ["A8:C8", "A61:B61", "D8:E8"])
+# RESULTADOS-SEM-EFEITO-150: o texto antigo do PC (E16:H21, um unico merge) deu
+# lugar ao quadro "Execucao sem efeito financeiro": nota em E16:H16, mensagem de
+# caso em E21:H21 e, em H17:H20, uma regra ambar para a diferenca informativa.
+CF_SQREFS = sorted(CF_SQREFS + ["H17:H20"])
 # 143 do motor tecnico + E22/G22, as duas unicas formulas de apresentacao
 # acrescentadas pela RESULTADOS-FINAL-1.
 # 145 do checkpoint + B64 da sintese + B15/C15 condicionais do PC-UX-1 +

@@ -37,6 +37,7 @@ import pytest
 from openpyxl import load_workbook
 
 import _compatibilidade_coleta as cc
+from _versao import COLETA_VERSION
 from _compatibilidade_valores import (
     ATRIBUTO_AUDITORIA,
     MENSAGEM_L2_ADITIVO,
@@ -100,7 +101,7 @@ def test_cada_fixture_e_detectada_na_sua_linhagem(nome):
     esperado = LINHAGEM_DE[MANIFESTO[nome]["linhagem_esperada"]]
     assert deteccao["codigo"] == esperado
     assert deteccao["suportada"] is True
-    assert deteccao["modelo_canonico"] == "11.0"
+    assert deteccao["modelo_canonico"] == COLETA_VERSION
     assert deteccao["compatibilidade_aplicada"] is (esperado != cc.LINHAGEM_COLETA_11)
     assert deteccao["marcador_publico"] == ("11.0" if esperado == cc.LINHAGEM_COLETA_11 else None)
 
@@ -638,7 +639,7 @@ def test_auditoria_da_compatibilidade_no_resultado_da_leitura():
     leitura = ler_masterfile_v10(_bytes("pre11_l1_financeiro"), exigir_modelo_oficial=True)
     assert leitura["ok"] is True
     assert leitura["coleta_linhagem"]["codigo"] == cc.LINHAGEM_PRE_11_L1
-    assert leitura["coleta_modelo_canonico"] == "11.0"
+    assert leitura["coleta_modelo_canonico"] == COLETA_VERSION
     assert leitura["compatibilidade_aplicada"] is True
     assert "financeiro" in leitura["derivados_recalculados"]
     assert leitura["compatibilidade_valores"]["blocos_nao_reproduziveis"] == {}
