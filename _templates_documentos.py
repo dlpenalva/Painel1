@@ -219,6 +219,8 @@ def _titulo_secao(doc: Document, texto: str, tamanho: int = 11,
                   alinhamento=WD_ALIGN_PARAGRAPH.LEFT) -> Any:
     p = doc.add_paragraph()
     p.alignment = alinhamento
+    # Titulo de secao nunca fica sozinho no fim da pagina.
+    p.paragraph_format.keep_with_next = True
     _adicionar_run(p, texto, negrito=True, tamanho=tamanho)
     return p
 
@@ -1943,6 +1945,11 @@ def _ta_secao2_branco(doc: Document) -> None:
     _adicionar_run(p, " e a diferença ou retroativo ")
     _run_campo_manual(p, "Valor retroativo a pagar")
     _adicionar_run(p, ", quando aplicável, conforme Quadro 2.")
+    # A redacao e o quadro desta secao variam por metodo canonico; o modelo
+    # adota o formato da apuracao financeira e avisa quem o preenche.
+    _adicionar_run(p,
+        " Esta seção deverá ser adaptada ao método de apuração adotado "
+        "(Financeiro, Pedidos de Compra ou Itens Consumidos).")
     _titulo_quadro(
         doc, TITULO_QUADRO2_FINANCEIRO_TERMO, negrito=False, italico=True,
     )
@@ -2289,7 +2296,9 @@ def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
             "O Valor Total Atualizado do Contrato deverá considerar a execução "
             "já realizada em valor atualizado, os saldos ainda a executar em "
             "valor atualizado, inclusive intermediários quando existirem, e os "
-            "ajustes contratuais aplicáveis, quando houver.")
+            "ajustes contratuais aplicáveis, quando houver. O Quadro 3 deverá "
+            "ter uma linha para cada parcela da composição, acrescentando-se "
+            "outras além de A, B e C quando necessário.")
     else:
         _adicionar_run(p,
             "O Valor Total Atualizado do Contrato considera a execução já "
@@ -2302,12 +2311,15 @@ def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
     linhas: list[list[str]] = []
     destaque_potencial: set[int] = set()
     if branco:
-        # Mesma estrutura do processado (parcelas A e B + Total), com campos.
-        for ref in ("A", "B"):
+        # Mesma estrutura do processado (parcelas + Total), com campos. A
+        # composicao tem tamanho variavel: A e B sao as parcelas usuais e C
+        # cobre a terceira (ex.: retroativo potencial), quando houver.
+        for ref in ("A", "B", "C"):
+            sufixo = ", quando houver" if ref == "C" else ""
             linhas.append([
                 ref,
-                PREENCHER_TAG.format(f"Descricao da parcela {ref}"),
-                PREENCHER_TAG.format(f"Valor da parcela {ref}"),
+                PREENCHER_TAG.format(f"Descricao da parcela {ref}{sufixo}"),
+                PREENCHER_TAG.format(f"Valor da parcela {ref}{sufixo}"),
             ])
         valor_total = PREENCHER_TAG.format("Valor Total Atualizado do Contrato")
     else:
@@ -3073,7 +3085,9 @@ def _ds_secao3_resultado(doc: Document, dados: dict, cm: dict) -> None:
     if dados.get("_modo_branco"):
         _run_campo_manual(p, "Referencia da memoria de calculo")
         _adicionar_run(
-            p, ", os resultados essenciais deverão ser preenchidos no Quadro 2."
+            p, ", os resultados essenciais deverão ser preenchidos no Quadro 2. "
+            "O quadro deverá ser adaptado ao método de apuração adotado "
+            "(Financeiro, Pedidos de Compra ou Itens Consumidos)."
         )
     else:
         _texto_ou_marcador(p, memoria_ref, "Referencia da memoria de calculo")

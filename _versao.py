@@ -32,7 +32,7 @@ COLETA_VERSION = "11.0"
 # em _formalizacao_compatibilidade, por evidencia tecnica e nunca por versao.
 COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
-ATUALIZADO_EM_FALLBACK = "01/10/2026 22:48"
+ATUALIZADO_EM_FALLBACK = "01/10/2026 23:19"
 
 
 def _data_ultimo_commit() -> str | None:

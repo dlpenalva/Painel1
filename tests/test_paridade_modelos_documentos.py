@@ -446,10 +446,24 @@ def test_termo_modelo_quadro_3_tem_parcelas_e_total_como_no_processado():
     assert linhas[q3 + 1] == "TABELA:" + " | ".join(CABECALHO_QUADRO3_TERMO)
     assert linhas[q3 + 2].startswith("LINHA:A | ")
     assert linhas[q3 + 3].startswith("LINHA:B | ")
-    assert linhas[q3 + 4].startswith(
-        "LINHA:Total (A + B) | Valor Total Atualizado do Contrato | "
+    # A composicao tem tamanho variavel: C cobre a terceira parcela (ex.:
+    # retroativo potencial) e o 3.1 manda acrescentar linhas quando preciso.
+    assert linhas[q3 + 4].startswith("LINHA:C | ")
+    assert "quando houver" in linhas[q3 + 4]
+    assert linhas[q3 + 5].startswith(
+        "LINHA:Total (A + B + C) | Valor Total Atualizado do Contrato | "
     )
-    assert linhas[q3 + 5].startswith("3.2. Havendo retroativo já incorporado")
+    assert linhas[q3 + 6].startswith("3.2. Havendo retroativo já incorporado")
+    item_31 = next(t for t in linhas if t.startswith("3.1."))
+    assert "uma linha para cada parcela da composição" in item_31
+
+
+def test_modelo_avisa_que_a_secao_dependente_do_metodo_deve_ser_adaptada():
+    termo = "\n".join(_texto_ordenado(gerar_modelo_branco_termo()))
+    despacho = "\n".join(_texto_ordenado(gerar_modelo_branco_despacho()))
+    aviso = "(Financeiro, Pedidos de Compra ou Itens Consumidos)"
+    assert "Esta seção deverá ser adaptada ao método de apuração adotado " + aviso in termo
+    assert "O quadro deverá ser adaptado ao método de apuração adotado " + aviso in despacho
 
 
 def test_termo_modelo_aditivos_usa_quadro_4_como_o_processado():
@@ -519,6 +533,13 @@ def test_central_descreve_os_modelos_como_mesma_estrutura_dos_gerados():
         "Modelo atualizado com a mesma estrutura utilizada no Termo de "
         "Apostila gerado pelo Cl8us." in fonte
     )
+
+
+def test_central_qualifica_a_regiao_que_depende_do_metodo():
+    """A paridade vale para a estrutura; o formato por metodo e declarado."""
+    fonte = re.sub(r'"\s*\n\s*"', "", PAGE14)
+    assert "A seção 2 segue o formato da apuração financeira e deve ser adaptada ao método adotado." in fonte
+    assert "O quadro de resultado financeiro segue o formato da apuração financeira e deve ser adaptado ao método adotado." in fonte
 
 
 def test_central_apenas_chama_os_wrappers_dos_modelos():

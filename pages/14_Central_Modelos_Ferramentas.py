@@ -107,7 +107,9 @@ with col_a:
         _card(
             "Modelo em branco — Despacho Saneador",
             "Modelo atualizado com a mesma estrutura utilizada no Despacho "
-            "Saneador gerado pelo Cl8us.",
+            "Saneador gerado pelo Cl8us. O quadro de resultado financeiro "
+            "segue o formato da apuração financeira e deve ser adaptado ao "
+            "método adotado.",
         )
         st.download_button(
             "Baixar modelo em branco — Despacho Saneador",
@@ -122,7 +124,8 @@ with col_b:
         _card(
             "Modelo em branco — Termo de Apostila",
             "Modelo atualizado com a mesma estrutura utilizada no Termo de "
-            "Apostila gerado pelo Cl8us.",
+            "Apostila gerado pelo Cl8us. A seção 2 segue o formato da "
+            "apuração financeira e deve ser adaptada ao método adotado.",
         )
         st.download_button(
             "Baixar modelo em branco — Termo de Apostila",
