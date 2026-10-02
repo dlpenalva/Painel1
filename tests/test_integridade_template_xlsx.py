@@ -129,7 +129,9 @@ FORMULAS_POR_ABA = {
     # Esta frente soma +6 (T70:T75, as medidas canonicas agregadas dos
     # ajustes de valor pago/glosa): 4420 + 6 = 4426. F20 e D10:D14 sao
     # REESCRITAS, nao acrescentadas.
-    "MEMORIA_RESULTADOS": 4426,
+    # RESULTADOS-SEM-EFEITO-150: +76 helpers do quadro informativo "Execucao sem
+    # efeito financeiro" em S78:W120 (18 linhas x 4 ciclos + 4 flags).
+    "MEMORIA_RESULTADOS": 4502,
     # 57 do prototipo + 4 selos por tabela + 1 premissa da estimativa - 1
     # helper J4 removido (status global agora agrega os selos H8/H14/H24/H33).
     # 26G: +5 (linha executiva A23:E23 dos PCs sem efeito financeiro).
@@ -199,7 +201,11 @@ FORMULAS_POR_ABA = {
     # e 87 (as vazias sao separadores geridos, ocultas de 7pt ou ancoras
     # testadas) e abaixo da 87 esta a camada removida pelo rollback da UX2.
     # A aba ja reflete o ajuste sozinha via F20.
-    "RESULTADOS": 158,
+    # O valor 158 estava DEFASADO em main (a aba ja tinha 170 formulas antes do
+    # RESULTADOS-SEM-EFEITO-150). Esta frente soma +21 em E15:H21 (6 de cabecalho/
+    # nota/caso + 4 ciclos x 4 colunas, menos a E16 antiga que foi reescrita):
+    # 170 + 21 = 191.
+    "RESULTADOS": 191,
 }
 
 

@@ -13,7 +13,11 @@ import json
 import unicodedata
 from typing import Any
 
-from _versao import COLETA_COMPATIBILIDADE_ANTERIORES, COLETA_VERSION
+from _versao import (
+    COLETA_COMPATIBILIDADE_ANTERIORES,
+    COLETA_VERSION,
+    COLETA_VERSOES_ACEITAS,
+)
 
 
 LINHAGEM_COLETA_11 = "COLETA_11"
@@ -180,9 +184,11 @@ def detectar_linhagem_coleta(wb) -> dict[str, Any]:
     l2, evidencias_l2 = _estrutura_l2(wb)
     fingerprint = _fingerprint(wb)
 
-    if marcador == COLETA_VERSION and l1:
+    if marcador in COLETA_VERSOES_ACEITAS and l1:
+        # Familia 11.x: 11.0 (sem o quadro "Execucao sem efeito financeiro") e
+        # 11.1 (atual) tem a mesma estrutura de abas/cabecalhos e o mesmo motor.
         codigo = LINHAGEM_COLETA_11
-        evidencias = ["marcador-publico-11.0", *evidencias_l1]
+        evidencias = [f"marcador-publico-{marcador}", *evidencias_l1]
     elif marcador is None and l1:
         codigo = LINHAGEM_PRE_11_L1
         evidencias = evidencias_l1
