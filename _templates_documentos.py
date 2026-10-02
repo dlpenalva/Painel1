@@ -58,6 +58,12 @@ from _metodo_apuracao import normalizar_metodo
 PREENCHER_TAG = "[PREENCHER: {}]"
 # Despacho Saneador: pendencias e adequacao orcamentaria (modelo aprovado).
 PREENCHER_PENDENCIA_TAG = "[PREENCHER, EM CASO DE PENDÊNCIA]"
+# Secao 6 do MODELO em branco: orientacao neutra, sem afirmar existencia nem
+# ausencia de pendencias.
+TEXTO_PENDENCIAS_MODELO = (
+    "Registrar abaixo as pendências identificadas na análise, quando houver. "
+    "Caso não existam pendências, registrar expressamente essa condição."
+)
 FRASE_SEM_PENDENCIAS = "Não existem pendências nesta data."
 TEXTO_EXERCICIOS_SUBSEQUENTES = (
     "Os valores eventualmente previstos para exercícios subsequentes "
@@ -3330,14 +3336,23 @@ def _ds_ha_providencia_gestora(dados: dict) -> bool:
 
 def _ds_secao6_pendencias(doc: Document, dados: dict, cm: dict) -> None:
     _ds_titulo(doc, 6, "Pendências")
-    branco = bool(dados.get("_modo_branco"))
+    if dados.get("_modo_branco"):
+        # Modelo em branco: ainda nao ha analise que permita afirmar que existem
+        # ou que nao existem pendencias. Orientacao neutra + campo; a frase
+        # padrao (FRASE_SEM_PENDENCIAS) e exclusiva do documento processado.
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        _adicionar_run(p, TEXTO_PENDENCIAS_MODELO)
+        p_ph = doc.add_paragraph()
+        p_ph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
+        _run_placeholder_pendencia(p_ph)
+        return
     pendencias = _ds_pendencias_tecnicas(dados, cm)
     documental = _ds_ha_pendencia_documental(dados, cm)
     ha_providencia = _ds_ha_providencia_gestora(dados)
     # A frase padrao AFIRMA ausencia de pendencias: no documento processado
-    # ela nao pode conviver com uma providencia real da area gestora. No
-    # modelo em branco permanece como texto padrao a ser editado.
-    omitir_frase_padrao = ha_providencia and not branco
+    # ela nao pode conviver com uma providencia real da area gestora.
+    omitir_frase_padrao = ha_providencia
 
     def _ressalva_documental(paragrafo, iniciar: bool = False) -> None:
         texto = (
@@ -3364,11 +3379,6 @@ def _ds_secao6_pendencias(doc: Document, dados: dict, cm: dict) -> None:
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
         _ressalva_documental(p, iniciar=True)
-
-    if branco:
-        p_ph = doc.add_paragraph()
-        p_ph.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        _run_placeholder_pendencia(p_ph)
 
     if ha_providencia:
         potencial = _num_ou_none(

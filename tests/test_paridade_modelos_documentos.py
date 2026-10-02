@@ -508,6 +508,68 @@ def test_modelo_nao_afirma_fato_da_estrutura_nova(gerar):
     assert not achou, achou
 
 
+FRASE_SEM_PENDENCIAS = "Não existem pendências nesta data."
+TEXTO_PENDENCIAS_MODELO = (
+    "Registrar abaixo as pendências identificadas na análise, quando houver. "
+    "Caso não existam pendências, registrar expressamente essa condição."
+)
+
+
+def _secao6_despacho_texto(docx_bytes: bytes) -> list[str]:
+    linhas = _texto_ordenado(docx_bytes)
+    inicio = linhas.index("6. PENDÊNCIAS")
+    fim = linhas.index("7. CONCLUSÃO")
+    return linhas[inicio + 1:fim]
+
+
+def test_modelo_do_despacho_nao_afirma_existencia_nem_ausencia_de_pendencias():
+    modelo = gerar_modelo_branco_despacho()
+    texto = "\n".join(_texto_ordenado(modelo))
+    # Nunca a frase de ausencia, em nenhuma parte do modelo.
+    assert FRASE_SEM_PENDENCIAS not in texto
+    assert "Não existem pendências" not in texto
+    # A secao existe, com orientacao neutra seguida do campo a preencher.
+    assert _secao6_despacho_texto(modelo) == [
+        TEXTO_PENDENCIAS_MODELO, "[PREENCHER, EM CASO DE PENDÊNCIA]",
+    ]
+    # O placeholder segue destacado em amarelo.
+    runs = [
+        r for p in Document(BytesIO(modelo)).paragraphs for r in p.runs
+        if r.text == "[PREENCHER, EM CASO DE PENDÊNCIA]"
+    ]
+    assert len(runs) == 1 and runs[0]._element.rPr.find(
+        "{http://schemas.openxmlformats.org/wordprocessingml/2006/main}highlight"
+    ) is not None
+
+
+def test_secao_pendencias_do_modelo_mantem_a_posicao_do_processado(modelo_despacho):
+    processado = _despacho_processado("pc_sem_potencial")
+    titulos = [m[1] for m in modelo_despacho if m[0] == "TITULO"]
+    assert titulos.index("6. PENDÊNCIAS") == titulos.index("5. CONTROLE DA ADEQUAÇÃO ORÇAMENTÁRIA") + 1
+    assert titulos.index("7. CONCLUSÃO") == titulos.index("6. PENDÊNCIAS") + 1
+    assert [m for m in modelo_despacho if m[0] == "TITULO"] == [
+        m for m in processado if m[0] == "TITULO"
+    ]
+
+
+def test_despacho_processado_sem_pendencias_continua_podendo_afirmar_ausencia():
+    """A frase e legitima quando o estado real a justifica."""
+    processado = gerar_despacho_saneador(
+        _leitura_pc_sem_potencial(), campos_manuais=dict(CAMPOS_SANEADOR)
+    )
+    assert _secao6_despacho_texto(processado) == [FRASE_SEM_PENDENCIAS]
+
+
+def test_despacho_processado_com_pendencia_nao_usa_a_frase_nem_a_orientacao_do_modelo():
+    processado = gerar_despacho_saneador(
+        _leitura_pc_com_potencial(), campos_manuais=dict(CAMPOS_SANEADOR)
+    )
+    secao = "\n".join(_secao6_despacho_texto(processado))
+    assert FRASE_SEM_PENDENCIAS not in secao
+    assert TEXTO_PENDENCIAS_MODELO not in secao
+    assert "PENDÊNCIA TÉCNICA" in secao or "PROVIDÊNCIA DA ÁREA GESTORA" in secao
+
+
 @pytest.mark.parametrize("gerar", [
     gerar_modelo_branco_despacho, gerar_modelo_branco_termo,
 ])
