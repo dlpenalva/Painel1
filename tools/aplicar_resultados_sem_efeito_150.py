@@ -17,6 +17,11 @@ COMO O BLOCO ANTIGO DO PC FUNCIONAVA (e por que foi preservado)
   este aplicador NAO cria um segundo calculo concorrente: ele quebra o MESMO
   predicado por ciclo e explicita a condicao de data (DATA_PC < H).
 
+PERIODO SEM EFEITO = SO DATAS (revisao do PR #172): existe periodo quando
+  INICIO_EFEITO > INICIO DO CICLO (no Financeiro, em nivel de MES). As linhas de
+  `financeiro` NAO decidem se o periodo existe — apenas medem a execucao nele:
+  periodo sem nenhuma linha/pagamento => estado B (R$ 0,00 conhecido), nunca D.
+
 REGRAS POR METODO
   PCs        itens_PC: CICLO_PC = Cn, VALOR_PC > 0, EFEITO_FINANCEIRO_PC = Nao,
              DATA_PC < parametros!H(n). Valor original = soma de VALOR_PC;
@@ -178,7 +183,7 @@ def formulas_ciclo(n: int) -> dict[int, str]:
     f[L_HA_PERIODO] = (
         f'=IF(OR({c}{L_COMPUTADO}=0,NOT(ISNUMBER({ini})),NOT(ISNUMBER({efe})),'
         f'AND({metodo}<>"Financeiro",{metodo}<>"PCs",{metodo}<>"Itens")),"",'
-        f'IF({metodo}="Financeiro",IF(COUNTIFS({crit_fin})>0,1,0),'
+        f'IF({metodo}="Financeiro",IF(EOMONTH({efe},-1)>EOMONTH({ini},-1),1,0),'
         f'IF({efe}>{ini},1,0)))'
     )
     f[L_QTD] = (
@@ -222,11 +227,13 @@ def formulas_ciclo(n: int) -> dict[int, str]:
     )
     f[L_PRIMEIRA] = (
         f'=IF(AND({ha}=1,{metodo}="Financeiro"),'
-        f'MINIFS(financeiro!$A$2:$A${ULT_FIN},{crit_fin}),"")'
+        f'IF(COUNTIFS({crit_fin})>0,'
+        f'MINIFS(financeiro!$A$2:$A${ULT_FIN},{crit_fin}),EOMONTH({ini},-1)+1),"")'
     )
     f[L_ULTIMA] = (
         f'=IF(AND({ha}=1,{metodo}="Financeiro"),'
-        f'MAXIFS(financeiro!$A$2:$A${ULT_FIN},{crit_fin}),"")'
+        f'IF(COUNTIFS({crit_fin})>0,'
+        f'MAXIFS(financeiro!$A$2:$A${ULT_FIN},{crit_fin}),EOMONTH({efe},-2)+1),"")'
     )
     f[L_PERIODO_TXT] = (
         f'=IF({ha}<>1,"",IF({metodo}="Financeiro",'

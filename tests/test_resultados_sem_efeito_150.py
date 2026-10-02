@@ -395,6 +395,24 @@ def _cen_fin_multiciclo(wb):
     cen._cobertura(wb, financeiro_ate=date(2026, 12, 31))
 
 
+def _cen_fin_sem_linhas(wb):
+    """Ciclo C1 comeca em jan/2024, efeitos em mar/2024 e o `financeiro` NAO tem
+    linha alguma em jan/fev: o periodo sem efeito existe so pelas datas."""
+    cen._base(wb, ciclos=_ciclos({1: date(2024, 3, 1)}),
+              metodo="Financeiro (Mensalidade)", ciclo_vigente="C1",
+              data_corte=date(2024, 12, 31))
+    ws = wb["financeiro"]
+    ausentes = {date(2024, 1, 1), date(2024, 2, 1)}
+    linhas = [(c, v) for c, v in cen._competencias(date(2023, 1, 1), 24, 42_500.00)
+              if c not in ausentes]
+    for i, (competencia, valor) in enumerate(linhas):
+        ws.cell(i + 2, 1).value = competencia
+        ws.cell(i + 2, 3).value = valor
+        ws.cell(i + 2, 7).value = "Sim"
+    cen._ciclo_em_execucao(wb, data=date(2024, 12, 31), linhas=cen.EXECUCAO_FISICA_PADRAO)
+    cen._cobertura(wb, financeiro_ate=date(2024, 12, 31))
+
+
 def _cen_itens(consumo, inicio_efeito=date(2024, 3, 1)):
     """`consumo`: quantidades QTD_CONS_C1 por item (None = nao informado)."""
     def ajustar(wb):
@@ -594,15 +612,13 @@ def _fora_da_allowlist(aba: str, linha: int, coluna: int) -> bool:
     return True
 
 
-@com
-@pytest.mark.parametrize("metodo", sorted(CENARIOS_AB))
-def test_vta_e_retroativos_identicos_antes_e_depois(metodo, tpf):
+def _comparar_ab(ajustar, chave, tpf):
+    """Recalcula o MESMO cenario com o template base e o novo e compara."""
     base = _bytes_template_base()
     if base is None:
         pytest.skip(f"template do commit {COMMIT_BASE[:7]} indisponivel (git)")
-    ajustar = CENARIOS_AB[metodo]
-    antes = _recalcular(_montar(io.BytesIO(base), ajustar), f"ab_antes_{metodo}", tpf)
-    depois = _recalcular(_montar(TEMPLATE, ajustar), f"ab_depois_{metodo}", tpf)
+    antes = _recalcular(_montar(io.BytesIO(base), ajustar), f"ab_antes_{chave}", tpf)
+    depois = _recalcular(_montar(TEMPLATE, ajustar), f"ab_depois_{chave}", tpf)
 
     # Grandezas de negocio, explicitamente.
     for aba, celula in (
@@ -631,3 +647,25 @@ def test_vta_e_retroativos_identicos_antes_e_depois(metodo, tpf):
                 if a.cell(linha, coluna).value != d.cell(linha, coluna).value:
                     diferencas.append(f"{aba}!{coordenada}")
     assert not diferencas, diferencas[:20]
+    return depois
+
+
+@com
+@pytest.mark.parametrize("metodo", sorted(CENARIOS_AB))
+def test_vta_e_retroativos_identicos_antes_e_depois(metodo, tpf):
+    _comparar_ab(CENARIOS_AB[metodo], metodo, tpf)
+
+
+# ---- Financeiro: periodo sem efeito existe so pelas datas (revisao PR #172) -- #
+@com
+def test_financeiro_periodo_sem_efeito_sem_linhas_e_zero_conhecido(tpf):
+    depois = _comparar_ab(_cen_fin_sem_linhas, "fin_sem_linhas", tpf)   # VTA/retro iguais
+    q = _quadro(depois)
+    assert q["estado"][1] == "B" and q["qtd"][1] == 0
+    descricao, original, com_reajuste, diferenca = q["linhas"][1]
+    assert descricao == (
+        "C1 — efeitos a partir de 03/2024\nSem execução · 01/2024 a 02/2024"
+    )
+    assert "desde o início do ciclo" not in descricao          # nao e o estado D
+    assert (original, com_reajuste, diferenca) == (0, 0, 0)
+    assert q["caso"] in (None, "")
