@@ -66,9 +66,10 @@ def _conteudo_exceto_marcadores(wb) -> dict[tuple[str, str], tuple]:
 
 
 def test_versoes_publicas_e_politica_preparada() -> None:
-    # Memoria da garantia: mudanca funcional do Cl8us (11.2) SEM mudar a estrutura do XLS:
-    # o Modelo de Coleta continua 11.0 e as duas versoes sao independentes.
-    assert CL8US_VERSION == "11.2"
+    # Paridade dos modelos em branco: mudanca funcional do Cl8us (11.3) SEM mudar a
+    # estrutura do XLS: o Modelo de Coleta continua 11.0 e as duas versoes sao
+    # independentes.
+    assert CL8US_VERSION == "11.3"
     assert COLETA_VERSION == "11.0"
     assert CL8US_VERSION != COLETA_VERSION
     assert COLETA_COMPATIBILIDADE_ANTERIORES == 2
@@ -86,7 +87,7 @@ def test_sidebar_exibe_as_duas_versoes_da_fonte_unica(monkeypatch) -> None:
 
     assert legendas == [
         "Última atualização publicada em 30/09/2026 12:00",
-        "Cl8us 11.2",
+        "Cl8us 11.3",
         "Modelo de Coleta 11.0",
     ]
 

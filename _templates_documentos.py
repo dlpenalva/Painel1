@@ -28,6 +28,7 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 from docx.oxml import OxmlElement
 from docx.oxml.ns import qn
 from docx.shared import Cm, Pt, RGBColor
+from docx.text.paragraph import Paragraph
 
 from _sumario_executivo import (
     NAO_HOUVE_PEDIDO,
@@ -231,6 +232,9 @@ def _titulo_quadro(
 ) -> None:
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    # O titulo acompanha a tabela: nunca fica sozinho no fim da pagina (mesma
+    # regra do titulo de quadro do Despacho Saneador).
+    p.paragraph_format.keep_with_next = True
     _adicionar_run(
         p, texto, negrito=negrito, italico=italico, tamanho=10
     )
@@ -471,6 +475,8 @@ def _adicionar_tabela(
     celulas_cab = tabela.rows[0].cells
     for i, texto in enumerate(cabecalho):
         celulas_cab[i].text = ""
+        # O cabecalho nunca fica isolado no fim da pagina: acompanha a 1a linha.
+        celulas_cab[i].paragraphs[0].paragraph_format.keep_with_next = True
         run = celulas_cab[i].paragraphs[0].add_run(remover_emojis_leve(texto))
         run.bold = True
         run.font.name = "Calibri"
@@ -521,6 +527,13 @@ def _adicionar_tabela(
                     _set_highlight(run, "yellow")
                 elif negativo and "R$" in str(celula_texto):
                     run.font.color.rgb = COR_NEGATIVO
+    if len(linhas) <= 8:
+        # Quadro curto nao se parte entre paginas: toda linha, exceto a
+        # ultima, acompanha a seguinte (o anexo paginado em blocos nao entra).
+        for row in tabela.rows[:-1]:
+            for celula in row.cells:
+                for par in celula.paragraphs:
+                    par.paragraph_format.keep_with_next = True
     return tabela
 
 
@@ -947,16 +960,20 @@ def _paragrafos_perda_efeitos(
     dois documentos declarem a mesma perda a partir da mesma fonte temporal.
     Por padrao os paragrafos saem sem numeracao (Despacho Saneador); o Termo
     informa `secao` e `primeiro_item` para emiti-los como itens "1.3.", "1.4."
+    O modelo em branco traz a instrucao neutra na mesma posicao e, no Termo,
+    com a mesma numeracao do primeiro item.
     """
     if dados.get("_modo_branco"):
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
-        _adicionar_run(
-            p,
+        instrucao = (
             "Havendo competências não alcançadas pelos efeitos financeiros do "
             "reajuste em razão da data do pedido, deverão ser expressamente "
-            "indicadas neste item.",
+            "indicadas neste item."
         )
+        if secao is not None:
+            instrucao = f"{secao}.{primeiro_item}. {instrucao}"
+        _adicionar_run(p, instrucao)
         return
     ciclos = dados.get("ciclos_computados") or []
     nomear = len(ciclos) > 1
@@ -1207,6 +1224,27 @@ ROTULO_POTENCIAL_APURADO_TERMO = "retroativo potencial apurado (líquido, inform
 TITULO_TERMO = "TERMO DE APOSTILA"
 TITULO_TERMO_MODELO = "TERMO DE APOSTILA - MODELO PADRÃO"
 TITULO_ANEXO_VU = "ANEXO 1 - HISTÓRICO DOS VALORES UNITÁRIOS POR CICLO"
+
+# Estrutura comum do Termo. Titulos e cabecalhos dos quadros sao FONTE UNICA,
+# consumida tanto pelo documento processado quanto pelo modelo em branco: o
+# modelo difere no CONTEUDO das celulas, nunca na estrutura.
+TITULO_QUADRO1_TERMO = "Quadro 1 — Síntese dos reajustes concedidos"
+CABECALHO_QUADRO1_TERMO = [
+    "Ref.", "Ciclo", "Percentual aplicado", "Efeitos financeiros", "Situação",
+]
+ROTULO_ACUMULADO_TERMO = "Acumulado"
+EFEITO_ACUMULADO_TERMO = "Conforme composição dos ciclos"
+SITUACAO_ACUMULADO_TERMO = "Percentual acumulado apurado"
+TITULO_QUADRO2_FINANCEIRO_TERMO = "Quadro 2 — Apuração financeira por ciclo"
+CABECALHO_QUADRO2_FINANCEIRO_TERMO = [
+    "Ciclo", "Valor pago efetivo", "Valor devido após o reajuste",
+    "Diferença/retroativo",
+]
+TITULO_QUADRO3_TERMO = "Quadro 3 — Composição do Valor Total Atualizado do Contrato"
+CABECALHO_QUADRO3_TERMO = ["Ref.", "Descrição", "Valor"]
+TITULO_QUADRO4_TERMO = "Quadro 4 — Aditivos e supressões considerados"
+CABECALHO_QUADRO4_TERMO = ["Ciclo", "Alterações consideradas", "Impacto atualizado total"]
+TITULO_TABELA_ANEXO_VU = "Tabela 1 - Valores unitários por ciclo"
 
 
 def _ta_titulo(doc: Document, dados: dict, cm: dict) -> None:
@@ -1674,43 +1712,44 @@ def _ta_secao1_reajustes(doc: Document, dados: dict, cm: dict) -> None:
         _adicionar_run(p,
             ", formalizam-se os reajustes contratuais apurados, conforme Quadro 1.")
 
-    _titulo_quadro(
-        doc, "Quadro 1 — Síntese dos reajustes concedidos",
-        negrito=False, italico=True,
-    )
-    cabecalho = ["Ref.", "Ciclo", "Percentual aplicado", "Efeitos financeiros", "Situação"]
+    _titulo_quadro(doc, TITULO_QUADRO1_TERMO, negrito=False, italico=True)
+    # Estrutura unica: o modelo em branco muda apenas o CONTEUDO das celulas
+    # (placeholders), nunca as linhas nem a ordem dos blocos que seguem.
     if branco:
-        _adicionar_tabela(doc, cabecalho, [[
+        linhas: list[list[str]] = [[
             "[PREENCHER: Ref.]", "[PREENCHER: Ciclo]",
             "[PREENCHER: Percentual aplicável]", "[PREENCHER: Efeitos financeiros]",
             "[PREENCHER: Situação]",
-        ]], destacar_placeholders=True)
-        _paragrafos_perda_efeitos(doc, dados)
-        doc.add_paragraph()
-        return
-    linhas: list[list[str]] = []
-    ciclos = dados.get("ciclos_computados") or []
-    for i, c in enumerate(ciclos):
-        pct = c.get("percentual_reajuste")
-        linhas.append([
-            _LETRAS[i] if i < len(_LETRAS) else str(i + 1),
-            remover_emojis_leve(c.get("ciclo") or ""),
-            _fmt_pct_doc(pct) if pct is not None else NAO_INFORMADO,
-            _efeito_financeiro_ciclo(c),
-            remover_emojis_leve(c.get("situacao") or NAO_INFORMADO),
-        ])
-    ref_acum = _LETRAS[len(ciclos)] if len(ciclos) < len(_LETRAS) else "Acum."
-    var = dados.get("var_acumulada")
+        ]]
+        ref_acum = "[PREENCHER: Ref.]"
+        pct_acum = "[PREENCHER: Percentual acumulado]"
+        situacao_acum = "[PREENCHER: Situação do acumulado]"
+    else:
+        linhas = []
+        ciclos = dados.get("ciclos_computados") or []
+        for i, c in enumerate(ciclos):
+            pct = c.get("percentual_reajuste")
+            linhas.append([
+                _LETRAS[i] if i < len(_LETRAS) else str(i + 1),
+                remover_emojis_leve(c.get("ciclo") or ""),
+                _fmt_pct_doc(pct) if pct is not None else NAO_INFORMADO,
+                _efeito_financeiro_ciclo(c),
+                remover_emojis_leve(c.get("situacao") or NAO_INFORMADO),
+            ])
+        ref_acum = _LETRAS[len(ciclos)] if len(ciclos) < len(_LETRAS) else "Acum."
+        var = dados.get("var_acumulada")
+        pct_acum = _fmt_pct_doc(var) if var is not None else NAO_INFORMADO
+        situacao_acum = SITUACAO_ACUMULADO_TERMO
     linhas.append([
-        ref_acum,
-        "Acumulado",
-        _fmt_pct_doc(var) if var is not None else NAO_INFORMADO,
-        "Conforme composição dos ciclos",
-        "Percentual acumulado apurado",
+        ref_acum, ROTULO_ACUMULADO_TERMO, pct_acum,
+        EFEITO_ACUMULADO_TERMO, situacao_acum,
     ])
-    _adicionar_tabela(doc, cabecalho, linhas)
+    _adicionar_tabela(
+        doc, CABECALHO_QUADRO1_TERMO, linhas, destacar_placeholders=branco,
+    )
     # Itens 1.2 (duas casas decimais) e 1.3+ (perda de efeitos) ficam abaixo do
-    # Quadro 1; a numeracao pertence ao Termo, nao ao Despacho Saneador.
+    # Quadro 1; a numeracao pertence ao Termo, nao ao Despacho Saneador. O
+    # modelo em branco traz os mesmos itens, com a regra e a instrucao neutra.
     _paragrafo_percentual_fator(doc, dados, com_exemplo=False, prefixo="1.2. ")
     _paragrafos_perda_efeitos(doc, dados, secao="1", primeiro_item=3)
     doc.add_paragraph()
@@ -1722,9 +1761,12 @@ def _paragrafo_percentual_fator(
     """Explicacao do percentual (2 casas) e do fator; texto de fonte unica.
 
     `prefixo` permite ao Termo emitir o mesmo texto como item numerado ("1.2. ").
+
+    A regra das duas casas e criterio institucional, nao fato da apuracao: o
+    modelo em branco a emite igual ao documento processado. Sem ciclos, o
+    exemplo numerico nunca e montado — `texto_percentual_fator` devolve so a
+    frase geral.
     """
-    if dados.get("_modo_branco"):
-        return
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.JUSTIFY
     _adicionar_run(
@@ -1902,13 +1944,11 @@ def _ta_secao2_branco(doc: Document) -> None:
     _run_campo_manual(p, "Valor retroativo a pagar")
     _adicionar_run(p, ", quando aplicável, conforme Quadro 2.")
     _titulo_quadro(
-        doc, "Quadro 2 — Apuração financeira por ciclo",
-        negrito=False, italico=True,
+        doc, TITULO_QUADRO2_FINANCEIRO_TERMO, negrito=False, italico=True,
     )
     _adicionar_tabela(
         doc,
-        ["Ciclo", "Valor pago efetivo", "Valor devido após o reajuste",
-         "Diferença/retroativo"],
+        CABECALHO_QUADRO2_FINANCEIRO_TERMO,
         [[
             "[PREENCHER: Ciclo]",
             "[PREENCHER: Valor pago efetivo]",
@@ -2119,8 +2159,7 @@ def _ta_secao2_financeiro(doc: Document, dados: dict, cm: dict) -> None:
     _adicionar_run(p, ", conforme Quadro 2.")
 
     _titulo_quadro(
-        doc, "Quadro 2 — Apuração financeira por ciclo",
-        negrito=False, italico=True,
+        doc, TITULO_QUADRO2_FINANCEIRO_TERMO, negrito=False, italico=True,
     )
     linhas: list[list[str]] = []
     tot_pago = tot_teorico = tot_delta = None
@@ -2151,12 +2190,7 @@ def _ta_secao2_financeiro(doc: Document, dados: dict, cm: dict) -> None:
         formatar_moeda(tot_teorico) if tot_teorico is not None else "",
         formatar_moeda(total_delta) if total_delta is not None else "",
     ])
-    _adicionar_tabela(
-        doc,
-        ["Ciclo", "Valor pago efetivo", "Valor devido após o reajuste",
-         "Diferença/retroativo"],
-        linhas,
-    )
+    _adicionar_tabela(doc, CABECALHO_QUADRO2_FINANCEIRO_TERMO, linhas)
     doc.add_paragraph()
 
 
@@ -2263,35 +2297,52 @@ def _ta_secao3_composicao_vta(doc: Document, dados: dict) -> None:
             "atualizado, inclusive intermediários quando existirem, e os "
             "ajustes contratuais aplicáveis, quando houver.")
 
-    _titulo_quadro(
-        doc, "Quadro 3 — Composição do Valor Total Atualizado do Contrato",
-        negrito=False, italico=True,
-    )
+    _titulo_quadro(doc, TITULO_QUADRO3_TERMO, negrito=False, italico=True)
+    branco = bool(dados.get("_modo_branco"))
     linhas: list[list[str]] = []
     destaque_potencial: set[int] = set()
-    for i, (desc, valor) in enumerate(_composicao_didatica_vta(dados)):
-        rotulo = desc
-        if desc == ROTULO_PARCELA_POTENCIAL:
-            # Nome documental do Termo: caixa baixa, sem sufixo em caixa alta.
-            rotulo = ROTULO_POTENCIAL_TERMO
-            destaque_potencial.add(i)
-        linhas.append([
-            _LETRAS[i] if i < len(_LETRAS) else str(i + 1),
-            rotulo,
-            formatar_moeda(valor) if valor is not None else "",
-        ])
+    if branco:
+        # Mesma estrutura do processado (parcelas A e B + Total), com campos.
+        for ref in ("A", "B"):
+            linhas.append([
+                ref,
+                PREENCHER_TAG.format(f"Descricao da parcela {ref}"),
+                PREENCHER_TAG.format(f"Valor da parcela {ref}"),
+            ])
+        valor_total = PREENCHER_TAG.format("Valor Total Atualizado do Contrato")
+    else:
+        for i, (desc, valor) in enumerate(_composicao_didatica_vta(dados)):
+            rotulo = desc
+            if desc == ROTULO_PARCELA_POTENCIAL:
+                # Nome documental do Termo: caixa baixa, sem sufixo em caixa alta.
+                rotulo = ROTULO_POTENCIAL_TERMO
+                destaque_potencial.add(i)
+            linhas.append([
+                _LETRAS[i] if i < len(_LETRAS) else str(i + 1),
+                rotulo,
+                formatar_moeda(valor) if valor is not None else "",
+            ])
+        valor_total = _vta_texto_doc(dados)
     # O rotulo do Total cita as referencias das parcelas efetivamente presentes
     # acima, sem quantidade fixa; o valor do Total nao muda.
     refs_parcelas = [linha[0] for linha in linhas]
     linhas.append([
         f"Total ({' + '.join(refs_parcelas)})" if refs_parcelas else "Total",
         "Valor Total Atualizado do Contrato",
-        _vta_texto_doc(dados),
+        valor_total,
     ])
-    _adicionar_tabela(doc, ["Ref.", "Descrição", "Valor"], linhas,
-                      linhas_destaque=destaque_potencial)
+    _adicionar_tabela(doc, CABECALHO_QUADRO3_TERMO, linhas,
+                      linhas_destaque=destaque_potencial,
+                      destacar_placeholders=branco)
 
-    if not dados.get("_modo_branco"):
+    if branco:
+        p = par()
+        _adicionar_run(p,
+            "Havendo retroativo já incorporado ao valor da execução atualizada "
+            "considerado na composição do Quadro 3, deverá ser registrado que "
+            "ele não é somado novamente como parcela separada, vedada a dupla "
+            "contagem do mesmo valor.")
+    else:
         incorporado, _apurado, _dif = _ta_potenciais(dados)
         vta_txt = _vta_texto_doc(dados)
         if incorporado is not None:
@@ -2425,10 +2476,19 @@ def _ta_secao5_aditivos(doc: Document, dados: dict) -> None:
     _titulo_secao(doc, "5. Dos aditivos e supressões considerados")
     aditivos = dados.get("aditivos") or []
     p1 = _ta_par(doc, "5.1")
-    if dados.get("_modo_branco"):
-        _adicionar_run(p1, "Registrar os aditivos e supressões considerados: ")
-        _run_campo_manual(p1, "Aditivos e supressões considerados")
-        _adicionar_run(p1, ".")
+    branco = bool(dados.get("_modo_branco"))
+    linhas_q4: list[list[str]] | None = None
+    if branco:
+        # O modelo mostra o Quadro 4 que o documento processado emite quando
+        # ha alteracoes contratuais: mesmo titulo, mesmos cabecalhos.
+        _adicionar_run(p1,
+            "Os aditivos e supressões considerados, quando houver, deverão ser "
+            "registrados no Quadro 4.")
+        linhas_q4 = [[
+            "[PREENCHER: Ciclo]",
+            "[PREENCHER: Alterações consideradas]",
+            "[PREENCHER: Impacto atualizado total]",
+        ]]
     elif not aditivos:
         # Sem alteracoes: frase objetiva, nunca uma tabela vazia.
         _adicionar_run(p1,
@@ -2439,15 +2499,14 @@ def _ta_secao5_aditivos(doc: Document, dados: dict) -> None:
         _adicionar_run(p1,
             "Foram consideradas na apuração as alterações contratuais "
             "registradas nos respectivos ciclos, conforme Quadro 4.")
-        _titulo_quadro(
-            doc, "Quadro 4 — Aditivos e supressões considerados",
-            negrito=False, italico=True,
-        )
+        linhas_q4 = [
+            [ciclo, tipos, valor]
+            for ciclo, tipos, _impacto, valor in _ta_grupos_aditivos(aditivos)
+        ]
+    if linhas_q4 is not None:
+        _titulo_quadro(doc, TITULO_QUADRO4_TERMO, negrito=False, italico=True)
         _adicionar_tabela(
-            doc,
-            ["Ciclo", "Alterações consideradas", "Impacto atualizado total"],
-            [[ciclo, tipos, valor]
-             for ciclo, tipos, _impacto, valor in _ta_grupos_aditivos(aditivos)],
+            doc, CABECALHO_QUADRO4_TERMO, linhas_q4, destacar_placeholders=branco,
         )
         doc.add_paragraph()
 
@@ -2523,7 +2582,16 @@ def _ta_assinaturas(doc: Document, cm: dict) -> None:
         p_rep = doc.add_paragraph()
         p_rep.alignment = WD_ALIGN_PARAGRAPH.CENTER
         _texto_ou_marcador(p_rep, _campo(cm, chave_nome), desc_nome)
+        # Entidade e signatario nunca se separam entre paginas.
+        p_ent.paragraph_format.keep_with_next = True
         doc.add_paragraph()
+    # O bloco inteiro (data + dois signatarios) acompanha-se: nenhuma
+    # assinatura fica isolada no topo da pagina seguinte.
+    corpo = doc.element.body
+    paragrafos = [Paragraph(el, doc) for el in corpo.iterchildren()
+                  if el.tag.endswith("}p")]
+    for par in paragrafos[-9:-1]:
+        par.paragraph_format.keep_with_next = True
 
 
 def _ta_anexo1_valores_unitarios(doc: Document, dados: dict) -> None:
@@ -2545,7 +2613,7 @@ def _ta_anexo1_valores_unitarios(doc: Document, dados: dict) -> None:
                   alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
     doc.add_paragraph()
     _secao_valores_unitarios_por_ciclo(
-        doc, dados, titulo="Tabela 1 - Valores unitários por ciclo",
+        doc, dados, titulo=TITULO_TABELA_ANEXO_VU,
     )
 
 
@@ -2555,7 +2623,7 @@ def _ta_anexo1_modelo(doc: Document) -> None:
     _titulo_secao(doc, TITULO_ANEXO_VU, tamanho=12,
                   alinhamento=WD_ALIGN_PARAGRAPH.CENTER)
     doc.add_paragraph()
-    _titulo_quadro(doc, "Tabela 1 - Valores unitários por ciclo")
+    _titulo_quadro(doc, TITULO_TABELA_ANEXO_VU)
     _adicionar_tabela(
         doc,
         ["Item", "VU_C0", "VU_C1"],

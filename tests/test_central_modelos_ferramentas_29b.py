@@ -212,26 +212,36 @@ def test_neutralidade_integral_29c12():
             "a formalização") in txt_ta
     assert ("Os valores financeiros que eventualmente integrem a formalização "
             "deverão ser informados") in txt_ta
-    assert "deverá ser organizada de forma evolutiva" in txt_ta
+    # Secao 4 vigente: a remissao ao ANEXO 1 (o texto "organizada de forma
+    # evolutiva" deixou de existir no gerador).
+    assert ("deverão ser consolidados no quadro do ANEXO 1 deste Termo de "
+            "Apostila") in txt_ta
+    assert "deverá ser organizada de forma evolutiva" not in txt_ta
     # Todos os placeholders permanecem amarelos nos dois modelos.
     tot_ds, sem_ds = _placeholders_e_destaque(b_ds)
     tot_ta, sem_ta = _placeholders_e_destaque(b_ta)
     assert tot_ds >= 20 and sem_ds == 0
-    assert (tot_ta, sem_ta) == (30, 0)
+    assert tot_ta >= 40 and sem_ta == 0
 
 
 def test_automatico_usa_nova_redacao_sem_alterar_termo():
-    from test_templates_documentos import leitura_multiciclo_pc, CAMPOS_SANEADOR, CAMPOS_TERMO
+    from test_templates_documentos import (
+        leitura_multiciclo_pc, CAMPOS_SANEADOR, CAMPOS_TERMO, _leitura_financeiro,
+    )
     txt_ds = _texto(gerar_despacho_saneador(leitura_multiciclo_pc(), campos_manuais=CAMPOS_SANEADOR))
     assert "A CONTRATADA apresentou pedido de reajuste" in txt_ds
     assert "Conforme memória de cálculo" in txt_ds
     assert "Acordou-se na concessão" not in txt_ds
     assert "Referências auditáveis" not in txt_ds
-    txt_ta = _texto(gerar_termo_apostila(leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO))
+    # A redacao da secao 2 do Termo depende do metodo canonico: a frase da
+    # apuracao por competencia pertence ao Financeiro, nao ao PC.
+    txt_ta = _texto(gerar_termo_apostila(_leitura_financeiro(), campos_manuais=CAMPOS_TERMO))
     assert "A apuração financeira consolidada indicou" in txt_ta
     assert "que apurou os ciclos" in txt_ta
     assert "informações encaminhadas pela área gestora" in txt_ta
-    assert "foi organizada de forma evolutiva" in txt_ta
+    txt_ta_pc = _texto(gerar_termo_apostila(leitura_multiciclo_pc(), campos_manuais=CAMPOS_TERMO))
+    assert "A apuração financeira consolidada indicou" not in txt_ta_pc
+    assert "que apurou os ciclos" in txt_ta_pc
 
 
 def test_despacho_automatico_resultado_consolidado_sem_valor_teorico():
