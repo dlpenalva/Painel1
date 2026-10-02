@@ -22,11 +22,15 @@ Toda a matemática vive no motor puro ``_garantia_calculo`` (Decimal +
 ROUND_HALF_UP), permitindo testes focais.
 """
 from html import escape
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 import pandas as pd
 import streamlit as st
 
 from _ui_utils import render_cabecalho_pagina
+from _garantia_memoria import gerar_memoria_garantia_xlsx
+from _versao import CL8US_VERSION
 from _garantia_calculo import (
     COLUNA_EVENTO_DATA,
     COLUNA_EVENTO_GARANTIA,
@@ -59,6 +63,9 @@ from _garantia_calculo import (
     normalizar_eventos,
     parse_moeda_br,
 )
+
+
+FUSO_BRASILIA = ZoneInfo("America/Sao_Paulo")
 
 st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="Análises de Reajustes - Garantia", layout="wide")
 
@@ -145,6 +152,22 @@ def css():
         .garantia-status-forte { background: #E9F4EE; border: 1px solid #B9DCC6; font-size: 0.98rem; }
         .garantia-status-ambar { background: #FDF6E8; border: 1px solid #EBDCB4; color: #4A3B1A; }
         .garantia-status-ambar strong { color: #7A5A12; }
+        .garantia-memoria-intro {
+            color: #475569;
+            font-size: 0.94rem;
+            line-height: 1.55;
+            margin: 0 0 4px 0;
+        }
+        div[data-testid="stDownloadButton"] button {
+            border-color: #B8CAD8;
+            color: #24445F;
+            background: #F7FAFC;
+        }
+        div[data-testid="stDownloadButton"] button:hover {
+            border-color: #789AB4;
+            color: #173B5D;
+            background: #EDF4F8;
+        }
         </style>
         """,
         unsafe_allow_html=True,
@@ -551,6 +574,33 @@ analise = analisar_garantia(
 # quanto passa a ser exigido de garantia, o que já foi apresentado, o que falta
 # complementar e até quando a garantia precisa valer.
 render_resumo_situacao_atual(situacao, analise)
+
+# ------------------------------------------------------------
+# Memória de cálculo — somente apresentação dos resultados canônicos
+# ------------------------------------------------------------
+with st.container(border=True):
+    st.subheader("Memória de cálculo")
+    st.markdown(
+        '<p class="garantia-memoria-intro">Baixe um resumo da evolução do contrato, '
+        'da garantia exigida, das garantias apresentadas e dos cálculos que resultam '
+        'na situação atual.</p>',
+        unsafe_allow_html=True,
+    )
+    memoria_xlsx = gerar_memoria_garantia_xlsx(
+        situacao,
+        analise,
+        versao_cl8us=CL8US_VERSION,
+        gerado_em=datetime.now(FUSO_BRASILIA),
+        dias_validade_minima=DIAS_VALIDADE_MINIMA,
+    )
+    st.download_button(
+        "Baixar memória de cálculo da garantia",
+        data=memoria_xlsx,
+        file_name="memoria_calculo_garantia.xlsx",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        key="baixar_memoria_calculo_garantia",
+        type="secondary",
+    )
 
 # ------------------------------------------------------------
 # 4) Resultado — a qualificação das duas dimensões independentes

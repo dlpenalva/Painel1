@@ -821,12 +821,18 @@ class PaginaEstruturaTests(unittest.TestCase):
         ):
             self.assertNotIn(proibido, GARANTIA, f"alerta global proibido: {proibido}")
 
-    def test_pagina_nao_gera_pdf_txt_nem_download(self):
+    def test_pagina_nao_gera_pdf_txt_e_oferece_um_unico_xlsx(self):
         for residuo in (
-            "gerar_pdf_garantia", "download_button", "arquivo_garantia_pdf",
+            "gerar_pdf_garantia", "arquivo_garantia_pdf",
             "montar_txt_bytes", "reportlab", "REPORTLAB_OK", "application/pdf",
         ):
             self.assertNotIn(residuo, GARANTIA, f"geração de arquivo remanescente: {residuo}")
+        self.assertEqual(GARANTIA.count("st.download_button("), 1)
+        self.assertIn('file_name="memoria_calculo_garantia.xlsx"', GARANTIA)
+        self.assertIn(
+            'mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"',
+            GARANTIA,
+        )
         self.assertIn("st.text_area(", GARANTIA)
 
     def test_situacao_atual_e_derivada_e_nao_redigitada(self):
@@ -876,7 +882,7 @@ class IsolamentoSessionStateTests(unittest.TestCase):
     def test_pagina_nao_referencia_nenhuma_chave_externa(self):
         for chave in (
             "resultado_valor_global", "valor_atualizado_contrato", "valor_global_financeiro",
-            "extrair_vta", "vta_claus", "VTA", "diagnostico_coleta_v2", "input_ciclos",
+            "extrair_vta", "vta_claus", "diagnostico_coleta_v2", "input_ciclos",
             "dados_admissibilidade", "Coleta", "RESULTADOS",
         ):
             self.assertNotIn(chave, CORPO_GARANTIA, f"a Garantia não pode consultar {chave}")

@@ -21,9 +21,9 @@ from datetime import datetime
 from pathlib import Path
 
 
-# 11.1: formalizacao segura de Coleta anterior compatibilizada (Etapa 3/03).
+# 11.2: memoria de calculo da garantia contratual em XLSX.
 # Mudanca funcional do Cl8us; a estrutura do XLS nao mudou (COLETA_VERSION 11.0).
-CL8US_VERSION = "11.1"
+CL8US_VERSION = "11.2"
 COLETA_VERSION = "11.0"
 # Janela de compatibilidade retroativa: a versao atual e DUAS linhagens anteriores
 # homologadas (PRE_11_L1 e PRE_11_L2, ver _compatibilidade_coleta). Estrutura fora
@@ -31,7 +31,7 @@ COLETA_VERSION = "11.0"
 # em _formalizacao_compatibilidade, por evidencia tecnica e nunca por versao.
 COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
-ATUALIZADO_EM_FALLBACK = "01/10/2026 01:25"
+ATUALIZADO_EM_FALLBACK = "01/10/2026 21:56"
 
 
 def _data_ultimo_commit() -> str | None:
