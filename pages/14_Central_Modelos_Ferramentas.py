@@ -106,8 +106,10 @@ with col_a:
     with st.container(border=True):
         _card(
             "Modelo em branco — Despacho Saneador",
-            "Estrutura do Despacho Saneador com campos destacados para "
-            "preenchimento manual. Não afirma fatos nem valores.",
+            "Modelo atualizado com a mesma estrutura utilizada no Despacho "
+            "Saneador gerado pelo Cl8us. O quadro de resultado financeiro "
+            "segue o formato da apuração financeira e deve ser adaptado ao "
+            "método adotado.",
         )
         st.download_button(
             "Baixar modelo em branco — Despacho Saneador",
@@ -121,8 +123,9 @@ with col_b:
     with st.container(border=True):
         _card(
             "Modelo em branco — Termo de Apostila",
-            "Estrutura do Termo de Apostila com campos destacados para "
-            "preenchimento manual. Não afirma reajuste nem concordância.",
+            "Modelo atualizado com a mesma estrutura utilizada no Termo de "
+            "Apostila gerado pelo Cl8us. A seção 2 segue o formato da "
+            "apuração financeira e deve ser adaptada ao método adotado.",
         )
         st.download_button(
             "Baixar modelo em branco — Termo de Apostila",

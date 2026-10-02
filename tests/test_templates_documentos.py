@@ -992,7 +992,9 @@ def test_saneador_branco_tem_placeholder_de_pendencia_destacado():
     b = gerar_modelo_branco_despacho()
     texto = _texto_docx(b)
     assert "[PREENCHER, EM CASO DE PENDÊNCIA]" in texto
-    assert "Não existem pendências nesta data." in texto
+    # O modelo nao afirma ausencia de pendencias: so orienta o registro.
+    assert "Não existem pendências nesta data." not in texto
+    assert "Registrar abaixo as pendências identificadas na análise" in texto
     encontrados = [
         r for p in Document(BytesIO(b)).paragraphs for r in p.runs
         if r.text == "[PREENCHER, EM CASO DE PENDÊNCIA]"

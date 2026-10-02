@@ -425,11 +425,29 @@ def test_termo_e_saneador_mantem_a_mesma_frase_de_perda_sem_o_prefixo():
     assert sane == termo and len(termo) == 2
 
 
-def test_modelo_em_branco_nao_afirma_item_1_2_nem_perdas():
+def test_modelo_em_branco_traz_item_1_2_e_instrucao_1_3_sem_afirmar_perdas():
+    """O modelo tem a MESMA estrutura da seção 1 do Termo processado.
+
+    1.2 é critério institucional (as duas casas), emitido igual ao processado;
+    1.3 é a instrução neutra da perda de efeitos, com a mesma numeração. O
+    modelo nunca afirma a perda de competências de um ciclo.
+    """
     texto = _texto(gerar_modelo_branco_termo())
-    assert "1.2. Para o cálculo" not in texto
+    assert ITEM_1_2 in texto
+    assert re.search(
+        r"^1\.3\. Havendo competências não alcançadas pelos efeitos "
+        r"financeiros do reajuste em razão da data do pedido, deverão ser "
+        r"expressamente indicadas neste item\.$",
+        texto, flags=re.M,
+    )
     assert FRASE_PERDA not in texto
-    assert not re.search(r"^1\.[3-9]\. ", texto, flags=re.M)
+    assert not re.search(r"^1\.[4-9]\. ", texto, flags=re.M)
+    # Ordem: 1.1 -> Quadro 1 -> 1.2 -> 1.3 (igual ao documento processado).
+    posicoes = [texto.index(marco) for marco in (
+        "1.1. Ao Contrato", "Quadro 1 — Síntese dos reajustes concedidos",
+        "1.2. Para o cálculo", "1.3. Havendo competências",
+    )]
+    assert posicoes == sorted(posicoes)
 
 
 # ---------------------------------------------------------------------------
