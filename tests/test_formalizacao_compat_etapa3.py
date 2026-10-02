@@ -487,13 +487,13 @@ def test_replay_nao_vaza_estado_nem_altera_arquivo_ou_entradas():
 
 
 # --------------------------------------------------------------------------- #
-# Versionamento: Cl8us 11.1 gera Coleta no Modelo 11.0 (independentes).
+# Versionamento: Cl8us 11.2 gera Coleta no Modelo 11.0 (independentes).
 # --------------------------------------------------------------------------- #
-def test_cl8us_11_1_e_modelo_de_coleta_11_0_sao_independentes():
-    assert CL8US_VERSION == "11.1" and COLETA_VERSION == "11.0"
+def test_cl8us_11_2_e_modelo_de_coleta_11_0_sao_independentes():
+    assert CL8US_VERSION == "11.2" and COLETA_VERSION == "11.0"
     wb = load_workbook(PASTA / "coleta_11_financeiro.xlsx")
     assert cc.detectar_linhagem_coleta(wb)["codigo"] == cc.LINHAGEM_COLETA_11
-    wb["CONTROLE"]["B25"] = CL8US_VERSION            # quem GEROU a Coleta: Cl8us 11.1
+    wb["CONTROLE"]["B25"] = CL8US_VERSION            # quem GEROU a Coleta: Cl8us 11.2
     assert wb["CONTROLE"]["B24"].value == COLETA_VERSION == "11.0"
     # O modelo continua COLETA_11: a versao do gerador nao define a linhagem.
     assert cc.detectar_linhagem_coleta(wb)["codigo"] == cc.LINHAGEM_COLETA_11
