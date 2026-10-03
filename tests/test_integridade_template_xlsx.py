@@ -205,7 +205,12 @@ FORMULAS_POR_ABA = {
     # RESULTADOS-SEM-EFEITO-150). Esta frente soma +21 em E15:H21 (6 de cabecalho/
     # nota/caso + 4 ciclos x 4 colunas, menos a E16 antiga que foi reescrita):
     # 170 + 21 = 191.
-    "RESULTADOS": 191,
+    # RESULTADOS-EXECUTIVO-V3 (Coleta 11.2): a aba acima foi RENOMEADA pelo
+    # Excel para RESULTADOS_DETALHE com as MESMAS 191 formulas; a RESULTADOS
+    # nova e a pagina executiva, com 155 formulas de puro espelhamento
+    # (tools/aplicar_resultados_executivo_v3.formulas_executivo).
+    "RESULTADOS_DETALHE": 191,
+    "RESULTADOS": 155,
 }
 
 

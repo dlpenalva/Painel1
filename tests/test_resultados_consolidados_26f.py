@@ -20,13 +20,17 @@ def wb():
 
 
 def test_resultados_executiva_e_memoria_separadas(wb):
-    assert wb.sheetnames[-2:] == ["MEMORIA_RESULTADOS", "RESULTADOS"]
+    # Coleta 11.2: a camada tecnica (RESULTADOS_DETALHE) fica entre a memoria
+    # oculta e a RESULTADOS executiva, que segue sendo a ultima aba.
+    assert wb.sheetnames[-3:] == ["MEMORIA_RESULTADOS", "RESULTADOS_DETALHE", "RESULTADOS"]
     assert wb["MEMORIA_RESULTADOS"].sheet_state == "hidden"
     assert wb[_aba_tecnica_resultados(wb)].sheet_state == "visible"
     assert wb["comparativo_VTA"].sheet_state == "hidden"
+    # Coleta 11.2: titulo proprio da camada tecnica; a executiva tem o seu.
     assert wb[_aba_tecnica_resultados(wb)]["A1"].value == (
-        "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL"
+        "RESULTADOS — DETALHE TÉCNICO DA APURAÇÃO"
     )
+    assert wb["RESULTADOS"]["B2"].value == "RESULTADO DA APURAÇÃO"
 
 
 def test_quatro_tabelas_e_um_status_global(wb):
@@ -49,7 +53,7 @@ def test_quatro_tabelas_e_um_status_global(wb):
     for estado in ("VALIDADO", "ESTIMADO", "REVISE"):
         assert estado in formula_status
     assert "COUNTIF($H$43:$H$50" in formula_status
-    assert wb.defined_names["STATUS_RESULTADOS"].value == "RESULTADOS!$B$3"
+    assert wb.defined_names["STATUS_RESULTADOS"].value == "RESULTADOS_DETALHE!$B$3"
     assert ws["G1"].value == "=$B$3"
     # Titulos das secoes no leiaute final: 1 e 2 coabitam a linha de cabecalho
     # das proprias tabelas (linhas 9 e 15); a secao 4 e formula para exibir o
@@ -130,7 +134,7 @@ def test_nomes_definidos_apontam_para_memoria_absoluta(wb):
     }
     for nome, referencia in esperados.items():
         assert wb.defined_names[nome].attr_text == referencia
-    assert wb.defined_names["STATUS_RESULTADOS"].attr_text == "RESULTADOS!$B$3"
+    assert wb.defined_names["STATUS_RESULTADOS"].attr_text == "RESULTADOS_DETALHE!$B$3"
 
 
 def test_tabela_manual_unica_governa_entradas_da_memoria(wb):
@@ -151,20 +155,20 @@ def test_tabela_manual_unica_governa_entradas_da_memoria(wb):
     ).formula1) == "OPCOES_APLICAR_MANUAL"
     memoria = wb["MEMORIA_RESULTADOS"]
     assert memoria["B5"].value == (
-        '=IF(AND(RESULTADOS!$G$43="Sim",RESULTADOS!$C$43<>""),'
-        'RESULTADOS!$C$43,"")'
+        '=IF(AND(RESULTADOS_DETALHE!$G$43="Sim",RESULTADOS_DETALHE!$C$43<>""),'
+        'RESULTADOS_DETALHE!$C$43,"")'
     )
     assert memoria["B24"].value == (
-        '=IF(AND(RESULTADOS!$G$44="Sim",RESULTADOS!$C$44<>""),'
-        'RESULTADOS!$C$44,"")'
+        '=IF(AND(RESULTADOS_DETALHE!$G$44="Sim",RESULTADOS_DETALHE!$C$44<>""),'
+        'RESULTADOS_DETALHE!$C$44,"")'
     )
     assert memoria["B25"].value == (
-        '=IF(AND(RESULTADOS!$G$45="Sim",RESULTADOS!$C$45<>""),'
-        'RESULTADOS!$C$45,"")'
+        '=IF(AND(RESULTADOS_DETALHE!$G$45="Sim",RESULTADOS_DETALHE!$C$45<>""),'
+        'RESULTADOS_DETALHE!$C$45,"")'
     )
     assert memoria["N262"].value == (
-        '=IF(AND(RESULTADOS!$G$50="Sim",ISNUMBER(RESULTADOS!$C$50),'
-        'RESULTADOS!$C$50>=0),RESULTADOS!$C$50,"")'
+        '=IF(AND(RESULTADOS_DETALHE!$G$50="Sim",ISNUMBER(RESULTADOS_DETALHE!$C$50),'
+        'RESULTADOS_DETALHE!$C$50>=0),RESULTADOS_DETALHE!$C$50,"")'
     )
 
 
@@ -178,7 +182,7 @@ def test_achado_a_override_nao_materializa_zero(wb):
     }
     for celula, valor in overrides_texto.items():
         formula = str(memoria[celula].value)
-        assert f'RESULTADOS!{valor}<>""' in formula, f"{celula} sem guarda"
+        assert f'RESULTADOS_DETALHE!{valor}<>""' in formula, f"{celula} sem guarda"
         assert formula.startswith("=IF(AND("), f"{celula} sem AND fail-closed"
     # 26F.1: complementos historicos herdam a regra do baseline (>= 0) e a
     # guarda numerica — vazio nao vira 0 e negativo nao flui para o VTA.
@@ -188,8 +192,8 @@ def test_achado_a_override_nao_materializa_zero(wb):
     }
     for celula, valor in complementos.items():
         formula = str(memoria[celula].value)
-        assert f'ISNUMBER(RESULTADOS!{valor})' in formula, f"{celula} sem ISNUMBER"
-        assert f'RESULTADOS!{valor}>=0' in formula, f"{celula} sem >=0"
+        assert f'ISNUMBER(RESULTADOS_DETALHE!{valor})' in formula, f"{celula} sem ISNUMBER"
+        assert f'RESULTADOS_DETALHE!{valor}>=0' in formula, f"{celula} sem >=0"
         assert formula.startswith("=IF(AND("), f"{celula} sem AND fail-closed"
 
 
@@ -342,7 +346,7 @@ def test_com_26f1_fail_closed_no_excel_real(tmp_path):
     xl.DisplayAlerts = False
     try:
         wb = xl.Workbooks.Open(str(dest.resolve()), UpdateLinks=0, CorruptLoad=0)
-        r = wb.Worksheets("RESULTADOS")
+        r = wb.Worksheets("RESULTADOS_DETALHE")
         mem = wb.Worksheets("MEMORIA_RESULTADOS")
         ctrl = wb.Worksheets("CONTROLE")
         par = wb.Worksheets("parametros")
@@ -446,7 +450,7 @@ def test_com_26f2_zero_confirmado_vs_fonte_ausente(tmp_path):
     xl.DisplayAlerts = False
     try:
         wb = xl.Workbooks.Open(str(dest.resolve()), UpdateLinks=0, CorruptLoad=0)
-        r = wb.Worksheets("RESULTADOS")
+        r = wb.Worksheets("RESULTADOS_DETALHE")
         ctrl = wb.Worksheets("CONTROLE")
         par = wb.Worksheets("parametros")
         irem = wb.Worksheets("itens_Remanesc")

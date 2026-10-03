@@ -162,7 +162,7 @@ def test_ancoras_nomeadas_da_aba_resultados_estao_estaveis():
         "VTA_ATUALIZACAO_CHEIA",
     ]
     nomes = contrato["nomes_definidos"]
-    assert nomes["STATUS_RESULTADOS"] == "RESULTADOS!$B$3"
+    assert nomes["STATUS_RESULTADOS"] == "RESULTADOS_DETALHE!$B$3"
     assert nomes["VTA_FINAL"] == "MEMORIA_RESULTADOS!$B$26"
     assert nomes["RETRO_OFICIAL"] == "MEMORIA_RESULTADOS!$B$16"
 
@@ -171,7 +171,7 @@ def test_as_entradas_de_ajuste_manual_sao_contrato_dentro_do_excel():
     """As linhas 43-50 sao lidas por formulas de OUTRAS abas do workbook.
 
     Este acoplamento e invisivel para qualquer teste de Python: quem consome
-    RESULTADOS!C43:G50 e a MEMORIA_RESULTADOS, dentro do proprio Excel, para
+    RESULTADOS_DETALHE!C43:G50 e a MEMORIA_RESULTADOS, dentro do proprio Excel, para
     compor VTA e retroativo. Renumerar ou mover o bloco "5. AJUSTES MANUAIS"
     quebraria o calculo sem produzir um unico vermelho na suite — por isso o
     endereco entra no contrato, ao lado das nove coordenadas do runtime.
@@ -187,7 +187,7 @@ def test_as_entradas_de_ajuste_manual_sao_contrato_dentro_do_excel():
         if not (coluna == "D" and linha >= 46)
     }
     # Contrato vigente em origin/main: comparativo_VTA também consome o fator
-    # histórico exibido em RESULTADOS!H5. PC-UX-1 preserva essa referência.
+    # histórico exibido em RESULTADOS_DETALHE!H5. PC-UX-1 preserva essa referência.
     esperadas.add("H5")
     assert set(referencias) == esperadas, (
         "mudou o conjunto de celulas da RESULTADOS consumidas por formulas de "
@@ -204,7 +204,13 @@ def test_as_entradas_de_ajuste_manual_sao_contrato_dentro_do_excel():
 def test_o_titulo_da_aba_e_o_gate_de_integridade():
     """`_coleta_reajuste` rejeita o arquivo se A1 nao for exatamente isto."""
     contrato = fotografar_contrato_xls(bytes_cenario("01_financeiro_normal"))
-    assert contrato["titulo_a1"] == "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL"
+    # Coleta 11.2: a camada tecnica se chama RESULTADOS_DETALHE e tem titulo
+    # proprio; o gate de `_coleta_reajuste` aceita os dois titulos tecnicos
+    # (o legado segue valendo para arquivos anteriores).
+    from _resultados_abas import TITULO_RESULTADOS_DETALHE, TITULOS_TECNICOS
+
+    assert contrato["titulo_a1"] == TITULO_RESULTADOS_DETALHE
+    assert "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL" in TITULOS_TECNICOS
 
 
 # --------------------------------------------------------------------------- #

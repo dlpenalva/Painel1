@@ -387,10 +387,10 @@ def test_aditivo_no_gap_das_janelas_continua_valido():
 
 
 # --------------------------------------------------------------------------- #
-# 31.1 — Fator DESTA analise (CONTROLE!B11) x Fator HISTORICO (RESULTADOS!H5)
+# 31.1 — Fator DESTA analise (CONTROLE!B11) x Fator HISTORICO (RESULTADOS_DETALHE!H5)
 # --------------------------------------------------------------------------- #
 def test_fator_historico_desacoplado_do_fator_da_analise(wb_referencia):
-    """Etapa 31.1: CONTROLE!B11 = fator DESTA analise; RESULTADOS!H5 = fator
+    """Etapa 31.1: CONTROLE!B11 = fator DESTA analise; RESULTADOS_DETALHE!H5 = fator
     HISTORICO integral (logica fail-closed que vivia em B11 antes da etapa).
     Nenhum consumidor do historico aponta mais para CONTROLE!B11."""
     res = wb_referencia[_aba_tecnica_resultados(wb_referencia)]
@@ -408,12 +408,12 @@ def test_fator_historico_desacoplado_do_fator_da_analise(wb_referencia):
     h8 = str(res["H8"].value)
     assert "$H$5" in h8 and "B$11" not in h8
     assert 'SEARCH("CALCULADO",MEMORIA_RESULTADOS!$E$26)' in h8
-    # B208 = contrato original x FATOR HISTORICO (RESULTADOS!$H$5).
+    # B208 = contrato original x FATOR HISTORICO (RESULTADOS_DETALHE!$H$5).
     b208 = str(cv["B208"].value)
-    assert "RESULTADOS!$H$5" in b208 and "B$11" not in b208
+    assert "RESULTADOS_DETALHE!$H$5" in b208 and "B$11" not in b208
     # Texto auditavel cita a nova fonte real.
     c12 = str(res["C12"].value)
-    assert "RESULTADOS!H5" in c12 and "CONTROLE!B11" not in c12
+    assert "RESULTADOS_DETALHE!H5" in c12 and "CONTROLE!B11" not in c12
     # D6 continua derivando de H5 (variacao historica integral).
     assert str(res["D6"].value) == '=IF($H$5="","",$H$5-1)'
 
@@ -421,7 +421,7 @@ def test_fator_historico_desacoplado_do_fator_da_analise(wb_referencia):
 def test_historico_completo_alimenta_h5_e_analise_alimenta_b10():
     """Secao 12 do gate 31.1: historico C1=5% + analise C2=10%.
 
-    CONTROLE!B10 = 10% (so a analise); RESULTADOS!H5 depende da cadeia
+    CONTROLE!B10 = 10% (so a analise); RESULTADOS_DETALHE!H5 depende da cadeia
     historica completa (parametros!E3:E4 preenchidos -> F4 = 1,05 x 1,10)."""
     payload = {
         "origem": "Reajustes Múltiplos", "indice": "IPCA",

@@ -55,6 +55,8 @@ OPCIONAIS = (
     "cobertura_temporal",
     "MEMORIA_RESULTADOS",
     "CICLO_EM_EXECUCAO",
+    # Coleta 11.2: camada tecnica separada da RESULTADOS executiva.
+    "RESULTADOS_DETALHE",
 )
 
 
@@ -115,9 +117,11 @@ def test_abas_validas_isoladamente_mas_area_acumulada_excessiva():
         validar_geometria_workbook(wb)
 
 
-def test_dezessete_abas_sao_rejeitadas():
+def test_dezoito_abas_sao_rejeitadas():
+    # Coleta 11.2: o teto passou a 17 (16 + RESULTADOS_DETALHE); a 18a e
+    # rejeitada pelo limite antes de qualquer varredura.
     wb = _wb(OBRIGATORIAS + OPCIONAIS + ("EXTRA",))
-    assert len(wb.sheetnames) == 17
+    assert len(wb.sheetnames) == 18
     with pytest.raises(XlsxLimiteError):
         validar_geometria_workbook(wb)
 
@@ -151,9 +155,10 @@ def test_opcionais_podem_estar_ausentes():
     validar_geometria_workbook(_wb(OBRIGATORIAS))
 
 
-def test_allowlist_codificada_tem_exatamente_as_dezesseis_abas():
+def test_allowlist_codificada_tem_exatamente_as_dezessete_abas():
     assert set(ABAS_PERMITIDAS) == set(OBRIGATORIAS) | set(OPCIONAIS)
-    assert len(ABAS_PERMITIDAS) == 16
+    assert len(ABAS_PERMITIDAS) == 17
+    assert "RESULTADOS_DETALHE" in ABAS_PERMITIDAS
     assert "MEMORIA_RESULTADOS" in ABAS_PERMITIDAS
     assert "comparativo_VTA" in ABAS_PERMITIDAS
 
@@ -163,7 +168,7 @@ def test_limites_codificados_sao_os_aprovados():
     assert seguranca.MAX_COLUNAS_POR_ABA == 100
     assert seguranca.MAX_AREA_POR_ABA == 300_000
     assert seguranca.MAX_AREA_TOTAL_WORKBOOK == 500_000
-    assert seguranca.MAX_ABAS_WORKBOOK == 16
+    assert seguranca.MAX_ABAS_WORKBOOK == 17
 
 
 # ------------------------------------------------- ordem: gate antes de varrer

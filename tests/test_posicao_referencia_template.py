@@ -88,7 +88,7 @@ def test_ciclo_reutiliza_calendario_parametros():
     f = _wb()[ABA]["I1"].value  # CICLO da posicao atual
     for i in range(2, 7):
         assert f"parametros!$C${i}" in f and f"parametros!$D${i}" in f
-    assert "F4" not in f and "RESULTADOS!" not in f
+    assert "F4" not in f and "RESULTADOS_DETALHE!" not in f
 
 
 def test_fallback_nao_usa_max_nem_today():
@@ -148,8 +148,8 @@ def test_b23_b26_inalterados():
     b26 = wb["MEMORIA_RESULTADOS"]["B26"].value
     assert "$N$263" in b26 and ABA not in b26
     assert wb["MEMORIA_RESULTADOS"]["B25"].value == (
-        '=IF(AND(RESULTADOS!$G$45="Sim",RESULTADOS!$C$45<>""),'
-        'RESULTADOS!$C$45,"")'
+        '=IF(AND(RESULTADOS_DETALHE!$G$45="Sim",RESULTADOS_DETALHE!$C$45<>""),'
+        'RESULTADOS_DETALHE!$C$45,"")'
     )
 
 

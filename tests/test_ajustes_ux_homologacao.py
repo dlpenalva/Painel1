@@ -153,15 +153,18 @@ def test_vta_invariante():
     assert r["B23"].value == '=IF(OR(B20="",B21="",B22=""),"",ROUND(B20+B21+B22,2))'
     assert "$N$263" in r["B26"].value and "posicao_referencia" not in r["B26"].value
     assert r["B25"].value == (
-        '=IF(AND(RESULTADOS!$G$45="Sim",RESULTADOS!$C$45<>""),'
-        'RESULTADOS!$C$45,"")'
+        '=IF(AND(RESULTADOS_DETALHE!$G$45="Sim",RESULTADOS_DETALHE!$C$45<>""),'
+        'RESULTADOS_DETALHE!$C$45,"")'
     )
 
 
 # ---- T integridade basica ----
 def test_quinze_abas():
     # 14 abas anteriores + MEMORIA_RESULTADOS da Etapa 26F.
-    assert len(_wb().sheetnames) == 15
+    # Coleta 11.2: 15 abas + RESULTADOS_DETALHE (camada tecnica separada da
+    # RESULTADOS executiva).
+    assert len(_wb().sheetnames) == 16
+    assert _wb().sheetnames[-2:] == ["RESULTADOS_DETALHE", "RESULTADOS"]
 
 
 # ================================================================ COM

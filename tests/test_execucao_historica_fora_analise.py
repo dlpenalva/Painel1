@@ -142,10 +142,10 @@ def test_valor_adotado_validacao(wb):
     for i in range(5):
         linha_resultados = 46 + i
         assert ws.cell(LIN_C0 + i, 14).value == (
-            f'=IF(AND(RESULTADOS!$G${linha_resultados}="Sim",'
-            f'ISNUMBER(RESULTADOS!$C${linha_resultados}),'
-            f'RESULTADOS!$C${linha_resultados}>=0),'
-            f'RESULTADOS!$C${linha_resultados},"")'
+            f'=IF(AND(RESULTADOS_DETALHE!$G${linha_resultados}="Sim",'
+            f'ISNUMBER(RESULTADOS_DETALHE!$C${linha_resultados}),'
+            f'RESULTADOS_DETALHE!$C${linha_resultados}>=0),'
+            f'RESULTADOS_DETALHE!$C${linha_resultados},"")'
         )
 
 

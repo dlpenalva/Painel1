@@ -2,7 +2,7 @@
 """RESULTADOS-ROLLBACK-1 — trava focal da apresentacao anterior da aba.
 
 A frente RESULTADOS-UX2 (PRs #136/#137) acrescentou uma "camada humana" em
-RESULTADOS!90:166, ocultou o motor tecnico inteiro (1:89) e trocou o print
+RESULTADOS_DETALHE!90:166, ocultou o motor tecnico inteiro (1:89) e trocou o print
 setup. Ela foi APOSENTADA: a aba voltou a apresentacao do checkpoint
 
     f8296f7c2962352716edd22044ed9573f5eeee8a
@@ -13,7 +13,7 @@ gerador, nem por um novo template colado por cima.
 
 DIFERENCA PERMITIDA CONTRA O DOADOR (allowlist explicita, item 4 do gate):
 
-  RESULTADOS!H5/H8/C12  fator historico canonico do PR #139;
+  RESULTADOS_DETALHE!H5/H8/C12  fator historico canonico do PR #139;
   defined names         os 14 do PR #135 + RETROATIVO_POTENCIAL_PC, todos
                         invisiveis e apontando para celulas tecnicas;
   camada PC-UX-1       substitui somente os merges de titulos/secoes e amplia
@@ -112,7 +112,7 @@ CF_SQREFS = sorted(CF_SQREFS + ["H17:H20"])
 # 13a medida do bloco 6. Todas de APRESENTACAO e todas method-aware.
 TOTAL_FORMULAS = 158
 
-PRINT_AREA = "'RESULTADOS'!$A$1:$H$50"
+PRINT_AREA = "'RESULTADOS_DETALHE'!$A$1:$H$50"
 MARGEM_LATERAL = 0.511811024
 MARGEM_VERTICAL = 0.787401575
 MARGEM_CABECALHO = 0.31496062
@@ -257,7 +257,7 @@ def test_e2_fator_historico_do_pr139_foi_preservado(ws):
     assert "parametros!$F$3" in h5
     assert h5 != '=IF(CONTROLE!$B$11="","",CONTROLE!$B$11)'
     assert "$H$5" in str(ws["H8"].value or "")
-    assert "RESULTADOS!H5" in str(ws["C12"].value or "")
+    assert "RESULTADOS_DETALHE!H5" in str(ws["C12"].value or "")
 
 
 # ------------------------------------------------------------------------ F
@@ -289,9 +289,9 @@ def test_g_vta_final_continua_canonico(wb, ws):
 def test_g2_defined_names_invisiveis_foram_preservados(wb):
     """Os 14 names do PR #135 e o 15o (#136) continuam publicados."""
     nomes = {n: d.value for n, d in wb.defined_names.items()}
-    assert nomes["EXECUTADO_APURADO"] == "RESULTADOS!$B$83"
-    assert nomes["AJUSTES_DEVIDOS"] == "RESULTADOS!$B$84"
-    assert nomes["CONFERENCIA_FORMACAO_VTA"] == "RESULTADOS!$B$87"
+    assert nomes["EXECUTADO_APURADO"] == "RESULTADOS_DETALHE!$B$83"
+    assert nomes["AJUSTES_DEVIDOS"] == "RESULTADOS_DETALHE!$B$84"
+    assert nomes["CONFERENCIA_FORMACAO_VTA"] == "RESULTADOS_DETALHE!$B$87"
     assert nomes["RETROATIVO_POTENCIAL_PC"] == "MEMORIA_RESULTADOS!$T$38"
     mem = wb["MEMORIA_RESULTADOS"]
     assert mem["T38"].value == (
@@ -302,7 +302,7 @@ def test_g2_defined_names_invisiveis_foram_preservados(wb):
 
 # ------------------------------------------------------------------------ H
 def test_h_b3_continua_sendo_a_fonte_canonica_do_status(ws):
-    """A web le RESULTADOS!B3; a formula tem de existir e ficar visivel."""
+    """A web le RESULTADOS_DETALHE!B3; a formula tem de existir e ficar visivel."""
     b3 = ws["B3"].value
     assert isinstance(b3, str) and b3.startswith("=")
     assert b3 == PINOS["B3"]

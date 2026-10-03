@@ -50,12 +50,15 @@ R11_ESPERADO = "Valor em análise — não pagos (regra vigente)"
 REFERENCIAS_POTENCIAL_VTA = {
     "MEMORIA_RESULTADOS!T25",       # o proprio VTA-PC (unica soma)
     "itens_PC!M19", "itens_PC!S19",
-    "RESULTADOS!A6", "RESULTADOS!C8", "RESULTADOS!E8",
-    "RESULTADOS!B61", "RESULTADOS!B62",
-    "RESULTADOS!B84", "RESULTADOS!C86",
+    "RESULTADOS_DETALHE!A6", "RESULTADOS_DETALHE!C8", "RESULTADOS_DETALHE!E8",
+    "RESULTADOS_DETALHE!B61", "RESULTADOS_DETALHE!B62",
+    "RESULTADOS_DETALHE!B84", "RESULTADOS_DETALHE!C86",
     # Decomposicao, nao soma: T47 = T41 - T39 e a parcela potencial NEGATIVA
     # que ficou de fora. Existe para que nenhum consumidor precise deduzi-la.
     "MEMORIA_RESULTADOS!T47",
+    # RESULTADOS executiva (Coleta 11.2): card do potencial (D9) e nota do
+    # card do VTA (B10) apenas EXIBEM a parcela — nenhuma soma.
+    "RESULTADOS!D9", "RESULTADOS!B10",
 }
 
 ROTULOS_BLOCO6 = [
@@ -239,9 +242,9 @@ def test_bloco9_nomeia_as_parcelas_sem_mover_ancoras(wb):
     assert "ja com o retroativo reconhecido" in str(res["C83"].value)
     # Ancoras publicadas: mesmas coordenadas de sempre.
     nomes = {n: d.value for n, d in wb.defined_names.items()}
-    assert nomes["EXECUTADO_APURADO"] == "RESULTADOS!$B$83"
-    assert nomes["AJUSTES_DEVIDOS"] == "RESULTADOS!$B$84"
-    assert nomes["CONFERENCIA_FORMACAO_VTA"] == "RESULTADOS!$B$87"
+    assert nomes["EXECUTADO_APURADO"] == "RESULTADOS_DETALHE!$B$83"
+    assert nomes["AJUSTES_DEVIDOS"] == "RESULTADOS_DETALHE!$B$84"
+    assert nomes["CONFERENCIA_FORMACAO_VTA"] == "RESULTADOS_DETALHE!$B$87"
     assert nomes["VTA_FINAL"] == "MEMORIA_RESULTADOS!$B$26"
     assert nomes["RETROATIVO_POTENCIAL_VTA"] == "MEMORIA_RESULTADOS!$T$39"
     assert nomes["VTA_SEM_POTENCIAL"] == "MEMORIA_RESULTADOS!$T$40"
@@ -374,7 +377,7 @@ def test_excel_real_fecha_a_regra_com_potencial_positivo_e_negativo(tmp_path):
             livro.Close(False)
             livro = excel.Workbooks.Open(str(caminho), UpdateLinks=0,
                                          ReadOnly=True, CorruptLoad=0)
-            res = livro.Worksheets("RESULTADOS")
+            res = livro.Worksheets("RESULTADOS_DETALHE")
             mem = livro.Worksheets("MEMORIA_RESULTADOS")
             pcs = livro.Worksheets("itens_PC")
             enderecos = {

@@ -161,6 +161,23 @@ def _cenarios():
         ])
         _fiscal_ciclo(wb, date(2024, 12, 31), bc.RESTANTE_PADRAO)
 
+    def itens_nao_mensuravel(wb):
+        """Consumo POR CICLO informado (E=C0, G=C1) e efeitos a partir de
+        04/2024: ha periodo sem efeito com consumo no ciclo, mas sem data de
+        consumo -> estado C, "nao mensuravel com seguranca" (PR #172)."""
+        ciclos = bc._um_ciclo()
+        ciclos[1]["inicio_efeito"] = date(2024, 4, 1)
+        base(wb, ciclos, "Itens Consumidos", "C1", date(2024, 12, 31))
+        ws = wb["itens_Consumidos"]
+        for k, (codigo, qtd, vu, c0, c1) in enumerate((
+            ("ITEM-001", 120.0, 250.00, 40.0, 35.0),
+            ("ITEM-002", 80.0, 1_500.00, 25.0, 25.0),
+            ("ITEM-003", 40.0, 3_200.00, 10.0, 18.0),
+        )):
+            for col, valor in ((1, codigo), (2, qtd), (3, vu), (5, c0), (7, c1)):
+                ws.cell(2 + k, col).value = valor
+        _fiscal_ciclo(wb, date(2024, 12, 31), bc.RESTANTE_PADRAO)
+
     def aditivo(wb):
         fin_normal(wb)
         bc._aditivos(wb, [
@@ -175,6 +192,7 @@ def _cenarios():
         "fin_sem_ciclo_exec": fin_sem_ciclo_exec, "fin_ajustes": fin_ajustes,
         "pc": pc, "pc_sem_efeito": pc_sem_efeito, "itens": itens,
         "itens_sem_efeito": itens_sem_efeito, "aditivo": aditivo,
+        "itens_nao_mensuravel": itens_nao_mensuravel,
     }
 
 
@@ -271,7 +289,16 @@ def recalcular(pasta: Path, arquivos: list[Path] | None = None) -> None:
         for caminho in arquivos or sorted(pasta.glob("*.xlsx")):
             wb = excel.Workbooks.Open(str(caminho.resolve()))
             excel.CalculateFullRebuild()
-            wb.Save()
+            # Excel ocupado logo apos o recalculo pode recusar a chamada (ou o
+            # late binding resolve `Save` errado); tenta de novo.
+            for tentativa in range(10):
+                try:
+                    excel.Workbooks(caminho.name).Save()
+                    break
+                except Exception:
+                    if tentativa == 9:
+                        raise
+                    time.sleep(2.0)
             for _ in range(10):
                 try:
                     wb.Close(SaveChanges=False)
@@ -342,7 +369,7 @@ def fotografar(repo: Path, pasta: Path) -> None:
 # data/hora de geracao (=NOW()).
 def _permitida(aba_depois: str, coord: str) -> bool:
     col = "".join(ch for ch in coord if ch.isalpha())
-    if aba_depois == "RESULTADOS_DETALHE" and coord in ("A1", "A2"):
+    if aba_depois == "RESULTADOS_DETALHE" and coord in ("A1", "A2", "C12"):
         return True
     if aba_depois == "MEMORIA_RESULTADOS" and col in ("AF", "AG"):
         return True

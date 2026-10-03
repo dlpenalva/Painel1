@@ -167,9 +167,12 @@ def test_camada_tecnica_preserva_formulas_homologadas():
     }
     diferentes = sorted(
         k for k in set(esperado) | set(obtido)
-        if esperado.get(k) != obtido.get(k) and k not in ("A1", "A2")
+        if esperado.get(k) != obtido.get(k) and k not in ("A1", "A2", "C12")
     )
     assert not diferentes, f"formulas da camada tecnica mudaram: {diferentes[:10]}"
+    assert obtido["C12"] == esperado["C12"].replace(
+        "x RESULTADOS!H5", "x RESULTADOS_DETALHE!H5"
+    )
 
 
 # =========================================================================== #
@@ -240,6 +243,36 @@ def test_gerado_preserva_aba_executiva_no_roundtrip_openpyxl():
     assert len(ws.conditional_formatting) >= 10
     assert ws["D31"].hyperlink is not None
     assert ws["D31"].hyperlink.location == "'RESULTADOS_DETALHE'!A41"
+
+
+def test_formatacao_condicional_executiva_sobrevive_a_geracao():
+    """Regra condicional que referencia OUTRA aba e gravada pelo Excel na
+    extensao x14, que o openpyxl DESCARTA ao gerar a Coleta (o quadro 3 e o
+    card de situacao perdiam a cor). Toda regra da aba executiva tem de ler a
+    propria aba ou um nome definido."""
+    def _faixas(ws):
+        return sorted(str(f.sqref) for f in ws.conditional_formatting)
+
+    for ws in (_template()[ABA_RESULTADOS], _gerado()[ABA_RESULTADOS]):
+        regras = [
+            (str(faixa.sqref), formula)
+            for faixa in ws.conditional_formatting
+            for regra in faixa.rules
+            for formula in (regra.formula or [])
+        ]
+        assert len(regras) >= 30
+        for faixa, formula in regras:
+            assert "!" not in formula, f"{faixa}: {formula}"
+    assert _faixas(_template()[ABA_RESULTADOS]) == _faixas(_gerado()[ABA_RESULTADOS])
+    # Regras sobrepostas (bordas x ambar) so convivem sem "parar se verdadeiro".
+    for ws in (_template()[ABA_RESULTADOS], _gerado()[ABA_RESULTADOS]):
+        for faixa in ws.conditional_formatting:
+            for regra in faixa.rules:
+                assert not regra.stopIfTrue, f"{faixa.sqref}: stopIfTrue"
+    # F53:G53 e mesclada: o Excel grava a faixa como B53:F53.
+    assert "B53:F53" in _faixas(_template()[ABA_RESULTADOS])
+    assert "B54:F57" in _faixas(_template()[ABA_RESULTADOS])
+    assert "G8:G10" in _faixas(_template()[ABA_RESULTADOS])
 
 
 def test_seguranca_aceita_a_estrutura_nova_com_17_abas():

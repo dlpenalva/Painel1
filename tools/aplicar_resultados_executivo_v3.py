@@ -332,11 +332,17 @@ def formulas_executivo() -> dict[str, str]:
 
     # Quadro 3 — espelho do quadro do PR #172 (detalhe E15:H21).
     f[f"B{L_Q3_NOTA}"] = f'=IF({D("E15")}="",{T("SEM_QUADRO3")},{D("E16")})'
-    f[f"B{L_Q3_CAB}"] = f'=IF({D("F15")}="","","Ciclo")'
+    # Cabecalho visivel sempre que o quadro existe (E15 do detalhe); no caso
+    # "nao mensuravel" o detalhe omite os titulos de valores, mas a coluna da
+    # diferenca continua mostrando "Nao mensuravel" e precisa de titulo (o
+    # mesmo texto do PR #172, MEMORIA_RESULTADOS!T109).
+    f[f"B{L_Q3_CAB}"] = f'=IF({D("E15")}="","","Ciclo")'
     f[f"C{L_Q3_CAB}"] = f'={D("F15")}&""'
     f[f"D{L_Q3_CAB}"] = f'={D("G15")}&""'
-    f[f"E{L_Q3_CAB}"] = f'={D("H15")}&""'
-    f[f"F{L_Q3_CAB}"] = f'=IF({D("F15")}="","",{T("HDR_PERIODO_SEM")})'
+    f[f"E{L_Q3_CAB}"] = (
+        f'=IF({D("H15")}<>"",{D("H15")},IF({D("E15")}<>"",{MEM}!$T$109,""))'
+    )
+    f[f"F{L_Q3_CAB}"] = f'=IF({D("E15")}="","",{T("HDR_PERIODO_SEM")})'
     for n in range(1, 5):
         lin, origem = L_Q3_C1 + n - 1, 16 + n
         f[f"B{lin}"] = f'=IF({D(f"E{origem}")}="","","C{n}")'
@@ -537,6 +543,7 @@ def _status_cf(rng, primeira: str) -> None:
     for formula, cor in regras:
         fundo, texto = STATUS_CORES[cor]
         regra = rng.FormatConditions.Add(XL_EXPRESSION, None, _local(rng, formula))
+        regra.StopIfTrue = False
         regra.Interior.Color = _bgr(fundo)
         regra.Font.Color = _bgr(texto)
 
@@ -561,6 +568,11 @@ def _ajustar_titulos_detalhe(wb) -> None:
     det = wb.Worksheets(DET)
     det.Range("A1").Value = TITULO_DETALHE
     det.Range("A2").Value = SUBTITULO_DETALHE
+    # C12 e TEXTO auditavel (constante) que descreve a formula de B12; a
+    # renomeacao do Excel nao alcanca texto, entao a citacao e atualizada aqui.
+    c12 = str(det.Range("C12").Value or "")
+    if "x RESULTADOS!H5" in c12:
+        det.Range("C12").Value = c12.replace("x RESULTADOS!H5", f"x {DET}!H5")
 
 
 def _exigir_area_textos_livre(ws) -> None:
@@ -657,6 +669,9 @@ def _moeda(rng) -> None:
 
 def _cf_cor(rng, formula: str, fundo: int | None, texto: int | None = None):
     regra = rng.FormatConditions.Add(XL_EXPRESSION, None, _local(rng, formula))
+    # O COM cria a regra com StopIfTrue=True: uma regra so de bordas impediria
+    # o destaque ambar de outra regra sobreposta (quadro 3, detalhes do metodo).
+    regra.StopIfTrue = False
     if fundo is not None:
         regra.Interior.Color = fundo
     if texto is not None:
@@ -713,10 +728,14 @@ def _layout(ws, cor_pot_fundo: int, cor_pot_texto: int) -> None:
                     f"=AND({PCS},N(RETROATIVO_POTENCIAL_VTA)<>0)",
                     cor_pot_fundo, cor_pot_texto)
     regra.Font.Bold = True
-    # Situacao: rosa suave quando ha pendencia (mesmo contador de A7/B7).
-    _cf_cor(ws.Range(f"G{L_CARD_ROT}:G{L_CARD_SUB}"), f"={DET}!$J$5>0",
+    # Situacao: rosa suave quando ha pendencia, verde quando concluida. A regra
+    # le o PROPRIO card (G9 = RESULTADOS_DETALHE!A7, "APURACAO CONCLUIDA" ou
+    # "PENDENCIAS..."): formatacao condicional que referencia OUTRA aba vai
+    # para a extensao x14 do XLSX, que o openpyxl descarta ao gerar a Coleta.
+    g9 = f"$G${L_CARD_VAL}"
+    _cf_cor(ws.Range(f"G{L_CARD_ROT}:G{L_CARD_SUB}"), f'=LEFT({g9},4)="PEND"',
             rosa_fundo, rosa_texto)
-    _cf_cor(ws.Range(f"G{L_CARD_ROT}:G{L_CARD_SUB}"), f"={DET}!$J$5=0",
+    _cf_cor(ws.Range(f"G{L_CARD_ROT}:G{L_CARD_SUB}"), f'=LEFT({g9},4)="APUR"',
             _bgr(STATUS_CORES["verde"][0]), _bgr(STATUS_CORES["verde"][1]))
 
     # Composicao do VTA.
@@ -812,8 +831,11 @@ def _layout(ws, cor_pot_fundo: int, cor_pot_texto: int) -> None:
         _alinhar(alvo, quebra=True, recuo=1)
         _fonte(alvo, tamanho=9, italico=True, cor=CINZA_TEXTO)
     # Cabecalho e linhas so ganham fundo/bordas quando o quadro existe (mesmo
-    # gatilho do PR #172: cabecalho de valores visivel em F15 do detalhe).
-    existe = f'={DET}!$F$15<>""'
+    # gatilho do PR #172: titulo do quadro visivel em E15 do detalhe).
+    # Gatilhos na PROPRIA aba (B53 = "Ciclo" quando o quadro existe; B54:B57 =
+    # "Cn" por ciclo exibido): referencia a outra aba iria para a extensao x14,
+    # descartada pelo openpyxl na Coleta gerada.
+    existe = f'=$B${L_Q3_CAB}<>""'
     cab = ws.Range(f"B{L_Q3_CAB}:G{L_Q3_CAB}")
     _fonte(cab, tamanho=9.5, negrito=True, cor=CAB_TEXTO)
     _alinhar(cab, quebra=True)
@@ -826,7 +848,7 @@ def _layout(ws, cor_pot_fundo: int, cor_pot_texto: int) -> None:
     corpo = ws.Range(f"B{L_Q3_C1}:G{ultima}")
     _fonte(corpo, tamanho=10, cor=CORPO_TEXTO)
     ws.Range(f"B{L_Q3_C1}:B{ultima}").IndentLevel = 1
-    regra = _cf_cor(corpo, f'={DET}!$E$17&{DET}!$E$18&{DET}!$E$19&{DET}!$E$20<>""', None)
+    regra = _cf_cor(corpo, f'=$B${L_Q3_CAB}<>""', None)
     regra.Borders(XL_CF_BOTTOM).LineStyle = XL_CONTINUOUS
     regra.Borders(XL_CF_BOTTOM).Color = _bgr(BORDA_LINHA)
     _fonte(ws.Range(f"B{L_Q3_C1}:B{ultima}"), negrito=True)

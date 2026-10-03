@@ -5,7 +5,7 @@ A geracao da Coleta aplica migracoes de compatibilidade sobre o template. Ate
 esta frente, quatro delas existiam apenas para corrigir o PROPRIO template
 oficial versionado, que carregava a versao historica da formula:
 
-  A. fator historico     - RESULTADOS!H5/H8/C12 e comparativo_VTA!B208
+  A. fator historico     - RESULTADOS_DETALHE!H5/H8/C12 e comparativo_VTA!B208
   B. completude abertura - MEMORIA_RESULTADOS!W41:W45
   C. base fisica C0      - MEMORIA_RESULTADOS!T27
   D. orientacao de item  - aditivos!A1 e M2:M200
@@ -35,7 +35,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 # Superficies promovidas ao template nesta frente.
 GRUPOS_PROMOVIDOS: dict[str, tuple[str, ...]] = {
-    "RESULTADOS": ("H5", "H8", "C12"),
+    "RESULTADOS_DETALHE": ("H5", "H8", "C12"),
     "comparativo_VTA": ("B208",),
     "MEMORIA_RESULTADOS": ("W41", "W42", "W43", "W44", "W45", "T27"),
     "aditivos": ("A1",) + tuple(f"M{linha}" for linha in range(2, 201)),
@@ -43,9 +43,9 @@ GRUPOS_PROMOVIDOS: dict[str, tuple[str, ...]] = {
 
 # Marcas da linhagem historica que o template nao pode mais carregar.
 LINHAGEM_HISTORICA = {
-    ("RESULTADOS", "H5"): "CONTROLE!$B$11",
-    ("RESULTADOS", "H8"): "CONTROLE!$B$11",
-    ("RESULTADOS", "C12"): "CONTROLE!B11",
+    ("RESULTADOS_DETALHE", "H5"): "CONTROLE!$B$11",
+    ("RESULTADOS_DETALHE", "H8"): "CONTROLE!$B$11",
+    ("RESULTADOS_DETALHE", "C12"): "CONTROLE!B11",
     ("comparativo_VTA", "B208"): "CONTROLE!$B$11",
     ("MEMORIA_RESULTADOS", "W41"): "posicao_contratual!$Y$2:$Y$201",
     ("MEMORIA_RESULTADOS", "W45"): "posicao_contratual!$Y$2:$Y$201",
@@ -87,7 +87,7 @@ def test_template_nao_carrega_mais_a_linhagem_historica() -> None:
 
 def test_fator_historico_do_template_e_fail_closed_por_parametros() -> None:
     """H5 passa a derivar de parametros!E/F, nao de CONTROLE!B11."""
-    h5 = str(_template()["RESULTADOS"]["H5"].value or "")
+    h5 = str((lambda _w: _w[_aba_tecnica_resultados(_w)])(_template())["H5"].value or "")
     assert h5.startswith("=IFERROR(")
     assert "CONTROLE!$B$2" in h5
     assert "parametros!$F$" in h5
@@ -110,7 +110,7 @@ def test_migracao_de_compatibilidade_segue_valendo_para_arquivo_antigo() -> None
     b208 = str(antigo["comparativo_VTA"]["B208"].value or "")
     assert "CONTROLE!$B$11" not in h5
     assert "parametros!$F$" in h5
-    assert "RESULTADOS!$H$5" in b208
+    assert "RESULTADOS_DETALHE!$H$5" in b208
 
 
 def test_migracao_de_abertura_temporal_segue_valendo_para_arquivo_antigo() -> None:
@@ -146,7 +146,9 @@ def test_paleta_oficial_cobre_as_guias_do_template_e_do_ciclo_em_execucao() -> N
         for ws in _template().worksheets
         if ws.sheet_properties.tabColor is not None
     }
-    assert len(coloridas) == 9
+    # Coleta 11.2: RESULTADOS executiva e RESULTADOS_DETALHE, ambas em vinho.
+    assert len(coloridas) == 10
+    assert coloridas["RESULTADOS"] == coloridas["RESULTADOS_DETALHE"] == CR.COR_ABA_RESULTADOS
     assert coloridas[_aba_tecnica_resultados(coloridas)] == CR.COR_ABA_RESULTADOS
     assert set(coloridas.values()) <= set(CR.PALETA_ABAS_OFICIAL)
 
