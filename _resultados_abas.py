@@ -47,10 +47,21 @@ def aba_resultados_tecnica(wb_ou_nomes: Any) -> str | None:
 
     Arquivo novo -> ``RESULTADOS_DETALHE``; arquivo anterior -> ``RESULTADOS``;
     sem nenhuma das duas -> ``None``.
+
+    Fail-closed: workbook com marcador publico 11.2+ SEM ``RESULTADOS_DETALHE``
+    devolve ``None`` — a RESULTADOS dele e a pagina executiva e nunca pode ser
+    lida como camada tecnica. A versao vem do marcador canonico
+    (`_compatibilidade_coleta.exige_resultados_detalhe`); uma lista de nomes
+    de abas nao carrega marcador e segue a regra estrutural.
     """
     nomes = _nomes(wb_ou_nomes)
     if ABA_RESULTADOS_DETALHE in nomes:
         return ABA_RESULTADOS_DETALHE
     if ABA_RESULTADOS in nomes:
+        if hasattr(wb_ou_nomes, "sheetnames"):
+            from _compatibilidade_coleta import exige_resultados_detalhe
+
+            if exige_resultados_detalhe(wb_ou_nomes):
+                return None
         return ABA_RESULTADOS
     return None

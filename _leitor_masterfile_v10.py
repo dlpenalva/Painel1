@@ -3988,6 +3988,13 @@ def ler_masterfile_v10(
             # Coletas anteriores nao a possuem e seguem validas.
             "RESULTADOS_DETALHE",
         }
+        from _compatibilidade_coleta import exige_resultados_detalhe
+
+        if exige_resultados_detalhe(wb):
+            # Marcador 11.2+: a camada tecnica e obrigatoria (fail-closed). Sem
+            # ela a RESULTADOS do arquivo e a executiva, e nomes/formulas podem
+            # guardar referencias textuais pendentes sem nenhum #REF!.
+            ABAS_OPCIONAIS_COMPAT.discard("RESULTADOS_DETALHE")
         res["abas_ausentes"] = [
             a for a in ABAS_COLETA_OFICIAL
             if a.lower() not in abas_lower and a not in ABAS_OPCIONAIS_COMPAT

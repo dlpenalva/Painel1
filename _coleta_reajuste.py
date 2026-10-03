@@ -412,6 +412,12 @@ def _validar_resultados_integra(wb, etapa: str) -> dict[str, Any]:
     # RESULTADOS_DETALHE e RESULTADOS e a pagina executiva. Os limites de
     # conteudo abaixo continuam medidos na camada tecnica, como antes.
     tecnica = aba_resultados_tecnica(wb)
+    if tecnica is None:
+        # Marcador 11.2+ sem a camada tecnica: arquivo mutilado (fail-closed).
+        raise ValueError(
+            f"A aba {ABA_RESULTADOS_DETALHE} é obrigatória na Coleta 11.2+ e "
+            f"está ausente na etapa {etapa}."
+        )
     if tecnica == ABA_RESULTADOS_DETALHE:
         executiva = wb[ABA_RESULTADOS]
         if executiva.sheet_state != "visible":
@@ -626,6 +632,10 @@ def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
         validar_geometria_workbook(wb)
 
     faltantes = [aba for aba in ABAS_OBRIGATORIAS_LEGADO if aba not in wb.sheetnames]
+    if ABA_RESULTADOS in wb.sheetnames and aba_resultados_tecnica(wb) is None:
+        # Coleta 11.2+ (marcador publico) sem RESULTADOS_DETALHE: a RESULTADOS
+        # presente e a executiva; nunca cair nela como camada tecnica.
+        faltantes.append(ABA_RESULTADOS_DETALHE)
     proibidas = [aba for aba in ABAS_PROIBIDAS if aba in wb.sheetnames]
     bloqueios_estruturais: list[str] = []
     bloqueios_criticos: list[str] = []

@@ -269,8 +269,9 @@ def _limpar_residuos(wb) -> None:
 
     for aba, celulas in _RESIDUOS_POR_ABA.items():
         if aba == "RESULTADOS":
-            aba = aba_resultados_tecnica(wb) or aba
-        if aba not in wb.sheetnames:
+            # None em 11.2+ sem detalhe: nunca limpar a pagina executiva.
+            aba = aba_resultados_tecnica(wb)
+        if aba is None or aba not in wb.sheetnames:
             continue
         ws = wb[aba]
         for coord in celulas:

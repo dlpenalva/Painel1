@@ -294,13 +294,112 @@ def test_versionamento_e_linhagem():
     assert deteccao["marcador_publico"] == "11.2"
 
 
-def _como_arquivo_anterior():
-    """Coleta 11.1 simulada: uma unica RESULTADOS tecnica, sem executiva."""
+def _como_arquivo_anterior(marcador: str | None = "11.1"):
+    """Coleta anterior simulada: uma unica RESULTADOS tecnica, sem executiva.
+
+    O marcador publico (CONTROLE!B24) acompanha a versao simulada: 11.0/11.1,
+    ou nenhum (linhagem PRE_11, sem versionamento publico)."""
     wb = load_workbook(io.BytesIO(_bytes(_gerado())))
     del wb[ABA_RESULTADOS]
     wb[ABA_RESULTADOS_DETALHE].title = ABA_RESULTADOS
     wb[ABA_RESULTADOS]["A1"] = "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL"
+    wb["CONTROLE"]["B24"] = marcador
+    # `.title` do openpyxl nao reescreve nomes nem formulas (o Excel reescreve):
+    # num 11.x anterior eles apontam para RESULTADOS!.
+    for dn in wb.defined_names.values():
+        if dn.attr_text and f"{ABA_RESULTADOS_DETALHE}!" in dn.attr_text:
+            dn.attr_text = dn.attr_text.replace(
+                f"{ABA_RESULTADOS_DETALHE}!", f"{ABA_RESULTADOS}!"
+            )
+    for ws in wb.worksheets:
+        for linha in ws.iter_rows():
+            for c in linha:
+                if isinstance(c.value, str) and f"{ABA_RESULTADOS_DETALHE}!" in c.value:
+                    c.value = c.value.replace(
+                        f"{ABA_RESULTADOS_DETALHE}!", f"{ABA_RESULTADOS}!"
+                    )
     return wb
+
+
+def _como_112_sem_detalhe():
+    """Coleta 11.2 mutilada: RESULTADOS_DETALHE apagada pelo openpyxl.
+
+    O openpyxl nao reescreve formulas nem nomes definidos ao apagar a aba:
+    ficam referencias TEXTUAIS pendentes ('RESULTADOS_DETALHE!$B$3'), sem
+    nenhum #REF!, e a unica RESULTADOS restante e a pagina executiva."""
+    wb = load_workbook(io.BytesIO(_bytes(_gerado())))
+    del wb[ABA_RESULTADOS_DETALHE]
+    return load_workbook(io.BytesIO(_bytes(wb)))
+
+
+def _bloqueios_upload(wb) -> list[str]:
+    from _coleta_reajuste import ler_coleta_reajuste
+
+    return ler_coleta_reajuste(_bytes(wb))["bloqueios_estruturais"]
+
+
+def test_p1_coleta_112_integra_e_aceita():
+    from _coleta_reajuste import _validar_resultados_integra
+    from _compatibilidade_coleta import exige_resultados_detalhe
+    from _leitor_masterfile_v10 import ler_masterfile_v10
+
+    wb = _gerado()
+    assert exige_resultados_detalhe(wb)
+    assert aba_resultados_tecnica(wb) == ABA_RESULTADOS_DETALHE
+    assert _validar_resultados_integra(wb, "teste")["visivel"]
+    assert not any(ABA_RESULTADOS_DETALHE in b for b in _bloqueios_upload(wb))
+    lido = ler_masterfile_v10(_bytes(wb), exigir_modelo_oficial=True)
+    assert ABA_RESULTADOS_DETALHE not in (lido.get("abas_ausentes") or [])
+
+
+def test_p1_coleta_112_sem_detalhe_e_rejeitada():
+    from _coleta_reajuste import _validar_resultados_integra
+
+    wb = _como_112_sem_detalhe()
+    assert ABA_RESULTADOS in wb.sheetnames
+    # Sem fallback para a RESULTADOS executiva.
+    assert aba_resultados_tecnica(wb) is None
+    with pytest.raises(ValueError, match=ABA_RESULTADOS_DETALHE):
+        _validar_resultados_integra(wb, "teste")
+    assert any(ABA_RESULTADOS_DETALHE in b for b in _bloqueios_upload(wb))
+
+
+@pytest.mark.parametrize("marcador", ["11.0", "11.1", None])
+def test_p1_versao_anterior_sem_detalhe_continua_aceita(marcador):
+    from _coleta_reajuste import _validar_resultados_integra
+    from _compatibilidade_coleta import exige_resultados_detalhe
+    from _leitor_masterfile_v10 import ler_masterfile_v10
+
+    wb = _como_arquivo_anterior(marcador)
+    assert ABA_RESULTADOS_DETALHE not in wb.sheetnames
+    assert not exige_resultados_detalhe(wb)
+    assert aba_resultados_tecnica(wb) == ABA_RESULTADOS
+    assert _validar_resultados_integra(wb, "teste")["visivel"]
+    assert not any(ABA_RESULTADOS_DETALHE in b for b in _bloqueios_upload(wb))
+    lido = ler_masterfile_v10(_bytes(wb), exigir_modelo_oficial=True)
+    assert ABA_RESULTADOS_DETALHE not in (lido.get("abas_ausentes") or [])
+
+
+def test_p1_coleta_112_mutilada_com_referencias_pendentes_sem_ref_e_rejeitada():
+    from _leitor_masterfile_v10 import ler_masterfile_v10
+
+    wb = _como_112_sem_detalhe()
+    textos = [str(dn.attr_text) for dn in wb.defined_names.values()]
+    textos += [
+        c.value
+        for ws in wb.worksheets
+        for linha in ws.iter_rows()
+        for c in linha
+        if isinstance(c.value, str) and c.value.startswith("=")
+    ]
+    # Pre-condicao do cenario do P1: referencias pendentes, nenhum #REF!.
+    assert any(f"{ABA_RESULTADOS_DETALHE}!" in t for t in textos)
+    assert not any("#REF!" in t for t in textos)
+
+    lido = ler_masterfile_v10(_bytes(wb), exigir_modelo_oficial=True)
+    assert ABA_RESULTADOS_DETALHE in (lido.get("abas_ausentes") or [])
+    assert ABA_RESULTADOS_DETALHE in (lido.get("erro") or "")
+    assert any(ABA_RESULTADOS_DETALHE in b for b in _bloqueios_upload(wb))
 
 
 def test_validacao_estrutural_do_upload_aceita_arquivo_novo_e_antigo():

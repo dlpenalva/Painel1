@@ -38,6 +38,11 @@ COLETA_VERSION = "11.2"
 # desta lista sem decisao expressa — um arquivo 11.0/11.1 nunca e bloqueado por
 # nao ter a aba executiva nova.
 COLETA_VERSOES_ACEITAS = ("11.0", "11.1", "11.2")
+# Marcadores publicos ANTERIORES a camada tecnica RESULTADOS_DETALHE: so neles
+# a RESULTADOS ainda e a aba tecnica. Qualquer outro marcador (11.2 ou
+# posterior) exige RESULTADOS_DETALHE (fail-closed). Arquivos PRE_11 nao tem
+# marcador e seguem a compatibilidade legada.
+COLETA_VERSOES_SEM_RESULTADOS_DETALHE = ("11.0", "11.1")
 # Janela de compatibilidade retroativa: a versao atual e DUAS linhagens anteriores
 # homologadas (PRE_11_L1 e PRE_11_L2, ver _compatibilidade_coleta). Estrutura fora
 # desta janela e rejeitada. A formalizacao de Coleta compatibilizada e decidida

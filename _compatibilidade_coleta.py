@@ -17,6 +17,7 @@ from _versao import (
     COLETA_COMPATIBILIDADE_ANTERIORES,
     COLETA_VERSION,
     COLETA_VERSOES_ACEITAS,
+    COLETA_VERSOES_SEM_RESULTADOS_DETALHE,
 )
 
 
@@ -115,6 +116,17 @@ def _marcador_publico(wb) -> str | None:
             valor = ws.cell(linha, 2).value
             return str(valor).strip() if valor not in (None, "") else None
     return None
+
+
+def exige_resultados_detalhe(wb) -> bool:
+    """True quando o marcador publico da Coleta e 11.2 ou posterior.
+
+    Nesses arquivos a camada tecnica vive SO em RESULTADOS_DETALHE e a
+    RESULTADOS e a pagina executiva: a ausencia do detalhe e arquivo mutilado,
+    nunca arquivo legado. Sem marcador (PRE_11) ou com 11.0/11.1 -> False.
+    """
+    marcador = _marcador_publico(wb)
+    return marcador is not None and marcador not in COLETA_VERSOES_SEM_RESULTADOS_DETALHE
 
 
 def _estrutura_l1(wb) -> tuple[bool, list[str]]:
