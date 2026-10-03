@@ -3655,7 +3655,7 @@ def _ler_resultados_xls(wb) -> dict[str, Any]:
         "disponivel": False, "nomes_presentes": [], "valores": {},
         "cache_ausente": False,
     }
-    if "RESULTADOS" not in wb.sheetnames:
+    if "RESULTADOS" not in wb.sheetnames and "RESULTADOS_DETALHE" not in wb.sheetnames:
         return resultado
     for nome in _NOMES_RESULTADOS_XLS:
         try:
@@ -3741,9 +3741,15 @@ def _ler_referencias_vta(wb) -> dict[str, Any]:
             "ciclo_vigente": "CONTROLE!B2",
         },
     }
-    if "RESULTADOS" not in wb.sheetnames:
+    # Fallback por coordenada = camada TECNICA: RESULTADOS_DETALHE na Coleta
+    # 11.2+ (a RESULTADOS nova e executiva e tem outro leiaute), RESULTADOS nos
+    # arquivos anteriores.
+    from _resultados_abas import aba_resultados_tecnica
+
+    aba_tecnica = aba_resultados_tecnica(wb)
+    if aba_tecnica is None:
         return out
-    res = wb["RESULTADOS"]
+    res = wb[aba_tecnica]
     out["disponivel"] = True
     nomes_presentes = set(wb.defined_names)
     usa_nomes = set(_NOMES_AUDITORIA_XLS.values()) <= nomes_presentes
@@ -3978,6 +3984,9 @@ def ler_masterfile_v10(
             "comparativo_VTA",
             "MEMORIA_RESULTADOS",
             "CICLO_EM_EXECUCAO",
+            # Coleta 11.2: camada tecnica separada da RESULTADOS executiva;
+            # Coletas anteriores nao a possuem e seguem validas.
+            "RESULTADOS_DETALHE",
         }
         res["abas_ausentes"] = [
             a for a in ABAS_COLETA_OFICIAL

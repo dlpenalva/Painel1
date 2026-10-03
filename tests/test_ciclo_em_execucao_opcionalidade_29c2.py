@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import copy
 import io
 from datetime import date
@@ -75,7 +76,7 @@ def _snapshot_legado(wb: Workbook) -> dict[str, object]:
         "vta": wb["MEMORIA_RESULTADOS"]["B26"].value,
         "remanescente_base": wb["MEMORIA_RESULTADOS"]["C35"].value,
         "remanescente_atualizado": wb["MEMORIA_RESULTADOS"]["D35"].value,
-        "resultado_consolidado": wb["RESULTADOS"]["B26"].value,
+        "resultado_consolidado": wb[_aba_tecnica_resultados(wb)]["B26"].value,
         "vu": wb["historico_VU"]["F2"].value,
     }
 

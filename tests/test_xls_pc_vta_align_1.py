@@ -22,6 +22,7 @@ Invariantes que sustentam a auditoria:
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import io
 import os
 import sys
@@ -142,7 +143,7 @@ def test_colunas_tecnicas_v_ac_seguem_ocultas(wb, wb_runtime):
 
 # ------------------------------------------- RESULTADOS: bloco superior (3:8)
 def test_card_do_vta_declara_que_o_valor_inclui_o_potencial(wb):
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     a4 = str(res["A4"].value)
     assert a4.startswith('=IF(MEMORIA_RESULTADOS!$B$4="PCs",')
     assert (
@@ -157,13 +158,13 @@ def test_card_do_vta_declara_que_o_valor_inclui_o_potencial(wb):
 
 def test_card_do_retroativo_nao_publica_potencial_como_valor_a_pagar(wb):
     """Reconhecido + potencial JAMAIS sob um rotulo de obrigacao constituida."""
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     assert res["D4"].value == "RETROATIVO RECONHECIDO A PAGAR"
     assert res["D5"].value == "=$D$22"                # so o reconhecido
 
 
 def test_linha_8_traz_o_card_ambar_e_o_fechamento(wb):
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     assert res["A8"].value == (
         '=IF(MEMORIA_RESULTADOS!$B$4<>"PCs","",'
         '"RETROATIVO POTENCIAL — POTENCIAL (incorporado ao VTA)")'
@@ -189,7 +190,7 @@ def test_linha_8_traz_o_card_ambar_e_o_fechamento(wb):
 def test_ambar_so_na_parcela_potencial(wb):
     """O VTA nunca fica ambar; o fechamento tambem nao (nao e so potencial)."""
     sqrefs = {
-        str(regra.sqref) for regra in wb["RESULTADOS"].conditional_formatting
+        str(regra.sqref) for regra in wb[_aba_tecnica_resultados(wb)].conditional_formatting
     }
     assert "A8:C8" in sqrefs         # potencial (bloco superior)
     assert "A61:B61" in sqrefs       # medida 7 do bloco 6
@@ -199,7 +200,7 @@ def test_ambar_so_na_parcela_potencial(wb):
 
 # ----------------------------------------------- RESULTADOS: bloco 6 (55:67)
 def test_bloco6_demonstra_reconhecido_potencial_e_considerado(wb):
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     assert [res["A%d" % linha].value
             for linha in range(55, 68)] == ROTULOS_BLOCO6
     assert res["B60"].value == "=$D$22"
@@ -217,7 +218,7 @@ def test_bloco6_demonstra_reconhecido_potencial_e_considerado(wb):
 
 def test_bloco6_nao_ultrapassa_a_linha_67(wb):
     """O bloco 7 comeca na 68 e a aba continua terminando na 87."""
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     assert res["A68"].value == "7. METODOLOGIA DO VTA"
     assert res.max_row == 87
     assert not [
@@ -230,7 +231,7 @@ def test_bloco6_nao_ultrapassa_a_linha_67(wb):
 
 # ------------------------------------------------------------ bloco 9 e regra
 def test_bloco9_nomeia_as_parcelas_sem_mover_ancoras(wb):
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     a81 = str(res["A81"].value)
     assert a81.startswith('=IF(MEMORIA_RESULTADOS!$B$4="PCs",')
     assert "já inclui o retroativo reconhecido" in a81
@@ -262,7 +263,7 @@ def test_o_potencial_e_somado_ao_vta_exatamente_uma_vez(wb):
     assert t25.count("$T$39") == 1
     assert t25.endswith("ROUND($T$21+$T$22+$T$23+$T$39,2))")
     # A conferencia do quadro 9 continua fechando pela soma das parcelas.
-    assert wb["RESULTADOS"]["B87"].value == (
+    assert wb[_aba_tecnica_resultados(wb)]["B87"].value == (
         '=IF(OR($B$83="",$B$85="",$B$86=""),"",'
         'ROUND($B$86-($B$83+N($B$84)+$B$85),2))'
     )
@@ -308,7 +309,7 @@ def test_financeiro_e_consumidos_nao_herdam_a_parcela(wb):
                  or "POTENCIAL" in celula.value.upper())
         ]
     # Toda celula nova da RESULTADOS sai vazia fora do metodo PC.
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     for endereco in ("A6", "A8", "C8", "D8", "E8", "B61", "B62"):
         assert '<>"PCs"' in str(res[endereco].value), endereco
 

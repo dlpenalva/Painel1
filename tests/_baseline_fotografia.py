@@ -58,6 +58,16 @@ from openpyxl import load_workbook
 
 ABA = "RESULTADOS"
 ABA_MEMORIA = "MEMORIA_RESULTADOS"
+# Coleta 11.2 (RESULTADOS-EXECUTIVO-V3): o contrato fotografado e o da CAMADA
+# TECNICA — RESULTADOS_DETALHE nos arquivos novos, RESULTADOS nos anteriores.
+# A RESULTADOS executiva nova so espelha essa camada e tem contrato proprio
+# (tests/test_resultados_executivo_v3.py).
+
+
+def _aba_tecnica(wb) -> str | None:
+    from _resultados_abas import aba_resultados_tecnica
+
+    return aba_resultados_tecnica(wb)
 
 # Ultima linha/coluna do leiaute atual da aba executiva (A1:J87).
 ULTIMA_LINHA = 87
@@ -144,16 +154,23 @@ def mapear_referencias_de_outras_abas(wb) -> dict[str, list[str]]:
     as entradas dos AJUSTES MANUAIS (linhas 43-50), lidas por
     MEMORIA_RESULTADOS para compor VTA e retroativo.
     """
+    tecnica = _aba_tecnica(wb) or ABA
+    # A pagina executiva (so existe com RESULTADOS_DETALHE) e um espelho da
+    # camada tecnica, nao um consumidor de entradas: fica fora deste mapa.
+    ignoradas = {tecnica, ABA}
+    padrao = re.compile(
+        rf"(?<![A-Za-z_]){re.escape(tecnica)}!\$?([A-Z]{{1,2}})\$?(\d{{1,4}})"
+    )
     mapa: dict[str, set[str]] = {}
     for nome in wb.sheetnames:
-        if nome == ABA:
+        if nome in ignoradas:
             continue
         for linha in wb[nome].iter_rows():
             for celula in linha:
                 valor = celula.value
-                if not isinstance(valor, str) or "RESULTADOS!" not in valor:
+                if not isinstance(valor, str) or f"{tecnica}!" not in valor:
                     continue
-                for achado in _RE_REFERENCIA_A_ABA.finditer(valor):
+                for achado in padrao.finditer(valor):
                     coordenada = f"{achado.group(1)}{achado.group(2)}"
                     mapa.setdefault(coordenada, set()).add(nome)
     return {coordenada: sorted(abas) for coordenada, abas in sorted(mapa.items())}
@@ -163,9 +180,10 @@ def fotografar_contrato_xls(conteudo: bytes) -> dict[str, Any]:
     """Estrutura da aba RESULTADOS: formulas, ancoras e visibilidade."""
     wb = load_workbook(io.BytesIO(conteudo), data_only=False)
     try:
-        if ABA not in wb.sheetnames:
+        tecnica = _aba_tecnica(wb)
+        if tecnica is None:
             return {"aba_presente": False}
-        ws = wb[ABA]
+        ws = wb[tecnica]
         formulas: dict[str, Any] = {}
         for linha in range(1, ULTIMA_LINHA + 1):
             for coluna in range(1, ULTIMA_COLUNA + 1):
@@ -187,7 +205,7 @@ def fotografar_contrato_xls(conteudo: bytes) -> dict[str, Any]:
             "nomes_definidos": nomes,
             "nomes_ancorados_na_aba": sorted(
                 nome for nome, destino in nomes.items()
-                if isinstance(destino, str) and destino.startswith(f"{ABA}!")
+                if isinstance(destino, str) and destino.startswith(f"{tecnica}!")
             ),
             "coordenadas_lidas_em_runtime": dict(COORDENADAS_LIDAS_EM_RUNTIME),
             "coordenadas_lidas_por_outras_abas":
@@ -204,9 +222,10 @@ def fotografar_valores_xls(conteudo: bytes) -> dict[str, Any]:
     """Valores do cache do Excel. Sem recalculo, tudo nulo — e correto."""
     wb = load_workbook(io.BytesIO(conteudo), data_only=True)
     try:
-        if ABA not in wb.sheetnames:
+        tecnica = _aba_tecnica(wb)
+        if tecnica is None:
             return {"aba_presente": False, "cache_ausente": True}
-        ws = wb[ABA]
+        ws = wb[tecnica]
         coordenadas = sorted(
             set(COORDENADAS_LIDAS_EM_RUNTIME) | set(COORDENADAS_ANCORADAS_POR_NOME)
         )

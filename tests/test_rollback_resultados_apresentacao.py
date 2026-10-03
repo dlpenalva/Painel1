@@ -31,6 +31,7 @@ visibilidade de 1:87 foram provados identicos ao doador.
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import io
 import sys
 from datetime import date
@@ -146,7 +147,7 @@ def wb():
 
 @pytest.fixture(scope="module")
 def ws(wb):
-    return wb["RESULTADOS"]
+    return wb[_aba_tecnica_resultados(wb)]
 
 
 # ------------------------------------------------------------------------ A

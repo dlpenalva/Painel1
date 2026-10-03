@@ -17,6 +17,7 @@ demais abas laranjas oficiais.
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 from datetime import date
 from io import BytesIO
 
@@ -197,7 +198,7 @@ def test_template_aba_parametros_com_laranja_oficial():
         ref = wb[aba].sheet_properties.tabColor
         assert ref is not None and ref.rgb == LARANJA_OFICIAL, aba
     # nenhuma outra aba mudou de cor
-    res = wb["RESULTADOS"].sheet_properties.tabColor
+    res = wb[_aba_tecnica_resultados(wb)].sheet_properties.tabColor
     assert res is not None and res.rgb == "FF8A1538"
     sem_cor = ("comparativo_VTA", "posicao_referencia", "posicao_contratual",
                "itens_RC", "historico_VU", "MEMORIA_RESULTADOS")

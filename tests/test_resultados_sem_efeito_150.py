@@ -29,6 +29,7 @@ Excel). Cenarios gerados sobre o template oficial e recalculados no Excel:
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import gc
 import io
 import os
@@ -630,7 +631,7 @@ def _comparar_ab(ajustar, chave, tpf):
         ("MEMORIA_RESULTADOS", "T39"), ("MEMORIA_RESULTADOS", "D35"),
     ):
         assert antes[aba][celula].value == depois[aba][celula].value, (aba, celula)
-    assert depois["RESULTADOS"]["C5"].value not in (None, "")     # VTA calculado
+    assert depois[_aba_tecnica_resultados(depois)]["C5"].value not in (None, "")     # VTA calculado
 
     # Todo o resto, celula a celula.
     assert antes.sheetnames == depois.sheetnames

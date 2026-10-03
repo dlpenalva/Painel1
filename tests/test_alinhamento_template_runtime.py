@@ -21,6 +21,7 @@ Fora do escopo desta frente, e por isso ainda migrados em runtime:
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import io
 from pathlib import Path
 
@@ -97,7 +98,7 @@ def test_fator_historico_do_template_e_fail_closed_por_parametros() -> None:
 def test_migracao_de_compatibilidade_segue_valendo_para_arquivo_antigo() -> None:
     """Arquivo com a linhagem antiga continua sendo corrigido na geracao."""
     antigo = _template()
-    antigo["RESULTADOS"]["H5"] = '=IF(CONTROLE!$B$11="","",CONTROLE!$B$11)'
+    antigo[_aba_tecnica_resultados(antigo)]["H5"] = '=IF(CONTROLE!$B$11="","",CONTROLE!$B$11)'
     antigo["comparativo_VTA"]["B208"] = (
         "=IFERROR(ROUND(SUMPRODUCT(posicao_contratual!$B$2:$B$201,"
         'posicao_contratual!$C$2:$C$201)*CONTROLE!$B$11,2),"")'
@@ -105,7 +106,7 @@ def test_migracao_de_compatibilidade_segue_valendo_para_arquivo_antigo() -> None
 
     CO._garantir_fator_historico_desacoplado(antigo)
 
-    h5 = str(antigo["RESULTADOS"]["H5"].value or "")
+    h5 = str(antigo[_aba_tecnica_resultados(antigo)]["H5"].value or "")
     b208 = str(antigo["comparativo_VTA"]["B208"].value or "")
     assert "CONTROLE!$B$11" not in h5
     assert "parametros!$F$" in h5
@@ -146,7 +147,7 @@ def test_paleta_oficial_cobre_as_guias_do_template_e_do_ciclo_em_execucao() -> N
         if ws.sheet_properties.tabColor is not None
     }
     assert len(coloridas) == 9
-    assert coloridas["RESULTADOS"] == CR.COR_ABA_RESULTADOS
+    assert coloridas[_aba_tecnica_resultados(coloridas)] == CR.COR_ABA_RESULTADOS
     assert set(coloridas.values()) <= set(CR.PALETA_ABAS_OFICIAL)
 
 

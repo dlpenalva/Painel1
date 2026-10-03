@@ -20,6 +20,7 @@ componentes do VTA tem de fechar EXATAMENTE com o VTA oficial.
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import ast
 import io
 import os
@@ -65,7 +66,7 @@ com_excel = pytest.mark.skipif(
 @pytest.fixture(scope="module")
 def resultados_ws():
     wb = openpyxl.load_workbook(TEMPLATE, data_only=False)
-    return wb["RESULTADOS"]
+    return wb[_aba_tecnica_resultados(wb)]
 
 
 # ===========================================================================

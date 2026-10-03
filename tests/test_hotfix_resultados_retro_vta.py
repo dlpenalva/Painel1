@@ -18,6 +18,7 @@ Cenario Financeiro real reconstruido (valores do enunciado):
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import os
 import sys
 from datetime import date
@@ -106,7 +107,7 @@ def test_travas_fora_da_cadeia_intactas(wb_template):
 
 
 def test_textos_auditaveis_method_aware(wb_template):
-    res = wb_template["RESULTADOS"]
+    res = wb_template[_aba_tecnica_resultados(wb_template)]
     c10, c11 = str(res["C10"].value), str(res["C11"].value)
     assert "MEMORIA!W66" in c10 and "financeiro!E" in c10
     assert "MEMORIA!W67" in c11 and "financeiro!E" in c11
@@ -115,7 +116,7 @@ def test_textos_auditaveis_method_aware(wb_template):
 
 
 def test_card_retroativo_valor_sob_o_rotulo(wb_template):
-    res = wb_template["RESULTADOS"]
+    res = wb_template[_aba_tecnica_resultados(wb_template)]
     # XLS-PC-VTA-ALIGN-1: o rotulo passou a ser preciso — o card publica
     # o retroativo RECONHECIDO, nunca reconhecido + POTENCIAL.
     assert res["D4"].value == "RETROATIVO RECONHECIDO A PAGAR"
@@ -127,7 +128,7 @@ def test_card_retroativo_valor_sob_o_rotulo(wb_template):
 
 
 def test_contraste_sem_residuo_8497b0(wb_template):
-    res = wb_template["RESULTADOS"]
+    res = wb_template[_aba_tecnica_resultados(wb_template)]
     residuais = [
         c.coordinate
         for row in res.iter_rows(min_row=1, max_row=66, max_col=10)

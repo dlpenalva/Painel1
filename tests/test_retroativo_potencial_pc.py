@@ -26,6 +26,7 @@ e "Sim") e DESCARTADO_DUPLICIDADE so e atribuido pela via fiscal
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import datetime as dt
 import io
 from pathlib import Path
@@ -136,7 +137,7 @@ def test_potencial_so_e_citado_pela_celula_de_exibicao(wb):
 
 def test_potencial_nunca_entra_em_soma_ou_total(wb):
     """Exibir e permitido; somar continua proibido."""
-    formula = str(wb["RESULTADOS"]["G22"].value)
+    formula = str(wb[_aba_tecnica_resultados(wb)]["G22"].value)
     # A celula so envelopa o name em IF/IFERROR — nada de aritmetica.
     for proibido in ("+", "-", "*", "/", "SUM", "SUBTOTAL", "AGGREGATE"):
         assert proibido not in formula.upper(), formula
@@ -175,7 +176,7 @@ def test_t38_nao_e_citada_por_nenhuma_formula(wb):
 
 def test_celulas_canonicas_do_vta_e_do_retro_intactas(wb):
     """As formulas que produzem VTA e retroativo nao foram tocadas."""
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     assert ws["C5"].value == '=IF(VTA_FINAL="","",VTA_FINAL)'
     assert ws["D5"].value == "=$D$22"
     assert ws["D22"].value == '=IFERROR(RETRO_OFICIAL,"")'
@@ -187,7 +188,7 @@ def test_celulas_canonicas_do_vta_e_do_retro_intactas(wb):
 
 
 def test_ajustes_manuais_c43_g50_intactos(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     assert [ws[f"A{r}"].value for r in range(43, 51)] == [
         "Retroativo manual oficial", "Ajuste do VTA", "VTA manual substitutivo",
         "Complemento histórico", "Complemento histórico",

@@ -46,7 +46,9 @@ _ABAS_L1_ADICIONAIS = {
 # `cobertura_temporal` e `CICLO_EM_EXECUCAO` sao opcionais: o runtime sempre
 # aceitou a Coleta sem elas (a segunda e acrescentada em runtime; a primeira
 # tem fail-safe proprio no motor temporal). Nao podem decidir a linhagem.
-_ABAS_L1_OPCIONAIS = {"cobertura_temporal", "CICLO_EM_EXECUCAO"}
+# `RESULTADOS_DETALHE` (Coleta 11.2) e a antiga RESULTADOS renomeada; so existe
+# a partir da 11.2 e, portanto, tambem nao pode decidir a linhagem.
+_ABAS_L1_OPCIONAIS = {"cobertura_temporal", "CICLO_EM_EXECUCAO", "RESULTADOS_DETALHE"}
 _ABAS_L1_PERMITIDAS = _ABAS_BASE | _ABAS_L1_ADICIONAIS | _ABAS_L1_OPCIONAIS
 
 _PARAMETROS_BASE = {

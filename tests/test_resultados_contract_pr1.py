@@ -2,6 +2,7 @@
 """RESULTADOS-CONTRACT-1 — contrato nominal sem mudanca economica/visual."""
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import json
 import zipfile
 from pathlib import Path
@@ -202,7 +203,7 @@ def test_as_28_celulas_e_b83_b84_b87_nao_mudaram():
     assert len(runtime | internal) == 28
     wb = load_workbook(TEMPLATE, data_only=False)
     try:
-        result = wb["RESULTADOS"]
+        result = wb[_aba_tecnica_resultados(wb)]
         # VTA-POT-1: B84 e a UNICA celula deste contrato que muda, e ela muda
         # por decisao de negocio expressa — a parcela "(+)" do quadro do VTA
         # passa a ser o retroativo POTENCIAL no metodo PC. Qualquer
@@ -227,7 +228,7 @@ def test_as_28_celulas_e_b83_b84_b87_nao_mudaram():
 def test_c43_g50_preserva_validacoes_e_coordenadas():
     wb = load_workbook(TEMPLATE, data_only=False)
     try:
-        result = wb["RESULTADOS"]
+        result = wb[_aba_tecnica_resultados(wb)]
         assert all(result.cell(row, col).value is None
                    for row in range(43, 51) for col in range(3, 8))
         validations = {

@@ -22,6 +22,7 @@ Caso de referencia obrigatorio (secao 33 do enunciado):
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import io
 import sys
 from datetime import date, timedelta
@@ -392,7 +393,7 @@ def test_fator_historico_desacoplado_do_fator_da_analise(wb_referencia):
     """Etapa 31.1: CONTROLE!B11 = fator DESTA analise; RESULTADOS!H5 = fator
     HISTORICO integral (logica fail-closed que vivia em B11 antes da etapa).
     Nenhum consumidor do historico aponta mais para CONTROLE!B11."""
-    res = wb_referencia["RESULTADOS"]
+    res = wb_referencia[_aba_tecnica_resultados(wb_referencia)]
     cv = wb_referencia["comparativo_VTA"]
     ctl = wb_referencia["CONTROLE"]
     # CONTROLE preservado (fator da analise = 1 + B10).
@@ -450,7 +451,7 @@ def test_historico_completo_alimenta_h5_e_analise_alimenta_b10():
     # Ciclo vigente C2: H5 resolvera para parametros!F4 (1,05 x 1,10)
     # somente porque COUNT(E3:E4) = 2 — logica fail-closed preservada.
     assert ctl["B2"].value == "C2"
-    assert "parametros!$F$4" in str(wb["RESULTADOS"]["H5"].value)
+    assert "parametros!$F$4" in str(wb[_aba_tecnica_resultados(wb)]["H5"].value)
     wb.close()
 
 

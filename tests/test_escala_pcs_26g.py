@@ -8,6 +8,7 @@ e o estilo da linha 101 de itens_Remanesc.
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import io
 import re
 import sys
@@ -146,7 +147,7 @@ def test_memoria_helpers_pcs_sem_efeito(wb_template):
 
 
 def test_resultados_linha_executiva_pcs_sem_efeito(wb_template):
-    res = wb_template["RESULTADOS"]
+    res = wb_template[_aba_tecnica_resultados(wb_template)]
     assert "PCs sem efeito financeiro" in res["A23"].value
     assert "MEMORIA_RESULTADOS!$T$29" in res["B23"].value
     assert "MEMORIA_RESULTADOS!$T$30" in res["D23"].value
@@ -160,7 +161,7 @@ def test_resultados_linha_executiva_pcs_sem_efeito(wb_template):
 
 
 def test_resultados_tabelas_cobrem_toda_faixa(wb_template):
-    res = wb_template["RESULTADOS"]
+    res = wb_template[_aba_tecnica_resultados(wb_template)]
     for coord in ("B16", "B17", "B18", "B19", "B20", "B36"):
         formula = res[coord].value
         assert f"itens_PC!$C$2:$C${CAP}" in formula, coord

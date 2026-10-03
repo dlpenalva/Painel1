@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import hashlib  # noqa: F401 — usado por outros testes deste modulo
 import io
 import re
@@ -251,7 +252,7 @@ def test_geracao_pos_calculadora_preserva_e_preenche_modelo_oficial() -> None:
     assert wb["itens_PC"]["B1"].value == "DATA_PC"
     assert wb["itens_PC"]["C1"].value == "CICLO_PC"
     assert "ITEM" not in [wb["itens_PC"].cell(1, c).value for c in range(1, 12)]
-    assert wb["RESULTADOS"]["A41"].value.startswith("5. AJUSTES MANUAIS")
+    assert wb[_aba_tecnica_resultados(wb)]["A41"].value.startswith("5. AJUSTES MANUAIS")
     assert wb["MEMORIA_RESULTADOS"]["A52"].value is not None
 
 
@@ -388,9 +389,9 @@ def test_template_preserva_layout_visual_e_sha256() -> None:
     assert all(any(d.min <= coluna <= d.max for d in ocultas) for coluna in range(22, 30))
     assert itens_pc.sheet_view.topLeftCell in (None, "A1")
     assert wb["financeiro"].sheet_view.topLeftCell in (None, "A1")
-    assert wb["RESULTADOS"]["B3"].value.startswith("=IF(")
+    assert wb[_aba_tecnica_resultados(wb)]["B3"].value.startswith("=IF(")
     assert wb["MEMORIA_RESULTADOS"].sheet_state == "hidden"
-    assert wb["RESULTADOS"]["C43"].fill.fgColor.rgb == "FFFFF2CC"
+    assert wb[_aba_tecnica_resultados(wb)]["C43"].fill.fgColor.rgb == "FFFFF2CC"
     # PR #60: B1 em ambar forte (FFC000) com texto escuro — assert defasado
     # (esperava o ambar claro antigo F7E7B2) atualizado ao estado homologado.
     assert wb["CONTROLE"]["B1"].fill.fgColor.rgb == "FFFFC000"

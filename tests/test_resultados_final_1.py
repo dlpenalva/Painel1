@@ -10,6 +10,7 @@ metodologia ou nome definido nao pode.
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 from pathlib import Path
 
 import pytest
@@ -53,7 +54,7 @@ def wb():
 
 @pytest.fixture(scope="module")
 def res(wb):
-    return wb["RESULTADOS"]
+    return wb[_aba_tecnica_resultados(wb)]
 
 
 # --------------------------------------------------- 1. AJUSTES MANUAIS
