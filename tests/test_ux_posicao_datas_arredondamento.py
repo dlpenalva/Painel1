@@ -16,6 +16,7 @@ Cobre o que nao tinha cobertura direta antes deste pacote:
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import sys
 from pathlib import Path
 
@@ -115,17 +116,17 @@ def test_posicao_posterior_ao_corte_nao_alimenta_o_vta(wb):
 
 
 def test_apresentacao_das_duas_referencias_do_vta(wb):
-    h10 = str(wb["RESULTADOS"]["H10"].value)
+    h10 = str(wb[_aba_tecnica_resultados(wb)]["H10"].value)
     assert "UTILIZADA - POSICAO FISICA DE " in h10
     assert "ESTIMADA - POSICAO FISICA DE " in h10
     assert "NAO DISPONIVEL - POSICAO FISICA NAO INFORMADA OU INCOMPLETA" in h10
     assert "REVISE - POSICAO POSTERIOR A DATA DE CORTE" in h10
     # a abertura nunca se apresenta como posicao fisica atual
-    h11 = str(wb["RESULTADOS"]["H11"].value)
+    h11 = str(wb[_aba_tecnica_resultados(wb)]["H11"].value)
     assert "REFERENCIA - ABERTURA DO CICLO C" in h11
     assert "POSICAO FISICA" not in h11
     # a igualdade entre as duas referencias nao e tratada como erro
-    assert str(wb["RESULTADOS"]["B13"].value).startswith("=")
+    assert str(wb[_aba_tecnica_resultados(wb)]["B13"].value).startswith("=")
 
 
 # --------------------------------------------------------------------------- #
@@ -217,7 +218,7 @@ def test_cores_das_abas_de_preenchimento(wb_gerado):
     pr = wb_gerado["posicao_referencia"].sheet_properties.tabColor
     assert pr is None or pr.rgb != COR_ABA_ENTRADA
     # RESULTADOS preserva a cor propria
-    assert wb_gerado["RESULTADOS"].sheet_properties.tabColor.rgb == "FF8A1538"
+    assert wb_gerado[_aba_tecnica_resultados(wb_gerado)].sheet_properties.tabColor.rgb == "FF8A1538"
 
 
 def test_cabecalho_de_quantidade_alinhado_a_data_da_posicao():
@@ -290,7 +291,7 @@ def test_referencia_por_ciclo_usa_o_vu_canonico(wb, linha, qtd, vu):
     por item continua garantido onde o item e calculado (itens_RC,
     CICLO_EM_EXECUCAO, itens_Remanesc e MEMORIA_RESULTADOS, que alimenta o VTA).
     """
-    formula = str(wb["RESULTADOS"][f"C{linha}"].value)
+    formula = str(wb[_aba_tecnica_resultados(wb)][f"C{linha}"].value)
     assert f"ROUND(SUMPRODUCT({qtd},{vu}),2)" in formula
     assert "$Z$" not in formula and "parametros!$F$" not in formula
 

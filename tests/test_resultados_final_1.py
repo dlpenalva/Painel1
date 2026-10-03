@@ -10,6 +10,7 @@ metodologia ou nome definido nao pode.
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 from pathlib import Path
 
 import pytest
@@ -33,13 +34,13 @@ FORMULAS_PRESERVADAS = {
 }
 
 NOMES_DEFINIDOS_OBRIGATORIOS = {
-    "STATUS_RESULTADOS": "RESULTADOS!$B$3",
+    "STATUS_RESULTADOS": "RESULTADOS_DETALHE!$B$3",
     "RETROATIVO_POTENCIAL_PC": "MEMORIA_RESULTADOS!$T$38",
     "VTA_FINAL": "MEMORIA_RESULTADOS!$B$26",
     "RETRO_OFICIAL": "MEMORIA_RESULTADOS!$B$16",
-    "EXECUTADO_APURADO": "RESULTADOS!$B$83",
-    "AJUSTES_DEVIDOS": "RESULTADOS!$B$84",
-    "CONFERENCIA_FORMACAO_VTA": "RESULTADOS!$B$87",
+    "EXECUTADO_APURADO": "RESULTADOS_DETALHE!$B$83",
+    "AJUSTES_DEVIDOS": "RESULTADOS_DETALHE!$B$84",
+    "CONFERENCIA_FORMACAO_VTA": "RESULTADOS_DETALHE!$B$87",
 }
 
 MOEDA_CANONICA = '"R$"\\ #,##0.00;\\-"R$"\\ #,##0.00;"R$"\\ 0.00;"—"'
@@ -53,7 +54,7 @@ def wb():
 
 @pytest.fixture(scope="module")
 def res(wb):
-    return wb["RESULTADOS"]
+    return wb[_aba_tecnica_resultados(wb)]
 
 
 # --------------------------------------------------- 1. AJUSTES MANUAIS

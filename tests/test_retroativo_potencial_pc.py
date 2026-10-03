@@ -5,7 +5,7 @@ RESULTADOS-ROLLBACK-1: os testes de leiaute da camada humana das linhas
 90-166 foram removidos junto com a apresentacao que eles protegiam. O que
 permanece aqui independe dela: o contrato do defined name, a paridade
 economica com a grandeza que a web ja publicava antes do PR 2 e o status
-oficial lido de RESULTADOS!B3.
+oficial lido de RESULTADOS_DETALHE!B3.
 
 Grandeza EXCLUSIVAMENTE informativa: expoe no XLS o mesmo numero que a web ja
 publica como `retroativo_potencial`, sem entrar em nenhuma soma oficial.
@@ -26,6 +26,7 @@ e "Sim") e DESCARTADO_DUPLICIDADE so e atribuido pela via fiscal
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import datetime as dt
 import io
 from pathlib import Path
@@ -47,9 +48,9 @@ FORMULA = (
 
 # Os 14 names publicados pelo PR #135 precisam sobreviver intactos.
 NOMES_PR1 = {
-    "EXECUTADO_APURADO": "RESULTADOS!$B$83",
-    "AJUSTES_DEVIDOS": "RESULTADOS!$B$84",
-    "CONFERENCIA_FORMACAO_VTA": "RESULTADOS!$B$87",
+    "EXECUTADO_APURADO": "RESULTADOS_DETALHE!$B$83",
+    "AJUSTES_DEVIDOS": "RESULTADOS_DETALHE!$B$84",
+    "CONFERENCIA_FORMACAO_VTA": "RESULTADOS_DETALHE!$B$87",
     "PC_TOTAL_CADASTRADO": "MEMORIA_RESULTADOS!$T$33",
     "PC_TOTAL_ATE_CORTE": "MEMORIA_RESULTADOS!$T$34",
     "PC_TOTAL_COM_EFEITO": "MEMORIA_RESULTADOS!$T$36",
@@ -58,8 +59,8 @@ NOMES_PR1 = {
     "AUDITORIA_ULTIMA_REFERENCIA_ABERTURA": "MEMORIA_RESULTADOS!$W$48",
     "AUDITORIA_COMPARATIVO_INTEGRAL": "comparativo_VTA!$B$208",
     "AUDITORIA_DIFERENCA_REFERENCIAS": "MEMORIA_RESULTADOS!$W$51",
-    "AUDITORIA_SITUACAO_ATUAL_STATUS": "RESULTADOS!$H$10",
-    "AUDITORIA_ABERTURA_STATUS": "RESULTADOS!$H$11",
+    "AUDITORIA_SITUACAO_ATUAL_STATUS": "RESULTADOS_DETALHE!$H$10",
+    "AUDITORIA_ABERTURA_STATUS": "RESULTADOS_DETALHE!$H$11",
     "AUDITORIA_CONFERENCIA_STATUS": "MEMORIA_RESULTADOS!$W$52",
 }
 
@@ -117,7 +118,7 @@ def test_vta_atualizacao_cheia_continua_fora_da_cadeia_oficial(wb):
 # esta em analise. A metade que protege o numero continua de pe e e o que
 # este teste guarda agora: o potencial pode ser LIDO por uma unica celula de
 # APRESENTACAO e nunca pode entrar em soma, total ou composicao do VTA.
-CELULA_DE_EXIBICAO_AUTORIZADA = "RESULTADOS!G22"
+CELULA_DE_EXIBICAO_AUTORIZADA = "RESULTADOS_DETALHE!G22"
 
 
 def test_potencial_so_e_citado_pela_celula_de_exibicao(wb):
@@ -136,7 +137,7 @@ def test_potencial_so_e_citado_pela_celula_de_exibicao(wb):
 
 def test_potencial_nunca_entra_em_soma_ou_total(wb):
     """Exibir e permitido; somar continua proibido."""
-    formula = str(wb["RESULTADOS"]["G22"].value)
+    formula = str(wb[_aba_tecnica_resultados(wb)]["G22"].value)
     # A celula so envelopa o name em IF/IFERROR — nada de aritmetica.
     for proibido in ("+", "-", "*", "/", "SUM", "SUBTOTAL", "AGGREGATE"):
         assert proibido not in formula.upper(), formula
@@ -148,13 +149,13 @@ def test_potencial_nunca_entra_em_soma_ou_total(wb):
                 v = cel.value
                 if not (isinstance(v, str) and v.startswith("=")):
                     continue
-                if cel.coordinate == "G22" and ws.title == "RESULTADOS":
+                if cel.coordinate == "G22" and ws.title == "RESULTADOS_DETALHE":
                     continue
                 alvo = v.replace("$", "")
-                if "G22" in alvo and ws.title == "RESULTADOS":
+                if "G22" in alvo and ws.title == "RESULTADOS_DETALHE":
                     leitores.append(f"{ws.title}!{cel.coordinate}")
     # E22 e o rotulo: le G22 apenas para decidir se aparece ou nao.
-    assert leitores == ["RESULTADOS!E22"], leitores
+    assert leitores == ["RESULTADOS_DETALHE!E22"], leitores
 
 
 def test_t38_nao_e_citada_por_nenhuma_formula(wb):
@@ -175,7 +176,7 @@ def test_t38_nao_e_citada_por_nenhuma_formula(wb):
 
 def test_celulas_canonicas_do_vta_e_do_retro_intactas(wb):
     """As formulas que produzem VTA e retroativo nao foram tocadas."""
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     assert ws["C5"].value == '=IF(VTA_FINAL="","",VTA_FINAL)'
     assert ws["D5"].value == "=$D$22"
     assert ws["D22"].value == '=IFERROR(RETRO_OFICIAL,"")'
@@ -187,7 +188,7 @@ def test_celulas_canonicas_do_vta_e_do_retro_intactas(wb):
 
 
 def test_ajustes_manuais_c43_g50_intactos(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     assert [ws[f"A{r}"].value for r in range(43, 51)] == [
         "Retroativo manual oficial", "Ajuste do VTA", "VTA manual substitutivo",
         "Complemento histórico", "Complemento histórico",
@@ -356,8 +357,8 @@ def test_potencial_nao_contamina_retro_oficial_nem_vta(monkeypatch):
 
 # ------------------------------------------------- UX2.1: status oficial
 #
-# O status do painel vem de RESULTADOS!B3, lido do cache do XLS:
-#   RESULTADOS!B3 -> _coleta_reajuste.ler_coleta_reajuste
+# O status do painel vem de RESULTADOS_DETALHE!B3, lido do cache do XLS:
+#   RESULTADOS_DETALHE!B3 -> _coleta_reajuste.ler_coleta_reajuste
 #   -> metadados["status_resultados"]["geral"]
 #   -> _resultado_consolidado._status_oficial_resultados -> web
 # Nunca e fabricado a partir do VTA ou do retroativo.

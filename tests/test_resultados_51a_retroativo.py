@@ -21,6 +21,7 @@ Este modulo protege esse contrato:
   * larguras controladas e ShrinkToFit nos valores dos cards;
   * contraste do Quadro 1 (1. COMPOSICAO DO VTA).
 """
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 from pathlib import Path
 
 import openpyxl
@@ -58,7 +59,7 @@ ANCORAS_OCULTAS = (
 @pytest.fixture(scope="module")
 def resultados():
     wb = openpyxl.load_workbook(TEMPLATE, data_only=False)
-    return wb["RESULTADOS"], wb
+    return wb[_aba_tecnica_resultados(wb)], wb
 
 
 def test_cadeia_do_retroativo_intacta(resultados):

@@ -1,3 +1,4 @@
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import io
 import unittest
 from pathlib import Path
@@ -38,15 +39,15 @@ class ColetaReajusteTests(unittest.TestCase):
         self.assertNotIn("itens_Execucao_Saldo", wb.sheetnames)
         self.assertNotIn("REGRA_NEGOCIO_CLAUS", wb.sheetnames)
         self.assertEqual(wb.sheetnames[-1], "RESULTADOS")
-        self.assertEqual(wb["RESULTADOS"].max_row, 263)
-        self.assertEqual(wb["RESULTADOS"]["A1"].value, "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL")
+        self.assertEqual(wb[_aba_tecnica_resultados(wb)].max_row, 263)
+        self.assertEqual(wb[_aba_tecnica_resultados(wb)]["A1"].value, "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL")
         self.assertEqual(
             [ws.title for ws in wb.worksheets if ws.sheet_properties.tabColor is not None],
             ["RESULTADOS"],
         )
         self.assertTrue(NOMES_RESULTADOS_OBRIGATORIOS.issubset(set(wb.defined_names)))
 
-        resultados = wb["RESULTADOS"]
+        resultados = wb[_aba_tecnica_resultados(wb)]
         self.assertEqual(resultados["B4"].value, "Financeiro")
         self.assertEqual(resultados["D4"].value, 0.005)
         self.assertIn('IF($B$4="Financeiro",B15', resultados["E15"].value)
@@ -179,7 +180,7 @@ class ColetaReajusteTests(unittest.TestCase):
         self.assertTrue(all(chamada.kwargs.get("data_only") is False for chamada in carregador.call_args_list))
 
         entregue = load_workbook(io.BytesIO(payload), data_only=False)
-        resultados = entregue["RESULTADOS"]
+        resultados = entregue[_aba_tecnica_resultados(entregue)]
         self.assertEqual(resultados.sheet_state, "visible")
         self.assertEqual(resultados["A1"].value, "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL")
         self.assertGreaterEqual(
@@ -304,7 +305,7 @@ class ColetaReajusteTests(unittest.TestCase):
             "ciclos": [{"ciclo": "C1", "data_base": "01/01/2024", "percentual_aplicado": 0.04}],
         }
         wb = load_workbook(io.BytesIO(gerar_coleta_reajuste(dados)), data_only=False)
-        wb["RESULTADOS"]["B16"] = None
+        wb[_aba_tecnica_resultados(wb)]["B16"] = None
         output = io.BytesIO()
         wb.save(output)
 

@@ -18,6 +18,7 @@ Cobertura:
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import sys
 import warnings
 from pathlib import Path
@@ -165,7 +166,7 @@ def test_a2_xls_d20_le_o_pago_informado_e_nao_a_reconstrucao_quantitativa(wb):
 def test_a3_card_vta_oficial_aponta_para_a_saida_canonica(wb):
     """RESULTADOS!C5 (card VTA OFICIAL) e a medida 9 do bloco 6 usam
     VTA_FINAL, nunca a referencia fisica B10/W50, e sem hardcode."""
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     for celula in ("C5", "B63"):
         formula = str(res[celula].value)
         assert "VTA_FINAL" in formula
@@ -179,7 +180,7 @@ def test_a4_referencias_fisicas_preservadas_mas_nao_apresentadas(wb):
     """UX final: B10-B13 continuam no arquivo, nos mesmos enderecos que o
     leitor Python usa (`_ler_referencias_vta`), mas as linhas ficam OCULTAS —
     nenhuma referencia fisica concorre visualmente com o VTA."""
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     # formulas tecnicas preservadas nas mesmas celulas
     assert "MEMORIA_RESULTADOS!$W$50" in str(res["B10"].value)
     assert "MEMORIA_RESULTADOS!$W$48" in str(res["B11"].value)
@@ -206,7 +207,7 @@ def _textos_visiveis(res) -> list[str]:
 def test_a5_area_principal_nao_tem_vta_alternativo(wb):
     """Aceite visual B/C: nada visivel nas linhas 1-14 chama posicao fisica de
     VTA nem a apresenta como referencia concorrente ao lado do VTA."""
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     ocultas = {n for n, d in res.row_dimensions.items() if d.hidden}
     principal = [
         str(celula.value)
@@ -228,7 +229,7 @@ def test_a5_area_principal_nao_tem_vta_alternativo(wb):
 
 def test_a6_card_principal_tem_titulo_valor_e_status_do_vta(wb):
     """Aceite visual A: o valor em destaque e exclusivamente VTA_FINAL."""
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     assert str(res["A4"].value) == "VTA OFICIAL"
     assert "VTA_FINAL" in str(res["C5"].value)
     assert str(res["C4"].value) == "=$H$8"          # status especifico do VTA
@@ -236,7 +237,7 @@ def test_a6_card_principal_tem_titulo_valor_e_status_do_vta(wb):
 
 
 def test_a7_titulo_da_secao_1_enuncia_a_identidade_canonica(wb):
-    titulo = str(wb["RESULTADOS"]["A9"].value)
+    titulo = str(wb[_aba_tecnica_resultados(wb)]["A9"].value)
     assert titulo == "1. COMO O VTA FOI CALCULADO"
     assert "POSIÇÃO FÍSICA" not in titulo.upper()
     assert "POSICAO FISICA" not in titulo.upper()
@@ -245,7 +246,7 @@ def test_a7_titulo_da_secao_1_enuncia_a_identidade_canonica(wb):
 # ------------------------------------- B. bloco didatico "COMO E FORMADO O VTA"
 
 def test_b1_bloco_didatico_existe_com_as_quatro_parcelas(wb):
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     assert str(res["A79"].value).startswith("9. VALOR TOTAL ATUALIZADO DO CONTRATO")
     assert "execução já realizada" in str(res["A80"].value)
     assert "VTA oficial = execução apurada" in str(res["A81"].value)
@@ -266,7 +267,7 @@ def test_b1_bloco_didatico_existe_com_as_quatro_parcelas(wb):
 
 def test_b2_parcelas_derivam_das_fontes_reais_sem_digitacao(wb):
     """Nenhuma das quatro linhas pode ser valor digitado."""
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     for linha in range(83, 87):
         assert str(res[f"B{linha}"].value).startswith("=")
     assert "$D$20" in str(res["B83"].value)      # Financeiro: pago informado
@@ -287,26 +288,26 @@ def test_b3_consumido_e_pc_nao_recontam_o_ajuste_ja_embutido(wb):
     considerado, em B83): e o retroativo POTENCIAL, grandeza disjunta que
     ainda nao estava em parcela nenhuma. Nao ha, portanto, recontagem.
     """
-    formula = str(wb["RESULTADOS"]["B84"].value)
+    formula = str(wb[_aba_tecnica_resultados(wb)]["B84"].value)
     assert 'IF(MEMORIA_RESULTADOS!$B$4="Itens",0,"")' in formula
     # PC: le T39 (potencial elegivel), jamais RETRO_OFICIAL/B21/T22.
     assert "MEMORIA_RESULTADOS!$T$39" in formula
     assert "MEMORIA_RESULTADOS!$B$16" not in formula
     assert "MEMORIA_RESULTADOS!$T$22" not in formula
-    fonte = str(wb["RESULTADOS"]["C84"].value)
+    fonte = str(wb[_aba_tecnica_resultados(wb)]["C84"].value)
     assert "ja esta dentro da execucao atualizada" in fonte
     assert "Nao e retroativo reconhecido a pagar" in fonte
 
 
 def test_b4_bloco_tem_linha_de_conferencia_contra_o_vta_oficial(wb):
-    conf = str(wb["RESULTADOS"]["B87"].value)
+    conf = str(wb[_aba_tecnica_resultados(wb)]["B87"].value)
     assert "$B$86-($B$83+N($B$84)+$B$85)" in conf.replace(" ", "")
 
 
 # ------------------------------------------- C. bloco 8 (conferencia) didatico
 
 def test_c1_conferencia_tem_rotulos_didaticos(wb):
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     assert str(res["C72"].value) == "Valor estimado"
     assert str(res["D72"].value) == "Diferença"
     assert str(res["E72"].value) == "Resultado"
@@ -314,7 +315,7 @@ def test_c1_conferencia_tem_rotulos_didaticos(wb):
 
 
 def test_c2_sem_base_a_diferenca_fica_vazia_e_o_status_explica(wb):
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     for linha in range(73, 78):
         diferenca = str(res[f"D{linha}"].value)
         assert f"NOT(ISNUMBER(C{linha}))" in diferenca

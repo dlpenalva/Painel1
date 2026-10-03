@@ -45,7 +45,9 @@ MAX_LINHAS_POR_ABA = 10_000
 MAX_COLUNAS_POR_ABA = 100
 MAX_AREA_POR_ABA = 300_000
 MAX_AREA_TOTAL_WORKBOOK = 500_000
-MAX_ABAS_WORKBOOK = 16
+# 17 = as 16 abas do corpus legitimo + RESULTADOS_DETALHE (Coleta 11.2: a
+# antiga RESULTADOS virou camada tecnica e ganhou uma pagina executiva).
+MAX_ABAS_WORKBOOK = 17
 
 # Allowlist por NOME, deliberadamente indiferente ao estado da aba: no corpus
 # real, financeiro, itens_Consumidos, itens_PC e aditivos aparecem ora visible,
@@ -64,6 +66,7 @@ ABAS_PERMITIDAS = frozenset(
         "itens_RC",
         "historico_VU",
         "RESULTADOS",
+        "RESULTADOS_DETALHE",
         "comparativo_VTA",
         "posicao_referencia",
         "cobertura_temporal",

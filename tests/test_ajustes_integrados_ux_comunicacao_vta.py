@@ -20,6 +20,7 @@ componentes do VTA tem de fechar EXATAMENTE com o VTA oficial.
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import ast
 import io
 import os
@@ -65,7 +66,7 @@ com_excel = pytest.mark.skipif(
 @pytest.fixture(scope="module")
 def resultados_ws():
     wb = openpyxl.load_workbook(TEMPLATE, data_only=False)
-    return wb["RESULTADOS"]
+    return wb[_aba_tecnica_resultados(wb)]
 
 
 # ===========================================================================
@@ -75,7 +76,7 @@ def resultados_ws():
 def test_a1_rodape_do_retroativo_le_a_fonte_canonica_dos_ciclos(resultados_ws):
     """A lista sai de parametros!A3:A6 (COMPUTAR_NESTA_APURACAO) + B3:B6.
 
-    E a MESMA fonte que RESULTADOS!H14 ja usa para validar o card. Nenhuma
+    E a MESMA fonte que RESULTADOS_DETALHE!H14 ja usa para validar o card. Nenhuma
     regra nova decide o que foi apurado, e C0 (base contratual) fica de fora.
     """
     ws = resultados_ws
@@ -129,7 +130,7 @@ def test_a4_com_lista_os_ciclos_realmente_computados(tmp_path):
     xl.DisplayAlerts = False
     try:
         wb = xl.Workbooks.Open(str(destino.resolve()), UpdateLinks=0, CorruptLoad=0)
-        res, ctrl = wb.Worksheets("RESULTADOS"), wb.Worksheets("CONTROLE")
+        res, ctrl = wb.Worksheets("RESULTADOS_DETALHE"), wb.Worksheets("CONTROLE")
         par, fin = wb.Worksheets("parametros"), wb.Worksheets("financeiro")
         for aba in (res, ctrl, par, fin):
             try:
@@ -223,7 +224,7 @@ def test_b4_com_posicao_em_ddmmaaaa(tmp_path):
     xl.DisplayAlerts = False
     try:
         wb = xl.Workbooks.Open(str(destino.resolve()), UpdateLinks=0, CorruptLoad=0)
-        res, ctrl = wb.Worksheets("RESULTADOS"), wb.Worksheets("CONTROLE")
+        res, ctrl = wb.Worksheets("RESULTADOS_DETALHE"), wb.Worksheets("CONTROLE")
         for aba in (res, ctrl):
             try:
                 aba.Unprotect()
@@ -862,7 +863,7 @@ def test_l2_o_motor_de_composicao_nao_foi_tocado_por_esta_frente():
 
 def test_l3_a_frente_nao_altera_formula_financeira_do_template():
     """Somente os dois rodapes e as auxiliares da coluna oculta mudaram."""
-    ws = openpyxl.load_workbook(TEMPLATE, data_only=False)["RESULTADOS"]
+    ws = (lambda _w: _w[_aba_tecnica_resultados(_w)])(openpyxl.load_workbook(TEMPLATE, data_only=False))
     # cadeias financeiras preservadas
     assert ws["C5"].value == '=IF(VTA_FINAL="","",VTA_FINAL)'
     assert ws["D22"].value == '=IFERROR(RETRO_OFICIAL,"")'

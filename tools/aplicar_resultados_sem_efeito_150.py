@@ -67,7 +67,10 @@ from pathlib import Path
 RAIZ = Path(__file__).resolve().parents[1]
 TEMPLATE = RAIZ / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
 
-ABA_RESULTADOS = "RESULTADOS"
+# Coleta 11.2 (RESULTADOS-EXECUTIVO-V3): o quadro vive na camada TECNICA, a
+# antiga RESULTADOS renomeada para RESULTADOS_DETALHE (mesmas coordenadas). A
+# RESULTADOS atual e a pagina executiva e apenas espelha este quadro.
+ABA_RESULTADOS = "RESULTADOS_DETALHE"
 ABA_MEMORIA = "MEMORIA_RESULTADOS"
 MEM = ABA_MEMORIA
 

@@ -186,7 +186,13 @@ def _ciclo_em_execucao(wb, *, data: date, linhas: list[tuple[str, float]]) -> No
     permaneca sendo a ultima aba do arquivo, e `create_sheet` sem `index` a
     empurraria do fim, produzindo um aviso que nao existe no arquivo real.
     """
-    ws = wb.create_sheet("CICLO_EM_EXECUCAO", wb.sheetnames.index("RESULTADOS"))
+    # Coleta 11.2: antes da camada tecnica RESULTADOS_DETALHE (que antecede a
+    # RESULTADOS executiva); nos arquivos anteriores, antes da RESULTADOS.
+    ancora = (
+        "RESULTADOS_DETALHE" if "RESULTADOS_DETALHE" in wb.sheetnames
+        else "RESULTADOS"
+    )
+    ws = wb.create_sheet("CICLO_EM_EXECUCAO", wb.sheetnames.index(ancora))
     ws["A9"] = "POSICAO FISICA INFORMADA"
     ws["D5"] = data
     for indice, (codigo, valor) in enumerate(linhas):

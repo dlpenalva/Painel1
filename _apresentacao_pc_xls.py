@@ -49,9 +49,14 @@ def valores_apresentacao_pc(ws):
 
 
 def garantir_apresentacao_pc(wb):
-    if "RESULTADOS" not in wb.sheetnames:
+    # Coordenadas da camada tecnica: RESULTADOS_DETALHE na Coleta 11.2+ (a
+    # RESULTADOS executiva apenas espelha estes rotulos), RESULTADOS antes.
+    from _resultados_abas import aba_resultados_tecnica
+
+    aba = aba_resultados_tecnica(wb)
+    if aba is None:
         return
-    ws = wb["RESULTADOS"]
+    ws = wb[aba]
     for celula, valor in valores_apresentacao_pc(ws).items():
         ws[celula] = valor
     # Mantém as larguras; cabeçalhos maiores usam quebra nas mesmas células.

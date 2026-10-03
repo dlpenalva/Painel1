@@ -15,6 +15,7 @@ cascata de validacao completa e a estrutura do bloco no template oficial.
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import sys
 from pathlib import Path
 
@@ -996,7 +997,7 @@ def test_xls_resultados_nao_foi_tocada(workbook):
     ajuste sozinha, porque F20 alimenta o executado apurado, o retroativo e
     o VTA que ela ja mostra.
     """
-    res = workbook["RESULTADOS"]
+    res = workbook[_aba_tecnica_resultados(workbook)]
     assert res.max_row == 87
     assert not [
         celula.coordinate

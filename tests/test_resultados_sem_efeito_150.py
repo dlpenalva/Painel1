@@ -25,10 +25,11 @@ Excel). Cenarios gerados sobre o template oficial e recalculados no Excel:
   * SEGURANCA: comparacao A/B, celula a celula, do workbook recalculado com o
     template BASE (PR #171) e com o template novo — VTA, retroativo
     reconhecido/potencial, remanescente e tudo mais ficam identicos fora da
-    allowlist (RESULTADOS!E15:H21 + D17:D20 de borda e MEMORIA S78:W120).
+    allowlist (RESULTADOS_DETALHE!E15:H21 + D17:D20 de borda e MEMORIA S78:W120).
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import gc
 import io
 import os
@@ -183,7 +184,7 @@ def test_quadro_e_so_explicativo_nao_toca_grandeza_economica():
         assert not re.search(
             r"MEMORIA_RESULTADOS!\$?[BCDE]\$?(1[56]|2[3-6]|3[3-5])\b", formula
         ), endereco
-        assert not re.search(r"RESULTADOS!\$?[BCD]\$?(2[0-2]|3[6-8]|8[3-7])\b", formula), endereco
+        assert not re.search(r"RESULTADOS_DETALHE!\$?[BCD]\$?(2[0-2]|3[6-8]|8[3-7])\b", formula), endereco
 
 
 def test_nenhuma_outra_formula_consome_o_quadro(wb_formulas):
@@ -191,7 +192,7 @@ def test_nenhuma_outra_formula_consome_o_quadro(wb_formulas):
     ref_memoria_ext = re.compile(
         r"MEMORIA_RESULTADOS!\$?[S-W]\$?(7[89]|8\d|9\d|10\d|11\d|120)\b"
     )
-    ref_quadro = re.compile(r"[^_A-Z]RESULTADOS!\$?[E-H]\$?(1[5-9]|2[01])\b")
+    ref_quadro = re.compile(r"[^_A-Z]RESULTADOS_DETALHE!\$?[E-H]\$?(1[5-9]|2[01])\b")
     proprios = set(ap.formulas_helpers()) | set(ap.formulas_resultados())
     consumidores = []
     for ws in wb_formulas.worksheets:
@@ -202,6 +203,10 @@ def test_nenhuma_outra_formula_consome_o_quadro(wb_formulas):
                     continue
                 chave = celula.coordinate
                 if ws.title in (ap.ABA_MEMORIA, ap.ABA_RESULTADOS) and chave in proprios:
+                    continue
+                # Coleta 11.2: a RESULTADOS executiva EXIBE o quadro (espelho
+                # puro, sem soma — contrato em test_resultados_executivo_v3).
+                if ws.title == "RESULTADOS":
                     continue
                 if ref_memoria_ext.search(valor) or ref_quadro.search(" " + valor):
                     consumidores.append(f"{ws.title}!{chave}")
@@ -229,13 +234,15 @@ def test_coleta_gerada_pelo_app_carrega_o_quadro_e_o_marcador_11_1():
     from _coleta_oficial import gerar_coleta_oficial_preenchida, obter_coleta_oficial_bytes
     from _versao import CL8US_VERSION, COLETA_VERSION
 
-    assert (CL8US_VERSION, COLETA_VERSION) == ("11.4", "11.1")
+    # Coleta 11.2 / Cl8us 11.5 (RESULTADOS-EXECUTIVO-V3): o quadro do PR #172
+    # segue identico, agora na camada tecnica RESULTADOS_DETALHE.
+    assert (CL8US_VERSION, COLETA_VERSION) == ("11.5", "11.2")
     esperadas = ap.formulas_resultados()
     for conteudo in (obter_coleta_oficial_bytes(),
                      gerar_coleta_oficial_preenchida(_dados_calculadora())):
         wb = load_workbook(io.BytesIO(conteudo), data_only=False)
-        assert wb["CONTROLE"]["B24"].value == "11.1"
-        assert wb["CONTROLE"]["B25"].value == "11.4"
+        assert wb["CONTROLE"]["B24"].value == "11.2"
+        assert wb["CONTROLE"]["B25"].value == "11.5"
         res = wb[ap.ABA_RESULTADOS]
         for endereco, formula in esperadas.items():
             assert _normalizar(res[endereco].value) == _normalizar(formula), endereco
@@ -622,15 +629,15 @@ def _comparar_ab(ajustar, chave, tpf):
 
     # Grandezas de negocio, explicitamente.
     for aba, celula in (
-        ("RESULTADOS", "B3"), ("RESULTADOS", "C5"), ("RESULTADOS", "D5"),
-        ("RESULTADOS", "B22"), ("RESULTADOS", "C22"), ("RESULTADOS", "D22"),
-        ("RESULTADOS", "G22"), ("RESULTADOS", "H5"), ("RESULTADOS", "B36"),
-        ("RESULTADOS", "B38"), ("MEMORIA_RESULTADOS", "B26"),
+        ("RESULTADOS_DETALHE", "B3"), ("RESULTADOS_DETALHE", "C5"), ("RESULTADOS_DETALHE", "D5"),
+        ("RESULTADOS_DETALHE", "B22"), ("RESULTADOS_DETALHE", "C22"), ("RESULTADOS_DETALHE", "D22"),
+        ("RESULTADOS_DETALHE", "G22"), ("RESULTADOS_DETALHE", "H5"), ("RESULTADOS_DETALHE", "B36"),
+        ("RESULTADOS_DETALHE", "B38"), ("MEMORIA_RESULTADOS", "B26"),
         ("MEMORIA_RESULTADOS", "B16"), ("MEMORIA_RESULTADOS", "T38"),
         ("MEMORIA_RESULTADOS", "T39"), ("MEMORIA_RESULTADOS", "D35"),
     ):
         assert antes[aba][celula].value == depois[aba][celula].value, (aba, celula)
-    assert depois["RESULTADOS"]["C5"].value not in (None, "")     # VTA calculado
+    assert depois[_aba_tecnica_resultados(depois)]["C5"].value not in (None, "")     # VTA calculado
 
     # Todo o resto, celula a celula.
     assert antes.sheetnames == depois.sheetnames

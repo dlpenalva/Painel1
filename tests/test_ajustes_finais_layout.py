@@ -13,6 +13,7 @@ Cobre:
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 from pathlib import Path
 
 import openpyxl
@@ -31,7 +32,7 @@ def wb():
 # 1. Tabela 1 legivel: wrap ligado e alturas ajustadas ao conteudo             #
 # --------------------------------------------------------------------------- #
 def test_tabela1_wrap_e_alturas(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     for coord in ("A10", "A11", "A12", "A13", "B10", "H10", "C10"):
         assert ws[coord].alignment.wrap_text is True, coord
     for r in (10, 11, 12, 13):
@@ -43,12 +44,12 @@ def test_tabela1_wrap_e_alturas(wb):
 
 
 def test_tabela1_coluna_situacao_alargada(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     assert (ws.column_dimensions["H"].width or 0) >= 24.0
 
 
 def test_tabela1_larguras_sem_desproporcao(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     for col in ("A", "B", "H"):
         w = ws.column_dimensions[col].width
         if w is not None:

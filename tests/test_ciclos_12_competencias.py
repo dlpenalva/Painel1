@@ -65,6 +65,7 @@ Cobertura (itens 1 a 38 do enunciado da correcao):
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import sys
 from datetime import date, timedelta
 from pathlib import Path
@@ -506,7 +507,7 @@ def test_34_vta_sem_dupla_contagem_dos_pcs_do_ciclo_atual():
 def test_35_resultados_e_memoria_leem_a_mesma_fonte():
     """As celulas oficiais de RESULTADOS apontam para a MEMORIA, sem recalculo."""
     wb = openpyxl.load_workbook(TEMPLATE, data_only=False)
-    res, mem = wb["RESULTADOS"], wb["MEMORIA_RESULTADOS"]
+    res, mem = wb[_aba_tecnica_resultados(wb)], wb["MEMORIA_RESULTADOS"]
     assert "MEMORIA_RESULTADOS!$W$50" in str(res["B10"].value)
     assert "MEMORIA_RESULTADOS!$W$48" in str(res["B11"].value)
     assert "MEMORIA_RESULTADOS!$W$51" in str(res["B13"].value)
@@ -543,7 +544,7 @@ def test_35b_itens_pc_publica_o_valor_considerado():
 
 def test_35c_resultados_publica_as_doze_medidas():
     wb = openpyxl.load_workbook(TEMPLATE, data_only=False)
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     rotulos = [
         str(res.cell(linha, 1).value or "")
         for linha in range(55, 67)

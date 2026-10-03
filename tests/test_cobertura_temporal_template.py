@@ -175,8 +175,8 @@ def test_vta_oficial_invariante():
     assert r["B23"].value == '=IF(OR(B20="",B21="",B22=""),"",ROUND(B20+B21+B22,2))'
     assert "$N$263" in r["B26"].value and ABA not in str(r["B26"].value)
     assert r["B25"].value == (
-        '=IF(AND(RESULTADOS!$G$45="Sim",RESULTADOS!$C$45<>""),'
-        'RESULTADOS!$C$45,"")'
+        '=IF(AND(RESULTADOS_DETALHE!$G$45="Sim",RESULTADOS_DETALHE!$C$45<>""),'
+        'RESULTADOS_DETALHE!$C$45,"")'
     )
 
 

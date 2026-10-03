@@ -27,6 +27,14 @@ from _seguranca_xlsx import (
 )
 
 from _capacidade_pcs import CAPACIDADE_PCS, ULTIMA_LINHA_PCS
+from _resultados_abas import (
+    ABA_RESULTADOS,
+    ABA_RESULTADOS_DETALHE,
+    CELULA_TITULO_EXECUTIVO,
+    TITULO_RESULTADOS_EXECUTIVO,
+    TITULOS_TECNICOS,
+    aba_resultados_tecnica,
+)
 from _capacidades_apuracao import avaliar_capacidades_apuracao
 from _coleta_oficial import (
     COLS_AUTOMATICAS_ITENS_PC,
@@ -400,7 +408,25 @@ def _mensagem_itens_pc_sobrescritas(celulas: list[str]) -> str:
 def _validar_resultados_integra(wb, etapa: str) -> dict[str, Any]:
     if "RESULTADOS" not in wb.sheetnames:
         raise ValueError(f"A aba RESULTADOS desapareceu na etapa {etapa}.")
-    ws = wb["RESULTADOS"]
+    # Coleta 11.2+: a camada tecnica (formulas, nomes, ajustes manuais) vive em
+    # RESULTADOS_DETALHE e RESULTADOS e a pagina executiva. Os limites de
+    # conteudo abaixo continuam medidos na camada tecnica, como antes.
+    tecnica = aba_resultados_tecnica(wb)
+    if tecnica is None:
+        # Marcador 11.2+ sem a camada tecnica: arquivo mutilado (fail-closed).
+        raise ValueError(
+            f"A aba {ABA_RESULTADOS_DETALHE} é obrigatória na Coleta 11.2+ e "
+            f"está ausente na etapa {etapa}."
+        )
+    if tecnica == ABA_RESULTADOS_DETALHE:
+        executiva = wb[ABA_RESULTADOS]
+        if executiva.sheet_state != "visible":
+            raise ValueError(f"A aba RESULTADOS não está visível na etapa {etapa}.")
+        if executiva[CELULA_TITULO_EXECUTIVO].value != TITULO_RESULTADOS_EXECUTIVO:
+            raise ValueError(
+                f"A aba RESULTADOS executiva está vazia ou foi substituída na etapa {etapa}."
+            )
+    ws = wb[tecnica]
     formulas = sum(
         1
         for row in ws.iter_rows()
@@ -409,9 +435,9 @@ def _validar_resultados_integra(wb, etapa: str) -> dict[str, Any]:
     )
     conteudo = sum(1 for row in ws.iter_rows() for cell in row if cell.value not in (None, ""))
     if ws.sheet_state != "visible":
-        raise ValueError(f"A aba RESULTADOS não está visível na etapa {etapa}.")
-    if ws["A1"].value != "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL":
-        raise ValueError(f"A aba RESULTADOS está vazia ou foi substituída na etapa {etapa}.")
+        raise ValueError(f"A aba {tecnica} não está visível na etapa {etapa}.")
+    if ws["A1"].value not in TITULOS_TECNICOS:
+        raise ValueError(f"A aba {tecnica} está vazia ou foi substituída na etapa {etapa}.")
     if "MEMORIA_RESULTADOS" in wb.sheetnames:
         memoria = wb["MEMORIA_RESULTADOS"]
         formulas_memoria = sum(
@@ -606,6 +632,10 @@ def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
         validar_geometria_workbook(wb)
 
     faltantes = [aba for aba in ABAS_OBRIGATORIAS_LEGADO if aba not in wb.sheetnames]
+    if ABA_RESULTADOS in wb.sheetnames and aba_resultados_tecnica(wb) is None:
+        # Coleta 11.2+ (marcador publico) sem RESULTADOS_DETALHE: a RESULTADOS
+        # presente e a executiva; nunca cair nela como camada tecnica.
+        faltantes.append(ABA_RESULTADOS_DETALHE)
     proibidas = [aba for aba in ABAS_PROIBIDAS if aba in wb.sheetnames]
     bloqueios_estruturais: list[str] = []
     bloqueios_criticos: list[str] = []
@@ -1009,9 +1039,12 @@ def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
                     "Posição contratual inconsistente: " + ", ".join(alertas_posicao[:5])
                 )
         resultados_valores = wb_valores[aba_resultados_tecnicos]
-        resultados_executivos = wb_valores["RESULTADOS"]
+        # STATUS_RESULTADOS (B3) e da camada tecnica: RESULTADOS_DETALHE na
+        # Coleta 11.2+, RESULTADOS nos arquivos anteriores.
+        aba_status = aba_resultados_tecnica(wb) or "RESULTADOS"
+        resultados_executivos = wb_valores[aba_status]
         formula_status = (
-            wb["RESULTADOS"]["B3"].value
+            wb[aba_status]["B3"].value
             if "MEMORIA_RESULTADOS" in wb.sheetnames
             else wb[aba_resultados_tecnicos]["J4"].value
         )

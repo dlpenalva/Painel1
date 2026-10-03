@@ -17,6 +17,7 @@ Estrategia:
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import os
 import shutil
 import tempfile
@@ -78,7 +79,7 @@ def mem(real_mutado):
 @pytest.fixture(scope="session")
 def resultados(real_mutado):
     wb = load_workbook(real_mutado, data_only=True)
-    return wb["RESULTADOS"]
+    return wb[_aba_tecnica_resultados(wb)]
 
 
 def _com_recalcula(origem: Path, overrides: dict, leituras: list[tuple[str, str]]):

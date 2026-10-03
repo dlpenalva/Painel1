@@ -145,6 +145,9 @@ ABAS_COLETA_OFICIAL = [
     "historico_VU",
     "cobertura_temporal",
     "MEMORIA_RESULTADOS",
+    # Coleta 11.2: camada tecnica (a antiga RESULTADOS, renomeada) + pagina
+    # executiva RESULTADOS, sempre a ultima aba.
+    "RESULTADOS_DETALHE",
     "RESULTADOS",
 ]
 
@@ -215,7 +218,9 @@ _RESIDUOS_POR_ABA["aditivos"] = [
     f"{col}{lin}" for lin in range(2, 201)
     for col in ("A", "B", "D", "E", "F", "H", "K")
 ]
-# Etapa 26F: a unica interface manual fica na RESULTADOS executiva.
+# Etapa 26F: a unica interface manual fica na camada tecnica de RESULTADOS
+# (RESULTADOS_DETALHE na Coleta 11.2+; RESULTADOS antes — `_limpar_residuos`
+# resolve a aba real por `aba_resultados_tecnica`).
 _RESIDUOS_POR_ABA["RESULTADOS"] = [
     f"{col}{lin}" for lin in range(43, 51) for col in ("C", "D", "E", "F", "G")
 ]
@@ -260,8 +265,13 @@ def eh_layout_coleta_oficial(wb) -> bool:
 
 
 def _limpar_residuos(wb) -> None:
+    from _resultados_abas import aba_resultados_tecnica
+
     for aba, celulas in _RESIDUOS_POR_ABA.items():
-        if aba not in wb.sheetnames:
+        if aba == "RESULTADOS":
+            # None em 11.2+ sem detalhe: nunca limpar a pagina executiva.
+            aba = aba_resultados_tecnica(wb)
+        if aba is None or aba not in wb.sheetnames:
             continue
         ws = wb[aba]
         for coord in celulas:
@@ -424,8 +434,11 @@ def _garantir_fator_historico_desacoplado(wb) -> None:
         'IF(UPPER(CONTROLE!$B$2)="C4",'
         'IF(COUNT(parametros!$E$3:$E$6)=4,parametros!$F$6,""),""))))),"")'
     )
-    if "RESULTADOS" in wb.sheetnames:
-        res = wb["RESULTADOS"]
+    from _resultados_abas import aba_resultados_tecnica
+
+    aba_tecnica = aba_resultados_tecnica(wb)
+    if aba_tecnica is not None:
+        res = wb[aba_tecnica]
         atual_h5 = str(res["H5"].value or "")
         if "CONTROLE!$B$11" in atual_h5:
             res["H5"].value = formula_historica
@@ -435,14 +448,14 @@ def _garantir_fator_historico_desacoplado(wb) -> None:
         atual_c12 = str(res["C12"].value or "")
         if "CONTROLE!B11" in atual_c12:
             res["C12"].value = atual_c12.replace(
-                "CONTROLE!B11", "RESULTADOS!H5"
+                "CONTROLE!B11", f"{aba_tecnica}!H5"
             )
-    if "comparativo_VTA" in wb.sheetnames:
+    if "comparativo_VTA" in wb.sheetnames and aba_tecnica is not None:
         cv = wb["comparativo_VTA"]
         atual_b208 = str(cv["B208"].value or "")
         if "CONTROLE!$B$11" in atual_b208:
             cv["B208"].value = atual_b208.replace(
-                "CONTROLE!$B$11", "RESULTADOS!$H$5"
+                "CONTROLE!$B$11", f"{aba_tecnica}!$H$5"
             )
 
 

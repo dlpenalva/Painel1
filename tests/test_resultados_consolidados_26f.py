@@ -1,6 +1,7 @@
 """Contrato permanente da RESULTADOS executiva criada na Etapa 26F."""
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 from pathlib import Path
 
 import pytest
@@ -19,17 +20,21 @@ def wb():
 
 
 def test_resultados_executiva_e_memoria_separadas(wb):
-    assert wb.sheetnames[-2:] == ["MEMORIA_RESULTADOS", "RESULTADOS"]
+    # Coleta 11.2: a camada tecnica (RESULTADOS_DETALHE) fica entre a memoria
+    # oculta e a RESULTADOS executiva, que segue sendo a ultima aba.
+    assert wb.sheetnames[-3:] == ["MEMORIA_RESULTADOS", "RESULTADOS_DETALHE", "RESULTADOS"]
     assert wb["MEMORIA_RESULTADOS"].sheet_state == "hidden"
-    assert wb["RESULTADOS"].sheet_state == "visible"
+    assert wb[_aba_tecnica_resultados(wb)].sheet_state == "visible"
     assert wb["comparativo_VTA"].sheet_state == "hidden"
-    assert wb["RESULTADOS"]["A1"].value == (
-        "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL"
+    # Coleta 11.2: titulo proprio da camada tecnica; a executiva tem o seu.
+    assert wb[_aba_tecnica_resultados(wb)]["A1"].value == (
+        "RESULTADOS — DETALHE TÉCNICO DA APURAÇÃO"
     )
+    assert wb["RESULTADOS"]["B2"].value == "RESULTADO DA APURAÇÃO"
 
 
 def test_quatro_tabelas_e_um_status_global(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     # Leiaute final homologado (Etapas 50.1-50.3): a linha 3 e a faixa de
     # contexto (A3 = metodo humano); as pendencias consolidadas vivem na
     # linha 7 (A7 titulo dinamico + B7 mensagem), derivadas do contador
@@ -48,7 +53,7 @@ def test_quatro_tabelas_e_um_status_global(wb):
     for estado in ("VALIDADO", "ESTIMADO", "REVISE"):
         assert estado in formula_status
     assert "COUNTIF($H$43:$H$50" in formula_status
-    assert wb.defined_names["STATUS_RESULTADOS"].value == "RESULTADOS!$B$3"
+    assert wb.defined_names["STATUS_RESULTADOS"].value == "RESULTADOS_DETALHE!$B$3"
     assert ws["G1"].value == "=$B$3"
     # Titulos das secoes no leiaute final: 1 e 2 coabitam a linha de cabecalho
     # das proprias tabelas (linhas 9 e 15); a secao 4 e formula para exibir o
@@ -72,7 +77,7 @@ def test_linhas_separadoras_permanecem_visualmente_brancas(wb):
     mantem a formula mas usam o formato ";;;". As linhas excedentes 31/40/51
     ficam ocultas para nao sobrar espaco duplo.
     """
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     for linha in (8, 14, 23, 32, 39, 52):
         for coluna in "ABCDEFGH":
             cel = ws[f"{coluna}{linha}"]
@@ -97,7 +102,7 @@ def test_linhas_separadoras_permanecem_visualmente_brancas(wb):
 
 
 def test_tabelas_usam_fontes_homologadas_sem_ref_quebrada(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     # Etapa VTA-posicoes: Tabela 1 passou a expor 3 referencias do VTA.
     # FORMA 1 (posicao atual) em B10, FORMA 2 (ultima abertura) em B11 e o
     # contrato integralmente reajustado (antigo B11) migrou para B12.
@@ -129,11 +134,11 @@ def test_nomes_definidos_apontam_para_memoria_absoluta(wb):
     }
     for nome, referencia in esperados.items():
         assert wb.defined_names[nome].attr_text == referencia
-    assert wb.defined_names["STATUS_RESULTADOS"].attr_text == "RESULTADOS!$B$3"
+    assert wb.defined_names["STATUS_RESULTADOS"].attr_text == "RESULTADOS_DETALHE!$B$3"
 
 
 def test_tabela_manual_unica_governa_entradas_da_memoria(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     assert [ws.cell(42, col).value for col in range(1, 9)] == [
         "Tipo",
         "Ciclo",
@@ -150,20 +155,20 @@ def test_tabela_manual_unica_governa_entradas_da_memoria(wb):
     ).formula1) == "OPCOES_APLICAR_MANUAL"
     memoria = wb["MEMORIA_RESULTADOS"]
     assert memoria["B5"].value == (
-        '=IF(AND(RESULTADOS!$G$43="Sim",RESULTADOS!$C$43<>""),'
-        'RESULTADOS!$C$43,"")'
+        '=IF(AND(RESULTADOS_DETALHE!$G$43="Sim",RESULTADOS_DETALHE!$C$43<>""),'
+        'RESULTADOS_DETALHE!$C$43,"")'
     )
     assert memoria["B24"].value == (
-        '=IF(AND(RESULTADOS!$G$44="Sim",RESULTADOS!$C$44<>""),'
-        'RESULTADOS!$C$44,"")'
+        '=IF(AND(RESULTADOS_DETALHE!$G$44="Sim",RESULTADOS_DETALHE!$C$44<>""),'
+        'RESULTADOS_DETALHE!$C$44,"")'
     )
     assert memoria["B25"].value == (
-        '=IF(AND(RESULTADOS!$G$45="Sim",RESULTADOS!$C$45<>""),'
-        'RESULTADOS!$C$45,"")'
+        '=IF(AND(RESULTADOS_DETALHE!$G$45="Sim",RESULTADOS_DETALHE!$C$45<>""),'
+        'RESULTADOS_DETALHE!$C$45,"")'
     )
     assert memoria["N262"].value == (
-        '=IF(AND(RESULTADOS!$G$50="Sim",ISNUMBER(RESULTADOS!$C$50),'
-        'RESULTADOS!$C$50>=0),RESULTADOS!$C$50,"")'
+        '=IF(AND(RESULTADOS_DETALHE!$G$50="Sim",ISNUMBER(RESULTADOS_DETALHE!$C$50),'
+        'RESULTADOS_DETALHE!$C$50>=0),RESULTADOS_DETALHE!$C$50,"")'
     )
 
 
@@ -177,7 +182,7 @@ def test_achado_a_override_nao_materializa_zero(wb):
     }
     for celula, valor in overrides_texto.items():
         formula = str(memoria[celula].value)
-        assert f'RESULTADOS!{valor}<>""' in formula, f"{celula} sem guarda"
+        assert f'RESULTADOS_DETALHE!{valor}<>""' in formula, f"{celula} sem guarda"
         assert formula.startswith("=IF(AND("), f"{celula} sem AND fail-closed"
     # 26F.1: complementos historicos herdam a regra do baseline (>= 0) e a
     # guarda numerica — vazio nao vira 0 e negativo nao flui para o VTA.
@@ -187,13 +192,13 @@ def test_achado_a_override_nao_materializa_zero(wb):
     }
     for celula, valor in complementos.items():
         formula = str(memoria[celula].value)
-        assert f'ISNUMBER(RESULTADOS!{valor})' in formula, f"{celula} sem ISNUMBER"
-        assert f'RESULTADOS!{valor}>=0' in formula, f"{celula} sem >=0"
+        assert f'ISNUMBER(RESULTADOS_DETALHE!{valor})' in formula, f"{celula} sem ISNUMBER"
+        assert f'RESULTADOS_DETALHE!{valor}>=0' in formula, f"{celula} sem >=0"
         assert formula.startswith("=IF(AND("), f"{celula} sem AND fail-closed"
 
 
 def test_achado_b_tabela3_nao_fabrica_zero_para_ciclo_futuro(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     for linha, indice in zip(range(26, 31), range(5)):
         formula = str(ws[f"B{linha}"].value)
         assert f'VALUE(MID(UPPER(CONTROLE!$B$2),2,1)),-1)<{indice}' in formula
@@ -201,7 +206,7 @@ def test_achado_b_tabela3_nao_fabrica_zero_para_ciclo_futuro(wb):
 
 
 def test_achado_c_selos_por_tabela_e_premissa(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     assert 'SEARCH("CALCULADO",MEMORIA_RESULTADOS!$E$26)' in str(ws["H8"].value)
     assert 'SEARCH("MANUAL VALIDADO",MEMORIA_RESULTADOS!$F$16)' in str(
         ws["H14"].value
@@ -227,7 +232,7 @@ def test_26f1_h14_completude_por_ciclo_obrigatorio(wb):
     Tabela 2 (B16:B20) — zero confirmado e numerico e conta como conhecido.
     MANUAL VALIDADO encerra o retroativo no total oficial (MEMORIA!A6).
     """
-    formula = str(wb["RESULTADOS"]["H14"].value)
+    formula = str(wb[_aba_tecnica_resultados(wb)]["H14"].value)
     assert formula.startswith(
         '=IF(ISNUMBER(SEARCH("MANUAL VALIDADO",MEMORIA_RESULTADOS!$F$16)),'
         '"VALIDADO",'
@@ -243,7 +248,7 @@ def test_26f1_h14_completude_por_ciclo_obrigatorio(wb):
 
 def test_26f2_tabela2_tristate_estrutura(wb):
     """Movimento -> valor; zero confirmado (cobertura GCC) -> 0; ausente -> ''."""
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     for linha, par_linha in zip(range(16, 21), range(2, 7)):
         formula = str(ws[f"B{linha}"].value)
         # Completude canonica: confirmado GCC (B13/B15), nunca a ultima
@@ -264,7 +269,7 @@ def test_26f2_tabela2_tristate_estrutura(wb):
 
 
 def test_26f1_b35_data_ausente_permanece_vazia(wb):
-    formula = str(wb["RESULTADOS"]["B35"].value)
+    formula = str(wb[_aba_tecnica_resultados(wb)]["B35"].value)
     assert 'IF(CONTROLE!$B$3="","",CONTROLE!$B$3)' in formula
     assert 'IF(cobertura_temporal!$B$12<>"",cobertura_temporal!$B$12,"")' in formula
     assert 'IF(cobertura_temporal!$B$14<>"",cobertura_temporal!$B$14,"")' in formula
@@ -275,7 +280,7 @@ def test_26f1_b35_data_ausente_permanece_vazia(wb):
 
 
 def test_26f1_validacao_complemento_historico_nao_negativo(wb):
-    ws = wb["RESULTADOS"]
+    ws = wb[_aba_tecnica_resultados(wb)]
     dv = next(
         d for d in ws.data_validations.dataValidation
         if "C46:C50" in str(d.sqref)
@@ -294,7 +299,7 @@ def test_26f1_validacao_complemento_historico_nao_negativo(wb):
 
 def test_26f4_resultados_sem_painel_congelado(wb):
     """Homologacao humana: rolagem livre desde a linha 1 (sem FreezePanes)."""
-    pane = wb["RESULTADOS"].sheet_view.pane
+    pane = wb[_aba_tecnica_resultados(wb)].sheet_view.pane
     assert pane is None or (
         getattr(pane, "state", None) != "frozen"
         and not getattr(pane, "ySplit", None)
@@ -341,7 +346,7 @@ def test_com_26f1_fail_closed_no_excel_real(tmp_path):
     xl.DisplayAlerts = False
     try:
         wb = xl.Workbooks.Open(str(dest.resolve()), UpdateLinks=0, CorruptLoad=0)
-        r = wb.Worksheets("RESULTADOS")
+        r = wb.Worksheets("RESULTADOS_DETALHE")
         mem = wb.Worksheets("MEMORIA_RESULTADOS")
         ctrl = wb.Worksheets("CONTROLE")
         par = wb.Worksheets("parametros")
@@ -445,7 +450,7 @@ def test_com_26f2_zero_confirmado_vs_fonte_ausente(tmp_path):
     xl.DisplayAlerts = False
     try:
         wb = xl.Workbooks.Open(str(dest.resolve()), UpdateLinks=0, CorruptLoad=0)
-        r = wb.Worksheets("RESULTADOS")
+        r = wb.Worksheets("RESULTADOS_DETALHE")
         ctrl = wb.Worksheets("CONTROLE")
         par = wb.Worksheets("parametros")
         irem = wb.Worksheets("itens_Remanesc")

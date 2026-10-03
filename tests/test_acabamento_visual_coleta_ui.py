@@ -20,6 +20,7 @@ Protege exatamente o que a etapa alterou, sem ampliar escopo:
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import io
 import re
 from datetime import date
@@ -324,7 +325,7 @@ def test_status_da_tabela1_fica_legivel(em_branco):
     """Leiaute final (50.2/50.3): H8 e H14 vivem nas linhas separadoras
     brancas — a formula do selo permanece integra e calculando (alimenta B3,
     J5 e os chips dos cards), mas nada e renderizado (";;;")."""
-    res = em_branco["RESULTADOS"]
+    res = em_branco[_aba_tecnica_resultados(em_branco)]
     modelo = res["H14"].font
     assert res["H8"].font.color.rgb == modelo.color.rgb == "FFFFFFFF"
     assert (res["H8"].font.name, res["H8"].font.sz, res["H8"].font.b) == (
@@ -337,7 +338,7 @@ def test_status_da_tabela1_fica_legivel(em_branco):
 
 
 def test_titulo_da_tabela1_ocupa_a8_d8_sem_mesclagem(em_branco):
-    res = em_branco["RESULTADOS"]
+    res = em_branco[_aba_tecnica_resultados(em_branco)]
     assert res["A8"].alignment.wrap_text in (False, None)
     assert res["B8"].value is None
     assert not [m for m in res.merged_cells.ranges if m.min_row <= 8 <= m.max_row]
@@ -355,7 +356,7 @@ def test_titulo_da_tabela1_ocupa_a8_d8_sem_mesclagem(em_branco):
 
 
 def test_tabela_da_linha_53_tem_bordas(em_branco):
-    res = em_branco["RESULTADOS"]
+    res = em_branco[_aba_tecnica_resultados(em_branco)]
     # Etapa 50: a numeracao 5 passou a ser a dos AJUSTES MANUAIS e o anexo
     # tecnico das medidas de PCs virou a secao 6.
     # RESULTADOS-FINAL-1: o titulo deixou de anunciar "medidas com nomes

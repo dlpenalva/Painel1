@@ -20,6 +20,7 @@ Protege, por leitura estrutural de formula (nao apenas SHA/contagem), que:
 """
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 import gc
 import os
 from pathlib import Path
@@ -69,7 +70,7 @@ def test_d_b28_financeiro_mantem_referencia_comparativa(wb):
 
 
 def test_e_metodologia_resultados_e_condicional_ao_metodo(wb):
-    formula = str(wb["RESULTADOS"]["A70"].value)
+    formula = str(wb[_aba_tecnica_resultados(wb)]["A70"].value)
     assert formula.startswith("=IF(")
     assert "MEMORIA_RESULTADOS!$B$4" in formula
     assert '"Financeiro"' in formula
@@ -81,7 +82,7 @@ def test_e_metodologia_resultados_e_condicional_ao_metodo(wb):
 
 
 def test_f_titulo_conferencia_e_condicional(wb):
-    titulo = str(wb["RESULTADOS"]["A71"].value)
+    titulo = str(wb[_aba_tecnica_resultados(wb)]["A71"].value)
     assert titulo.startswith("=IF(")
     assert "MEMORIA_RESULTADOS!$B$4" in titulo
     assert "(Financeiro)" in titulo
@@ -89,7 +90,7 @@ def test_f_titulo_conferencia_e_condicional(wb):
 
 
 def test_f_bloco_conferencia_nao_mostra_financeiro_para_outro_metodo(wb):
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     for linha in range(73, 78):
         for coluna in ("B", "C", "D", "E"):
             formula = str(res[f"{coluna}{linha}"].value)
@@ -99,7 +100,7 @@ def test_f_bloco_conferencia_nao_mostra_financeiro_para_outro_metodo(wb):
 
 
 def test_g_ausencia_de_dado_nao_vira_zero(wb):
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     for linha in range(73, 78):
         formula_c = str(res[f"C{linha}"].value)
         assert "Sem historico quantitativo suficiente" in formula_c
@@ -113,7 +114,7 @@ def test_g_c3_nao_usa_checkpoint_nao_adjacente_como_fallback(wb):
     N/J (checkpoints de C1/C2) como fallback para produzir a linha C3 —
     so pode usar itens_Remanesc!$R (VALOR_EXECUTADO_C3, par adjacente
     R+P-V, ja resolvido internamente pelo proprio template)."""
-    formula_c3 = str(wb["RESULTADOS"]["C76"].value)
+    formula_c3 = str(wb[_aba_tecnica_resultados(wb)]["C76"].value)
     assert "itens_Remanesc!$R$2:$R$201" in formula_c3
     for coluna_proibida in ("$E$2:$E$201", "$F$2:$F$201", "$J$2:$J$201", "$N$2:$N$201"):
         assert f"posicao_contratual!{coluna_proibida}" not in formula_c3
@@ -126,7 +127,7 @@ def test_g_c0_nao_usa_contratado_menos_abertura_diretamente(wb):
     E/F) — deve delegar ao par adjacente ja resolvido em
     itens_Remanesc!$AC (MAX(E-J,0)*VU_C0, fechado por J = abertura de
     C1, nao por F)."""
-    formula_c0 = str(wb["RESULTADOS"]["C73"].value)
+    formula_c0 = str(wb[_aba_tecnica_resultados(wb)]["C73"].value)
     assert "itens_Remanesc!$AC$2:$AC$201" in formula_c0
     assert "posicao_contratual!$E$2:$E$201" not in formula_c0
     assert "posicao_contratual!$F$2:$F$201" not in formula_c0
@@ -138,7 +139,7 @@ def test_g_cada_ciclo_usa_apenas_sua_propria_coluna_de_execucao(wb):
     mapa = {73: "AC", 74: "N", 75: "P", 76: "R"}
     todas_as_colunas = set(mapa.values())
     for linha, coluna_esperada in mapa.items():
-        formula = str(wb["RESULTADOS"][f"C{linha}"].value)
+        formula = str(wb[_aba_tecnica_resultados(wb)][f"C{linha}"].value)
         assert f"itens_Remanesc!${coluna_esperada}$2:${coluna_esperada}$201" in formula
         for outra in todas_as_colunas - {coluna_esperada}:
             assert f"itens_Remanesc!${outra}$2:${outra}$201" not in formula
@@ -148,7 +149,7 @@ def test_g_c4_sempre_nao_comparavel_sem_checkpoint_de_fechamento(wb):
     """VTA-M2.2: C4 nao tem par adjacente nesta versao do schema (nao
     existe REM_BASE_C5 que feche o ciclo) — deve ser SEMPRE NAO
     COMPARAVEL, por ausencia estrutural, nunca por fallback/calculo."""
-    formula_c4 = str(wb["RESULTADOS"]["C77"].value)
+    formula_c4 = str(wb[_aba_tecnica_resultados(wb)]["C77"].value)
     assert formula_c4 == (
         '=IF(MEMORIA_RESULTADOS!$B$4<>"Financeiro",'
         '"Nao aplicavel ao metodo selecionado","Sem historico quantitativo suficiente")'
@@ -158,7 +159,7 @@ def test_g_c4_sempre_nao_comparavel_sem_checkpoint_de_fechamento(wb):
 def test_e_status_so_gera_alerta_quando_ambas_comparaveis(wb):
     """VTA-M2.2 item 13.E: o status so pode ser REVISAR/OK quando a
     execucao teorica (coluna C) nao for NAO COMPARAVEL nem vazia."""
-    res = wb["RESULTADOS"]
+    res = wb[_aba_tecnica_resultados(wb)]
     for linha in range(73, 78):
         formula = str(res[f"E{linha}"].value)
         assert f'C{linha}=""' in formula

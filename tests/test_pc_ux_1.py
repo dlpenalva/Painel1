@@ -1,6 +1,7 @@
 """PC-UX-1: contrato de apresentação sem alteração da metodologia PC."""
 from __future__ import annotations
 
+from _resultados_abas import aba_resultados_tecnica as _aba_tecnica_resultados
 from contextlib import contextmanager
 from copy import deepcopy
 from datetime import date, datetime
@@ -277,7 +278,7 @@ def test_pipeline_real_entrega_os_tres_blocos_pc_ux_sem_cabecalho_legado():
 
 
 def test_i_j_resultados_preserva_formulas_e_vta():
-    ws = load_workbook(TEMPLATE, data_only=False)["RESULTADOS"]
+    ws = (lambda _w: _w[_aba_tecnica_resultados(_w)])(load_workbook(TEMPLATE, data_only=False))
     assert ws["A9"].value == "1. COMO O VTA FOI CALCULADO"
     assert "2. EXECUÇÃO RECONHECIDA EM PCs POR CICLO" in ws["A15"].value
     assert ws["B22"].value == '=IF(COUNT(B16:B20)=0,"",ROUND(SUM(B16:B20),2))'
@@ -302,7 +303,7 @@ def test_o_formulas_e_referencias_foram_reancoradas_sem_tocar_a_l():
     assert "SUM(itens_PC!$O$3:$O$7)" in mem["T35"].value
     assert "ROW(itens_PC!$O$3:$O$7)-3" in mem["W67"].value
     assert wb.defined_names["VTA_FINAL"].value == "MEMORIA_RESULTADOS!$B$26"
-    assert wb.defined_names["EXECUTADO_APURADO"].value == "RESULTADOS!$B$83"
+    assert wb.defined_names["EXECUTADO_APURADO"].value == "RESULTADOS_DETALHE!$B$83"
 
 
 def test_consolidacao_sintetica_do_benchmark_fecha_sem_hardcode():
@@ -395,7 +396,7 @@ def test_documentos_exibem_residual_e_total_fecha(enquadramento):
 
 
 def test_resultados_rotulos_sao_condicionais_aos_tres_metodos():
-    ws = load_workbook(TEMPLATE, data_only=False)["RESULTADOS"]
+    ws = (lambda _w: _w[_aba_tecnica_resultados(_w)])(load_workbook(TEMPLATE, data_only=False))
     for celula, textos in {
         "B15": ("Financeiro", "Valor pago", "PCs", "Valor original", "Itens", "Valor consumido original"),
         "C15": ("Financeiro", "Valor devido atualizado", "PCs", "Valor atualizado", "Itens", "Valor consumido atualizado"),
@@ -597,7 +598,7 @@ def test_calculo_originario_excel_percorre_e_f_h_i_j_u_totais_e_resultados(tmp_p
     destino = tmp_path / "pc_ux_calculo_originario.xlsx"
     with _excel_com(TEMPLATE, destino) as (excel, wb):
         _, _, itens = _preparar_cenario_pc(wb)
-        resultados = wb.Worksheets("RESULTADOS")
+        resultados = wb.Worksheets("RESULTADOS_DETALHE")
 
         # NOVO-02: C1 + um PC realmente fora dos ciclos fecham o universo.
         _gravar_pc(itens, 2, "C1-PAGO", DATA_C1, 200.0, "Sim")

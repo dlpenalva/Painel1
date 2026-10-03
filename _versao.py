@@ -21,17 +21,28 @@ from datetime import datetime
 from pathlib import Path
 
 
+# 11.5: nova aba RESULTADOS executiva; a RESULTADOS anterior passa a se chamar
+# RESULTADOS_DETALHE (mesmas formulas/coordenadas) — mudanca estrutural do XLS:
+# COLETA_VERSION 11.2.
 # 11.4: aba RESULTADOS ganha o quadro informativo "Execucao sem efeito financeiro"
 # (Financeiro, PCs e Itens) — mudanca estrutural do XLS: COLETA_VERSION 11.1.
 # 11.3: modelos em branco do Despacho Saneador e do Termo de Apostila com a mesma
 # estrutura dos documentos gerados. 11.2: memoria de calculo da garantia em XLSX.
-CL8US_VERSION = "11.4"
-COLETA_VERSION = "11.1"
+CL8US_VERSION = "11.5"
+COLETA_VERSION = "11.2"
 # Modelos de Coleta da familia 11.x aceitos SEM adaptacao: o 11.1 so acrescentou
 # um quadro informativo na RESULTADOS/MEMORIA_RESULTADOS (formulas); a Coleta 11.0
-# nao o possui e continua valida. Nao remover versoes desta lista sem decisao
-# expressa — um arquivo 11.0 nunca e bloqueado por nao ter o quadro novo.
-COLETA_VERSOES_ACEITAS = ("11.0", "11.1")
+# nao o possui e continua valida. A 11.2 so separa a apresentacao (RESULTADOS
+# executiva) da camada tecnica (RESULTADOS_DETALHE): o motor e o mesmo e os
+# leitores resolvem a aba tecnica por `_resultados_abas`. Nao remover versoes
+# desta lista sem decisao expressa — um arquivo 11.0/11.1 nunca e bloqueado por
+# nao ter a aba executiva nova.
+COLETA_VERSOES_ACEITAS = ("11.0", "11.1", "11.2")
+# Marcadores publicos ANTERIORES a camada tecnica RESULTADOS_DETALHE: so neles
+# a RESULTADOS ainda e a aba tecnica. Qualquer outro marcador (11.2 ou
+# posterior) exige RESULTADOS_DETALHE (fail-closed). Arquivos PRE_11 nao tem
+# marcador e seguem a compatibilidade legada.
+COLETA_VERSOES_SEM_RESULTADOS_DETALHE = ("11.0", "11.1")
 # Janela de compatibilidade retroativa: a versao atual e DUAS linhagens anteriores
 # homologadas (PRE_11_L1 e PRE_11_L2, ver _compatibilidade_coleta). Estrutura fora
 # desta janela e rejeitada. A formalizacao de Coleta compatibilizada e decidida
