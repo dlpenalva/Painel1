@@ -347,6 +347,10 @@ def frente_detalhe(wb) -> None:
     d31.Font.Italic = False
     d31.Font.Underline = vizinho.Font.Underline
     d31.Font.Color = vizinho.Font.Color
+    d31.HorizontalAlignment = vizinho.HorizontalAlignment
+    d31.VerticalAlignment = vizinho.VerticalAlignment
+    d31.WrapText = vizinho.WrapText
+    d31.IndentLevel = vizinho.IndentLevel
     exe.Range("B3").Value = SUBTITULO_B3
 
     det = wb.Worksheets(DET)
