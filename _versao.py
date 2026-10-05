@@ -4,11 +4,18 @@ O commit mais recente e a fonte primaria no Streamlit Cloud. O fallback deve
 ser atualizado em toda entrega para manter o marcador mesmo quando o Git nao
 estiver disponivel no ambiente de execucao.
 
-Politica de versionamento publico (sempre no formato ``XX.X``):
+Politica de versionamento publico (sempre no formato ``XX.X``; regra completa
+em ``docs/VERSIONAMENTO.md``):
 
-* mudanca apenas visual, textual ou de interface pode alterar
-  ``CL8US_VERSION`` sem alterar ``COLETA_VERSION``;
-* mudanca estrutural relevante do XLS altera ``COLETA_VERSION``.
+* TODA entrega em ``main`` que altere algo percebido pelo usuario incrementa
+  ``CL8US_VERSION`` — no MESMO PR da alteracao;
+* TODA entrega que altere o XLSX entregue incrementa ``COLETA_VERSION`` (e a
+  nova versao entra em ``COLETA_VERSOES_ACEITAS``);
+* ``ATUALIZADO_EM_FALLBACK`` e atualizado junto com o bump;
+* numero ja consumido por uma entrega nunca e reutilizado.
+
+``tools/verificar_versionamento.py`` faz o CI falhar quando a politica e
+violada; nada e incrementado automaticamente.
 
 ``MASTERFILE_VERSION`` continua sendo um marcador tecnico legado onde ainda
 for necessario; nao deve ser substituido automaticamente por estas versoes.
@@ -21,6 +28,13 @@ from datetime import datetime
 from pathlib import Path
 
 
+# 11.7: quatro ajustes de UX da Coleta (PR #175): aviso de percentuais
+# historicos, fronteira IST explicada, bloco opcional X:AG, RESULTADOS_DETALHE
+# oculta — muda o XLS entregue: COLETA_VERSION 11.3. O bump foi esquecido no
+# PR original e aplicado no hotfix de versionamento obrigatorio.
+# 11.6: hotfix temporal da ancora historica do 1o ciclo (PR #174) — so app;
+# a Coleta seguiu 11.2. Numero consumido logicamente pelo PR #174 (bump
+# esquecido no PR original); por isso a entrega seguinte e 11.7.
 # 11.5: nova aba RESULTADOS executiva; a RESULTADOS anterior passa a se chamar
 # RESULTADOS_DETALHE (mesmas formulas/coordenadas) — mudanca estrutural do XLS:
 # COLETA_VERSION 11.2.
@@ -28,16 +42,17 @@ from pathlib import Path
 # (Financeiro, PCs e Itens) — mudanca estrutural do XLS: COLETA_VERSION 11.1.
 # 11.3: modelos em branco do Despacho Saneador e do Termo de Apostila com a mesma
 # estrutura dos documentos gerados. 11.2: memoria de calculo da garantia em XLSX.
-CL8US_VERSION = "11.5"
-COLETA_VERSION = "11.2"
+CL8US_VERSION = "11.7"
+COLETA_VERSION = "11.3"
 # Modelos de Coleta da familia 11.x aceitos SEM adaptacao: o 11.1 so acrescentou
 # um quadro informativo na RESULTADOS/MEMORIA_RESULTADOS (formulas); a Coleta 11.0
 # nao o possui e continua valida. A 11.2 so separa a apresentacao (RESULTADOS
 # executiva) da camada tecnica (RESULTADOS_DETALHE): o motor e o mesmo e os
 # leitores resolvem a aba tecnica por `_resultados_abas`. Nao remover versoes
 # desta lista sem decisao expressa — um arquivo 11.0/11.1 nunca e bloqueado por
-# nao ter a aba executiva nova.
-COLETA_VERSOES_ACEITAS = ("11.0", "11.1", "11.2")
+# nao ter a aba executiva nova. A 11.3 so muda apresentacao (aviso, destaque,
+# X:AG, RESULTADOS_DETALHE oculta): mesma estrutura de leitura da 11.2.
+COLETA_VERSOES_ACEITAS = ("11.0", "11.1", "11.2", "11.3")
 # Marcadores publicos ANTERIORES a camada tecnica RESULTADOS_DETALHE: so neles
 # a RESULTADOS ainda e a aba tecnica. Qualquer outro marcador (11.2 ou
 # posterior) exige RESULTADOS_DETALHE (fail-closed). Arquivos PRE_11 nao tem
@@ -49,7 +64,7 @@ COLETA_VERSOES_SEM_RESULTADOS_DETALHE = ("11.0", "11.1")
 # em _formalizacao_compatibilidade, por evidencia tecnica e nunca por versao.
 COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
-ATUALIZADO_EM_FALLBACK = "02/10/2026 19:33"
+ATUALIZADO_EM_FALLBACK = "05/10/2026 17:05"
 
 
 def _data_ultimo_commit() -> str | None:

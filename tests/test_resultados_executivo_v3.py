@@ -290,11 +290,12 @@ def test_versionamento_e_linhagem():
     from _compatibilidade_coleta import LINHAGEM_COLETA_11, detectar_linhagem_coleta
     from _versao import COLETA_VERSION, COLETA_VERSOES_ACEITAS
 
-    assert COLETA_VERSION == "11.2"
-    assert {"11.0", "11.1", "11.2"} <= set(COLETA_VERSOES_ACEITAS)
+    # Coleta 11.3 (PR #175, UX) mantem a arquitetura executiva + detalhe da 11.2.
+    assert COLETA_VERSION == "11.3"
+    assert {"11.0", "11.1", "11.2", "11.3"} <= set(COLETA_VERSOES_ACEITAS)
     deteccao = detectar_linhagem_coleta(_gerado())
     assert deteccao["codigo"] == LINHAGEM_COLETA_11
-    assert deteccao["marcador_publico"] == "11.2"
+    assert deteccao["marcador_publico"] == "11.3"
 
 
 def _como_arquivo_anterior(marcador: str | None = "11.1"):
