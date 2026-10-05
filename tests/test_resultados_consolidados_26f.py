@@ -24,7 +24,10 @@ def test_resultados_executiva_e_memoria_separadas(wb):
     # oculta e a RESULTADOS executiva, que segue sendo a ultima aba.
     assert wb.sheetnames[-3:] == ["MEMORIA_RESULTADOS", "RESULTADOS_DETALHE", "RESULTADOS"]
     assert wb["MEMORIA_RESULTADOS"].sheet_state == "hidden"
-    assert wb[_aba_tecnica_resultados(wb)].sheet_state == "visible"
+    # AJUSTES-XLS-UX pos-174: camada tecnica oculta por padrao (hidden normal,
+    # reexibivel pelo Excel); a executiva continua visivel.
+    assert wb[_aba_tecnica_resultados(wb)].sheet_state == "hidden"
+    assert wb["RESULTADOS"].sheet_state == "visible"
     assert wb["comparativo_VTA"].sheet_state == "hidden"
     # Coleta 11.2: titulo proprio da camada tecnica; a executiva tem o seu.
     assert wb[_aba_tecnica_resultados(wb)]["A1"].value == (
