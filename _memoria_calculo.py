@@ -27,7 +27,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from openpyxl.styles import PatternFill
+from openpyxl.styles import Alignment, Font, PatternFill
 
 from _reajuste_utils import fechar_percentual_oficial
 
@@ -45,6 +45,18 @@ COLUNAS_MEMORIA_CALCULO = ("J", "K", "L", "M", "N", "O", "P", "Q", "R")
 LINHA_INICIO_MEMORIA = 2
 LINHA_FIM_MEMORIA = 80
 CAPACIDADE_MEMORIA_CALCULO = LINHA_FIM_MEMORIA - LINHA_INICIO_MEMORIA + 1  # 79
+
+# Apresentacao da virada entre ciclos do IST: a competencia final de um ciclo
+# e legitimamente a base do seguinte (indice final / indice inicial - 1). A
+# linha INDICE que abre um ciclo com competencia ja registrada como INDICE em
+# ciclo anterior recebe destaque discreto; valores e ordem nao mudam. A
+# explicacao fica na MESMA linha, em S (a direita do bloco J:R): R e
+# METODO_FONTE e o leitor a le em toda linha, entao nunca recebe texto de
+# apresentacao. S e uma coluna livre e T/U/V nao mudam de endereco.
+FILL_FRONTEIRA_IST = "FFFCE4D6"
+COLUNA_EXPLICACAO_FRONTEIRA = "S"
+EXPLICACAO_FRONTEIRA_IST = "◄ O mês-base deste ciclo também encerra o ciclo anterior."
+LARGURA_EXPLICACAO_FRONTEIRA = 48.0
 
 
 def _competencia_iso(valor: Any) -> str | None:
@@ -232,8 +244,9 @@ def escrever_memoria_calculo(ws_parametros, ciclos: dict[str, Any]) -> None:
             f"(parametros!J{LINHA_INICIO_MEMORIA}:R{LINHA_FIM_MEMORIA})."
         )
 
+    linhas_fronteira = _linhas_fronteira_ist(planos)
     linha = LINHA_INICIO_MEMORIA
-    for nome, registro in planos:
+    for indice_plano, (nome, registro) in enumerate(planos):
         tipo = str(registro.get("tipo") or "").strip().upper()
         ws_parametros[f"J{linha}"] = nome
         ws_parametros[f"K{linha}"] = tipo
@@ -274,7 +287,60 @@ def escrever_memoria_calculo(ws_parametros, ciclos: dict[str, Any]) -> None:
             _fill_resultado = PatternFill("solid", fgColor="FFD9E1F2")
             for col in COLUNAS_MEMORIA_CALCULO:
                 ws_parametros[f"{col}{linha}"].fill = _fill_resultado
+        elif indice_plano in linhas_fronteira:
+            _fill_fronteira = PatternFill("solid", fgColor=FILL_FRONTEIRA_IST)
+            for col in COLUNAS_MEMORIA_CALCULO:
+                ws_parametros[f"{col}{linha}"].fill = _fill_fronteira
+            _explicar_fronteira(ws_parametros, linha, _fill_fronteira)
         linha += 1
+
+
+def _explicar_fronteira(ws_parametros, linha: int, fill: PatternFill) -> None:
+    """Explicacao visivel na propria linha laranja, em S (fora de J:R)."""
+    celula = ws_parametros[f"{COLUNA_EXPLICACAO_FRONTEIRA}{linha}"]
+    if celula.value is not None:
+        raise ValueError(
+            "Area da explicacao da memoria de calculo ocupada "
+            f"(parametros!{COLUNA_EXPLICACAO_FRONTEIRA}{linha})."
+        )
+    celula.value = EXPLICACAO_FRONTEIRA_IST
+    celula.fill = fill
+    celula.font = Font(name="Calibri", size=10, italic=True, color="FF843C0C")
+    celula.alignment = Alignment(horizontal="left", vertical="center")
+    dimensao = ws_parametros.column_dimensions[COLUNA_EXPLICACAO_FRONTEIRA]
+    if (dimensao.width or 0) < LARGURA_EXPLICACAO_FRONTEIRA:
+        dimensao.width = LARGURA_EXPLICACAO_FRONTEIRA
+
+
+def _linhas_fronteira_ist(planos: list[tuple[str, dict[str, Any]]]) -> set[int]:
+    """Indices (em ``planos``) das linhas INDICE que abrem um ciclo com a
+    competencia ja gravada como INDICE em ciclo ANTERIOR.
+
+    Usa somente os registros gravados (sem inferir datas): a primeira linha
+    INDICE de cada ciclo e comparada, no nivel do mes, com as competencias
+    INDICE dos ciclos que a precedem na memoria.
+    """
+    vistas_anteriores: set[str] = set()
+    vistas_ciclo: set[str] = set()
+    ciclo_atual: str | None = None
+    primeira_indice_pendente = False
+    fronteiras: set[int] = set()
+    for indice, (nome, registro) in enumerate(planos):
+        if nome != ciclo_atual:
+            vistas_anteriores |= vistas_ciclo
+            vistas_ciclo = set()
+            ciclo_atual = nome
+            primeira_indice_pendente = True
+        if str(registro.get("tipo") or "").strip().upper() != "INDICE":
+            continue
+        competencia = str(registro.get("competencia") or "")[:7]
+        if not competencia:
+            continue
+        if primeira_indice_pendente and competencia in vistas_anteriores:
+            fronteiras.add(indice)
+        primeira_indice_pendente = False
+        vistas_ciclo.add(competencia)
+    return fronteiras
 
 
 def ler_memoria_calculo(ws_parametros) -> dict[str, list[dict[str, Any]]]:

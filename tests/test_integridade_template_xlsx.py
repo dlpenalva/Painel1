@@ -32,7 +32,9 @@ FORMULAS_POR_ABA = {
     # RESULTADOS executiva com formulas de apresentacao.
     "comparativo_VTA": 1407,
     "CONTROLE": 6,
-    "parametros": 32,
+    # AJUSTES-XLS-UX pos-174: +1 (A8, aviso apresentacional de percentuais
+    # historicos ausentes; nenhuma formula de E/F/memoria do fator alterada).
+    "parametros": 33,
     "financeiro": 291,
     # 26H.1/26H.2: +199 formulas pre-semeadas de base zero visual em
     # B2:B200. FRONTEIRA FUNCIONAL: linha 200 = ultima linha de cadastro

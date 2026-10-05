@@ -434,7 +434,14 @@ def _validar_resultados_integra(wb, etapa: str) -> dict[str, Any]:
         if isinstance(cell.value, str) and cell.value.startswith("=")
     )
     conteudo = sum(1 for row in ws.iter_rows() for cell in row if cell.value not in (None, ""))
-    if ws.sheet_state != "visible":
+    # Coleta 11.2+: a camada tecnica nasce OCULTA (hidden normal) para nao
+    # poluir a leitura do usuario comum; segue acessivel por Reexibir no
+    # Excel. veryHidden nunca e aceito. A aba tecnica legada (RESULTADOS)
+    # continua obrigatoriamente visivel.
+    estados_aceitos = (
+        ("visible", "hidden") if tecnica == ABA_RESULTADOS_DETALHE else ("visible",)
+    )
+    if ws.sheet_state not in estados_aceitos:
         raise ValueError(f"A aba {tecnica} não está visível na etapa {etapa}.")
     if ws["A1"].value not in TITULOS_TECNICOS:
         raise ValueError(f"A aba {tecnica} está vazia ou foi substituída na etapa {etapa}.")

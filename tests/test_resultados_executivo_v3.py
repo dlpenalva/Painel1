@@ -184,7 +184,9 @@ def test_ordem_e_visibilidade_das_abas(origem):
     assert wb.sheetnames[-1] == ABA_RESULTADOS
     assert wb.sheetnames[-2] == ABA_RESULTADOS_DETALHE
     assert wb[ABA_RESULTADOS].sheet_state == "visible"
-    assert wb[ABA_RESULTADOS_DETALHE].sheet_state == "visible"
+    # AJUSTES-XLS-UX pos-174: camada tecnica oculta por padrao (hidden normal,
+    # reexibivel; nunca veryHidden).
+    assert wb[ABA_RESULTADOS_DETALHE].sheet_state == "hidden"
     assert wb["MEMORIA_RESULTADOS"].sheet_state == "hidden"
     assert wb[ABA_RESULTADOS]["B2"].value == TITULO_RESULTADOS_EXECUTIVO
     assert wb[ABA_RESULTADOS_DETALHE]["A1"].value == TITULO_RESULTADOS_DETALHE
@@ -235,14 +237,15 @@ def test_aba_tecnica_resolvida_por_versao():
 
 def test_gerado_preserva_aba_executiva_no_roundtrip_openpyxl():
     """A Coleta entregue (openpyxl load/save) mantem formulas, mesclas,
-    formatacao condicional e o hiperlink dos ajustes manuais."""
+    formatacao condicional e a indicacao dos ajustes manuais (texto normal:
+    com a camada tecnica oculta, o hiperlink deixou de existir)."""
     ws = _gerado()[ABA_RESULTADOS]
     for endereco, formula in v3.formulas_executivo().items():
         assert ws[endereco].value == formula, endereco
     assert len(ws.merged_cells.ranges) >= 30
     assert len(ws.conditional_formatting) >= 10
-    assert ws["D31"].hyperlink is not None
-    assert ws["D31"].hyperlink.location == "'RESULTADOS_DETALHE'!A41"
+    assert ws["D31"].hyperlink is None
+    assert "RESULTADOS_DETALHE" in ws["D31"].value and "Reexibir" in ws["D31"].value
 
 
 def test_formatacao_condicional_executiva_sobrevive_a_geracao():
@@ -302,6 +305,9 @@ def _como_arquivo_anterior(marcador: str | None = "11.1"):
     wb = load_workbook(io.BytesIO(_bytes(_gerado())))
     del wb[ABA_RESULTADOS]
     wb[ABA_RESULTADOS_DETALHE].title = ABA_RESULTADOS
+    # Num 11.0/11.1 real a unica RESULTADOS (tecnica) e visivel; a 11.2+ nasce
+    # com a camada tecnica oculta, entao a simulacao a reexibe.
+    wb[ABA_RESULTADOS].sheet_state = "visible"
     wb[ABA_RESULTADOS]["A1"] = "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL"
     wb["CONTROLE"]["B24"] = marcador
     # `.title` do openpyxl nao reescreve nomes nem formulas (o Excel reescreve):
