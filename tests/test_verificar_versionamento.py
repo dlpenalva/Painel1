@@ -82,6 +82,56 @@ def test_h_ferramenta_interna_ou_documentacao_sem_falso_positivo(arquivo):
     assert vv.avaliar([arquivo], BASE, BASE) == []
 
 
+# ------------------------------------- tools usadas pela aplicacao em runtime
+IST_ANATEL = "tools/atualizar_ist_anatel.py"
+
+
+def test_tool_de_runtime_ist_sem_bump_falha():
+    """_indice_utils.carregar_ist_anatel importa tools.atualizar_ist_anatel:
+    mudar o parser do IST muda o que o usuario recebe."""
+    erros = vv.avaliar([IST_ANATEL], BASE, BASE)
+    assert erros == [f"{vv.MSG_CL8US} Arquivos: {IST_ANATEL}"]
+    assert erros[0].startswith(
+        "Alteração user-facing detectada sem incremento de CL8US_VERSION."
+    )
+
+
+def test_tool_de_runtime_ist_com_bump_e_fallback_passa_sem_exigir_coleta():
+    assert vv.avaliar([IST_ANATEL], BASE, SO_CL8US) == []
+
+
+def _modulos_tools_importados_pela_producao() -> set[str]:
+    """tools/<modulo>.py importados por app.py, pages/** ou _*.py da raiz."""
+    import ast
+
+    fontes = [RAIZ / "app.py", *RAIZ.glob("_*.py"), *(RAIZ / "pages").glob("*.py")]
+    achados: set[str] = set()
+    for fonte in fontes:
+        for no in ast.walk(ast.parse(fonte.read_text(encoding="utf-8-sig"))):
+            nomes: list[str] = []
+            if isinstance(no, ast.ImportFrom) and no.module:
+                nomes = [no.module]
+            elif isinstance(no, ast.Import):
+                nomes = [alias.name for alias in no.names]
+            for nome in nomes:
+                if nome == "tools" or nome.startswith("tools."):
+                    achados.add(nome.replace(".", "/") + ".py")
+    return achados
+
+
+def test_toda_tool_importada_pela_producao_esta_em_sempre_producao():
+    importadas = _modulos_tools_importados_pela_producao()
+    assert IST_ANATEL in importadas  # a auditoria enxerga o caso conhecido
+    faltando = sorted(m for m in importadas if m not in vv.SEMPRE_PRODUCAO)
+    assert not faltando, (
+        "codigo de producao importa tools/ sem entrada em SEMPRE_PRODUCAO: "
+        f"{faltando}"
+    )
+    for modulo in importadas:
+        assert vv.eh_user_facing(modulo)
+        assert not vv.eh_coleta(modulo)
+
+
 # ------------------------------------------------------------ regras extras
 def test_dependencias_de_producao_exigem_cl8us():
     assert _tem(vv.avaliar(["requirements.txt"], BASE, BASE), vv.MSG_CL8US)
@@ -111,6 +161,7 @@ def test_alteracao_so_de_comentario_nao_exige_bump():
     assert vv.avaliar(["_reajuste_utils.py"], BASE, BASE, {"_reajuste_utils.py"}) == []
     assert not vv.mesma_semantica_python(antes, depois.replace("+ 1", "+ 2"))
     assert not vv.mesma_semantica_python(None, depois)  # arquivo novo
+    assert vv.mesma_semantica_python("﻿" + antes, depois)  # BOM nao e codigo
 
 
 def test_versao_vigente_do_repositorio_obedece_a_politica():

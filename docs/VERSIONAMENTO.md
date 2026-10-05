@@ -88,11 +88,16 @@ módulo novo passar a escrever no XLS):
   do `Coleta_Reajuste.xlsx`, não usado pelas páginas) e módulos que só leem ou
   validam o XLS.
 - **User-facing**: `app.py`, `pages/**`, todos os módulos `_*.py` da raiz,
-  `templates/**`, `assets/**`, `.streamlit/**`, `requirements.txt` e a
-  superfície da Coleta.
-- **Fora de produção** (nunca exigem bump): `tests/**`, `docs/**`, `tools/**`,
-  `.github/**`, `*.md`, `*.txt` (exceto `requirements.txt`), `*.bat`,
-  `teste_*.py` da raiz.
+  `templates/**`, `assets/**`, `.streamlit/**`, a superfície da Coleta e a lista
+  explícita `SEMPRE_PRODUCAO` (avaliada antes das exclusões): `requirements.txt`
+  e `tools/atualizar_ist_anatel.py` — importada em runtime por
+  `_indice_utils.carregar_ist_anatel` (série IST oficial).
+- **Fora de produção** (nunca exigem bump): `tests/**`, `docs/**`, `tools/**`
+  (exceto `SEMPRE_PRODUCAO`), `.github/**`, `*.md`, `*.txt` (exceto
+  `requirements.txt`), `*.bat`, `teste_*.py` da raiz.
+- Auditoria automática: `tests/test_verificar_versionamento.py` falha se
+  `app.py`, `pages/**` ou `_*.py` passarem a importar outro módulo de `tools/`
+  sem entrada em `SEMPRE_PRODUCAO`.
 
 Única exceção automática: `.py` cuja AST (sem docstrings) é idêntica à da base —
 mudança só de comentários/formatação. Não há outra heurística.

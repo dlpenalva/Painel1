@@ -61,15 +61,23 @@ SUPERFICIE_USUARIO = (
 FORA_DE_PRODUCAO = (
     "tests/*",
     "docs/*",
-    "tools/*",          # ferramentas internas; nao sao importadas pela aplicacao
+    "tools/*",          # ferramentas internas — EXCETO as de SEMPRE_PRODUCAO
     ".github/*",
     "*.md",
     "*.txt",            # README.txt; requirements.txt vai abaixo, explicitamente
     "*.bat",
     "teste_*.py",       # scripts avulsos da raiz, fora da aplicacao
 )
-# Excecao a FORA_DE_PRODUCAO: dependencias mudam o comportamento em producao.
-SEMPRE_PRODUCAO = ("requirements.txt",)
+# Excecoes a FORA_DE_PRODUCAO, avaliadas ANTES dela: arquivos fora das pastas
+# de producao que a aplicacao usa em runtime. Lista auditada (2026-10-05) —
+# unico import de tools/ pelo codigo de producao:
+#   _indice_utils.carregar_ist_anatel -> tools.atualizar_ist_anatel
+# tests/test_verificar_versionamento.py falha se surgir import novo de tools/
+# por app.py, pages/** ou _*.py sem entrada aqui.
+SEMPRE_PRODUCAO = (
+    "requirements.txt",                  # dependencias da aplicacao
+    "tools/atualizar_ist_anatel.py",     # serie IST oficial (carregar_ist_anatel)
+)
 
 MSG_CL8US = "Alteração user-facing detectada sem incremento de CL8US_VERSION."
 MSG_COLETA = "Alteração da Coleta detectada sem incremento de COLETA_VERSION."
@@ -157,8 +165,9 @@ def mesma_semantica_python(antes: str | None, depois: str | None) -> bool:
     if antes is None or depois is None:
         return False
     try:
-        a = ast.dump(_sem_docstrings(ast.parse(antes)))
-        b = ast.dump(_sem_docstrings(ast.parse(depois)))
+        # BOM UTF-8 (presente em alguns modulos) nao e codigo.
+        a = ast.dump(_sem_docstrings(ast.parse(antes.lstrip("﻿"))))
+        b = ast.dump(_sem_docstrings(ast.parse(depois.lstrip("﻿"))))
     except SyntaxError:
         return False
     return a == b
