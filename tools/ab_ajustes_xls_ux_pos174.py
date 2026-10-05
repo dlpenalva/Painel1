@@ -143,7 +143,8 @@ def fotografar_estrutura(pasta: Path) -> None:
 # Unicas celulas deliberadamente alteradas por estas frentes (valor e/ou
 # formula). Tudo o mais deve ser IDENTICO, inclusive todas as formulas.
 ALLOWLIST = {
-    "parametros": {"A8", "A17", "K82"},  # K82 = legenda da fronteira IST
+    # S{n} = explicacao da fronteira IST, na propria linha destacada (2..80)
+    "parametros": {"A8", "A17"} | {f"S{n}" for n in range(2, 81)},
     "MEMORIA_RESULTADOS": {"AF41", "AG41", "AF42", "AG42"},
     "itens_Consumidos": {"X7", "X8", "X9", "X10", "X11", "X12", "X13"},
     "RESULTADOS": {"B3", "D31"},

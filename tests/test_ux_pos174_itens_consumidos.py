@@ -25,8 +25,6 @@ from _coleta_oficial import (  # noqa: E402
 )
 from _memoria_calculo import (  # noqa: E402
     FILL_FRONTEIRA_IST,
-    LEGENDA_FRONTEIRA_IST,
-    LINHA_LEGENDA_FRONTEIRA,
     escrever_memoria_calculo,
     ler_memoria_calculo,
 )

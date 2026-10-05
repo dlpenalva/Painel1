@@ -27,7 +27,7 @@ from __future__ import annotations
 from datetime import date, datetime
 from typing import Any
 
-from openpyxl.styles import Font, PatternFill
+from openpyxl.styles import Alignment, Font, PatternFill
 
 from _reajuste_utils import fechar_percentual_oficial
 
@@ -50,12 +50,13 @@ CAPACIDADE_MEMORIA_CALCULO = LINHA_FIM_MEMORIA - LINHA_INICIO_MEMORIA + 1  # 79
 # e legitimamente a base do seguinte (indice final / indice inicial - 1). A
 # linha INDICE que abre um ciclo com competencia ja registrada como INDICE em
 # ciclo anterior recebe destaque discreto; valores e ordem nao mudam. A
-# legenda fica FORA do bloco reservado (J2:R80), que o leitor percorre.
+# explicacao fica na MESMA linha, em S (a direita do bloco J:R): R e
+# METODO_FONTE e o leitor a le em toda linha, entao nunca recebe texto de
+# apresentacao. S e uma coluna livre e T/U/V nao mudam de endereco.
 FILL_FRONTEIRA_IST = "FFFCE4D6"
-LINHA_LEGENDA_FRONTEIRA = LINHA_FIM_MEMORIA + 2  # 82
-LEGENDA_FRONTEIRA_IST = (
-    "Linha destacada: o mês-base deste ciclo também encerra o ciclo anterior."
-)
+COLUNA_EXPLICACAO_FRONTEIRA = "S"
+EXPLICACAO_FRONTEIRA_IST = "◄ O mês-base deste ciclo também encerra o ciclo anterior."
+LARGURA_EXPLICACAO_FRONTEIRA = 48.0
 
 
 def _competencia_iso(valor: Any) -> str | None:
@@ -290,19 +291,25 @@ def escrever_memoria_calculo(ws_parametros, ciclos: dict[str, Any]) -> None:
             _fill_fronteira = PatternFill("solid", fgColor=FILL_FRONTEIRA_IST)
             for col in COLUNAS_MEMORIA_CALCULO:
                 ws_parametros[f"{col}{linha}"].fill = _fill_fronteira
+            _explicar_fronteira(ws_parametros, linha, _fill_fronteira)
         linha += 1
 
-    if linhas_fronteira:
-        amostra = ws_parametros[f"J{LINHA_LEGENDA_FRONTEIRA}"]
-        legenda = ws_parametros[f"K{LINHA_LEGENDA_FRONTEIRA}"]
-        if amostra.value is not None or legenda.value is not None:
-            raise ValueError(
-                "Area da legenda da memoria de calculo ocupada "
-                f"(parametros!J{LINHA_LEGENDA_FRONTEIRA}:K{LINHA_LEGENDA_FRONTEIRA})."
-            )
-        amostra.fill = PatternFill("solid", fgColor=FILL_FRONTEIRA_IST)
-        legenda.value = LEGENDA_FRONTEIRA_IST
-        legenda.font = Font(name="Calibri", size=10, italic=True, color="FF595959")
+
+def _explicar_fronteira(ws_parametros, linha: int, fill: PatternFill) -> None:
+    """Explicacao visivel na propria linha laranja, em S (fora de J:R)."""
+    celula = ws_parametros[f"{COLUNA_EXPLICACAO_FRONTEIRA}{linha}"]
+    if celula.value is not None:
+        raise ValueError(
+            "Area da explicacao da memoria de calculo ocupada "
+            f"(parametros!{COLUNA_EXPLICACAO_FRONTEIRA}{linha})."
+        )
+    celula.value = EXPLICACAO_FRONTEIRA_IST
+    celula.fill = fill
+    celula.font = Font(name="Calibri", size=10, italic=True, color="FF843C0C")
+    celula.alignment = Alignment(horizontal="left", vertical="center")
+    dimensao = ws_parametros.column_dimensions[COLUNA_EXPLICACAO_FRONTEIRA]
+    if (dimensao.width or 0) < LARGURA_EXPLICACAO_FRONTEIRA:
+        dimensao.width = LARGURA_EXPLICACAO_FRONTEIRA
 
 
 def _linhas_fronteira_ist(planos: list[tuple[str, dict[str, Any]]]) -> set[int]:

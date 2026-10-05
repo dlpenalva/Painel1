@@ -25,8 +25,9 @@ from _coleta_oficial import (  # noqa: E402
 )
 from _memoria_calculo import (  # noqa: E402
     FILL_FRONTEIRA_IST,
-    LEGENDA_FRONTEIRA_IST,
-    LINHA_LEGENDA_FRONTEIRA,
+    COLUNA_EXPLICACAO_FRONTEIRA,
+    EXPLICACAO_FRONTEIRA_IST,
+    LARGURA_EXPLICACAO_FRONTEIRA,
     escrever_memoria_calculo,
     ler_memoria_calculo,
 )
@@ -115,6 +116,14 @@ def _destacadas(ws):
     ]
 
 
+def _explicacoes(ws):
+    return {
+        linha: ws[f"{COLUNA_EXPLICACAO_FRONTEIRA}{linha}"].value
+        for linha in range(2, 81)
+        if ws[f"{COLUNA_EXPLICACAO_FRONTEIRA}{linha}"].value is not None
+    }
+
+
 CICLOS_FRONTEIRA = {
     "C3": {"memoria_calculo": _ist("2022-10-01", 100.0, "2023-10-01", 104.0)},
     "C4": {"memoria_calculo": _ist("2023-10-01", 104.0, "2024-10-01", 107.0)},
@@ -127,8 +136,10 @@ def test_f4_fronteira_destaca_somente_base_do_segundo_ciclo():
     assert ws["J5"].value == "C4" and ws["M5"].value.month == 10
     assert _destacadas(ws) == [5]
     assert all(_rgb(ws[f"{col}5"]) == FILL_FRONTEIRA_IST for col in COLUNAS_JR)
-    assert ws[f"K{LINHA_LEGENDA_FRONTEIRA}"].value == LEGENDA_FRONTEIRA_IST
-    assert _rgb(ws[f"J{LINHA_LEGENDA_FRONTEIRA}"]) == FILL_FRONTEIRA_IST
+    assert _explicacoes(ws) == {5: EXPLICACAO_FRONTEIRA_IST}
+    assert _rgb(ws[f"{COLUNA_EXPLICACAO_FRONTEIRA}5"]) == FILL_FRONTEIRA_IST
+    assert ws.column_dimensions[COLUNA_EXPLICACAO_FRONTEIRA].width >= LARGURA_EXPLICACAO_FRONTEIRA
+    assert ws["K82"].value is None  # sem legenda distante da linha laranja
 
 
 def test_f4_conteudo_jr_identico_com_e_sem_destaque(monkeypatch):
@@ -150,7 +161,7 @@ def test_f4_ciclo_unico_sem_destaque():
     escrever_memoria_calculo(ws, {"C2": {"memoria_calculo": _ist(
         "2022-10-01", 100.0, "2023-10-01", 104.0)}})
     assert _destacadas(ws) == []
-    assert ws[f"K{LINHA_LEGENDA_FRONTEIRA}"].value is None
+    assert _explicacoes(ws) == {}
 
 
 def test_f4_competencias_diferentes_sem_destaque():
@@ -160,7 +171,7 @@ def test_f4_competencias_diferentes_sem_destaque():
         "C2": {"memoria_calculo": _ist("2022-11-01", 103.5, "2023-11-01", 106.0)},
     })
     assert _destacadas(ws) == []
-    assert ws[f"K{LINHA_LEGENDA_FRONTEIRA}"].value is None
+    assert _explicacoes(ws) == {}
 
 
 def test_f4_so_a_linha_que_abre_o_ciclo_e_destacada():
@@ -178,5 +189,37 @@ def test_f4_coleta_gerada_destaca_fronteira():
     payload["ciclos"][1]["memoria_calculo"] = _ist("2022-10-01", 102.0, "2023-10-01", 103.0)
     ws = load_workbook(io.BytesIO(gerar_coleta_oficial_preenchida(payload)))["parametros"]
     assert _destacadas(ws) == [5]
-    assert ws[f"K{LINHA_LEGENDA_FRONTEIRA}"].value == LEGENDA_FRONTEIRA_IST
+    assert _explicacoes(ws) == {5: EXPLICACAO_FRONTEIRA_IST}
 
+
+
+def _mes(competencias: list[str], taxa: float):
+    registros = [
+        {"tipo": "MES", "ordem": i, "competencia": c, "valor_indice": taxa}
+        for i, c in enumerate(competencias, start=1)
+    ]
+    registros.append({"tipo": "RESULTADO", "ordem": len(registros) + 1,
+                      "fator_acumulado": 1.01, "variacao_final": 0.01,
+                      "metodo_fonte": "ICTI"})
+    return registros
+
+
+def test_f4_memoria_mes_nunca_recebe_explicacao_do_ist():
+    """ICTI/SGS gravam MES (produtorio de taxas): mesmo com competencia
+    repetida entre ciclos, nao ha fronteira de numero-indice."""
+    ws = _ws_memoria()
+    escrever_memoria_calculo(ws, {
+        "C1": {"memoria_calculo": _mes(["2022-09-01", "2022-10-01"], 0.004)},
+        "C2": {"memoria_calculo": _mes(["2022-10-01", "2022-11-01"], 0.005)},
+    })
+    assert _destacadas(ws) == []
+    assert _explicacoes(ws) == {}
+
+
+def test_f4_explicacao_nao_entra_na_leitura_da_memoria():
+    """R (METODO_FONTE) segue vazia nas linhas INDICE; o leitor nao ve S."""
+    ws = _ws_memoria()
+    escrever_memoria_calculo(ws, CICLOS_FRONTEIRA)
+    lido = ler_memoria_calculo(ws)
+    assert all(r["metodo_fonte"] is None for r in lido["C4"] if r["tipo"] == "INDICE")
+    assert EXPLICACAO_FRONTEIRA_IST not in str(lido)
