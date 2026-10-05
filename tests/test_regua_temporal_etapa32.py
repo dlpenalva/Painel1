@@ -74,9 +74,9 @@ def test_cenario_b_analise_iniciando_em_c2():
     at.selectbox(key="rep_ciclo_inicial_analise").select("C2")
     at.run()
     html = _html_regua(at)
-    # A data lateral e a propria data-base de C2, sem avancar 12 meses: por
-    # isso o marco apto de C2 e 10/10/2023, e nao 10/10/2024.
-    assert ">C2<" in html and "Apto em 10/10/2023" in html
+    # Sem ciclo anterior formalizado, C2 segue a linha anual da data-base
+    # original (10/10/2022 + 1 ano): o marco apto de C2 e 10/10/2024.
+    assert ">C2<" in html and "Apto em 10/10/2024" in html
     assert html.count("Ciclo em análise: C2") == 1
     assert html.index("Ciclo em análise: C2") < html.index(">C2<")
 
@@ -94,17 +94,16 @@ def test_cenario_c_analise_iniciando_em_c4():
     ("ciclo", "data_informada", "apto_esperado"),
     (
         ("C1", date(2023, 2, 1), "01/02/2024"),
-        ("C2", date(2023, 2, 1), "01/02/2024"),
-        ("C3", date(2024, 2, 1), "01/02/2025"),
-        ("C4", date(2025, 10, 10), "10/10/2026"),
+        ("C2", date(2023, 2, 1), "01/02/2025"),
+        ("C3", date(2024, 2, 1), "01/02/2027"),
+        ("C4", date(2025, 10, 10), "10/10/2029"),
     ),
 )
 def test_data_lateral_e_semente_exata_do_ciclo_inicial(ciclo, data_informada, apto_esperado):
-    """A data lateral semeia o ciclo inicial; o marco desenhado e ela + 12 meses.
+    """Sem historico formalizado, Cn segue a linha anual da data lateral.
 
     Etapa 45: a regua deixou de exibir a data-base e passou a exibir a data
-    apta. A semente continua sendo exatamente a data digitada — o que se
-    verifica pelo marco resultante, sempre 12 meses adiante dela.
+    apta: data lateral + n anos (C1 = lateral + 12 meses).
     """
     at = _app()
     campo_base = next(d for d in at.date_input if d.label == ROTULO_LATERAL)
@@ -119,6 +118,9 @@ def test_data_lateral_e_semente_exata_do_ciclo_inicial(ciclo, data_informada, ap
 # ---------------------------------------------------------------- cenario D
 def test_cenario_d_efeito_financeiro_posterior_a_data_base():
     at = _app()
+    # Linha anual sem historico: 10/10/2021 + 1 ano => C2 apto em 10/10/2023.
+    campo_base = next(d for d in at.date_input if d.label == ROTULO_LATERAL)
+    campo_base.set_value(date(2021, 10, 10))
     at.selectbox(key="rep_ciclo_inicial_analise").select("C2")
     at.run()
     pedido = next(
@@ -175,11 +177,12 @@ def test_cenario_e2_ciclo_formalizado_aparece_sem_inferencia():
     assert html.count("Ciclo em análise: C2") == 1
     # o indicador global cobre apenas a ANALISE (C2), nunca o marco historico
     assert "Ciclos em análise: C1" not in html
-    # o marco historico nao substitui a data lateral que semeia C2: a lateral
-    # (01/02/2023) continua sendo a data-base de C2, cujo marco apto e
-    # 01/02/2024. O historico entra sem o rotulo "Apto em", por ser data-base.
+    # HOTFIX ancora historica: o marco do C1 formalizado (01/02/2022) ancora
+    # C2, que fica apto em 01/02/2023 — a lateral (01/02/2023) nao semeia C2.
+    # O historico entra sem o rotulo "Apto em", por ser data-base.
     assert html.index(">C1<") < html.index("01/02/2022") < html.index(">C2<")
-    assert html.index(">C2<") < html.index("Apto em 01/02/2024")
+    assert html.index(">C2<") < html.index("Apto em 01/02/2023")
+    assert "Apto em 01/02/2024" not in html
     assert "Apto em 01/02/2022" not in html
 
 
