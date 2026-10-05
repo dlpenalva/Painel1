@@ -176,8 +176,13 @@ def _primeiro_ciclo_analise(contexto):
 
 
 def _calcular_data_inicial_ciclo(dt_base, primeiro_ciclo_num, contexto):
-    """Usa a data informada como âncora do primeiro ciclo da análise atual."""
-    return dt_base
+    """Calcula a âncora do primeiro ciclo atual pela mesma regra da v3.0."""
+    ultimo_num = _ciclo_para_numero((contexto or {}).get('ultimo_ciclo_concedido', ''))
+    numero_inicial = int(primeiro_ciclo_num)
+    if ultimo_num > 0:
+        salto = numero_inicial - ultimo_num - 1
+        return dt_base if salto < 0 else dt_base + relativedelta(years=salto)
+    return dt_base + relativedelta(years=numero_inicial - 1)
 
 
 def _data_contexto_para_datetime(valor):
@@ -1915,6 +1920,7 @@ with st.sidebar:
                 "data_base_ultimo_ciclo": _marco_temporal_anterior,
             }
             _contexto_calculo = contexto_contratual
+            _dt_base_calculo = _marco_temporal_anterior
         elif _sit_anterior == "Situação desconhecida":
             st.warning("Situação anterior não confirmada.")
         else:

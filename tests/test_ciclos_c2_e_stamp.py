@@ -39,11 +39,13 @@ class TestCiclosC2EStamp(unittest.TestCase):
         self.assertIn("'contexto_contratual_anterior': contexto_contratual", MULTI)
         self.assertNotIn("Situação anterior à análise:", SIMPLES)
 
-    def test_data_lateral_e_a_ancora_exata_do_ciclo_inicial(self):
+    def test_marco_formalizado_ancora_o_ciclo_inicial(self):
+        # HOTFIX ancora historica: com ciclo formalizado, o marco informado
+        # ancora o primeiro ciclo; sem ele, vale a linha anual da data-base.
         self.assertIn("def _calcular_data_inicial_ciclo", MULTI)
-        self.assertIn("return dt_base", MULTI)
-        self.assertNotIn("salto = numero_inicial - ultimo_num - 1", MULTI)
-        self.assertNotIn("return dt_base + relativedelta(years=numero_inicial - 1)", MULTI)
+        self.assertIn("salto = numero_inicial - ultimo_num - 1", MULTI)
+        self.assertIn("return dt_base + relativedelta(years=numero_inicial - 1)", MULTI)
+        self.assertIn("_dt_base_calculo = _marco_temporal_anterior", MULTI)
 
     def test_stamp_tem_fallback_brasileiro_e_e_renderizado(self):
         match = re.search(

@@ -92,7 +92,9 @@ def test_fluxo_real_multiciclo_exibe_e_propaga_as_referencias_exatas():
     at.run()
     assert not at.exception
 
-    at.date_input[2].set_value(date(2023, 8, 15))
+    # Sem ciclo anterior formalizado, C2 segue a linha anual da data-base
+    # original: 15/08/2022 + 1 ano = 15/08/2023 (apto em 15/08/2024).
+    at.date_input[2].set_value(date(2022, 8, 15))
     at.selectbox(key="rep_ciclo_inicial_analise").select("C2")
     at.run()
     at.selectbox(key="rep_ciclo_final_analise").select("C4")
@@ -132,7 +134,10 @@ def test_fluxo_real_multiciclo_exibe_e_propaga_as_referencias_exatas():
 def test_bloco_do_primeiro_ciclo_exibe_a_elegibilidade_e_a_data_base(
     data_lateral, primeiro_ciclo
 ):
-    """ETAPA 45 — o destaque do bloco e a ELEGIBILIDADE (lateral + 12 meses).
+    """ETAPA 45 — o destaque do bloco e a ELEGIBILIDADE do primeiro ciclo.
+
+    Sem ciclo anterior formalizado, Cn segue a linha anual da data-base
+    original: apto em lateral + n anos (C1 = lateral + 12 meses).
 
     Limpeza de leiaute: a data-base fica apenas na lateral; o bloco do ciclo
     exibe somente a elegibilidade (em duas linhas), sem repetir a data-base.
@@ -160,7 +165,8 @@ def test_bloco_do_primeiro_ciclo_exibe_a_elegibilidade_e_a_data_base(
         if "fica apto (elegibilidade)" in str(elemento.value)
     ]
     assert blocos, "o bloco do ciclo nao exibiu a elegibilidade"
-    apto = (data_lateral + relativedelta(months=12)).strftime("%d/%m/%Y")
+    anos = int(primeiro_ciclo[1:])
+    apto = (data_lateral + relativedelta(years=anos)).strftime("%d/%m/%Y")
     assert apto in blocos[0]
     assert data_lateral.strftime("%d/%m/%Y") not in blocos[0]
 
@@ -172,6 +178,125 @@ def test_bloco_do_primeiro_ciclo_exibe_a_elegibilidade_e_a_data_base(
     assert "Referência exata para o pedido" not in "".join(
         str(elemento.value) for elemento in at.markdown
     )
+
+
+def _rodar_c3_com_c2_formalizado(pedido_c3=None, marco_c2=date(2022, 8, 18)):
+    """Data-base original 22/07/2020, analise C3->C4, C2 formalizado em ``marco_c2``."""
+    from streamlit.testing.v1 import AppTest
+
+    pagina = RAIZ / "pages" / "02_Calculo_Represados.py"
+    at = AppTest.from_file(str(pagina), default_timeout=300)
+    at.run()
+    assert not at.exception
+
+    for campo in at.date_input:
+        if "Data-base de referência" in str(campo.label):
+            campo.set_value(date(2020, 7, 22))
+            break
+    at.run()
+    at.selectbox(key="rep_ciclo_inicial_analise").select("C3")
+    at.run()
+    at.selectbox(key="rep_ciclo_final_analise").select("C4")
+    at.run()
+    at.radio(key="rep_situacao_anterior_ciclo").set_value(
+        "Houve ciclo anterior concedido/formalizado"
+    )
+    at.run()
+    at.selectbox(key="rep_ultimo_ciclo_anterior").select("C2")
+    at.run()
+    at.date_input(key="rep_marco_temporal_anterior").set_value(marco_c2)
+    at.run()
+    if pedido_c3 is not None:
+        apto_c3 = marco_c2.replace(year=marco_c2.year + 1)
+        at.date_input(key=f"p3_{apto_c3.strftime('%Y%m%d')}").set_value(pedido_c3)
+        at.run()
+    assert not at.exception
+    return at
+
+
+def test_ancora_historica_c2_formalizado_define_c3_e_encadeamento():
+    """HOTFIX — o marco do ultimo ciclo formalizado ancora o primeiro ciclo atual.
+
+    C2 formalizado em 18/08/2022 => C3 apto em 18/08/2023 (e nao pela linha
+    anual de 22/07/2020); C4 continua encadeado a partir do C3.
+    """
+    at = _rodar_c3_com_c2_formalizado()
+
+    assert _datas_aptas_exibidas(at) == ["18/08/2023", "18/08/2024"]
+    assert at.date_input(key="p3_20230818").value == date(2023, 8, 18)
+    assert at.date_input(key="p4_20240818").value == date(2024, 8, 18)
+    resumo = at.dataframe[0].value.to_dict("records")
+    assert [linha["Ciclo"] for linha in resumo] == ["C3", "C4"]
+    assert [linha["Referência exata"] for linha in resumo] == [
+        "18/08/2023",
+        "18/08/2024",
+    ]
+
+
+@pytest.mark.parametrize(
+    ("pedido_c3", "situacao"),
+    [
+        # limite = apto + 90 dias corridos = 16/11/2023
+        (date(2023, 11, 16), "TEMPESTIVO"),
+        (date(2023, 11, 17), "PRECLUSO"),
+    ],
+)
+def test_ancora_historica_preserva_janela_de_90_dias(pedido_c3, situacao):
+    at = _rodar_c3_com_c2_formalizado(pedido_c3)
+    resumo = at.dataframe[0].value.to_dict("records")
+    assert resumo[0]["Ciclo"] == "C3"
+    assert resumo[0]["Referência exata"] == "18/08/2023"
+    assert situacao in resumo[0]["Situação preliminar"]
+
+
+# ---------------------------------------------------------------------------
+# CONTRATO DO MOTOR TEMPORAL (pagina 02, fluxo real). Nao pode regredir:
+#   1. o ciclo nasce 12 meses apos sua ancora;
+#   2. pedido TEMPESTIVO/TEMPESTIVO* redefine a ancora seguinte pela data exata;
+#   3. pedido ADIANTADO nao antecipa a anualidade seguinte (testes acima);
+#   4. pedido PRECLUSO, sem superacao negocial, nao desloca a cadeia;
+#   5. cadeia juridica exata e competencia financeira mensal ficam separadas;
+#   6. janela de admissibilidade = 90 dias corridos (apto + 90 ainda e tempestivo).
+# ---------------------------------------------------------------------------
+MARCO_C2_CONTRATO = date(2023, 5, 1)  # C3 apto em 01/05/2024; limite 30/07/2024
+
+
+def test_contrato_pedido_tempestivo_vira_ancora_exata_do_ciclo_seguinte():
+    at = _rodar_c3_com_c2_formalizado(date(2024, 7, 1), marco_c2=MARCO_C2_CONTRATO)
+
+    resumo = at.dataframe[0].value.to_dict("records")
+    assert [linha["Ciclo"] for linha in resumo] == ["C3", "C4"]
+    assert resumo[0]["Referência exata"] == "01/05/2024"
+    assert resumo[0]["Data do pedido"] == "01/07/2024"
+    assert "TEMPESTIVO" in resumo[0]["Situação preliminar"]
+    # C4 nasce do pedido tempestivo exato (01/07/2024 + 12m), nunca de 01/05/2025.
+    assert resumo[1]["Referência exata"] == "01/07/2025"
+    assert _datas_aptas_exibidas(at) == ["01/05/2024", "01/07/2025"]
+    assert "01/05/2025" not in _datas_aptas_exibidas(at)
+    assert at.date_input(key="p4_20250701").value == date(2025, 7, 1)
+    # competencia financeira mensalizada permanece separada da cadeia exata
+    assert resumo[0]["Início financeiro"] == "07/2024"
+
+
+@pytest.mark.parametrize(
+    ("pedido_c3", "situacao", "apto_c4"),
+    [
+        # apto + 90 dias = 30/07/2024: ainda tempestivo e redefine a ancora
+        (date(2024, 7, 30), "TEMPESTIVO", "30/07/2025"),
+        # apto + 91 dias = 31/07/2024: precluso, a cadeia segue de 01/05/2024
+        (date(2024, 7, 31), "PRECLUSO", "01/05/2025"),
+    ],
+)
+def test_contrato_fronteira_90_dias_e_precluso_nao_desloca_cadeia(
+    pedido_c3, situacao, apto_c4
+):
+    at = _rodar_c3_com_c2_formalizado(pedido_c3, marco_c2=MARCO_C2_CONTRATO)
+
+    resumo = at.dataframe[0].value.to_dict("records")
+    assert resumo[0]["Referência exata"] == "01/05/2024"
+    assert situacao in resumo[0]["Situação preliminar"]
+    assert resumo[1]["Referência exata"] == apto_c4
+    assert _datas_aptas_exibidas(at)[1] == apto_c4
 
 
 def _datas_aptas_exibidas(at):
