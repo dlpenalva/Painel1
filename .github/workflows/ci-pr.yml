@@ -25,6 +25,10 @@ jobs:
     steps:
       - name: Obter repositorio
         uses: actions/checkout@v7
+        with:
+          # HEAD^1 = base: no pull_request o HEAD e o merge do PR sobre main;
+          # no push em main, o merge commit. A guarda compara os dois.
+          fetch-depth: 2
 
       - name: Preparar Python
         uses: actions/setup-python@v7
@@ -40,6 +44,11 @@ jobs:
         env:
           PYTHONPYCACHEPREFIX: ${{ runner.temp }}/pycache
         run: python -m compileall -q .
+
+      - name: Guarda de versionamento
+        # Regra em docs/VERSIONAMENTO.md: alteracao user-facing exige
+        # CL8US_VERSION; alteracao da Coleta exige COLETA_VERSION (no mesmo PR).
+        run: python tools/verificar_versionamento.py --base HEAD^1
 
       - name: Executar testes sentinela
         run: |
@@ -66,4 +75,6 @@ jobs:
             tests/test_consumo_glosa_dv_1.py \
             tests/test_percentual_oficial_duas_casas.py \
             tests/test_protecao_formulas_itens_pc.py \
-            tests/test_termo_apostila_ajustes_consolidados.py
+            tests/test_termo_apostila_ajustes_consolidados.py \
+            tests/test_verificar_versionamento.py \
+            tests/test_versionamento_cl8us_coleta_11.py

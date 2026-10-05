@@ -72,9 +72,11 @@ def test_versoes_publicas_e_politica_preparada() -> None:
     # a Coleta 11.0 continua aceita (ver COLETA_VERSOES_ACEITAS).
     # RESULTADOS executiva + RESULTADOS_DETALHE: mudanca ESTRUTURAL do XLS
     # (Cl8us 11.5, Modelo de Coleta 11.2); 11.0 e 11.1 seguem aceitas.
-    assert CL8US_VERSION == "11.5"
-    assert COLETA_VERSION == "11.2"
-    assert COLETA_VERSOES_ACEITAS == ("11.0", "11.1", "11.2")
+    # PR #174 = Cl8us 11.6 (so app); PR #175 = Cl8us 11.7 / Coleta 11.3 (UX
+    # da Coleta). Bumps aplicados pelo hotfix de versionamento obrigatorio.
+    assert CL8US_VERSION == "11.7"
+    assert COLETA_VERSION == "11.3"
+    assert COLETA_VERSOES_ACEITAS == ("11.0", "11.1", "11.2", "11.3")
     assert CL8US_VERSION != COLETA_VERSION
     assert COLETA_COMPATIBILIDADE_ANTERIORES == 2
     assert re.fullmatch(r"\d{2}\.\d", CL8US_VERSION)
@@ -91,8 +93,8 @@ def test_sidebar_exibe_as_duas_versoes_da_fonte_unica(monkeypatch) -> None:
 
     assert legendas == [
         "Última atualização publicada em 30/09/2026 12:00",
-        "Cl8us 11.5",
-        "Modelo de Coleta 11.2",
+        "Cl8us 11.7",
+        "Modelo de Coleta 11.3",
     ]
 
 
@@ -188,3 +190,21 @@ def test_arquivo_anterior_sem_marcador_mantem_comportamento_atual() -> None:
     assert leitura["erro"] == ""
     assert leitura["versao_detectada"] == "v10-rc"
     assert "coleta_version" not in leitura
+
+
+@pytest.mark.parametrize("marcador", ["11.2", "11.3"])
+def test_coleta_11_2_e_11_3_com_detalhe_sao_aceitas(marcador) -> None:
+    """11.3 (PR #175) so muda apresentacao: arquivo 11.2 segue aceito e ambos
+    exigem RESULTADOS_DETALHE (fail-closed desde a 11.2)."""
+    from _compatibilidade_coleta import (
+        LINHAGEM_COLETA_11,
+        detectar_linhagem_coleta,
+        exige_resultados_detalhe,
+    )
+
+    wb = load_workbook(io.BytesIO(obter_coleta_oficial_bytes()), data_only=False)
+    wb["CONTROLE"]["B24"] = marcador
+    deteccao = detectar_linhagem_coleta(wb)
+    assert deteccao["codigo"] == LINHAGEM_COLETA_11
+    assert deteccao["marcador_publico"] == marcador
+    assert exige_resultados_detalhe(wb)
