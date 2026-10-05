@@ -171,6 +171,13 @@ def _alinhar(rng, h=XL_LEFT, v=XL_VCENTER, quebra=False, recuo=0) -> None:
     rng.IndentLevel = recuo
 
 
+def _formato(rng, local: str, invariante: str) -> None:
+    try:
+        rng.NumberFormatLocal = local
+    except Exception:
+        rng.NumberFormat = invariante
+
+
 def _bordas(rng, rgb: str) -> None:
     for indice in XL_EDGES:
         b = rng.Borders(indice)
@@ -253,18 +260,29 @@ def frente_consumidos(wb) -> None:
     # Fotografia das formulas do bloco: nada pode mudar alem de estilo/texto.
     antes = {c.Address: c.Formula for c in ws.Range("X1:AG6").Cells}
 
-    largura = sum(ws.Columns(c).ColumnWidth for c in
-                  ("X", "Y", "Z", "AA", "AB", "AC", "AD", "AE", "AF", "AG"))
-
     # Cabecalhos (linha 1): identidade propria; Z1/AA1 em ambar de entrada.
+    # Os rotulos tecnicos nao tem espacos: quebrar a linha os partiria no
+    # meio da palavra. Sem quebra, a coluna ganha a largura do rotulo.
     cab = ws.Range("X1:AG1")
     _preencher(cab, COR_BLOCO_CAB)
     _fonte(cab, tamanho=10, negrito=True, cor=COR_BLOCO_TEXTO)
-    _alinhar(cab, h=XL_CENTER, v=XL_VCENTER, quebra=True)
+    _alinhar(cab, h=XL_CENTER, v=XL_VCENTER, quebra=False)
     for col in COLUNAS_ENTRADA:
         _preencher(ws.Range(f"{col}1"), COR_ENTRADA_CAB)
-    if ws.Rows(1).RowHeight < 30:
-        ws.Rows(1).RowHeight = 30
+    for celula in cab.Cells:
+        minima = round(len(str(celula.Value or "")) * 1.05 + 3, 1)
+        if celula.EntireColumn.ColumnWidth < minima:
+            celula.EntireColumn.ColumnWidth = minima
+
+    # Formatos de exibicao (o template trazia "#.##000", artefato de
+    # traducao pt-BR que mostrava 1 como "0.000.001"): moeda e fator.
+    # Excel pt-BR traduz mal o NumberFormat invariante: grava-se o LOCAL.
+    for col in ("Y", "AA", "AB", "AC", "AE", "AF"):
+        _formato(ws.Range(f"{col}2:{col}6"), "#.##0,00", "#,##0.00")
+    _formato(ws.Range("AD2:AD6"), "0,000000", "0.000000")
+
+    largura = sum(ws.Columns(c).ColumnWidth for c in
+                  ("X", "Y", "Z", "AA", "AB", "AC", "AD", "AE", "AF", "AG"))
 
     # Dados C0..C4 (linhas 2:6).
     for col in COLUNAS_AUTOMATICAS:
