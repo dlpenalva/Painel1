@@ -54,6 +54,8 @@ CELULA_AVISO = "A8"
 FAIXA_AVISO = "A8:F8"
 CELULA_NOTA_FATOR = "A17"
 NOTA_FATOR = "Este quadro mostra apenas os ciclos computados nesta apuração."
+COLUNAS_DATAS_PEDIDO = ("U", "V")
+LARGURA_DATAS_PEDIDO = 12.0
 
 
 def formula_aviso_historico() -> str:
@@ -237,6 +239,12 @@ def frente_parametros(wb) -> None:
     regra = rng.FormatConditions.Add(XL_EXPRESSION, None, _local(rng, "=LEN($A$8)>0"))
     regra.StopIfTrue = False
     regra.Interior.Color = _bgr("FFFFC7CE")
+
+    # U (DATA_PEDIDO) e V (PROXIMA_DATA_REAJUSTE) recebem datas dd/mm/aaaa do
+    # gerador; com a largura herdada (8,54) o Excel exibia "#######".
+    for col in COLUNAS_DATAS_PEDIDO:
+        if ws.Columns(col).ColumnWidth < LARGURA_DATAS_PEDIDO:
+            ws.Columns(col).ColumnWidth = LARGURA_DATAS_PEDIDO
 
     if ws.Range(CELULA_NOTA_FATOR).Value not in (None, "", NOTA_FATOR):
         raise RuntimeError(f"parametros!{CELULA_NOTA_FATOR} ocupada")

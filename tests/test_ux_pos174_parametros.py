@@ -191,3 +191,10 @@ def test_f3_aviso_avaliado_no_excel(tmp_path):
         esperados.append(esperado)
     assert _avaliar_aviso(entradas) == esperados
 
+
+
+def test_f3_datas_do_pedido_cabem_sem_cerquilhas(template):
+    """U (DATA_PEDIDO) e V (PROXIMA_DATA_REAJUSTE) recebem dd/mm/aaaa."""
+    ws = template["parametros"]
+    for col in ux.COLUNAS_DATAS_PEDIDO:
+        assert ws.column_dimensions[col].width >= ux.LARGURA_DATAS_PEDIDO - 0.7
