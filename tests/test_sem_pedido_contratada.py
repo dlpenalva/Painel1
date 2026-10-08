@@ -221,37 +221,34 @@ def test_paginas_desviam_do_classificador_antes_de_chamar(pagina):
 # 4-8  calculo simples
 # ---------------------------------------------------------------------------
 
-def test_simples_sem_pedido_desabilita_a_data_e_nao_quebra():
+def test_simples_nao_exibe_o_checkbox_e_mantem_a_data_habilitada():
+    """Pagina de um unico ciclo: o controle "sem pedido" nao se aplica."""
     at = _abrir_pagina(PAGINA_SIMPLES)
-    assert at.checkbox(key="sem_pedido_contratada_simples").value is False
-    assert at.date_input[1].disabled is False
+    assert not any("Não houve pedido" in str(c.label) for c in at.checkbox)
+    assert [c for c in at.checkbox if c.key == "sem_pedido_contratada_simples"] == []
+    campo = next(c for c in at.date_input if str(c.label) == "Data do Pedido:")
+    assert campo.disabled is False
 
-    at.checkbox(key="sem_pedido_contratada_simples").set_value(True).run()
+
+def test_simples_estado_residual_true_e_descartado():
+    """Sessao antiga com o checkbox marcado nao contamina a analise."""
+    at = _abrir_pagina(PAGINA_SIMPLES)
+    at.session_state["sem_pedido_contratada_simples"] = True
+    at.run()
     assert not at.exception
-    assert at.date_input[1].disabled is True
 
+    assert not any("Não houve pedido" in str(c.label) for c in at.checkbox)
+    assert next(c for c in at.date_input if str(c.label) == "Data do Pedido:").disabled is False
+    assert "sem_pedido_contratada_simples" not in at.session_state
 
-def test_simples_sem_pedido_fica_precluso_sem_efeitos_e_sem_data():
-    at = _abrir_pagina(PAGINA_SIMPLES)
-    at.checkbox(key="sem_pedido_contratada_simples").set_value(True).run()
     at.button[0].click().run()
     assert not at.exception
-
     relatorio = _relatorio(at)
-    assert "Resultado: " + SITUACAO_SEM_PEDIDO + "." in relatorio
-    assert "Efeitos financeiros: não aplicáveis." in relatorio
-    # nao afirma pedido inexistente e nao exibe data alguma de pedido
-    assert "Não houve pedido da contratada neste ciclo." in relatorio
-    assert "Pedido realizado em" not in relatorio
-    assert "09/04/2024" not in relatorio
-
-
-def test_simples_sem_pedido_nao_oferece_acordo_negocial():
-    """Nao ha pedido precluso a admitir: o expander de acordo nao aparece."""
-    at = _abrir_pagina(PAGINA_SIMPLES)
-    at.checkbox(key="sem_pedido_contratada_simples").set_value(True).run()
-    at.button[0].click().run()
-    assert not _tem_acordo_negocial(at)
+    assert MARCADOR_SEM_PEDIDO not in relatorio
+    assert SITUACAO_SEM_PEDIDO not in relatorio
+    assert "Resultado: " + PRECLUSO not in relatorio
+    assert "Pedido realizado em 09/04/2024." in relatorio
+    assert "Início dos efeitos financeiros:" in relatorio
 
 
 def test_simples_com_pedido_precluso_continua_oferecendo_acordo_negocial():
@@ -265,23 +262,6 @@ def test_simples_com_pedido_precluso_continua_oferecendo_acordo_negocial():
     assert "Pedido realizado em 30/06/2025." in relatorio
     assert "Resultado: " + PRECLUSO + "." in relatorio
     assert _tem_acordo_negocial(at)
-
-
-def test_simples_desmarcar_restaura_o_fluxo_normal():
-    at = _abrir_pagina(PAGINA_SIMPLES)
-    at.checkbox(key="sem_pedido_contratada_simples").set_value(True).run()
-    at.button[0].click().run()
-    assert SITUACAO_SEM_PEDIDO in _relatorio(at)
-
-    at.checkbox(key="sem_pedido_contratada_simples").set_value(False).run()
-    assert at.date_input[1].disabled is False
-    at.button[0].click().run()
-    assert not at.exception
-
-    relatorio = _relatorio(at)
-    assert MARCADOR_SEM_PEDIDO not in relatorio
-    assert "Pedido realizado em 09/04/2024." in relatorio
-    assert "Início dos efeitos financeiros:" in relatorio
 
 
 # ---------------------------------------------------------------------------

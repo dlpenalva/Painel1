@@ -1695,25 +1695,16 @@ default_dt_base = datetime(2023, 8, 2)
 col1, col2 = st.columns(2)
 with col1:
     dt_base = st.date_input(f"Data-base/âncora do {ciclo_label}:", value=default_dt_base, format="DD/MM/YYYY")
-    # Ciclo sem pedido: o campo de data e desabilitado e a data efetiva usada
-    # no processamento passa a ser None. A leitura do estado vem do
-    # session_state para que o widget de data ja renderize desabilitado.
-    sem_pedido = bool(st.session_state.get("sem_pedido_contratada_simples", False))
+    # Pagina de UM unico ciclo: o controle "Nao houve pedido da contratada"
+    # nao se aplica e nao e exibido (mesma regra do multiciclo com um ciclo).
+    # Estado residual de sessao anterior e descartado; sem_pedido e sempre
+    # False e a data do pedido governa o processamento normalmente.
+    st.session_state.pop("sem_pedido_contratada_simples", None)
+    sem_pedido = False
     dt_solic = st.date_input(
         "Data do Pedido:",
         value=datetime(2024, 4, 9),
         format="DD/MM/YYYY",
-        disabled=sem_pedido,
-    )
-    sem_pedido = st.checkbox(
-        "Não houve pedido da contratada neste ciclo",
-        value=sem_pedido,
-        key="sem_pedido_contratada_simples",
-        help=(
-            "Marque quando a CONTRATADA nao apresentou pedido para este ciclo. "
-            "Nenhuma data e registrada: o ciclo fica precluso, sem efeitos "
-            "financeiros, e os documentos deixam de afirmar pedido inexistente."
-        ),
     )
     # Data EFETIVA do processamento. Marcado o checkbox, a data eventualmente
     # deixada no widget nao governa nenhum calculo.
