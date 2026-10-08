@@ -14,7 +14,11 @@ from pathlib import Path
 
 import pytest
 
-from _ciclo_em_execucao import _formula_vu, ciclo_em_execucao_por_data_corte
+from _ciclo_em_execucao import (
+    _formula_vu,
+    _periodo_por_ciclo,
+    ciclo_em_execucao_por_data_corte,
+)
 from _motor_posicao_contratual import normalizar_tipo_movimento
 from tests._fabrica_coleta import bytes_coleta_oficial, workbook_coleta_oficial
 from tools.aplicar_coleta_114_aditivos_ciclo_execucao import (
@@ -118,17 +122,33 @@ def test_tipos_aceitos_pelo_motor(tipo, esperado):
 
 
 # --- ciclo em execucao sem cache (espelho Python da formula de B2) ---------
+# Cronologia FIXA da execucao (ancora C0 = 01/03/2022): C1 03/2023-02/2024,
+# C2 03/2024-02/2025, C3 03/2025-02/2026, C4 03/2026-02/2027. As janelas de
+# reajuste (C2 a partir de 06/2024) NAO enquadram a execucao.
 
 @pytest.mark.parametrize("corte, esperado", [
     (datetime(2026, 10, 8), "C4"),   # cenario focal
+    (datetime(2024, 4, 15), "C2"),   # intervalo das janelas de reajuste
     (datetime(2024, 2, 29), "C1"),   # corte padrao = fim do ciclo analisado
-    (datetime(2024, 4, 15), "C1"),   # intervalo entre C1 e C2: segue C1
+    (datetime(2024, 3, 1), "C2"),
     (datetime(2025, 9, 30), "C3"),
+    (datetime(2027, 2, 28), "C4"),   # ultimo dia da cronologia suportada
+    (datetime(2027, 3, 1), ""),      # depois de C4: nunca C4 indefinidamente
+    (datetime(2022, 2, 28), ""),     # antes de C0
     (None, ""),
 ])
 def test_ciclo_em_execucao_por_data_corte(wb_gerado, corte, esperado):
     wb_gerado["CONTROLE"]["B3"].value = corte
     assert ciclo_em_execucao_por_data_corte(wb_gerado) == esperado
+
+
+def test_inicio_e_fim_do_ciclo_em_execucao_seguem_a_cronologia(wb_gerado):
+    ws = wb_gerado["CICLO_EM_EXECUCAO"]
+    assert "EDATE(" in ws["F3"].value
+    assert "parametros!$B$2:$B$6" not in ws["F3"].value  # nao e a janela C:D
+    assert ws["H3"].value == '=IF(ISNUMBER($F$3),EDATE($F$3,12)-1,"")'
+    assert _periodo_por_ciclo(wb_gerado, "C2") == (date(2024, 3, 1), date(2025, 2, 28))
+    assert _periodo_por_ciclo(wb_gerado, "C4") == (date(2026, 3, 1), date(2027, 2, 28))
 
 
 def test_janelas_do_cenario_nao_mudam(wb_gerado):
@@ -156,7 +176,11 @@ def test_workflow_icti_instala_dependencias_do_projeto():
     os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
     reason="defina RUN_EXCEL_INTEGRATION=1 para executar o Excel COM",
 )
-def test_cenario_focal_no_excel(tmp_path):
+@pytest.mark.parametrize("corte, ciclo, inicio, fim", [
+    (datetime(2026, 10, 8), "C4", date(2026, 3, 1), date(2027, 2, 28)),
+    (datetime(2024, 4, 15), "C2", date(2024, 3, 1), date(2025, 2, 28)),
+])
+def test_cenario_focal_no_excel(tmp_path, corte, ciclo, inicio, fim):
     import pythoncom
     import win32com.client as win32
 
@@ -174,7 +198,7 @@ def test_cenario_focal_no_excel(tmp_path):
     xl.DisplayAlerts = False
     try:
         wb = xl.Workbooks.Open(str(caminho))
-        wb.Worksheets("CONTROLE").Range("B3").Value = datetime(2026, 10, 8)
+        wb.Worksheets("CONTROLE").Range("B3").Value = corte
         rem = wb.Worksheets("itens_Remanesc")
         for linha, (item, base, vu) in enumerate(itens, start=2):
             rem.Range(f"A{linha}").Value = item
@@ -190,13 +214,19 @@ def test_cenario_focal_no_excel(tmp_path):
             adi.Range(f"E{linha}").Value = qtd
             adi.Range(f"H{linha}").Value = "Sim"
         cee = wb.Worksheets("CICLO_EM_EXECUCAO")
-        cee.Range("D5").Value = datetime(2026, 10, 8)
+        cee.Range("D5").Value = corte
         xl.CalculateFull()
 
-        assert wb.Worksheets("CONTROLE").Range("B2").Value == "C4"
+        assert wb.Worksheets("CONTROLE").Range("B2").Value == ciclo
         assert wb.Worksheets("CONTROLE").Range("B12").Value == "C1"
-        assert cee.Range("C3").Value == "C4"
-        assert cee.Range("D5").Validation.Value  # D5 aceita 08/10/2026
+        assert cee.Range("C3").Value == ciclo
+        assert cee.Range("F3").Value.date() == inicio
+        assert cee.Range("H3").Value.date() == fim
+        assert cee.Range("D5").Validation.Value  # D5 aceita a data de corte
+        assert cee.Range("K13").Value != "ERRO: DATA FORA DO CICLO"
+        # Janelas de reajuste intactas (C2 segue iniciando em 06/2024).
+        assert wb.Worksheets("parametros").Range("C4").Value.date() == date(2024, 6, 1)
+        assert wb.Worksheets("parametros").Range("D4").Value.date() == date(2025, 5, 31)
 
         assert adi.Range("I2").Value == pytest.approx(1.0381)
         assert adi.Range("J2").Value == pytest.approx(1038.00)
@@ -205,6 +235,9 @@ def test_cenario_focal_no_excel(tmp_path):
             assert adi.Range(f"M{linha}").Value == "OK"
         assert adi.Range("J5").Value == pytest.approx(round(1851 * 7.25, 2))
 
+        if ciclo != "C4":
+            wb.Close(False)
+            return
         pos = wb.Worksheets("posicao_contratual")
         assert pos.Range("C5").Value == 0  # QTD_BASE_ORIGINAL de N003
         assert pos.Range("U5").Value == 1851  # nunca 3.702

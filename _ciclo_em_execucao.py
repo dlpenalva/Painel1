@@ -401,6 +401,23 @@ def identificar_layout_ciclo_em_execucao(wb) -> dict[str, Any]:
     return {"tipo": "legado", "versao": None}
 
 
+# Cronologia FIXA da execucao em formula — espelho de
+# _motor_posicao_contratual.calendario_execucao_por_ciclo: ancora = inicio
+# (dia 1) do ciclo mais antigo com DATA_INICIO real em parametros!C2:C6 e
+# blocos contiguos de 12 meses. As janelas de reajuste (parametros!C:D) podem
+# ter intervalo intencional e NAO enquadram a execucao.
+_INDICE_ANCORA = '(MATCH(TRUE,INDEX(ISNUMBER(parametros!$C$2:$C$6),0),0)-1)'
+_ANCORA_EXECUCAO = (
+    f'DATE(YEAR(INDEX(parametros!$C$2:$C$6,{_INDICE_ANCORA}+1)),'
+    f'MONTH(INDEX(parametros!$C$2:$C$6,{_INDICE_ANCORA}+1)),1)'
+)
+
+
+def formula_inicio_execucao(k: str) -> str:
+    """Inicio do ciclo ``k`` (0..5, expressao Excel) na cronologia da execucao."""
+    return f'EDATE({_ANCORA_EXECUCAO},12*(({k})-{_INDICE_ANCORA}))'
+
+
 def _formula_abertura(linha: int, origem: int) -> str:
     por_ciclo = {
         "C0": f"posicao_contratual!$F{origem}",
@@ -554,14 +571,12 @@ def _criar_aba_itemizada(wb):
     ws.merge_cells("D3:E3")
     ws["D3"] = "DATA DE INÍCIO DO CICLO (AUTO)"
     ws.merge_cells("F3:G3")
-    ws["F3"] = (
-        '=IFERROR(INDEX(parametros!$C$2:$C$6,'
-        'MATCH($C$3,parametros!$B$2:$B$6,0)),"")'
-    )
-    ws["H3"] = (
-        '=IFERROR(INDEX(parametros!$D$2:$D$6,'
-        'MATCH($C$3,parametros!$B$2:$B$6,0)),"")'
-    )
+    # Coleta 11.4: inicio/fim do ciclo em execucao na CRONOLOGIA DA EXECUCAO
+    # (mesma regra de CONTROLE!B2), nunca a janela de reajuste deslocada: a
+    # data classificada em B2 cabe sempre em F3:H3.
+    ciclo_c3 = '(MATCH($C$3,{"C0","C1","C2","C3","C4"},0)-1)'
+    ws["F3"] = f'=IFERROR({formula_inicio_execucao(ciclo_c3)},"")'
+    ws["H3"] = '=IF(ISNUMBER($F$3),EDATE($F$3,12)-1,"")'
     ws["H3"].number_format = FORMATO_DATA
     for coord in ("A3", "D3"):
         ws[coord].fill = PatternFill("solid", fgColor=cinza)
@@ -865,37 +880,48 @@ def garantir_aba_ciclo_em_execucao(wb, *, limpar_entradas: bool = False) -> dict
     }
 
 
+def _calendario_execucao(wb) -> dict[str, dict[str, date]]:
+    """Cronologia fixa da execucao a partir das janelas gravadas em parametros."""
+    if "parametros" not in wb.sheetnames:
+        return {}
+    from _motor_posicao_contratual import calendario_execucao_por_ciclo
+
+    ws = wb["parametros"]
+    return calendario_execucao_por_ciclo([
+        {
+            "ciclo": str(ws.cell(linha, 2).value or "").strip().upper(),
+            "data_inicio": _data(ws.cell(linha, 3).value),
+            "data_fim": _data(ws.cell(linha, 4).value),
+        }
+        for linha in range(2, 7)
+    ])
+
+
 def ciclo_em_execucao_por_data_corte(wb) -> str:
     """Espelho Python da formula de CONTROLE!B2 (Coleta 11.4).
 
-    Ciclo em execucao = ultimo ciclo de parametros!B2:C6 cujo inicio e
-    anterior ou igual a data de corte (CONTROLE!B3). So localiza a data nas
-    janelas ja gravadas; nada e recalculado. Usado quando o arquivo nao tem o
-    cache da formula (gerado e nunca aberto no Excel). Sem data: "".
+    Ciclo em execucao = ciclo da CRONOLOGIA FIXA DA EXECUCAO
+    (calendario_execucao_por_ciclo) que contem a data de corte (CONTROLE!B3).
+    As janelas de reajuste nao enquadram a execucao. Usado quando o arquivo
+    nao tem o cache da formula. Sem data ou fora de C0..C4: "".
     """
-    if "CONTROLE" not in wb.sheetnames or "parametros" not in wb.sheetnames:
+    if "CONTROLE" not in wb.sheetnames:
         return ""
     corte = _data(wb["CONTROLE"]["B3"].value)
     if corte is None:
         return ""
-    ws = wb["parametros"]
-    vigente = ""
-    for linha in range(2, 7):
-        nome = str(ws.cell(linha, 2).value or "").strip().upper()
-        inicio = _data(ws.cell(linha, 3).value)
-        if re.fullmatch(r"C[0-4]", nome) and inicio is not None and inicio <= corte:
-            vigente = nome
-    return vigente
+    for nome, janela in _calendario_execucao(wb).items():
+        if janela["data_inicio"] <= corte <= janela["data_fim"]:
+            return nome
+    return ""
 
 
 def _periodo_por_ciclo(wb, ciclo: str) -> tuple[date | None, date | None]:
-    if "parametros" not in wb.sheetnames:
+    """Inicio/fim do ciclo na cronologia da execucao (espelho de F3/H3)."""
+    janela = _calendario_execucao(wb).get(ciclo)
+    if not janela:
         return None, None
-    ws = wb["parametros"]
-    for linha in range(2, 7):
-        if str(ws.cell(linha, 2).value or "").strip().upper() == ciclo:
-            return _data(ws.cell(linha, 3).value), _data(ws.cell(linha, 4).value)
-    return None, None
+    return janela["data_inicio"], janela["data_fim"]
 
 
 def validar_posicao_ciclo_lida(
