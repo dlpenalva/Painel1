@@ -6,8 +6,8 @@ endereco existente e alterado; cada frente escreve apenas na sua allowlist e
 confere, antes, que a area de destino esta livre.
 
   parametros  aviso dinamico de percentuais HISTORICOS ausentes em A8:F8
-              (ciclos C1..C(vigente-1) sem E; o vigente vem de CONTROLE!B2,
-              a mesma referencia canonica de CONTROLE!B11) e nota curta em A17
+              (ciclos sem E anteriores a um ciclo computado; Coleta 11.5 —
+              ver `historico_necessario`) e nota curta em A17
               sob a MEMORIA DO FATOR. Textos acentuados ficam em celulas
               constantes de MEMORIA_RESULTADOS!AF41:AG42 (formula ASCII).
   consumidos  identidade visual do bloco opcional itens_Consumidos!X1:AG13:
@@ -58,17 +58,28 @@ COLUNAS_DATAS_PEDIDO = ("U", "V")
 LARGURA_DATAS_PEDIDO = 12.0
 
 
-def formula_aviso_historico() -> str:
-    """Lista C1..C(vigente-1) sem percentual numerico em parametros!E.
+def historico_necessario(linha_e: int) -> str:
+    """Cn (parametros!E{linha_e}) e historico necessario da apuracao atual.
 
-    Historico = ciclos ANTERIORES ao vigente (CONTROLE!B2). C0 nunca e pedido;
-    o proprio vigente e os futuros (C > vigente, que tambem tem datas
-    derivadas e E vazio) nunca entram no aviso. C4 nunca e historico.
+    Somente quando ha ciclo COMPUTADO (A="Sim") depois dele: a cadeia
+    parametros!F precisa do percentual de Cn para chegar ao fator do ultimo
+    ciclo apurado. Coleta 11.5: o limite deixou de ser CONTROLE!B2, que desde
+    a Coleta 11.4 e o ciclo em EXECUCAO pela data de corte (C4 numa analise so
+    de C1 com corte em 2026) e nao o ciclo apurado.
     """
-    vig = "IFERROR(VALUE(MID(TRIM(CONTROLE!$B$2),2,1)),0)"
-    a = f"AND({vig}>1,NOT(ISNUMBER($E$3)))"
-    b = f"AND({vig}>2,NOT(ISNUMBER($E$4)))"
-    c = f"AND({vig}>3,NOT(ISNUMBER($E$5)))"
+    return f'COUNTIF($A${linha_e + 1}:$A$6,"Sim")>0'
+
+
+def formula_aviso_historico() -> str:
+    """Lista C1..C3 sem percentual numerico em parametros!E que sejam
+    historico necessario (ver `historico_necessario`).
+
+    C0 nunca e pedido; ciclos posteriores ao ultimo apurado nunca entram no
+    aviso, ainda que a data de corte ja os alcance. C4 nunca e historico.
+    """
+    a = f"AND({historico_necessario(3)},NOT(ISNUMBER($E$3)))"
+    b = f"AND({historico_necessario(4)},NOT(ISNUMBER($E$4)))"
+    c = f"AND({historico_necessario(5)},NOT(ISNUMBER($E$5)))"
     nomes = (
         f'IF({a},"C1","")'
         f'&IF({b},IF({a},IF({c},", "," e "),"")&"C2","")'

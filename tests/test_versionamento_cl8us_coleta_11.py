@@ -78,9 +78,11 @@ def test_versoes_publicas_e_politica_preparada() -> None:
     # data de corte e "Acrescimo - novo item" (formulas do XLS).
     # Cl8us 11.9: checkbox "Nao houve pedido" oculto em analise de um ciclo (so app).
     # Cl8us 12.0: pagina de ciclo unico sem o checkbox "Nao houve pedido" (so app).
-    assert CL8US_VERSION == "12.0"
-    assert COLETA_VERSION == "11.4"
-    assert COLETA_VERSOES_ACEITAS == ("11.0", "11.1", "11.2", "11.3", "11.4")
+    # Cl8us 12.1 / Coleta 11.5: aviso de historico necessario + orientacao de
+    # itens novos por aditivo (XLS).
+    assert CL8US_VERSION == "12.1"
+    assert COLETA_VERSION == "11.5"
+    assert COLETA_VERSOES_ACEITAS == ("11.0", "11.1", "11.2", "11.3", "11.4", "11.5")
     assert CL8US_VERSION != COLETA_VERSION
     assert COLETA_COMPATIBILIDADE_ANTERIORES == 2
     assert re.fullmatch(r"\d{2}\.\d", CL8US_VERSION)
@@ -97,8 +99,8 @@ def test_sidebar_exibe_as_duas_versoes_da_fonte_unica(monkeypatch) -> None:
 
     assert legendas == [
         "Última atualização publicada em 30/09/2026 12:00",
-        "Cl8us 12.0",
-        "Modelo de Coleta 11.4",
+        "Cl8us 12.1",
+        "Modelo de Coleta 11.5",
     ]
 
 

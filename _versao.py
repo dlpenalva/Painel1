@@ -28,6 +28,10 @@ from datetime import datetime
 from pathlib import Path
 
 
+# 12.1: parametros!A8 so pede percentual de ciclo ANTERIOR a um ciclo
+# computado (nao mais ate o ciclo em execucao) e mensagens de entrada orientam
+# itens novos por aditivo em itens_Remanesc/aditivos — muda o XLS entregue:
+# COLETA_VERSION 11.5.
 # 12.0: pagina "Analisar um unico ciclo" deixa de exibir "Nao houve pedido da
 # contratada" (estado residual descartado) — so app. Segue 11.9 no formato XX.X.
 # 11.9: Reajustes Multiplos oculta "Nao houve pedido da contratada" quando a
@@ -50,8 +54,8 @@ from pathlib import Path
 # (Financeiro, PCs e Itens) — mudanca estrutural do XLS: COLETA_VERSION 11.1.
 # 11.3: modelos em branco do Despacho Saneador e do Termo de Apostila com a mesma
 # estrutura dos documentos gerados. 11.2: memoria de calculo da garantia em XLSX.
-CL8US_VERSION = "12.0"
-COLETA_VERSION = "11.4"
+CL8US_VERSION = "12.1"
+COLETA_VERSION = "11.5"
 # Modelos de Coleta da familia 11.x aceitos SEM adaptacao: o 11.1 so acrescentou
 # um quadro informativo na RESULTADOS/MEMORIA_RESULTADOS (formulas); a Coleta 11.0
 # nao o possui e continua valida. A 11.2 so separa a apresentacao (RESULTADOS
@@ -61,8 +65,9 @@ COLETA_VERSION = "11.4"
 # nao ter a aba executiva nova. A 11.3 so muda apresentacao (aviso, destaque,
 # X:AG, RESULTADOS_DETALHE oculta): mesma estrutura de leitura da 11.2. A 11.4
 # so muda formulas (CONTROLE!B2, aditivos!I/J/M) e o dropdown de aditivos!D:
-# mesmas abas e coordenadas de leitura.
-COLETA_VERSOES_ACEITAS = ("11.0", "11.1", "11.2", "11.3", "11.4")
+# mesmas abas e coordenadas de leitura. A 11.5 so muda a formula do aviso
+# parametros!A8, a regra de destaque de parametros!E3:E6 e mensagens de entrada.
+COLETA_VERSOES_ACEITAS = ("11.0", "11.1", "11.2", "11.3", "11.4", "11.5")
 # Marcadores publicos ANTERIORES a camada tecnica RESULTADOS_DETALHE: so neles
 # a RESULTADOS ainda e a aba tecnica. Qualquer outro marcador (11.2 ou
 # posterior) exige RESULTADOS_DETALHE (fail-closed). Arquivos PRE_11 nao tem
@@ -74,7 +79,7 @@ COLETA_VERSOES_SEM_RESULTADOS_DETALHE = ("11.0", "11.1")
 # em _formalizacao_compatibilidade, por evidencia tecnica e nunca por versao.
 COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
-ATUALIZADO_EM_FALLBACK = "08/10/2026 17:45"
+ATUALIZADO_EM_FALLBACK = "08/10/2026 21:30"
 
 
 def _data_ultimo_commit() -> str | None:

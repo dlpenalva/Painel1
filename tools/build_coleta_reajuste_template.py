@@ -235,10 +235,11 @@ def _reset_parametros(wb) -> None:
     dv.add("A2:A6")
     # F/G vazios em ciclo histórico anterior ao ciclo analisado exigem ação do fiscal.
     # A regra é reativa: ao informar o percentual, o destaque desaparece.
+    # Coleta 11.5: só é histórico o ciclo com ciclo computado ("Sim") depois dele.
     ws.conditional_formatting.add(
         "E3:E6",
         FormulaRule(
-            formula=['AND($A3="Nao",$C3<>"",$E3="")'],
+            formula=['AND($A3="Nao",$C3<>"",$E3="",COUNTIF($A4:$A$7,"Sim")>0)'],
             fill=HISTORICAL_REQUIRED,
             font=Font(color="FF9C0006", bold=True),
         ),
