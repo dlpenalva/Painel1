@@ -32,7 +32,9 @@ jobs:
           python-version: "3.11"
 
       - name: Instalar dependencias do atualizador
-        run: python -m pip install --disable-pip-version-check requests==2.32.5 pytest==8.4.1
+        # Os testes carregam _indice_utils.py (python-dateutil): instalar as
+        # dependencias fixadas do projeto evita falha antes da consulta.
+        run: python -m pip install --disable-pip-version-check -r requirements.txt pytest==8.4.1
 
       - name: Testar o atualizador
         run: python -m pytest -q tests/test_atualizar_icti_ipeadata.py

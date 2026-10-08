@@ -31,7 +31,7 @@ FORMULAS_POR_ABA = {
     # Etapa 26F: calculos antigos preservados em MEMORIA_RESULTADOS e nova
     # RESULTADOS executiva com formulas de apresentacao.
     "comparativo_VTA": 1407,
-    "CONTROLE": 6,
+    "CONTROLE": 7,  # 11.4: B2 (ciclo em execucao) derivado de B3
     # AJUSTES-XLS-UX pos-174: +1 (A8, aviso apresentacional de percentuais
     # historicos ausentes; nenhuma formula de E/F/memoria do fator alterada).
     "parametros": 33,
@@ -359,7 +359,7 @@ def test_aditivos_dropdown_tipo_alteracao_sem_decrescimo():
     dv = dvs_d[0]
     assert str(dv.sqref) == "D2:D200"
     itens = [t.strip() for t in dv.formula1.strip('"').split(",")]
-    assert itens == ["Acrescimo", "Supressao"]
+    assert itens == ["Acrescimo", "Acréscimo - novo item", "Supressao"]
     assert not any("Decr" in i for i in itens)
 
 

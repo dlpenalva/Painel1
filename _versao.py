@@ -28,6 +28,10 @@ from datetime import datetime
 from pathlib import Path
 
 
+# 11.8: aditivos com fator vigente carregado (item existente x novo item),
+# CONTROLE!B2 derivado da data de corte (ciclo em execucao), novos itens no
+# CICLO_EM_EXECUCAO e opcao "Acrescimo - novo item" — muda o XLS entregue:
+# COLETA_VERSION 11.4.
 # 11.7: quatro ajustes de UX da Coleta (PR #175): aviso de percentuais
 # historicos, fronteira IST explicada, bloco opcional X:AG, RESULTADOS_DETALHE
 # oculta — muda o XLS entregue: COLETA_VERSION 11.3. O bump foi esquecido no
@@ -42,8 +46,8 @@ from pathlib import Path
 # (Financeiro, PCs e Itens) — mudanca estrutural do XLS: COLETA_VERSION 11.1.
 # 11.3: modelos em branco do Despacho Saneador e do Termo de Apostila com a mesma
 # estrutura dos documentos gerados. 11.2: memoria de calculo da garantia em XLSX.
-CL8US_VERSION = "11.7"
-COLETA_VERSION = "11.3"
+CL8US_VERSION = "11.8"
+COLETA_VERSION = "11.4"
 # Modelos de Coleta da familia 11.x aceitos SEM adaptacao: o 11.1 so acrescentou
 # um quadro informativo na RESULTADOS/MEMORIA_RESULTADOS (formulas); a Coleta 11.0
 # nao o possui e continua valida. A 11.2 so separa a apresentacao (RESULTADOS
@@ -51,8 +55,10 @@ COLETA_VERSION = "11.3"
 # leitores resolvem a aba tecnica por `_resultados_abas`. Nao remover versoes
 # desta lista sem decisao expressa — um arquivo 11.0/11.1 nunca e bloqueado por
 # nao ter a aba executiva nova. A 11.3 so muda apresentacao (aviso, destaque,
-# X:AG, RESULTADOS_DETALHE oculta): mesma estrutura de leitura da 11.2.
-COLETA_VERSOES_ACEITAS = ("11.0", "11.1", "11.2", "11.3")
+# X:AG, RESULTADOS_DETALHE oculta): mesma estrutura de leitura da 11.2. A 11.4
+# so muda formulas (CONTROLE!B2, aditivos!I/J/M) e o dropdown de aditivos!D:
+# mesmas abas e coordenadas de leitura.
+COLETA_VERSOES_ACEITAS = ("11.0", "11.1", "11.2", "11.3", "11.4")
 # Marcadores publicos ANTERIORES a camada tecnica RESULTADOS_DETALHE: so neles
 # a RESULTADOS ainda e a aba tecnica. Qualquer outro marcador (11.2 ou
 # posterior) exige RESULTADOS_DETALHE (fail-closed). Arquivos PRE_11 nao tem
@@ -64,7 +70,7 @@ COLETA_VERSOES_SEM_RESULTADOS_DETALHE = ("11.0", "11.1")
 # em _formalizacao_compatibilidade, por evidencia tecnica e nunca por versao.
 COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
-ATUALIZADO_EM_FALLBACK = "05/10/2026 17:05"
+ATUALIZADO_EM_FALLBACK = "08/10/2026 15:00"
 
 
 def _data_ultimo_commit() -> str | None:

@@ -450,7 +450,9 @@ def test_historico_completo_alimenta_h5_e_analise_alimenta_b10():
     assert par["E4"].value == pytest.approx(0.10)
     # Ciclo vigente C2: H5 resolvera para parametros!F4 (1,05 x 1,10)
     # somente porque COUNT(E3:E4) = 2 — logica fail-closed preservada.
-    assert ctl["B2"].value == "C2"
+    from _ciclo_em_execucao import ciclo_em_execucao_por_data_corte
+    assert str(ctl["B2"].value).startswith("=")  # Coleta 11.4: formula de B3
+    assert ciclo_em_execucao_por_data_corte(wb) == "C2"
     assert "parametros!$F$4" in str(wb[_aba_tecnica_resultados(wb)]["H5"].value)
     wb.close()
 

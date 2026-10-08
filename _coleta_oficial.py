@@ -737,7 +737,9 @@ def _garantir_apresentacao_retroativos_e_aditivos(wb) -> None:
 _VALIDACOES_CRITICAS_ADITIVOS: dict[str, tuple[str, str]] = {
     "H2:H200": ("list", '"Sim,Nao"'),
     "K2:K200": ("list", '"Sim,Nao"'),
-    "D2:D200": ("list", '"Acrescimo,Supressao"'),
+    # Coleta 11.4: "Acréscimo - novo item" marca o nascimento contratual do
+    # item; Acrescimo/Supressao seguem como antes (formulas L/M por prefixo).
+    "D2:D200": ("list", '"Acrescimo,Acréscimo - novo item,Supressao"'),
 }
 
 

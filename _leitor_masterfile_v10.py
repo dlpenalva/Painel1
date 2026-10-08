@@ -4051,6 +4051,11 @@ def ler_masterfile_v10(
     c = wb["CONTROLE"]
     modo_bruto = str(_achar_valor(c, "modo de leitura") or "").strip()
     ciclo      = _achar_valor(c, "ciclo vigente (em execucao)")
+    if not str(ciclo or "").strip():
+        # Coleta 11.4: B2 e formula; sem cache do Excel, aplica a mesma
+        # localizacao da data de corte nas janelas de parametros.
+        from _ciclo_em_execucao import ciclo_em_execucao_por_data_corte
+        ciclo = ciclo_em_execucao_por_data_corte(wb)
     # Rotulo padronizado ("DATA DE CORTE DA APURACAO") e o legado
     # ("Data de corte (unica p/ contrato)") apontam para a MESMA celula
     # (CONTROLE!B3): a leitura por prefixo aceita os dois sem conversao.
