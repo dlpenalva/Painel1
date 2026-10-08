@@ -1998,6 +1998,13 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
         # que a marcacao de um ciclo NUNCA contamine os demais. O estado e
         # lido antes para que o campo de data ja renderize desabilitado.
         chave_sem_pedido = f"sem_pedido_{chave_pedido}"
+        # Analise de UM unico ciclo (qtd_ciclos, a mesma contagem do loop,
+        # qualquer que seja o ciclo): o controle nao se aplica e nao e
+        # exibido. Estado residual de uma analise multiciclo anterior e
+        # descartado para nao desabilitar a data nem gerar ciclo sem pedido.
+        analise_ciclo_unico = int(qtd_ciclos) == 1
+        if analise_ciclo_unico:
+            st.session_state.pop(chave_sem_pedido, None)
         sem_pedido = bool(st.session_state.get(chave_sem_pedido, False))
         dt_ped = st.date_input(
             f"Data do pedido da Contratada — C{i}",
@@ -2006,16 +2013,17 @@ for posicao_ciclo in range(1, int(qtd_ciclos) + 1):
             format="DD/MM/YYYY",
             disabled=sem_pedido,
         )
-        sem_pedido = st.checkbox(
-            f"Não houve pedido da contratada neste ciclo — C{i}",
-            value=sem_pedido,
-            key=chave_sem_pedido,
-            help=(
-                "Marque quando a CONTRATADA nao apresentou pedido para este "
-                "ciclo. Nenhuma data e registrada: o ciclo fica precluso, sem "
-                "efeitos financeiros."
-            ),
-        )
+        if not analise_ciclo_unico:
+            sem_pedido = st.checkbox(
+                f"Não houve pedido da contratada neste ciclo — C{i}",
+                value=sem_pedido,
+                key=chave_sem_pedido,
+                help=(
+                    "Marque quando a CONTRATADA nao apresentou pedido para este "
+                    "ciclo. Nenhuma data e registrada: o ciclo fica precluso, sem "
+                    "efeitos financeiros."
+                ),
+            )
         # Data EFETIVA do ciclo. Marcado o checkbox, a data eventualmente
         # deixada no widget nao governa nenhum calculo deste ciclo.
         if sem_pedido:

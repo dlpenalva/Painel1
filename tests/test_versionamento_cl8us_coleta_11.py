@@ -76,7 +76,8 @@ def test_versoes_publicas_e_politica_preparada() -> None:
     # da Coleta). Bumps aplicados pelo hotfix de versionamento obrigatorio.
     # Cl8us 11.8 / Coleta 11.4: fator dos aditivos, ciclo em execucao pela
     # data de corte e "Acrescimo - novo item" (formulas do XLS).
-    assert CL8US_VERSION == "11.8"
+    # Cl8us 11.9: checkbox "Nao houve pedido" oculto em analise de um ciclo (so app).
+    assert CL8US_VERSION == "11.9"
     assert COLETA_VERSION == "11.4"
     assert COLETA_VERSOES_ACEITAS == ("11.0", "11.1", "11.2", "11.3", "11.4")
     assert CL8US_VERSION != COLETA_VERSION
@@ -95,7 +96,7 @@ def test_sidebar_exibe_as_duas_versoes_da_fonte_unica(monkeypatch) -> None:
 
     assert legendas == [
         "Última atualização publicada em 30/09/2026 12:00",
-        "Cl8us 11.8",
+        "Cl8us 11.9",
         "Modelo de Coleta 11.4",
     ]
 
