@@ -442,7 +442,23 @@ def _formula_vu(linha: int, origem: int) -> str:
     escolha = "\"\""
     for ciclo, ref in reversed(tuple(por_ciclo.items())):
         escolha = f'IF($C$3="{ciclo}",{ref},{escolha})'
-    return f'=IF(A{linha}="","",{escolha})'
+    # Coleta 11.4: o ciclo em execucao pode ser posterior ao ultimo ciclo com
+    # fator (ex.: so C1 apurado, corte em C4) e o historico_VU fica vazio.
+    # Mesmo encadeamento do historico_VU com o ultimo fator conhecido de
+    # parametros!F (o carregamento da MEMORIA DO FATOR APLICAVEL), a partir do
+    # nascimento do item (posicao_contratual!Y); nunca reajusta antes dele.
+    n = '(MATCH($C$3,{"C0","C1","C2","C3","C4"},0)-1)'
+    y = f'posicao_contratual!$Y{origem}'
+    vu = f'itens_Remanesc!$C{origem}'
+
+    def fator(k: str) -> str:
+        return f'INDEX(parametros!$F$2:$F$6,MIN({k}+1,COUNT(parametros!$F$2:$F$6)))'
+
+    carregado = (
+        f'IFERROR(IF(OR(NOT(ISNUMBER({vu})),NOT(ISNUMBER({y})),{y}>{n}),"",'
+        f'IF({y}={n},{vu},ROUND({vu}*{fator(n)}/{fator(y)},2))),"")'
+    )
+    return f'=IF(A{linha}="","",IF(ISNUMBER({escolha}),{escolha},{carregado}))'
 
 
 def _formula_conferencia(linha: int, *, contar: bool) -> str:
@@ -849,6 +865,29 @@ def garantir_aba_ciclo_em_execucao(wb, *, limpar_entradas: bool = False) -> dict
     }
 
 
+def ciclo_em_execucao_por_data_corte(wb) -> str:
+    """Espelho Python da formula de CONTROLE!B2 (Coleta 11.4).
+
+    Ciclo em execucao = ultimo ciclo de parametros!B2:C6 cujo inicio e
+    anterior ou igual a data de corte (CONTROLE!B3). So localiza a data nas
+    janelas ja gravadas; nada e recalculado. Usado quando o arquivo nao tem o
+    cache da formula (gerado e nunca aberto no Excel). Sem data: "".
+    """
+    if "CONTROLE" not in wb.sheetnames or "parametros" not in wb.sheetnames:
+        return ""
+    corte = _data(wb["CONTROLE"]["B3"].value)
+    if corte is None:
+        return ""
+    ws = wb["parametros"]
+    vigente = ""
+    for linha in range(2, 7):
+        nome = str(ws.cell(linha, 2).value or "").strip().upper()
+        inicio = _data(ws.cell(linha, 3).value)
+        if re.fullmatch(r"C[0-4]", nome) and inicio is not None and inicio <= corte:
+            vigente = nome
+    return vigente
+
+
 def _periodo_por_ciclo(wb, ciclo: str) -> tuple[date | None, date | None]:
     if "parametros" not in wb.sheetnames:
         return None, None
@@ -1020,6 +1059,8 @@ def ler_ciclo_em_execucao(
     ciclo = str(ws[CELULA_CICLO].value or "").strip().upper()
     if not re.fullmatch(r"C[0-4]", ciclo) and "CONTROLE" in wb.sheetnames:
         ciclo = str(wb["CONTROLE"]["B2"].value or "").strip().upper()
+    if not re.fullmatch(r"C[0-4]", ciclo):
+        ciclo = ciclo_em_execucao_por_data_corte(wb)
     inicio = _data(ws[CELULA_INICIO_CICLO].value)
     fim = _data(ws[CELULA_FIM_CICLO_TECNICA].value)
     if inicio is None or fim is None:

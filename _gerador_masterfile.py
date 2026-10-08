@@ -847,7 +847,11 @@ def gerar_masterfile_preenchido(
     # em CONTROLE!B1 (dropdown); RESULTADOS!B4 e derivado/read-only.
     from _metodo_apuracao import SELECIONE_AQUI
     _escrever_entrada(controle, "B1", SELECIONE_AQUI)
-    _escrever_entrada(controle, "B2", dados_calculadora.get("ciclo_vigente") or "C0")
+    # Coleta 11.4: CONTROLE!B2 (ciclo em execucao) e formula derivada de
+    # CONTROLE!B3 e das janelas de parametros — nao confundir com o ciclo
+    # analisado. So bases anteriores, com B2 de entrada, recebem o valor.
+    if not str(controle["B2"].value or "").startswith("="):
+        _escrever_entrada(controle, "B2", dados_calculadora.get("ciclo_vigente") or "C0")
     _escrever_entrada(controle, "B3", dados_calculadora.get("data_corte"))
     ciclos = {str(c.get("ciclo", "")).upper(): c for c in dados_calculadora.get("ciclos", [])}
 

@@ -74,9 +74,11 @@ def test_versoes_publicas_e_politica_preparada() -> None:
     # (Cl8us 11.5, Modelo de Coleta 11.2); 11.0 e 11.1 seguem aceitas.
     # PR #174 = Cl8us 11.6 (so app); PR #175 = Cl8us 11.7 / Coleta 11.3 (UX
     # da Coleta). Bumps aplicados pelo hotfix de versionamento obrigatorio.
-    assert CL8US_VERSION == "11.7"
-    assert COLETA_VERSION == "11.3"
-    assert COLETA_VERSOES_ACEITAS == ("11.0", "11.1", "11.2", "11.3")
+    # Cl8us 11.8 / Coleta 11.4: fator dos aditivos, ciclo em execucao pela
+    # data de corte e "Acrescimo - novo item" (formulas do XLS).
+    assert CL8US_VERSION == "11.8"
+    assert COLETA_VERSION == "11.4"
+    assert COLETA_VERSOES_ACEITAS == ("11.0", "11.1", "11.2", "11.3", "11.4")
     assert CL8US_VERSION != COLETA_VERSION
     assert COLETA_COMPATIBILIDADE_ANTERIORES == 2
     assert re.fullmatch(r"\d{2}\.\d", CL8US_VERSION)
@@ -93,8 +95,8 @@ def test_sidebar_exibe_as_duas_versoes_da_fonte_unica(monkeypatch) -> None:
 
     assert legendas == [
         "Última atualização publicada em 30/09/2026 12:00",
-        "Cl8us 11.7",
-        "Modelo de Coleta 11.3",
+        "Cl8us 11.8",
+        "Modelo de Coleta 11.4",
     ]
 
 

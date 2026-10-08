@@ -241,7 +241,11 @@ def test_geracao_pos_calculadora_preserva_e_preenche_modelo_oficial() -> None:
     wb = load_workbook(io.BytesIO(payload), data_only=False)
     assert NOME_ARQUIVO_COLETA_OFICIAL == "COLETA_REAJUSTE_OFICIAL.xlsx"
     assert wb.sheetnames == ABAS_COLETA_OFICIAL
-    assert wb["CONTROLE"]["B2"].value == "C1"
+    # Coleta 11.4: B2 (ciclo em execucao) e formula da data de corte; sem
+    # cache, o espelho Python localiza B3 nas janelas de parametros.
+    assert str(wb["CONTROLE"]["B2"].value).startswith("=")
+    from _ciclo_em_execucao import ciclo_em_execucao_por_data_corte
+    assert ciclo_em_execucao_por_data_corte(wb) == "C1"
     assert wb["CONTROLE"]["B7"].value == "IST"
     assert _dia(wb["CONTROLE"]["B8"].value) == date(2023, 1, 1)
     assert wb["parametros"]["B3"].value == "C1"

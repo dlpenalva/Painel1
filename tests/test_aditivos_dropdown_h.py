@@ -1,5 +1,6 @@
 """Regressão cirúrgica das validações e fórmulas de aditivos."""
 
+import html
 import re
 import zipfile
 from io import BytesIO
@@ -194,7 +195,10 @@ def test_i_xml_bruto_do_xlsx_real_persiste_h_e_d():
     xml_aditivos = _xml_da_aba(obter_coleta_oficial_bytes(), "aditivos")
     validacoes = _validacoes_lista_do_xml(xml_aditivos)
     assert validacoes.get("H2:H200 K2:K200") == '"Sim,Nao"'
-    assert validacoes.get("D2:D200") == '"Acrescimo,Supressao"'
+    # O Excel grava o acento como entidade XML (&#233;): decodificar.
+    assert html.unescape(validacoes.get("D2:D200") or "") == (
+        '"Acrescimo,Acréscimo - novo item,Supressao"'
+    )
 
 
 def test_j_guarda_estrutural_nao_barra_geracao_correta():
