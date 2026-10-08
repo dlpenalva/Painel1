@@ -28,6 +28,8 @@ from datetime import datetime
 from pathlib import Path
 
 
+# 11.9: Reajustes Multiplos oculta "Nao houve pedido da contratada" quando a
+# analise atual tem UM unico ciclo (estado residual descartado) — so app.
 # 11.8: aditivos com fator vigente carregado (item existente x novo item),
 # CONTROLE!B2 derivado da data de corte (ciclo em execucao), novos itens no
 # CICLO_EM_EXECUCAO e opcao "Acrescimo - novo item" — muda o XLS entregue:
@@ -46,7 +48,7 @@ from pathlib import Path
 # (Financeiro, PCs e Itens) — mudanca estrutural do XLS: COLETA_VERSION 11.1.
 # 11.3: modelos em branco do Despacho Saneador e do Termo de Apostila com a mesma
 # estrutura dos documentos gerados. 11.2: memoria de calculo da garantia em XLSX.
-CL8US_VERSION = "11.8"
+CL8US_VERSION = "11.9"
 COLETA_VERSION = "11.4"
 # Modelos de Coleta da familia 11.x aceitos SEM adaptacao: o 11.1 so acrescentou
 # um quadro informativo na RESULTADOS/MEMORIA_RESULTADOS (formulas); a Coleta 11.0
@@ -70,7 +72,7 @@ COLETA_VERSOES_SEM_RESULTADOS_DETALHE = ("11.0", "11.1")
 # em _formalizacao_compatibilidade, por evidencia tecnica e nunca por versao.
 COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
-ATUALIZADO_EM_FALLBACK = "08/10/2026 15:00"
+ATUALIZADO_EM_FALLBACK = "08/10/2026 17:00"
 
 
 def _data_ultimo_commit() -> str | None:

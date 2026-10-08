@@ -361,6 +361,82 @@ def test_multiciclo_desmarcar_restaura_o_ciclo():
 
 
 # ---------------------------------------------------------------------------
+# 14a-14d  analise de UM unico ciclo: o controle nao se aplica
+# ---------------------------------------------------------------------------
+
+def _checkboxes_sem_pedido(at) -> list:
+    return [c for c in at.checkbox if str(c.key or "").startswith("sem_pedido_")]
+
+
+def _campo_pedido(at, ciclo: int):
+    rotulo = f"Data do pedido da Contratada — C{ciclo}"
+    return next(c for c in at.date_input if str(c.label) == rotulo)
+
+
+def test_ciclo_unico_c1_oculta_o_checkbox_e_mantem_a_data_habilitada():
+    at = _preparar_multiplos(
+        _abrir_pagina(PAGINA_MULTIPLA), date(2022, 10, 10), ciclo_final="C1"
+    )
+    assert _checkboxes_sem_pedido(at) == []
+    assert not any("Não houve pedido" in str(c.label) for c in at.checkbox)
+    assert _campo_pedido(at, 1).disabled is False
+
+
+def test_ciclo_unico_iniciando_em_c2_tambem_oculta_o_checkbox():
+    """A regra e 'um unico ciclo na analise', nunca 'ciclo C1'."""
+    at = _abrir_pagina(PAGINA_MULTIPLA)
+    at.selectbox(key="rep_ciclo_inicial_analise").select("C2").run()
+    assert not at.exception
+    at.selectbox(key="rep_ciclo_final_analise").select("C2").run()
+    assert not at.exception
+
+    assert [str(c.label) for c in at.date_input if "Data do pedido" in str(c.label)] == [
+        "Data do pedido da Contratada — C2"
+    ]
+    assert _checkboxes_sem_pedido(at) == []
+    assert _campo_pedido(at, 2).disabled is False
+
+
+def test_estado_residual_true_e_ignorado_em_ciclo_unico():
+    at = _preparar_multiplos(
+        _abrir_pagina(PAGINA_MULTIPLA), date(2022, 10, 10), ciclo_final="C1"
+    )
+    at.session_state["sem_pedido_p1_20231010"] = True
+    at.run()
+    assert not at.exception
+
+    assert _checkboxes_sem_pedido(at) == []
+    assert _campo_pedido(at, 1).disabled is False
+    assert "sem_pedido_p1_20231010" not in at.session_state
+    resumo = at.dataframe[0].value.to_dict("records")
+    assert resumo[0]["Data do pedido"] == "10/10/2023"
+    assert resumo[0]["Situação preliminar"] != PRECLUSO
+    assert resumo[0]["Início financeiro"] == "10/2023"
+
+
+def test_transicao_multiciclo_para_ciclo_unico_e_de_volta():
+    """Cenarios A e B: marcacao no multiciclo nao vaza para o ciclo unico e,
+    ao voltar ao multiciclo, nenhum ciclo reaparece marcado sozinho."""
+    at = _preparar_multiplos(_abrir_pagina(PAGINA_MULTIPLA), date(2022, 10, 10))
+    at.checkbox(key="sem_pedido_p1_20231010").set_value(True).run()
+    assert at.date_input(key="p1_20231010").disabled is True
+
+    at.selectbox(key="rep_ciclo_final_analise").select("C1").run()
+    assert not at.exception
+    assert _checkboxes_sem_pedido(at) == []
+    assert _campo_pedido(at, 1).disabled is False
+    resumo = at.dataframe[0].value.to_dict("records")
+    assert resumo[0]["Situação preliminar"] != PRECLUSO
+    assert resumo[0]["Início financeiro"] == "10/2023"
+
+    at.selectbox(key="rep_ciclo_final_analise").select("C2").run()
+    assert not at.exception
+    marcados = {c.key: c.value for c in _checkboxes_sem_pedido(at)}
+    assert marcados == {"sem_pedido_p1_20231010": False, "sem_pedido_p2_20241010": False}
+    assert at.date_input(key="p1_20231010").disabled is False
+
+
+# ---------------------------------------------------------------------------
 # 15-17  persistencia no XLS e triestado na releitura
 # ---------------------------------------------------------------------------
 
