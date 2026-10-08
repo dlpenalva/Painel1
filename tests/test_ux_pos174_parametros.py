@@ -93,7 +93,8 @@ def test_f3_formulas_economicas_de_parametros_intactas(template):
         (str(faixa.sqref), regra.formula)
         for faixa in ws.conditional_formatting for regra in faixa.rules
     ]
-    assert ("E3:E6", ['AND($A3="Nao",$C3<>"",$E3="")']) in regras
+    # Coleta 11.5: so destaca ciclo anterior a um ciclo computado.
+    assert ("E3:E6", ['AND($A3="Nao",$C3<>"",$E3="",COUNTIF($A4:$A$7,"Sim")>0)']) in regras
 
 
 def test_f3_aviso_historico_no_template(template):
@@ -101,8 +102,10 @@ def test_f3_aviso_historico_no_template(template):
     formula = ws[ux.CELULA_AVISO].value
     assert formula == ux.formula_aviso_historico()
     ux.validar_ascii_e_parenteses({"A8": formula})
-    # Historico = ciclos ANTERIORES ao vigente canonico (CONTROLE!B2).
-    assert "CONTROLE!$B$2" in formula
+    # Historico = ciclos anteriores a um ciclo COMPUTADO; nunca o ciclo em
+    # execucao (CONTROLE!B2), que segue a data de corte (Coleta 11.5).
+    assert 'COUNTIF($A$4:$A$6,"Sim")>0' in formula
+    assert "CONTROLE!" not in formula
     assert "$E$6" not in formula  # C4 nunca e historico
     assert ux.FAIXA_AVISO in {str(m) for m in ws.merged_cells.ranges}
     assert any(str(f.sqref) == ux.FAIXA_AVISO for f in ws.conditional_formatting)
