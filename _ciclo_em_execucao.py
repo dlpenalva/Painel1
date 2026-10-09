@@ -41,6 +41,16 @@ CELULA_VERSAO = "H2"
 
 COLUNAS_VISIVEIS = (
     "ITEM (AUTO)",
+    "QTD REMANESCENTE NA ÚLTIMA REFERÊNCIA CONHECIDA (AUTO)",
+    "QTD REMANESCENTE NA DATA DA POSIÇÃO (PREENCHER)",
+    "QTD CONSUMIDA DESDE A REFERÊNCIA (AUTO)",
+    "VU ATUALIZADO (AUTO)",
+    "VALOR CONSUMIDO (AUTO)",
+    "VALOR REMANESCENTE ATUALIZADO (AUTO)",
+)
+
+COLUNAS_VISIVEIS_LAYOUT_2 = (
+    "ITEM (AUTO)",
     "QTD REMANESCENTE NO INÍCIO DO CICLO (AUTO)",
     "QTD REMANESCENTE NA DATA DA POSIÇÃO (PREENCHER)",
     "QTD CONSUMIDA NO CICLO ATÉ A DATA (AUTO)",
@@ -57,6 +67,9 @@ COLUNAS_TECNICAS = (
     "DIVERGENCIA_CONSUMO",
     "QTD_REGISTROS_CONSUMO",
     "QTD_EVENTOS_POSITIVOS_ATE_DATA",
+    "CICLO_REFERENCIA_FISICA",
+    "DATA_REFERENCIA_FISICA",
+    "REFERENCIA_NO_CICLO_ATUAL",
 )
 
 # Cor unica das abas que exigem (ou podem exigir) preenchimento manual.
@@ -195,13 +208,36 @@ def calcular_posicao_ciclo_por_data(
         if chave in cadastros:
             erros.append(f"ITEM_DUPLICADO:{ident_item}")
             continue
+        referencia_explicita = any(
+            campo in bruto
+            for campo in (
+                "remanescente_referencia", "data_referencia", "ciclo_referencia"
+            )
+        )
         cadastros[chave] = {
             "item": ident_item,
             "remanescente_inicio": _numero(
-                bruto.get("remanescente_inicio")
-                if "remanescente_inicio" in bruto
-                else bruto.get("qtd_remanescente_inicio")
+                bruto.get("remanescente_referencia")
+                if "remanescente_referencia" in bruto
+                else (
+                    bruto.get("remanescente_inicio")
+                    if "remanescente_inicio" in bruto
+                    else bruto.get("qtd_remanescente_inicio")
+                )
             ),
+            "data_referencia": _data(
+                bruto.get("data_referencia")
+                if referencia_explicita
+                else data_inicio
+            ),
+            "ciclo_referencia": str(
+                (
+                    bruto.get("ciclo_referencia")
+                    if referencia_explicita
+                    else ciclo
+                )
+                or ""
+            ).strip().upper(),
             "remanescente_atual": _numero(
                 bruto.get("remanescente_atual")
                 if "remanescente_atual" in bruto
@@ -229,6 +265,8 @@ def calcular_posicao_ciclo_por_data(
         cadastros[chave] = {
             "item": mov["item"],
             "remanescente_inicio": 0.0,
+            "data_referencia": None,
+            "ciclo_referencia": "",
             "remanescente_atual": None,
             "remanescente_atual_fornecido": False,
             "vu_atualizado": mov.get("vu_atualizado"),
@@ -274,27 +312,44 @@ def calcular_posicao_ciclo_por_data(
         if novo and nascimento is not None and nascimento > posicao:
             continue
 
-        # Regra B: `remanescente_inicio` E AUTORITATIVO e ja reflete tudo com
-        # efeito ate a abertura — inclusive o aditivo datado no proprio dia da
-        # abertura. Some-lo aqui seria reaplicar o delta. Quem monta esse valor
-        # a partir de QTD_REM_BASE (a aba CICLO_EM_EXECUCAO) e que soma o delta
-        # da abertura, uma unica vez, na coluna B.
+        # A referencia e item a item. Tudo com efeito ate a data da fotografia
+        # ja esta incorporado no saldo informado; somente movimentos
+        # estritamente posteriores entram no intervalo. Para item novo que
+        # ainda nao existia nessa fotografia, a base fisica e zero e o evento
+        # de inclusao entra exatamente uma vez.
         abertura = cadastro["remanescente_inicio"]
-        if novo and nascimento is not None and nascimento > inicio:
+        referencia = cadastro["data_referencia"]
+        ciclo_referencia = cadastro["ciclo_referencia"]
+        if novo and nascimento is not None and referencia is not None and nascimento > referencia:
             abertura = 0.0
-        delta_periodo = round(sum(
-            m["delta"] for m in movs_item if inicio < m["data_efeito"] <= posicao
-        ), 2)
+        delta_periodo = (
+            round(sum(
+                m["delta"]
+                for m in movs_item
+                if referencia < m["data_efeito"] <= posicao
+            ), 2)
+            if referencia is not None
+            else None
+        )
         disponivel = (
-            round(abertura + delta_periodo, 2) if abertura is not None else None
+            round(abertura + delta_periodo, 2)
+            if abertura is not None and delta_periodo is not None
+            else None
         )
         atual = cadastro["remanescente_atual"]
         vu = cadastro["vu_atualizado"]
         erros_item: list[str] = []
         alertas_item: list[str] = []
 
-        if abertura is None:
-            erros_item.append("REMANESCENTE_INICIAL_AUSENTE")
+        mensuravel = abertura is not None and referencia is not None
+        if referencia is not None and referencia > posicao:
+            erros_item.append("REFERENCIA_FISICA_POSTERIOR_A_POSICAO")
+        if not mensuravel:
+            alertas_item.append("CONSUMO_NAO_CALCULAVEL_SEM_REFERENCIA")
+            alertas.append(
+                f"{cadastro['item']}: posição atual informável; consumo não "
+                "calculável por ausência de referência física anterior."
+            )
         if not cadastro["remanescente_atual_fornecido"]:
             completo = False
             erros_item.append("REMANESCENTE_ATUAL_NAO_INFORMADO")
@@ -319,9 +374,10 @@ def calcular_posicao_ciclo_por_data(
             check = round(abertura + delta_periodo - consumida - atual, 2)
             if abs(check) > tolerancia:
                 erros_item.append("CHECK_FISICO_DIVERGENTE")
+        if atual is not None and vu is not None:
+            valor_remanescente = round(atual * vu, 2)
         if consumida is not None and vu is not None:
             valor_consumido = round(consumida * vu, 2)
-            valor_remanescente = round(atual * vu, 2)
             valor_base = round(disponivel * vu, 2)
             if abs(valor_consumido + valor_remanescente - valor_base) > tolerancia:
                 erros_item.append("RECONCILIACAO_MONETARIA_DIVERGENTE")
@@ -347,6 +403,8 @@ def calcular_posicao_ciclo_por_data(
         linhas.append({
             "item": cadastro["item"],
             "remanescente_inicio": abertura,
+            "ciclo_referencia": ciclo_referencia or None,
+            "data_referencia": referencia,
             "alteracoes_liquidas_periodo": delta_periodo,
             "remanescente_atual": atual,
             "quantidade_consumida": consumida,
@@ -356,6 +414,7 @@ def calcular_posicao_ciclo_por_data(
             "valor_base_fisica_atualizada": valor_base,
             "check_fisico": check,
             "data_nascimento": nascimento,
+            "consumo_mensuravel": mensuravel,
             "suprimido_integralmente": (
                 disponivel is not None and abs(disponivel) <= tolerancia
             ),
@@ -367,7 +426,10 @@ def calcular_posicao_ciclo_por_data(
             "alertas": alertas_item,
         })
 
-    valido = completo and not erros and bool(linhas)
+    mensuravel = bool(linhas) and all(
+        bool(item.get("consumo_mensuravel")) for item in linhas
+    )
+    valido = completo and mensuravel and not erros and bool(linhas)
     return {
         "ciclo": str(ciclo or "").strip().upper(),
         "data_inicio": inicio,
@@ -375,6 +437,7 @@ def calcular_posicao_ciclo_por_data(
         "data_posicao": posicao,
         "itens": linhas,
         "completo": completo and all(i["completo"] for i in linhas),
+        "consumo_mensuravel": mensuravel,
         "valido": valido,
         "erros": list(dict.fromkeys(erros)),
         "alertas": list(dict.fromkeys(alertas)),
@@ -418,20 +481,29 @@ def formula_inicio_execucao(k: str) -> str:
     return f'EDATE({_ANCORA_EXECUCAO},12*(({k})-{_INDICE_ANCORA}))'
 
 
-def _formula_abertura(linha: int, origem: int) -> str:
-    por_ciclo = {
-        "C0": f"posicao_contratual!$F{origem}",
-        "C1": f"posicao_contratual!$J{origem}",
-        "C2": f"posicao_contratual!$N{origem}",
-        "C3": f"posicao_contratual!$R{origem}",
-        "C4": f"posicao_contratual!$V{origem}",
-    }
+_REFERENCIAS_FISICAS = (
+    ("C0", "F", 2, 0),
+    ("C1", "J", 3, 1),
+    ("C2", "N", 4, 2),
+    ("C3", "R", 5, 3),
+    ("C4", "V", 6, 4),
+)
+_CICLOS_REFERENCIA = '{"C0","C1","C2","C3","C4"}'
+
+
+def _abertura_ciclo_atual(linha: int, origem: int) -> str:
+    """Fotografia de abertura do ciclo em execucao — regra da Coleta 11.5.
+
+    Mantida sem alteracao: e ela que alimenta A9 e, por ela, a cadeia oficial
+    (MEMORIA_RESULTADOS!W49/W50). Aditivos com DATA_EFEITO ate a abertura do
+    ciclo ja integram a fotografia (Regra B: o delta entra uma unica vez, aqui
+    e nao no periodo, pois a coluna I so soma movimentos com data
+    ESTRITAMENTE posterior a abertura).
+    """
     escolha = "\"\""
-    for ciclo, ref in reversed(tuple(por_ciclo.items())):
+    for ciclo, coluna, _linha, _indice in reversed(_REFERENCIAS_FISICAS):
+        ref = f"posicao_contratual!${coluna}{origem}"
         escolha = f'IF($C$3="{ciclo}",{ref},{escolha})'
-    # Aditivos com DATA_EFEITO ate a abertura do ciclo ja integram a fotografia
-    # de abertura (Regra B: o delta entra uma unica vez, aqui e nao no periodo,
-    # pois a coluna I so soma movimentos com data ESTRITAMENTE posterior a $F$3).
     delta_abertura = (
         f'ROUND(SUMIFS(aditivos!$L$2:$L$200,'
         f'aditivos!$A$2:$A$200,A{linha},'
@@ -439,12 +511,71 @@ def _formula_abertura(linha: int, origem: int) -> str:
         f'aditivos!$B$2:$B$200,"<"&(INT($F$3)+1)),2)'
     )
     return (
-        f'=IF(A{linha}="","",IF(AND(posicao_contratual!$Z{origem},'
+        f'IF(AND(posicao_contratual!$Z{origem},'
         f'COUNTIFS(aditivos!$A$2:$A$200,itens_Remanesc!$A{origem},'
         f'aditivos!$B$2:$B$200,"<"&(INT($F$3)+1),'
         f'aditivos!$L$2:$L$200,">0")=0),0,'
         f'IF(ISNUMBER({escolha}),ROUND({escolha}+{delta_abertura},2),'
-        f'IF({delta_abertura}>0,{delta_abertura},""))))'
+        f'IF({delta_abertura}>0,{delta_abertura},"")))'
+    )
+
+
+def _formula_ciclo_referencia(linha: int, origem: int) -> str:
+    """Ciclo da ultima referencia fisica conhecida do item (coluna P).
+
+    O ciclo em execucao prevalece sempre que a regra da 11.5 produz numero.
+    So na falta dele recua-se a C(n-1)..C0, exigindo saldo numerico e data
+    exata da fotografia (parametros!I) — nada e inventado.
+    """
+    numero_atual = f'(MATCH($C$3,{_CICLOS_REFERENCIA},0)-1)'
+    anterior = '""'
+    for ciclo, coluna, linha_param, indice in _REFERENCIAS_FISICAS:
+        anterior = (
+            f'IF(AND({numero_atual}>{indice},'
+            f'ISNUMBER(posicao_contratual!${coluna}{origem}),'
+            f'ISNUMBER(parametros!$I${linha_param})),"{ciclo}",{anterior})'
+        )
+    atual = _abertura_ciclo_atual(linha, origem)
+    return (
+        f'=IF(A{linha}="","",IFERROR(IF(ISNUMBER({atual}),$C$3,'
+        f'{anterior}),""))'
+    )
+
+
+def _formula_data_referencia(linha: int) -> str:
+    """Data da referencia (coluna Q): abertura $F$3 ou parametros!I de Ck."""
+    return (
+        f'=IF(OR(A{linha}="",P{linha}=""),"",IF(P{linha}=$C$3,$F$3,'
+        f'IFERROR(INDEX(parametros!$I$2:$I$6,'
+        f'MATCH(P{linha},{_CICLOS_REFERENCIA},0)),"")))'
+    )
+
+
+def _formula_abertura(linha: int, origem: int) -> str:
+    """Saldo na ultima referencia conhecida (coluna B).
+
+    Referencia anterior Ck segue a mesma convencao de QTD_REM_ABERTURA da
+    posicao_contratual: QTD_REM_BASE_Ck + aditivos do proprio Ck com efeito ate
+    a data da fotografia, uma unica vez.
+    """
+    saldo_anterior = (
+        f'CHOOSE(MATCH(P{linha},{_CICLOS_REFERENCIA},0),'
+        + ",".join(
+            f"posicao_contratual!${coluna}{origem}"
+            for _ciclo, coluna, _linha, _indice in _REFERENCIAS_FISICAS
+        )
+        + ")"
+    )
+    delta_anterior = (
+        f'ROUND(SUMIFS(aditivos!$L$2:$L$200,'
+        f'aditivos!$A$2:$A$200,A{linha},'
+        f'aditivos!$C$2:$C$200,P{linha},'
+        f'aditivos!$B$2:$B$200,"<"&(INT(Q{linha})+1)),2)'
+    )
+    return (
+        f'=IF(OR(A{linha}="",P{linha}=""),"",IF(P{linha}=$C$3,'
+        f'{_abertura_ciclo_atual(linha, origem)},'
+        f'IFERROR(ROUND({saldo_anterior}+{delta_anterior},2),"")))'
     )
 
 
@@ -621,7 +752,8 @@ def _criar_aba_itemizada(wb):
     ws["A9"] = (
         '=IF(OR($D$5="",COUNTIF($A$13:$A$211,"<>")=0,'
         'COUNTIF($K$13:$K$211,"ERRO:*")>0,'
-        'COUNTIF($K$13:$K$211,"INCOMPLETO:*")>0),"",'
+        'COUNTIF($K$13:$K$211,"INCOMPLETO:*")>0,'
+        'SUMPRODUCT(($A$13:$A$211<>"")*($P$13:$P$211<>$C$3))>0),"",'
         'ROUND(SUM($G$13:$G$211),2))'
     )
     for coord in ("A7", "A8", "A9"):
@@ -696,7 +828,7 @@ def _criar_aba_itemizada(wb):
         ws.cell(linha, 3).value = None  # vazio real; zero somente quando confirmado
         ws.cell(linha, 4).value = (
             f'=IF(OR(A{linha}="",$D$5="",C{linha}=""),"",'
-            f'ROUND(B{linha}+I{linha}-C{linha},2))'
+            f'IF(NOT(ISNUMBER(B{linha})),"",ROUND(B{linha}+I{linha}-C{linha},2)))'
         )
         ws.cell(linha, 5).value = _formula_vu(linha, origem)
         ws.cell(linha, 6).value = (
@@ -706,10 +838,10 @@ def _criar_aba_itemizada(wb):
             f'=IF(OR(C{linha}="",E{linha}=""),"",ROUND(C{linha}*E{linha},2))'
         )
         ws.cell(linha, 9).value = (
-            f'=IF(OR(A{linha}="",$D$5="",$F$3=""),"",'
+            f'=IF(OR(A{linha}="",$D$5="",NOT(ISNUMBER(Q{linha}))),"",'
             f'ROUND(SUMIFS(aditivos!$L$2:$L$200,'
             f'aditivos!$A$2:$A$200,A{linha},'
-            f'aditivos!$B$2:$B$200,">="&(INT($F$3)+1),'
+            f'aditivos!$B$2:$B$200,">="&(INT(Q{linha})+1),'
             f'aditivos!$B$2:$B$200,"<="&$D$5),2))'
         )
         ws.cell(linha, 10).value = (
@@ -720,10 +852,11 @@ def _criar_aba_itemizada(wb):
             f'=IF(A{linha}="","",IF(OR(NOT(ISNUMBER($D$5)),'
             f'NOT(ISNUMBER($F$3)),NOT(ISNUMBER($H$3)),$D$5<$F$3,$D$5>$H$3),'
             f'"ERRO: DATA FORA DO CICLO",IF(COUNTIF($A$13:$A$211,A{linha})>1,'
-            f'"ERRO: ITEM DUPLICADO",IF(NOT(ISNUMBER(B{linha})),'
-            f'"INCOMPLETO: REMANESCENTE INICIAL",IF(C{linha}="",'
+            f'"ERRO: ITEM DUPLICADO",IF(C{linha}="",'
             f'"INCOMPLETO: QTD ATUAL",IF(OR(NOT(ISNUMBER(C{linha})),C{linha}<0),'
-            f'"ERRO: QTD INVALIDA",IF(NOT(ISNUMBER(I{linha})),'
+            f'"ERRO: QTD INVALIDA",IF(NOT(ISNUMBER(B{linha})),'
+            f'"POSICAO ATUAL INFORMADA; CONSUMO NAO CALCULAVEL: SEM REFERENCIA",'
+            f'IF(NOT(ISNUMBER(I{linha})),'
             f'"INCOMPLETO: ADITIVOS",IF(C{linha}>B{linha}+I{linha},'
             f'"ERRO: REMANESCENTE SUPERA DISPONIVEL",IF(D{linha}<0,'
             f'"ERRO: CONSUMO NEGATIVO",IF(NOT(ISNUMBER(E{linha})),'
@@ -736,6 +869,12 @@ def _criar_aba_itemizada(wb):
             f'ROUND(D{linha}-L{linha},2))'
         )
         ws.cell(linha, 14).value = _formula_conferencia(linha, contar=True)
+        ws.cell(linha, 16).value = _formula_ciclo_referencia(linha, origem)
+        ws.cell(linha, 17).value = _formula_data_referencia(linha)
+        ws.cell(linha, 17).number_format = FORMATO_DATA
+        ws.cell(linha, 18).value = (
+            f'=IF(A{linha}="","",AND(P{linha}<>"",P{linha}=$C$3))'
+        )
 
         for coluna in range(1, 8):
             celula = ws.cell(linha, coluna)
@@ -765,7 +904,7 @@ def _criar_aba_itemizada(wb):
     larguras = {"A": 18, "B": 24, "C": 24, "D": 23, "E": 18, "F": 20, "G": 25}
     for coluna, largura in larguras.items():
         ws.column_dimensions[coluna].width = largura
-    for coluna in range(8, 16):
+    for coluna in range(8, 19):
         ws.column_dimensions[get_column_letter(coluna)].hidden = True
 
     dv_data = DataValidation(
@@ -789,14 +928,15 @@ def _criar_aba_itemizada(wb):
         type="custom",
         formula1=(
             '=OR(C13="",AND(A13<>"",ISNUMBER(C13),C13>=0,'
-            'C13<=ROUND(B13+I13,2)))'
+            'OR(NOT(ISNUMBER(B13)),'
+            'IFERROR(C13<=ROUND(B13+I13,2),FALSE))))'
         ),
         allow_blank=True,
     )
     dv_qtd.errorTitle = "Quantidade incompatível"
     dv_qtd.error = (
-        "Informe zero ou uma quantidade não negativa que não supere o "
-        "remanescente inicial acrescido das alterações do período."
+        "Informe zero ou uma quantidade não negativa. Quando houver referência "
+        "física, o valor não pode superar a referência acrescida das alterações."
     )
     dv_qtd.promptTitle = "Remanescente na data da posição"
     dv_qtd.prompt = (
@@ -835,7 +975,8 @@ def _criar_aba_itemizada(wb):
                 f'AND($A{PRIMEIRA_LINHA_ITEM}<>"",$C{PRIMEIRA_LINHA_ITEM}<>"",'
                 f'OR(NOT(ISNUMBER($C{PRIMEIRA_LINHA_ITEM})),'
                 f'$C{PRIMEIRA_LINHA_ITEM}<0,'
-                f'$C{PRIMEIRA_LINHA_ITEM}>$B{PRIMEIRA_LINHA_ITEM}+$I{PRIMEIRA_LINHA_ITEM}))'
+                f'AND(ISNUMBER($B{PRIMEIRA_LINHA_ITEM}),'
+                f'$C{PRIMEIRA_LINHA_ITEM}>$B{PRIMEIRA_LINHA_ITEM}+$I{PRIMEIRA_LINHA_ITEM})))'
             ],
             fill=PatternFill("solid", fgColor=vermelho_claro),
         ),
@@ -947,6 +1088,8 @@ def validar_posicao_ciclo_lida(
     total_remanescente = 0.0
     total_base = 0.0
     completo = bool(itens)
+    consumo_mensuravel = bool(itens)
+    referencias_no_ciclo_atual = bool(itens)
     for registro in itens:
         ident = _item(registro.get("item"))
         chave = _chave_item(ident)
@@ -955,6 +1098,10 @@ def validar_posicao_ciclo_lida(
         chaves.add(chave)
         abertura = _numero(registro.get("remanescente_inicio"))
         delta = _numero(registro.get("alteracoes_liquidas_periodo"))
+        ciclo_referencia = str(
+            registro.get("ciclo_referencia") or ciclo or ""
+        ).strip().upper()
+        data_referencia = _data(registro.get("data_referencia"))
         atual_fornecido = registro.get("remanescente_atual") not in (None, "")
         atual = _numero(registro.get("remanescente_atual"))
         consumida = _numero(registro.get("quantidade_consumida"))
@@ -968,9 +1115,22 @@ def validar_posicao_ciclo_lida(
             erros_item.append(f"STATUS_XLS_{status_xls_normalizado}")
         elif status_xls_normalizado.startswith("ERRO:"):
             erros_item.append(f"STATUS_XLS_{status_xls_normalizado}")
-        if abertura is None:
-            erros_item.append("REMANESCENTE_INICIAL_INDISPONIVEL")
-        if delta is None:
+        referencia_conhecida = abertura is not None and (
+            data_referencia is not None or "data_referencia" not in registro
+        )
+        if not referencia_conhecida:
+            consumo_mensuravel = False
+            alertas.append(
+                f"{ident}: posição atual informada; consumo não calculável "
+                "por ausência de referência física anterior."
+            )
+        elif ciclo_referencia != ciclo:
+            referencias_no_ciclo_atual = False
+            alertas.append(
+                f"{ident}: referência física {ciclo_referencia or 'anterior'} "
+                "usada somente no diagnóstico; cálculo oficial preservado."
+            )
+        if referencia_conhecida and delta is None:
             erros_item.append("ALTERACOES_DO_PERIODO_INDISPONIVEIS")
         if not atual_fornecido:
             completo = False
@@ -979,7 +1139,7 @@ def validar_posicao_ciclo_lida(
             erros_item.append("REMANESCENTE_ATUAL_INVALIDO")
         if vu is None or vu < 0:
             erros_item.append("VU_ATUALIZADO_INVALIDO")
-        if abertura is not None and delta is not None and atual is not None:
+        if referencia_conhecida and delta is not None and atual is not None:
             disponivel = round(abertura + delta, 2)
             esperado = round(disponivel - atual, 2)
             if atual - disponivel > tolerancia:
@@ -1002,13 +1162,16 @@ def validar_posicao_ciclo_lida(
                     total_base += valor_base
         erros.extend(f"{ident}:{e}" for e in erros_item)
 
-    valido = completo and bool(itens) and not erros
+    elegivel_calculo_oficial = consumo_mensuravel and referencias_no_ciclo_atual
+    valido = completo and bool(itens) and not erros and elegivel_calculo_oficial
     return {
         "ciclo": ciclo,
         "data_inicio": inicio,
         "data_fim": fim,
         "data_posicao": posicao,
         "completo": completo and not any("NAO_INFORMADO" in e for e in erros),
+        "consumo_mensuravel": consumo_mensuravel,
+        "elegivel_calculo_oficial": elegivel_calculo_oficial,
         "valido": valido,
         "erros": list(dict.fromkeys(erros)),
         "alertas": alertas,
@@ -1055,7 +1218,7 @@ def ler_ciclo_em_execucao(
     *,
     itens_consumidos: Mapping[str, Any] | None = None,
 ) -> dict[str, Any]:
-    """Lê somente o layout marcado como 2_ITEMIZADO.
+    """Lê o layout itemizado atual e a nomenclatura anterior compatível.
 
     Aba ausente, aba vazia e agregado legado não interferem nos cálculos atuais.
     """
@@ -1078,7 +1241,8 @@ def ler_ciclo_em_execucao(
 
     ws = wb[ABA_CICLO_EM_EXECUCAO]
     encontrados = tuple(ws.cell(LINHA_CABECALHO, c).value for c in range(1, 8))
-    if encontrados != COLUNAS_VISIVEIS:
+    layout_ultima_referencia = encontrados == COLUNAS_VISIVEIS
+    if encontrados not in (COLUNAS_VISIVEIS, COLUNAS_VISIVEIS_LAYOUT_2):
         resultado["erros"].append("CABECALHOS_DO_LAYOUT_ITEMIZADO_INVALIDOS")
         return resultado
 
@@ -1111,10 +1275,32 @@ def ler_ciclo_em_execucao(
             ident = _item(wb["itens_Remanesc"].cell(origem, 1).value)
         if not ident:
             continue
+        abertura_bruta = ws.cell(linha, 2).value
+        ciclo_referencia = (
+            ws.cell(linha, 16).value if layout_ultima_referencia else ciclo
+        )
+        data_referencia = (
+            ws.cell(linha, 17).value if layout_ultima_referencia else inicio
+        )
+        if isinstance(ciclo_referencia, str) and ciclo_referencia.startswith("="):
+            ciclo_referencia = None
+        if isinstance(data_referencia, str) and data_referencia.startswith("="):
+            data_referencia = None
+        # Compatibilidade com inspeções/manipulações sem recálculo do Excel:
+        # se B foi materializada mas as novas colunas técnicas ainda não têm
+        # cache, a semântica anterior era referência no próprio ciclo.
+        if abertura_bruta not in (None, ""):
+            ciclo_referencia = ciclo_referencia or ciclo
+            data_referencia = data_referencia or inicio
         itens_lidos.append({
             "origem_linha": linha,
             "item": ident,
-            "remanescente_inicio": ws.cell(linha, 2).value,
+            "remanescente_inicio": abertura_bruta,
+            "ciclo_referencia": ciclo_referencia,
+            "data_referencia": data_referencia,
+            "referencia_no_ciclo_atual": (
+                ws.cell(linha, 18).value if layout_ultima_referencia else True
+            ),
             "remanescente_atual": atual_bruto,
             "quantidade_consumida": ws.cell(linha, 4).value,
             "vu_atualizado": ws.cell(linha, 5).value,
