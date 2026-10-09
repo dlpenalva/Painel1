@@ -938,6 +938,96 @@ def _garantir_base_economica_vu_aditivos(wb) -> None:
         )
 
 
+# Coleta 11.7 — historico_VU!D:G (VU_C1..VU_C4) parte da base economica do VU
+# (aditivos!O), e nao mais do nascimento fisico (posicao_contratual!Y). Fonte
+# unica do template (tools/aplicar_coleta_117_...) e da migracao runtime.
+_COLUNAS_HISTORICO_VU = (("D", 1), ("E", 2), ("F", 3), ("G", 4))
+_LINHAS_HISTORICO_VU = range(2, 201)
+
+
+def _formula_historico_vu_nascimento(linha: int, indice: int) -> str:
+    """Forma ate a Coleta 11.6: o nascimento fisico era a base economica."""
+    y = f"posicao_contratual!$Y{linha}"
+    vu = f"itens_Remanesc!C{linha}"
+    fator_base = f"INDEX($L$2:$L$6,{y}+1)"
+    return (
+        f'=IF(OR($A{linha}="",{y}=""),"",IF({y}>{indice},"",'
+        f'IF({y}={indice},IF(ISNUMBER({vu}),{vu},""),'
+        f'IF(OR(NOT(ISNUMBER({vu})),NOT(ISNUMBER($L${indice + 2})),'
+        f'NOT(ISNUMBER({fator_base}))),"",'
+        f'ROUND({vu}*$L${indice + 2}/{fator_base},2)))))'
+    )
+
+
+def _expressao_base_economica_historico(linha: int) -> str:
+    """Indice do ultimo reajuste ja incorporado ao VU do item da linha.
+
+    aditivos!O do item quando numerico, nunca posterior ao nascimento; sem base
+    economica (item original, ou Nxxx sem aditivos!N) vale o nascimento — o
+    comportamento anterior.
+    """
+    y = f"posicao_contratual!$Y{linha}"
+    base = f"INDEX(aditivos!$O$2:$O$200,MATCH($A{linha},aditivos!$A$2:$A$200,0))"
+    return f"IFERROR(IF(ISNUMBER({base}),MIN({base},{y}),{y}),{y})"
+
+
+def _formula_historico_vu_base_economica(linha: int, indice: int) -> str:
+    """VU do ciclo ``indice``: vazio antes do nascimento; dali em diante, o VU
+    original reajustado pelos fatores ainda nao incorporados (base economica).
+
+    No ciclo de nascimento o fator e o ultimo conhecido (mesmo carregamento de
+    aditivos!I e da CICLO_EM_EXECUCAO); nos ciclos seguintes o fator do ciclo
+    e exigido, como sempre (historico faltante nunca e inventado).
+    """
+    y = f"posicao_contratual!$Y{linha}"
+    vu = f"itens_Remanesc!C{linha}"
+    base = _expressao_base_economica_historico(linha)
+
+    def carregado(k: str) -> str:
+        return f"INDEX($L$2:$L$6,MIN({k}+1,COUNT($L$2:$L$6)))"
+
+    fator_ciclo = f"$L${indice + 2}"
+    fator_base = f"INDEX($L$2:$L$6,{base}+1)"
+    return (
+        f'=IF(OR($A{linha}="",{y}=""),"",IF({y}>{indice},"",'
+        f'IF(NOT(ISNUMBER({vu})),"",'
+        f'IF({y}={indice},IF({base}={indice},{vu},'
+        f'IFERROR(ROUND({vu}*{carregado(str(indice))}/{carregado(base)},2),"")),'
+        f'IF(OR(NOT(ISNUMBER({fator_ciclo})),NOT(ISNUMBER({fator_base}))),"",'
+        f'ROUND({vu}*{fator_ciclo}/{fator_base},2))))))'
+    )
+
+
+def _historico_vu_base_economica_canonico(ws) -> bool:
+    """O template ja carrega a Coleta 11.7 (tools/aplicar_coleta_117_...)?"""
+    return all(
+        ws[f"{coluna}{linha}"].value == _formula_historico_vu_base_economica(linha, indice)
+        for coluna, indice in _COLUNAS_HISTORICO_VU
+        for linha in _LINHAS_HISTORICO_VU
+    )
+
+
+def _garantir_historico_vu_base_economica(wb) -> None:
+    """historico_VU segue a base economica de aditivos!N — Coleta 11.7.
+
+    So reescreve a forma anterior (nascimento como base) e so com aditivos!O
+    canonico; estrutura nao reconhecida fica intacta (nada e inventado). O
+    template oficial ja traz a forma nova: a migracao e idempotente.
+    """
+    if "historico_VU" not in wb.sheetnames or "aditivos" not in wb.sheetnames:
+        return
+    if not _aditivos_base_economica_canonica(wb["aditivos"]):
+        return
+    ws = wb["historico_VU"]
+    if _historico_vu_base_economica_canonico(ws):
+        return
+    for coluna, indice in _COLUNAS_HISTORICO_VU:
+        for linha in _LINHAS_HISTORICO_VU:
+            celula = ws[f"{coluna}{linha}"]
+            if celula.value == _formula_historico_vu_nascimento(linha, indice):
+                celula.value = _formula_historico_vu_base_economica(linha, indice)
+
+
 def _garantir_destaque_novos_itens(wb) -> None:
     """Fonte verde-escura para Nxxx, sem tocar nos preenchimentos funcionais."""
     if "itens_Remanesc" not in wb.sheetnames:
@@ -1203,6 +1293,7 @@ def obter_coleta_oficial_bytes() -> bytes:
     _validar_estrutura_itens_pc(wb)
     _garantir_apresentacao_retroativos_e_aditivos(wb)
     _garantir_base_economica_vu_aditivos(wb)
+    _garantir_historico_vu_base_economica(wb)
     _garantir_destaque_novos_itens(wb)
     from _apresentacao_pc_xls import garantir_apresentacao_pc
     garantir_apresentacao_pc(wb)
