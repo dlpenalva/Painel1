@@ -373,8 +373,13 @@ def test_ciclo_em_execucao_soma_delta_da_abertura_uma_vez():
     # A coluna I (alteracoes do periodo) comeca no dia SEGUINTE a abertura, de
     # modo que o delta da abertura nunca e contado duas vezes.
     assert '">"&$F$3' not in formula
+    # Coleta 11.6: a janela parte da data da referencia do item (Q), que no
+    # ciclo em execucao e o proprio $F$3 — mesma fronteira por dia.
+    from _ciclo_em_execucao import _formula_data_referencia
+
     fonte = (ROOT / "_ciclo_em_execucao.py").read_text(encoding="utf-8")
-    assert 'aditivos!$B$2:$B$200,">="&(INT($F$3)+1),' in fonte
+    assert 'aditivos!$B$2:$B$200,">="&(INT(Q{linha})+1),' in fonte
+    assert "IF(P13=$C$3,$F$3," in _formula_data_referencia(13)
 
 
 def test_motor_puro_nao_reaplica_delta_da_abertura():

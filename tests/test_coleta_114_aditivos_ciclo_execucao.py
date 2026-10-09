@@ -8,7 +8,6 @@ Excel COM (RUN_EXCEL_INTEGRATION=1) recalcula o cenario no Excel real.
 from __future__ import annotations
 
 import os
-import re
 from datetime import date, datetime
 from pathlib import Path
 
@@ -20,11 +19,14 @@ from _ciclo_em_execucao import (
     ciclo_em_execucao_por_data_corte,
 )
 from _motor_posicao_contratual import normalizar_tipo_movimento
+from _coleta_oficial import (
+    _formula_fator_base_economica,
+    _formula_status_aditivo,
+    _formula_valor_aditivo,
+)
 from tests._fabrica_coleta import bytes_coleta_oficial, workbook_coleta_oficial
 from tools.aplicar_coleta_114_aditivos_ciclo_execucao import (
     FORMULA_CICLO_VIGENTE,
-    FORMULA_FATOR,
-    FORMULA_VALOR,
     OPCOES_TIPO,
     validar_formula,
 )
@@ -55,16 +57,11 @@ def wb_gerado():
     return workbook_coleta_oficial(PAYLOAD_C1)
 
 
-def _deslocar(formula: str, linha: int) -> str:
-    """Formula da linha 2 levada a outra linha (so linhas relativas, fora de aspas)."""
-    return re.sub(r'(?<![A-Z$"])(\$?[A-M])2(?!\d)', lambda m: f"{m.group(1)}{linha}", formula)
-
-
 # --- estrutura do XLS gerado ---------------------------------------------
 
 def test_versoes_no_xls_gerado(wb_gerado):
-    assert wb_gerado["CONTROLE"]["B24"].value == "11.5"
-    assert wb_gerado["CONTROLE"]["B25"].value == "12.1"
+    assert wb_gerado["CONTROLE"]["B24"].value == "11.6"
+    assert wb_gerado["CONTROLE"]["B25"].value == "12.3"
 
 
 def test_ciclo_em_execucao_e_formula_da_data_de_corte(wb_gerado):
@@ -79,15 +76,20 @@ def test_ciclo_em_execucao_e_formula_da_data_de_corte(wb_gerado):
 def test_formulas_de_aditivos_em_todas_as_linhas(wb_gerado):
     ws = wb_gerado["aditivos"]
     for linha in (2, 57, 200):
-        assert ws[f"I{linha}"].value == _deslocar(FORMULA_FATOR, linha)
-        assert ws[f"J{linha}"].value == _deslocar(FORMULA_VALOR, linha)
+        assert ws[f"I{linha}"].value == _formula_fator_base_economica(linha)
+        assert ws[f"J{linha}"].value == _formula_valor_aditivo(linha)
+        assert ws[f"M{linha}"].value == _formula_status_aditivo(linha)
         assert "ALERTA: NOVO ITEM INVALIDO" in ws[f"M{linha}"].value
-    # Sem lookup na tabela de ciclos apurados (fator vazio em C2-C4).
+    # Base economica separada do ciclo de nascimento fisico.
+    assert "$O2" in ws["I2"].value
+    assert "posicao_contratual!$Y" not in ws["I2"].value
     assert "parametros!$B:$F" not in ws["I2"].value
 
 
 def test_formulas_novas_sao_ascii_e_balanceadas(wb_gerado):
-    for formula in (FORMULA_CICLO_VIGENTE, FORMULA_FATOR, FORMULA_VALOR,
+    for formula in (FORMULA_CICLO_VIGENTE,
+                    wb_gerado["aditivos"]["I2"].value,
+                    wb_gerado["aditivos"]["J2"].value,
                     wb_gerado["aditivos"]["M2"].value, _formula_vu(13, 2)):
         validar_formula(formula)
 
@@ -213,6 +215,10 @@ def test_cenario_focal_no_excel(tmp_path, corte, ciclo, inicio, fim):
             adi.Range(f"D{linha}").Value = tipo
             adi.Range(f"E{linha}").Value = qtd
             adi.Range(f"H{linha}").Value = "Sim"
+            # Coleta 11.6: novo item informa o ultimo reajuste ja incorporado
+            # ao VU de inclusao (C1 = mesma premissa da 11.4 neste cenario).
+            if tipo == "Acréscimo - novo item":
+                adi.Range(f"N{linha}").Value = "C1"
         cee = wb.Worksheets("CICLO_EM_EXECUCAO")
         cee.Range("D5").Value = corte
         xl.CalculateFull()
@@ -247,6 +253,12 @@ def test_cenario_focal_no_excel(tmp_path, corte, ciclo, inicio, fim):
         assert cee.Range("B16").Value == 1851  # N003 na abertura de C4
         assert cee.Range("E13").Value == pytest.approx(10.38)
         assert cee.Range("E16").Value == pytest.approx(7.25)
+
+        adi.Range("N3").Value = None  # novo item sem base economica: bloqueio
+        xl.CalculateFull()
+        assert adi.Range("I3").Value in (None, "")
+        assert adi.Range("M3").Value == "ALERTA: BASE_VU_OBRIGATORIA"
+        adi.Range("N3").Value = "C1"
 
         adi.Range("D2").Value = "Acréscimo - novo item"  # item ja existente
         xl.CalculateFull()

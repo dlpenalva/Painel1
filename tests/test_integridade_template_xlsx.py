@@ -72,7 +72,10 @@ FORMULAS_POR_ABA = {
     # TRATADOS": M19 (rotulo com a decomposicao) e S19 (o total
     # considerado no VTA). Nenhuma linha foi inserida e A:L ficou intacta.
     "itens_PC": 45100,
-    "aditivos": 1393,
+    # Coleta 11.6: +199 (1393 -> 1592) — coluna tecnica oculta O2:O200
+    # (INDICE_BASE_ECONOMICA_VU); I/J/M trocaram a formula sem mudar a
+    # contagem e N2:N200 e entrada do fiscal (sem formula).
+    "aditivos": 1592,
     # Fonte unica da posicao fisica: +199 de QTD_REM_ATUAL (B2:B200), que deixou
     # de ser digitada e passou a buscar CICLO_EM_EXECUCAO por ITEM, e +3 do
     # painel (I9 data da posicao fisica, I10 status, I11 validacao temporal).

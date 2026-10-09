@@ -110,7 +110,8 @@ def test_e_f_j_consumindo_h_preserva_os_dois_ramos(workbooks):
     formula = runtime["aditivos"]["J2"].value
     assert formula == base["aditivos"]["J2"].value
     assert 'UPPER(H2)="SIM"' in formula.upper()
-    assert formula.endswith(",F2),2))")
+    assert "ROUND(F2*I2,2)" in formula
+    assert formula.endswith("ROUND(L2*F2,2)))")
 
 
 def test_g_h_nao_altera_delta_de_quantidade_l(workbooks):

@@ -25,11 +25,14 @@ todas as formulas, validacoes, estilos, merges e intervalos nomeados.
 from __future__ import annotations
 
 import hashlib
+import posixpath
 import re
+import zipfile
 from datetime import date, datetime
 from io import BytesIO
 from pathlib import Path
 from typing import Any
+from xml.etree import ElementTree
 
 from openpyxl import load_workbook
 from openpyxl.utils import get_column_letter
@@ -216,7 +219,7 @@ _RESIDUOS_POR_ABA["itens_Remanesc"] = [
 # aditivos: eventos demonstrativos (F soh quando valor manual sobrepoe formula)
 _RESIDUOS_POR_ABA["aditivos"] = [
     f"{col}{lin}" for lin in range(2, 201)
-    for col in ("A", "B", "D", "E", "F", "H", "K")
+    for col in ("A", "B", "D", "E", "F", "H", "K", "N")
 ]
 # Etapa 26F: a unica interface manual fica na camada tecnica de RESULTADOS
 # (RESULTADOS_DETALHE na Coleta 11.2+; RESULTADOS antes — `_limpar_residuos`
@@ -734,12 +737,236 @@ def _garantir_apresentacao_retroativos_e_aditivos(wb) -> None:
                 ws[f"H{linha}"].value = "Nao"
 
 
+# Coleta 11.6 — fonte unica do template (tools/aplicar_coleta_116_...) e da
+# migracao runtime abaixo (so age em template que ainda nao as carregue).
+_CABECALHO_BASE_ECONOMICA_VU = "ÚLTIMO REAJUSTE JÁ INCORPORADO AO VU"
+_CABECALHO_INDICE_BASE_VU = "INDICE_BASE_ECONOMICA_VU"
+_CICLOS_BASE_ECONOMICA = ("C0", "C1", "C2", "C3", "C4")
+_FAIXA_BASE_ECONOMICA_VU = "N2:N200"
+_LISTA_BASE_ECONOMICA_VU = ",".join(_CICLOS_BASE_ECONOMICA)
+_DV_BASE_VU_TITULO = "Base econômica do VU"
+_DV_BASE_VU_MENSAGEM = (
+    "Informe o último reajuste já incorporado ao VU. "
+    "C0 significa nenhum reajuste incorporado."
+)
+_DV_BASE_VU_ERRO_TITULO = "Base econômica inválida"
+_DV_BASE_VU_ERRO = "Escolha C0, C1, C2, C3 ou C4."
+_FORMULA_CF_BASE_VU_NAO_APLICAVEL = 'AND($A2<>"",ISERROR(SEARCH("NOVO",$D2)))'
+_COR_BASE_VU_NAO_APLICAVEL = "D9D9D9"
+_FAIXA_DESTAQUE_NOVOS_ITENS = "A2:AC200"
+_FORMULA_DESTAQUE_NOVOS_ITENS = (
+    'AND(LEN(TRIM($A2))=4,LEFT(TRIM($A2),1)="N",'
+    'ISNUMBER(--MID(TRIM($A2),2,3)),ISERROR(FIND(".",$A2)),'
+    'ISERROR(FIND(",",$A2)),ISERROR(FIND("-",$A2)),'
+    'ISERROR(FIND("+",$A2)),ISERROR(SEARCH("E",$A2,2)),'
+    'ISERROR(FIND(" ",TRIM($A2))))'
+)
+_COR_FONTE_NOVOS_ITENS = "006100"
+
+
+def _expressao_base_economica_item(linha: int) -> str:
+    """Índice do fator já incorporado ao VU, herdado pelo item."""
+    contagens = [
+        (
+            f'COUNTIFS($A$2:$A$200,$A{linha},$D$2:$D$200,"*novo*",'
+            f'$N$2:$N$200,"C{indice}")'
+        )
+        for indice in range(5)
+    ]
+    total = "+".join(contagens)
+    escolha = '""'
+    for indice, contagem in enumerate(contagens):
+        escolha = f'IF({contagem}>0,{indice},{escolha})'
+    nascimento = (
+        f'INDEX(posicao_contratual!$Y$2:$Y$200,'
+        f'MATCH($A{linha},posicao_contratual!$A$2:$A$200,0))'
+    )
+    return f'IF(({total})=1,{escolha},IF(AND(({total})=0,{nascimento}=0),0,""))'
+
+
+def _formula_indice_base_economica(linha: int) -> str:
+    return f'=IFERROR({_expressao_base_economica_item(linha)},"")'
+
+
+def _formula_fator_base_economica(linha: int) -> str:
+    ciclos = '{"C0","C1","C2","C3","C4"}'
+    base = f'$O{linha}'
+    alvo = (
+        f'MIN(MATCH($C{linha},{ciclos},0)-1,'
+        'COUNT(parametros!$F$2:$F$6)-1)'
+    )
+    fator_alvo = f'INDEX(parametros!$F$2:$F$6,({alvo})+1)'
+    fator_base = f'INDEX(parametros!$F$2:$F$6,({base})+1)'
+    return (
+        f'=IFERROR(IF(OR($A{linha}="",$C{linha}=""),"",'
+        f'IF(OR(({base})="",({base})>({alvo}),'
+        f'NOT(ISNUMBER({fator_alvo})),NOT(ISNUMBER({fator_base}))),"",'
+        f'{fator_alvo}/{fator_base})),"")'
+    )
+
+
+def _formula_valor_aditivo(linha: int) -> str:
+    return (
+        f'=IF(OR(L{linha}="",F{linha}=""),"",'
+        f'IF(UPPER(H{linha})="SIM",'
+        f'IF(ISNUMBER(I{linha}),ROUND(L{linha}*ROUND(F{linha}*I{linha},2),2),""),'
+        f'ROUND(L{linha}*F{linha},2)))'
+    )
+
+
+def _formula_status_aditivo(linha: int) -> str:
+    novo = f'ISNUMBER(SEARCH("NOVO",D{linha}))'
+    return (
+        f'=IF(A{linha}="","",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{linha})=0,'
+        '"NOVO ITEM NAO CADASTRADO - CADASTRAR EM itens_Remanesc: ITEM + '
+        'VU_ORIGINAL (QTD_BASE_ORIGINAL sera 0 automaticamente); depois a data '
+        'e a quantidade aqui.",'
+        f'IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{linha})>1,"ALERTA: ITEM_DUPLICADO",'
+        f'IF(OR(C{linha}="",C{linha}="Fora dos ciclos"),"ALERTA: CICLO_INVALIDO",'
+        f'IF(NOT(ISNUMBER(E{linha})),"ALERTA: QTD_INVALIDA",'
+        f'IF(AND(LEFT(UPPER(D{linha}),3)<>"ACR",LEFT(UPPER(D{linha}),4)<>"SUPR",'
+        f'LEFT(UPPER(D{linha}),4)<>"DECR"),"ALERTA: TIPO_INVALIDO",'
+        f'IF(AND({novo},OR(INDEX(posicao_contratual!$C$2:$C$200,'
+        f'MATCH(A{linha},posicao_contratual!$A$2:$A$200,0))<>0,F{linha}="",'
+        f'COUNTIFS($A$2:$A$200,A{linha},$B$2:$B$200,"<"&B{linha},'
+        f'$L$2:$L$200,">0")>0)),"ALERTA: NOVO ITEM INVALIDO - use Acrescimo '
+        'se o item ja existia; novo item exige QTD_BASE_ORIGINAL 0, VU_ORIGINAL '
+        'e ser o 1o acrescimo do item.",'
+        f'IF(AND({novo},OR(N{linha}="",ISERROR(MATCH(N{linha},'
+        '{"C0","C1","C2","C3","C4"},0)))),"ALERTA: BASE_VU_OBRIGATORIA",'
+        f'IF(AND(NOT({novo}),N{linha}<>""),"ALERTA: BASE_VU_NAO_APLICAVEL",'
+        f'IF(AND(UPPER(H{linha})="SIM",NOT(ISNUMBER(I{linha}))),'
+        '"ALERTA: BASE_VU_INVALIDA_OU_POSTERIOR_AO_FATOR_ALVO","OK")'
+        ')))))))))'
+    )
+
+
+_FORMULAS_BASE_ECONOMICA_VU = (
+    ("I", _formula_fator_base_economica),
+    ("J", _formula_valor_aditivo),
+    ("M", _formula_status_aditivo),
+    ("O", _formula_indice_base_economica),
+)
+
+
+def _aditivos_base_economica_canonica(ws) -> bool:
+    """O template ja carrega a Coleta 11.6 (tools/aplicar_coleta_116_...)?"""
+    return ws["N1"].value == _CABECALHO_BASE_ECONOMICA_VU and all(
+        ws[f"{coluna}{linha}"].value == funcao(linha)
+        for coluna, funcao in _FORMULAS_BASE_ECONOMICA_VU
+        for linha in range(2, 201)
+    )
+
+
+def _garantir_base_economica_vu_aditivos(wb) -> None:
+    """Acrescenta em N a base econômica do VU sem deslocar A:M.
+
+    O template oficial ja traz a estrutura (PR3B-1: o template atravessa a
+    geracao sem conserto); a migracao abaixo so age em template anterior.
+    """
+    if "aditivos" not in wb.sheetnames:
+        return
+    from copy import copy
+    from openpyxl.formatting.rule import FormulaRule
+    from openpyxl.styles import PatternFill
+    from openpyxl.worksheet.datavalidation import DataValidation
+
+    ws = wb["aditivos"]
+    conflitos = [
+        f"N{linha}" for linha in range(1, 201)
+        if ws[f"N{linha}"].value not in (None, _CABECALHO_BASE_ECONOMICA_VU)
+    ]
+    if conflitos:
+        raise ValueError(
+            "aditivos!N deixou de estar livre para a base economica do VU: "
+            + ", ".join(conflitos[:5])
+        )
+    if _aditivos_base_economica_canonica(ws):
+        return
+
+    ws["N1"].value = _CABECALHO_BASE_ECONOMICA_VU
+    for atributo in ("font", "fill", "border", "alignment", "protection"):
+        setattr(ws["N1"], atributo, copy(getattr(ws["H1"], atributo)))
+    ws["N1"].number_format = ws["H1"].number_format
+    ws.column_dimensions["N"].width = 34
+    ws["O1"].value = _CABECALHO_INDICE_BASE_VU
+    for atributo in ("font", "fill", "border", "alignment", "protection"):
+        setattr(ws["O1"], atributo, copy(getattr(ws["M1"], atributo)))
+    ws["O1"].number_format = ws["M1"].number_format
+    ws.column_dimensions["O"].hidden = True
+
+    for linha in range(2, 201):
+        alvo = ws[f"N{linha}"]
+        modelo = ws[f"H{linha}"]
+        for atributo in ("font", "fill", "border", "alignment", "protection"):
+            setattr(alvo, atributo, copy(getattr(modelo, atributo)))
+        alvo.number_format = modelo.number_format
+        for coluna, funcao in _FORMULAS_BASE_ECONOMICA_VU:
+            ws[f"{coluna}{linha}"].value = funcao(linha)
+
+    faixa = _FAIXA_BASE_ECONOMICA_VU
+    lista = f'"{_LISTA_BASE_ECONOMICA_VU}"'
+    encontrada = False
+    for dv in ws.data_validations.dataValidation:
+        if faixa in {str(rng) for rng in dv.sqref.ranges}:
+            dv.type = "list"
+            dv.formula1 = lista
+            encontrada = True
+    if not encontrada:
+        dv = DataValidation(type="list", formula1=lista, allow_blank=True)
+        dv.promptTitle = _DV_BASE_VU_TITULO
+        dv.prompt = _DV_BASE_VU_MENSAGEM
+        dv.errorTitle = _DV_BASE_VU_ERRO_TITULO
+        dv.error = _DV_BASE_VU_ERRO
+        dv.showInputMessage = True
+        dv.showErrorMessage = True
+        ws.add_data_validation(dv)
+        dv.add(faixa)
+
+    formula_cinza = _FORMULA_CF_BASE_VU_NAO_APLICAVEL
+    if not any(
+        str(cf.sqref) == faixa
+        and any(formula_cinza in (rule.formula or []) for rule in cf.rules)
+        for cf in ws.conditional_formatting
+    ):
+        ws.conditional_formatting.add(
+            faixa,
+            FormulaRule(
+                formula=[formula_cinza],
+                fill=PatternFill("solid", fgColor="FF" + _COR_BASE_VU_NAO_APLICAVEL),
+            ),
+        )
+
+
+def _garantir_destaque_novos_itens(wb) -> None:
+    """Fonte verde-escura para Nxxx, sem tocar nos preenchimentos funcionais."""
+    if "itens_Remanesc" not in wb.sheetnames:
+        return
+    from openpyxl.formatting.rule import FormulaRule
+    from openpyxl.styles import Font
+
+    ws = wb["itens_Remanesc"]
+    faixa = _FAIXA_DESTAQUE_NOVOS_ITENS
+    formula = _FORMULA_DESTAQUE_NOVOS_ITENS
+    if any(
+        str(cf.sqref) == faixa
+        and any(formula in (rule.formula or []) for rule in cf.rules)
+        for cf in ws.conditional_formatting
+    ):
+        return
+    ws.conditional_formatting.add(
+        faixa,
+        FormulaRule(formula=[formula], font=Font(color="FF" + _COR_FONTE_NOVOS_ITENS)),
+    )
+
+
 _VALIDACOES_CRITICAS_ADITIVOS: dict[str, tuple[str, str]] = {
     "H2:H200": ("list", '"Sim,Nao"'),
     "K2:K200": ("list", '"Sim,Nao"'),
     # Coleta 11.4: "Acréscimo - novo item" marca o nascimento contratual do
     # item; Acrescimo/Supressao seguem como antes (formulas L/M por prefixo).
     "D2:D200": ("list", '"Acrescimo,Acréscimo - novo item,Supressao"'),
+    "N2:N200": ("list", '"C0,C1,C2,C3,C4"'),
 }
 
 
@@ -756,6 +983,9 @@ def _validar_validacoes_aditivos_criticas(wb) -> None:
     if "aditivos" not in wb.sheetnames:
         return
     ws = wb["aditivos"]
+    esperadas = dict(_VALIDACOES_CRITICAS_ADITIVOS)
+    if str(ws["N1"].value or "").strip() != _CABECALHO_BASE_ECONOMICA_VU:
+        esperadas.pop("N2:N200", None)  # Coletas 11.5 e anteriores
     encontradas = {
         str(faixa): (dv.type, dv.formula1)
         for dv in ws.data_validations.dataValidation
@@ -763,7 +993,7 @@ def _validar_validacoes_aditivos_criticas(wb) -> None:
     }
     faltantes = [
         faixa
-        for faixa, esperado in _VALIDACOES_CRITICAS_ADITIVOS.items()
+        for faixa, esperado in esperadas.items()
         if encontradas.get(faixa) != esperado
     ]
     if faltantes:
@@ -972,6 +1202,8 @@ def obter_coleta_oficial_bytes() -> bytes:
     _garantir_orientacao_novo_item_por_aditivo(wb)
     _validar_estrutura_itens_pc(wb)
     _garantir_apresentacao_retroativos_e_aditivos(wb)
+    _garantir_base_economica_vu_aditivos(wb)
+    _garantir_destaque_novos_itens(wb)
     from _apresentacao_pc_xls import garantir_apresentacao_pc
     garantir_apresentacao_pc(wb)
     _garantir_colunas_tecnicas_itens_pc_ocultas(wb)
@@ -985,7 +1217,89 @@ def obter_coleta_oficial_bytes() -> bytes:
 
     saida = BytesIO()
     wb.save(saida)
-    return saida.getvalue()
+    return _preservar_extensoes_x14(
+        TEMPLATE_COLETA_OFICIAL.read_bytes(), saida.getvalue()
+    )
+
+
+def _mapa_xml_planilhas(pacote: zipfile.ZipFile) -> dict[str, str]:
+    ns = {
+        "m": "http://schemas.openxmlformats.org/spreadsheetml/2006/main",
+        "r": "http://schemas.openxmlformats.org/officeDocument/2006/relationships",
+    }
+    raiz = ElementTree.fromstring(pacote.read("xl/workbook.xml"))
+    relacoes = ElementTree.fromstring(
+        pacote.read("xl/_rels/workbook.xml.rels")
+    )
+    destinos = {
+        rel.attrib["Id"]: rel.attrib["Target"]
+        for rel in relacoes
+    }
+    resultado: dict[str, str] = {}
+    planilhas = raiz.find("m:sheets", ns)
+    if planilhas is None:
+        return resultado
+    for planilha in planilhas:
+        rel_id = planilha.attrib[
+            "{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"
+        ]
+        destino = destinos[rel_id].lstrip("/")
+        if not destino.startswith("xl/"):
+            destino = posixpath.normpath(posixpath.join("xl", destino))
+        resultado[planilha.attrib["name"]] = destino
+    return resultado
+
+
+def _preservar_extensoes_x14(origem: bytes, destino: bytes) -> bytes:
+    """Restaura extensoes x14 homologadas removidas pelo openpyxl.
+
+    Somente o ``extLst`` da mesma planilha e transplantado. O restante do XML
+    continua sendo exatamente o arquivo gerado, inclusive formulas e valores.
+    Se aparecer uma extensao concorrente no destino, o fluxo falha fechado em
+    vez de tentar combinar estruturas OOXML de modo especulativo.
+    """
+    padrao_ext = re.compile(rb"<extLst(?:\s[^>]*)?>.*?</extLst>", re.DOTALL)
+    with zipfile.ZipFile(BytesIO(origem)) as pacote_origem, zipfile.ZipFile(
+        BytesIO(destino)
+    ) as pacote_destino:
+        mapa_origem = _mapa_xml_planilhas(pacote_origem)
+        mapa_destino = _mapa_xml_planilhas(pacote_destino)
+        substituicoes: dict[str, bytes] = {}
+        for nome, caminho_origem in mapa_origem.items():
+            xml_origem = pacote_origem.read(caminho_origem)
+            extensoes = [
+                bloco for bloco in padrao_ext.findall(xml_origem)
+                if b"x14:" in bloco
+            ]
+            if not extensoes:
+                continue
+            if len(extensoes) != 1 or nome not in mapa_destino:
+                raise ValueError(
+                    f"Extensao x14 nao preservavel de forma univoca: {nome}"
+                )
+            caminho_destino = mapa_destino[nome]
+            xml_destino = pacote_destino.read(caminho_destino)
+            if padrao_ext.search(xml_destino):
+                raise ValueError(
+                    f"Extensao OOXML concorrente no destino: {nome}"
+                )
+            fechamento = b"</worksheet>"
+            if fechamento not in xml_destino:
+                raise ValueError(f"XML de planilha invalido no destino: {nome}")
+            substituicoes[caminho_destino] = xml_destino.replace(
+                fechamento, extensoes[0] + fechamento, 1
+            )
+
+        if not substituicoes:
+            return destino
+        saida = BytesIO()
+        with zipfile.ZipFile(saida, "w") as pacote_saida:
+            for info in pacote_destino.infolist():
+                pacote_saida.writestr(
+                    info,
+                    substituicoes.get(info.filename, pacote_destino.read(info.filename)),
+                )
+        return saida.getvalue()
 
 
 def _data(valor: Any) -> date | None:
@@ -1210,7 +1524,8 @@ def gerar_coleta_oficial_preenchida(dados_calculadora: dict[str, Any] | None) ->
         return base
     from _gerador_masterfile import gerar_masterfile_preenchido
 
-    return gerar_masterfile_preenchido(
+    preenchida = gerar_masterfile_preenchido(
         normalizar_dados_calculadora(dados_calculadora),
         base,
     )
+    return _preservar_extensoes_x14(base, preenchida)

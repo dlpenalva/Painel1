@@ -298,10 +298,13 @@ def test_formulas_aplicam_janela_exata_e_nao_referenciam_vta(coleta_runtime):
     formula_consumo = ws["D13"].value
     formula_valor_consumido = ws["F13"].value
     formula_remanescente = ws["G13"].value
-    # A janela do periodo comeca no dia SEGUINTE a abertura: o aditivo datado NO
-    # dia da abertura pertence a fotografia de abertura (coluna B), uma unica vez.
-    assert '">="&(INT($F$3)+1)' in formula_delta
+    # A janela do periodo comeca no dia SEGUINTE a referencia do item (Q13 =
+    # $F$3 no ciclo em execucao): o aditivo datado NO dia da referencia pertence
+    # a fotografia (coluna B), uma unica vez.
+    assert '">="&(INT(Q13)+1)' in formula_delta
     assert '"<="&$D$5' in formula_delta
+    assert "NOT(ISNUMBER(Q13))" in formula_delta
+    assert "IF(P13=$C$3,$F$3," in ws["Q13"].value
     assert "B13+I13-C13" in formula_consumo
     assert "D13*E13" in formula_valor_consumido
     assert "C13*E13" in formula_remanescente
@@ -325,6 +328,50 @@ def test_novo_item_usa_data_de_nascimento_e_suprimido_fica_visivel(coleta_runtim
     assert "posicao_contratual!$Z2" in ws["B13"].value
     # Fronteira por DIA: aditivo com efeito ate a abertura compoe a coluna B.
     assert '"<"&(INT($F$3)+1)' in ws["B13"].value
+    for coluna in ("V2", "R2", "N2", "J2", "F2"):
+        assert f"posicao_contratual!${coluna}" in ws["B13"].value
+    assert ws["P13"].value.startswith("=IF(")
+    assert ws["Q13"].value.startswith("=IF(")
+
+
+# Fotografia de abertura do ciclo em execucao exatamente como na Coleta 11.5
+# (main 5df85eb). Ela alimenta A9 e, por ela, MEMORIA_RESULTADOS!W49/W50: a
+# ultima referencia conhecida (11.6) so pode RECUAR quando esta regra nao
+# produzir numero, nunca substitui-la.
+ABERTURA_CICLO_ATUAL_COLETA_115 = (
+    'IF(AND(posicao_contratual!$Z2,COUNTIFS(aditivos!$A$2:$A$200,itens_Re'
+    'manesc!$A2,aditivos!$B$2:$B$200,"<"&(INT($F$3)+1),aditivos!$L$2:$L$2'
+    '00,">0")=0),0,IF(ISNUMBER(IF($C$3="C0",posicao_contratual!$F2,IF($C$'
+    '3="C1",posicao_contratual!$J2,IF($C$3="C2",posicao_contratual!$N2,IF'
+    '($C$3="C3",posicao_contratual!$R2,IF($C$3="C4",posicao_contratual!$V'
+    '2,"")))))),ROUND(IF($C$3="C0",posicao_contratual!$F2,IF($C$3="C1",po'
+    'sicao_contratual!$J2,IF($C$3="C2",posicao_contratual!$N2,IF($C$3="C3'
+    '",posicao_contratual!$R2,IF($C$3="C4",posicao_contratual!$V2,"")))))'
+    '+ROUND(SUMIFS(aditivos!$L$2:$L$200,aditivos!$A$2:$A$200,A13,aditivos'
+    '!$C$2:$C$200,$C$3,aditivos!$B$2:$B$200,"<"&(INT($F$3)+1)),2),2),IF(R'
+    'OUND(SUMIFS(aditivos!$L$2:$L$200,aditivos!$A$2:$A$200,A13,aditivos!$'
+    'C$2:$C$200,$C$3,aditivos!$B$2:$B$200,"<"&(INT($F$3)+1)),2)>0,ROUND(S'
+    'UMIFS(aditivos!$L$2:$L$200,aditivos!$A$2:$A$200,A13,aditivos!$C$2:$C'
+    '$200,$C$3,aditivos!$B$2:$B$200,"<"&(INT($F$3)+1)),2),"")))'
+)
+
+
+def test_ciclo_em_execucao_prevalece_com_a_regra_da_coleta_115(coleta_runtime):
+    _, wb = coleta_runtime
+    ws = wb[ABA_CICLO_EM_EXECUCAO]
+    # P escolhe o ciclo em execucao sempre que a regra 11.5 da numero; B usa a
+    # regra 11.5 integral nesse ramo. Recuo a Ck so na falta dela.
+    assert f"IF(ISNUMBER({ABERTURA_CICLO_ATUAL_COLETA_115}),$C$3," in ws["P13"].value
+    assert f"IF(P13=$C$3,{ABERTURA_CICLO_ATUAL_COLETA_115}," in ws["B13"].value
+    # Referencia anterior: mesma convencao de QTD_REM_ABERTURA (aditivos do
+    # proprio Ck com efeito ate a data da fotografia, uma unica vez).
+    assert 'aditivos!$C$2:$C$200,P13,aditivos!$B$2:$B$200,"<"&(INT(Q13)+1)' in ws["B13"].value
+    # Recuo exige saldo numerico E data exata da fotografia (parametros!I).
+    for coluna, linha_param in (("F", 2), ("J", 3), ("N", 4), ("R", 5), ("V", 6)):
+        assert (
+            f"ISNUMBER(posicao_contratual!${coluna}2),"
+            f"ISNUMBER(parametros!$I${linha_param})"
+        ) in ws["P13"].value
     regras = [str(regra.formula) for regras in ws.conditional_formatting._cf_rules.values() for regra in regras]
     assert any("ROUND($B13+$I13,2)=0" in regra for regra in regras)
 

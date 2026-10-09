@@ -81,9 +81,11 @@ def test_versoes_publicas_e_politica_preparada() -> None:
     # Cl8us 12.1 / Coleta 11.5: aviso de historico necessario + orientacao de
     # itens novos por aditivo (XLS).
     # Cl8us 12.2: hotfix do carimbo de publicacao; Coleta permanece 11.5.
-    assert CL8US_VERSION == "12.2"
-    assert COLETA_VERSION == "11.5"
-    assert COLETA_VERSOES_ACEITAS == ("11.0", "11.1", "11.2", "11.3", "11.4", "11.5")
+    assert CL8US_VERSION == "12.3"
+    assert COLETA_VERSION == "11.6"
+    assert COLETA_VERSOES_ACEITAS == (
+        "11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6"
+    )
     assert CL8US_VERSION != COLETA_VERSION
     assert COLETA_COMPATIBILIDADE_ANTERIORES == 2
     assert re.fullmatch(r"\d{2}\.\d", CL8US_VERSION)
@@ -100,8 +102,8 @@ def test_sidebar_exibe_as_duas_versoes_da_fonte_unica(monkeypatch) -> None:
 
     assert legendas == [
         "Última atualização publicada em 30/09/2026 12:00",
-        "Cl8us 12.2",
-        "Modelo de Coleta 11.5",
+        "Cl8us 12.3",
+        "Modelo de Coleta 11.6",
     ]
 
 
