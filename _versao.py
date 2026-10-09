@@ -14,6 +14,14 @@ em ``docs/VERSIONAMENTO.md``):
 * ``ATUALIZADO_EM_FALLBACK`` e atualizado junto com o bump;
 * numero ja consumido por uma entrega nunca e reutilizado.
 
+Regra do carimbo de publicacao:
+
+* se o Git estiver disponivel, o horario do ultimo commit e SEMPRE a fonte
+  primaria e deve ser exibido sem comparacao com o fallback;
+* ``ATUALIZADO_EM_FALLBACK`` so pode ser usado quando o Git nao estiver
+  disponivel ou nao retornar um commit valido;
+* o fallback nunca pode sobrescrever um horario real obtido do Git.
+
 ``tools/verificar_versionamento.py`` faz o CI falhar quando a politica e
 violada; nada e incrementado automaticamente.
 
@@ -28,6 +36,9 @@ from datetime import datetime
 from pathlib import Path
 
 
+# 12.2: hotfix do carimbo de publicacao: quando o Git esta disponivel, o horario
+# real do ultimo commit passa a ter prioridade absoluta; o fallback so e usado
+# quando o Git nao fornece um commit valido. COLETA_VERSION permanece 11.5.
 # 12.1: parametros!A8 so pede percentual de ciclo ANTERIOR a um ciclo
 # computado (nao mais ate o ciclo em execucao) e mensagens de entrada orientam
 # itens novos por aditivo em itens_Remanesc/aditivos — muda o XLS entregue:
@@ -54,7 +65,7 @@ from pathlib import Path
 # (Financeiro, PCs e Itens) — mudanca estrutural do XLS: COLETA_VERSION 11.1.
 # 11.3: modelos em branco do Despacho Saneador e do Termo de Apostila com a mesma
 # estrutura dos documentos gerados. 11.2: memoria de calculo da garantia em XLSX.
-CL8US_VERSION = "12.1"
+CL8US_VERSION = "12.2"
 COLETA_VERSION = "11.5"
 # Modelos de Coleta da familia 11.x aceitos SEM adaptacao: o 11.1 so acrescentou
 # um quadro informativo na RESULTADOS/MEMORIA_RESULTADOS (formulas); a Coleta 11.0
@@ -79,7 +90,9 @@ COLETA_VERSOES_SEM_RESULTADOS_DETALHE = ("11.0", "11.1")
 # em _formalizacao_compatibilidade, por evidencia tecnica e nunca por versao.
 COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
-ATUALIZADO_EM_FALLBACK = "08/10/2026 21:30"
+# Fallback conservador da ultima publicacao confirmada antes deste hotfix.
+# Quando o Git esta disponivel, este valor nunca prevalece sobre o commit real.
+ATUALIZADO_EM_FALLBACK = "08/10/2026 19:50"
 
 
 def _data_ultimo_commit() -> str | None:
@@ -100,9 +113,11 @@ def _data_ultimo_commit() -> str | None:
 
 
 def atualizado_em() -> str:
-    """Retorna o carimbo visivel no formato brasileiro."""
+    """Retorna o carimbo visivel no formato brasileiro.
+
+    O Git e a fonte primaria. O fallback so existe para ambientes em que o
+    repositorio/commit nao esteja disponivel. Nunca se compara os dois horarios,
+    evitando que um fallback incorreto ou futuro sobrescreva a publicacao real.
+    """
     data_commit = _data_ultimo_commit()
-    if not data_commit:
-        return ATUALIZADO_EM_FALLBACK
-    formato = "%d/%m/%Y %H:%M"
-    return max((data_commit, ATUALIZADO_EM_FALLBACK), key=lambda valor: datetime.strptime(valor, formato))
+    return data_commit if data_commit else ATUALIZADO_EM_FALLBACK

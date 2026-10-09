@@ -28,7 +28,6 @@ def _tem(erros: list[str], mensagem: str) -> bool:
     return any(e.startswith(mensagem) for e in erros)
 
 
-# --------------------------------------------------------------- cenarios A-H
 def test_a_somente_testes_nao_exige_bump():
     assert vv.avaliar(["tests/test_x.py", "tests/fixtures/a.xlsx"], BASE, BASE) == []
 
@@ -41,9 +40,9 @@ def test_b_pagina_exige_cl8us():
 
 
 @pytest.mark.parametrize("arquivo", [
-    "templates/COLETA_REAJUSTE_OFICIAL.xlsx",   # C
-    "_memoria_calculo.py",                      # D
-    "_gerador_masterfile.py",                   # E
+    "templates/COLETA_REAJUSTE_OFICIAL.xlsx",
+    "_memoria_calculo.py",
+    "_gerador_masterfile.py",
     "_coleta_oficial.py",
     "_ciclo_em_execucao.py",
     "_apresentacao_pc_xls.py",
@@ -82,13 +81,10 @@ def test_h_ferramenta_interna_ou_documentacao_sem_falso_positivo(arquivo):
     assert vv.avaliar([arquivo], BASE, BASE) == []
 
 
-# ------------------------------------- tools usadas pela aplicacao em runtime
 IST_ANATEL = "tools/atualizar_ist_anatel.py"
 
 
 def test_tool_de_runtime_ist_sem_bump_falha():
-    """_indice_utils.carregar_ist_anatel importa tools.atualizar_ist_anatel:
-    mudar o parser do IST muda o que o usuario recebe."""
     erros = vv.avaliar([IST_ANATEL], BASE, BASE)
     assert erros == [f"{vv.MSG_CL8US} Arquivos: {IST_ANATEL}"]
     assert erros[0].startswith(
@@ -101,7 +97,6 @@ def test_tool_de_runtime_ist_com_bump_e_fallback_passa_sem_exigir_coleta():
 
 
 def _modulos_tools_importados_pela_producao() -> set[str]:
-    """tools/<modulo>.py importados por app.py, pages/** ou _*.py da raiz."""
     import ast
 
     fontes = [RAIZ / "app.py", *RAIZ.glob("_*.py"), *(RAIZ / "pages").glob("*.py")]
@@ -121,7 +116,7 @@ def _modulos_tools_importados_pela_producao() -> set[str]:
 
 def test_toda_tool_importada_pela_producao_esta_em_sempre_producao():
     importadas = _modulos_tools_importados_pela_producao()
-    assert IST_ANATEL in importadas  # a auditoria enxerga o caso conhecido
+    assert IST_ANATEL in importadas
     faltando = sorted(m for m in importadas if m not in vv.SEMPRE_PRODUCAO)
     assert not faltando, (
         "codigo de producao importa tools/ sem entrada em SEMPRE_PRODUCAO: "
@@ -132,7 +127,6 @@ def test_toda_tool_importada_pela_producao_esta_em_sempre_producao():
         assert not vv.eh_coleta(modulo)
 
 
-# ------------------------------------------------------------ regras extras
 def test_dependencias_de_producao_exigem_cl8us():
     assert _tem(vv.avaliar(["requirements.txt"], BASE, BASE), vv.MSG_CL8US)
 
@@ -146,12 +140,17 @@ def test_versao_que_retrocede_ou_fora_do_formato_falha():
 
 @pytest.mark.parametrize("fallback", [
     "05/10/2026 16:53",   # igual ao da base
-    "01/10/2026 08:00",   # anterior ao da base
     "2026-10-06 10:00",   # fora do formato
 ])
 def test_bump_sem_atualizar_fallback_falha(fallback):
     atual = vv.Versoes("11.8", "11.3", BASE.aceitas, fallback)
     assert vv.avaliar(["app.py"], BASE, atual) == [vv.MSG_FALLBACK]
+
+
+def test_fallback_pode_ser_corrigido_para_horario_anterior():
+    base_errada = vv.Versoes("11.7", "11.3", BASE.aceitas, "08/10/2026 21:30")
+    corrigida = vv.Versoes("11.8", "11.3", BASE.aceitas, "08/10/2026 19:50")
+    assert vv.avaliar(["app.py"], base_errada, corrigida) == []
 
 
 def test_alteracao_so_de_comentario_nao_exige_bump():
@@ -160,8 +159,8 @@ def test_alteracao_so_de_comentario_nao_exige_bump():
     assert vv.mesma_semantica_python(antes, depois)
     assert vv.avaliar(["_reajuste_utils.py"], BASE, BASE, {"_reajuste_utils.py"}) == []
     assert not vv.mesma_semantica_python(antes, depois.replace("+ 1", "+ 2"))
-    assert not vv.mesma_semantica_python(None, depois)  # arquivo novo
-    assert vv.mesma_semantica_python("﻿" + antes, depois)  # BOM nao e codigo
+    assert not vv.mesma_semantica_python(None, depois)
+    assert vv.mesma_semantica_python("﻿" + antes, depois)
 
 
 def test_versao_vigente_do_repositorio_obedece_a_politica():
@@ -172,7 +171,6 @@ def test_versao_vigente_do_repositorio_obedece_a_politica():
     assert vv.avaliar([], atual, atual) == []
 
 
-# ----------------------------------------------------- ponta a ponta (git)
 def _git(repo: Path, *args: str) -> None:
     subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
 
@@ -205,14 +203,12 @@ def test_comando_do_ci_falha_sem_bump_e_passa_com_bump(tmp_path):
     _git(repo, "add", ".")
     _git(repo, "commit", "-q", "-m", "base")
 
-    # Sem bump: falha com a mensagem da regra.
     (repo / "pages" / "p.py").write_text("x = 2\n", encoding="utf-8")
     _git(repo, "commit", "-qam", "muda pagina")
     sem_bump = _rodar(repo)
     assert sem_bump.returncode == 1
     assert vv.MSG_CL8US in sem_bump.stdout
 
-    # Com bump deliberado no mesmo commit: passa.
     _git(repo, "reset", "-q", "--soft", "HEAD^1")
     (repo / "_versao.py").write_text(
         _versao_py(*SO_CL8US.__dict__.values()), encoding="utf-8"

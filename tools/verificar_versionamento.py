@@ -11,8 +11,13 @@ HEAD:
 * COLETA_VERSION fora de COLETA_VERSOES_ACEITAS
   -> "COLETA_VERSION atual nao consta em COLETA_VERSOES_ACEITAS.";
 * versao alterada que nao avanca, ou fora do formato XX.X;
-* CL8US_VERSION incrementada sem atualizar ATUALIZADO_EM_FALLBACK (ou com
-  fallback fora do formato dd/mm/aaaa HH:MM, ou anterior ao da base).
+* CL8US_VERSION incrementada sem atualizar ATUALIZADO_EM_FALLBACK, ou com
+  fallback fora do formato dd/mm/aaaa HH:MM.
+
+O fallback deve mudar em toda entrega, mas pode ser corrigido para um horario
+anterior quando o valor anterior estava errado. A monotonicidade do fallback
+nao e usada como prova de publicacao; quando o Git esta disponivel, o timestamp
+do commit e a fonte primaria.
 
 As superficies sao LISTAS DECLARATIVAS (abaixo), revisaveis no PR. Um .py
 alterado so em comentarios/formatacao (AST identica, docstrings ignoradas) nao
@@ -34,49 +39,37 @@ from pathlib import PurePosixPath
 
 ARQUIVO_VERSAO = "_versao.py"
 
-# --------------------------------------------------------------- superficies
-# Superficie da COLETA: o que define a estrutura/bytes do XLSX entregue.
-# Alterar qualquer um destes exige COLETA_VERSION (e tambem CL8US_VERSION).
 SUPERFICIE_COLETA = (
-    "templates/COLETA_REAJUSTE_OFICIAL.xlsx",  # template oficial
-    "_coleta_oficial.py",          # obter_coleta_oficial_bytes / garantias runtime
-    "_gerador_masterfile.py",      # preenchimento da Coleta pela Calculadora
-    "_memoria_calculo.py",         # bloco parametros!J:R (memoria de calculo)
-    "_ciclo_em_execucao.py",       # cria a aba CICLO_EM_EXECUCAO no XLS entregue
-    "_apresentacao_pc_xls.py",     # apresentacao de itens_PC no XLS entregue
+    "templates/COLETA_REAJUSTE_OFICIAL.xlsx",
+    "_coleta_oficial.py",
+    "_gerador_masterfile.py",
+    "_memoria_calculo.py",
+    "_ciclo_em_execucao.py",
+    "_apresentacao_pc_xls.py",
 )
 
-# Superficie USER-FACING de producao: o que o usuario ve ou recebe.
 SUPERFICIE_USUARIO = (
     "app.py",
     "pages/*",
-    "_*.py",            # modulos da aplicacao na raiz (calculo, UI, documentos,
-                        # garantia, DOU, Coleta, leitores, regras de negocio)
+    "_*.py",
     "templates/*",
     "assets/*",
     ".streamlit/*",
 ) + SUPERFICIE_COLETA
 
-# Nunca exigem bump (avaliadas ANTES da superficie user-facing).
 FORA_DE_PRODUCAO = (
     "tests/*",
     "docs/*",
-    "tools/*",          # ferramentas internas — EXCETO as de SEMPRE_PRODUCAO
+    "tools/*",
     ".github/*",
     "*.md",
-    "*.txt",            # README.txt; requirements.txt vai abaixo, explicitamente
+    "*.txt",
     "*.bat",
-    "teste_*.py",       # scripts avulsos da raiz, fora da aplicacao
+    "teste_*.py",
 )
-# Excecoes a FORA_DE_PRODUCAO, avaliadas ANTES dela: arquivos fora das pastas
-# de producao que a aplicacao usa em runtime. Lista auditada (2026-10-05) —
-# unico import de tools/ pelo codigo de producao:
-#   _indice_utils.carregar_ist_anatel -> tools.atualizar_ist_anatel
-# tests/test_verificar_versionamento.py falha se surgir import novo de tools/
-# por app.py, pages/** ou _*.py sem entrada aqui.
 SEMPRE_PRODUCAO = (
-    "requirements.txt",                  # dependencias da aplicacao
-    "tools/atualizar_ist_anatel.py",     # serie IST oficial (carregar_ist_anatel)
+    "requirements.txt",
+    "tools/atualizar_ist_anatel.py",
 )
 
 MSG_CL8US = "Alteração user-facing detectada sem incremento de CL8US_VERSION."
@@ -99,9 +92,7 @@ class Versoes:
     fallback: str
 
 
-# ------------------------------------------------------------------ leitura
 def ler_versoes(fonte: str) -> Versoes:
-    """Le as constantes de _versao.py por AST (sem importar/executar)."""
     valores: dict[str, object] = {}
     for no in ast.parse(fonte).body:
         if isinstance(no, ast.Assign) and len(no.targets) == 1:
@@ -160,12 +151,9 @@ def _sem_docstrings(arvore: ast.AST) -> ast.AST:
 
 
 def mesma_semantica_python(antes: str | None, depois: str | None) -> bool:
-    """True quando dois fontes Python so diferem em comentarios/formatacao/
-    docstrings (AST identica). Arquivo criado/removido nunca e equivalente."""
     if antes is None or depois is None:
         return False
     try:
-        # BOM UTF-8 (presente em alguns modulos) nao e codigo.
         a = ast.dump(_sem_docstrings(ast.parse(antes.lstrip("﻿"))))
         b = ast.dump(_sem_docstrings(ast.parse(depois.lstrip("﻿"))))
     except SyntaxError:
@@ -173,7 +161,6 @@ def mesma_semantica_python(antes: str | None, depois: str | None) -> bool:
     return a == b
 
 
-# ---------------------------------------------------------------- avaliacao
 def _avanca(base: str, atual: str) -> bool:
     return tuple(map(int, atual.split("."))) > tuple(map(int, base.split(".")))
 
@@ -184,10 +171,6 @@ def avaliar(
     atual: Versoes,
     equivalentes: set[str] | frozenset[str] = frozenset(),
 ) -> list[str]:
-    """Violacoes da politica (lista vazia = guarda passa).
-
-    ``equivalentes``: .py alterados so em comentarios/formatacao (AST igual).
-    """
     relevantes = [c for c in alterados if c not in equivalentes]
     user_facing = sorted(c for c in relevantes if eh_user_facing(c))
     coleta = sorted(c for c in relevantes if eh_coleta(c))
@@ -216,16 +199,15 @@ def avaliar(
 
     if cl8us_mudou:
         try:
-            novo = datetime.strptime(atual.fallback, FORMATO_FALLBACK)
-            anterior = datetime.strptime(base.fallback, FORMATO_FALLBACK)
-            if atual.fallback == base.fallback or novo < anterior:
+            datetime.strptime(atual.fallback, FORMATO_FALLBACK)
+            datetime.strptime(base.fallback, FORMATO_FALLBACK)
+            if atual.fallback == base.fallback:
                 erros.append(MSG_FALLBACK)
         except ValueError:
             erros.append(MSG_FALLBACK)
     return erros
 
 
-# ----------------------------------------------------------------------- git
 def _git(*args: str) -> str:
     return subprocess.run(
         ["git", *args], check=True, capture_output=True, text=True, encoding="utf-8"
