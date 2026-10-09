@@ -762,6 +762,7 @@ _FORMULA_DESTAQUE_NOVOS_ITENS = (
     'ISERROR(FIND(" ",TRIM($A2))))'
 )
 _COR_FONTE_NOVOS_ITENS = "006100"
+_ALERTA_NOVO_ITEM_MAIS_DE_UMA_INCLUSAO = "ALERTA: NOVO_ITEM_COM_MAIS_DE_UMA_INCLUSAO"
 
 
 def _expressao_base_economica_item(linha: int) -> str:
@@ -822,6 +823,10 @@ def _formula_status_aditivo(linha: int) -> str:
         'VU_ORIGINAL (QTD_BASE_ORIGINAL sera 0 automaticamente); depois a data '
         'e a quantidade aqui.",'
         f'IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{linha})>1,"ALERTA: ITEM_DUPLICADO",'
+        # Coleta 11.7: um item so nasce uma vez; duas inclusoes tornam a base
+        # economica ambigua (aditivos!O fica vazio) e o app bloqueia.
+        f'IF(AND({novo},COUNTIFS($A$2:$A$200,A{linha},$D$2:$D$200,"*novo*")>1),'
+        f'"{_ALERTA_NOVO_ITEM_MAIS_DE_UMA_INCLUSAO}",'
         f'IF(OR(C{linha}="",C{linha}="Fora dos ciclos"),"ALERTA: CICLO_INVALIDO",'
         f'IF(NOT(ISNUMBER(E{linha})),"ALERTA: QTD_INVALIDA",'
         f'IF(AND(LEFT(UPPER(D{linha}),3)<>"ACR",LEFT(UPPER(D{linha}),4)<>"SUPR",'
@@ -837,7 +842,7 @@ def _formula_status_aditivo(linha: int) -> str:
         f'IF(AND(NOT({novo}),N{linha}<>""),"ALERTA: BASE_VU_NAO_APLICAVEL",'
         f'IF(AND(UPPER(H{linha})="SIM",NOT(ISNUMBER(I{linha}))),'
         '"ALERTA: BASE_VU_INVALIDA_OU_POSTERIOR_AO_FATOR_ALVO","OK")'
-        ')))))))))'
+        '))))))))))'
     )
 
 
@@ -936,6 +941,175 @@ def _garantir_base_economica_vu_aditivos(wb) -> None:
                 fill=PatternFill("solid", fgColor="FF" + _COR_BASE_VU_NAO_APLICAVEL),
             ),
         )
+
+
+# Coleta 11.7 — historico_VU!D:G (VU_C1..VU_C4) parte da base economica do VU
+# (aditivos!O), e nao mais do nascimento fisico (posicao_contratual!Y). Fonte
+# unica do template (tools/aplicar_coleta_117_...) e da migracao runtime.
+_COLUNAS_HISTORICO_VU = (("D", 1), ("E", 2), ("F", 3), ("G", 4))
+_LINHAS_HISTORICO_VU = range(2, 201)
+
+
+def _formula_historico_vu_nascimento(linha: int, indice: int) -> str:
+    """Forma ate a Coleta 11.6: o nascimento fisico era a base economica."""
+    y = f"posicao_contratual!$Y{linha}"
+    vu = f"itens_Remanesc!C{linha}"
+    fator_base = f"INDEX($L$2:$L$6,{y}+1)"
+    return (
+        f'=IF(OR($A{linha}="",{y}=""),"",IF({y}>{indice},"",'
+        f'IF({y}={indice},IF(ISNUMBER({vu}),{vu},""),'
+        f'IF(OR(NOT(ISNUMBER({vu})),NOT(ISNUMBER($L${indice + 2})),'
+        f'NOT(ISNUMBER({fator_base}))),"",'
+        f'ROUND({vu}*$L${indice + 2}/{fator_base},2)))))'
+    )
+
+
+def _expressao_base_economica_historico(linha: int) -> str:
+    """Indice do ultimo reajuste ja incorporado ao VU do item da linha.
+
+    aditivos!O do item quando numerico, nunca posterior ao nascimento; sem base
+    economica (item original, ou Nxxx sem aditivos!N) vale o nascimento — o
+    comportamento anterior.
+    """
+    y = f"posicao_contratual!$Y{linha}"
+    base = f"INDEX(aditivos!$O$2:$O$200,MATCH($A{linha},aditivos!$A$2:$A$200,0))"
+    return f"IFERROR(IF(ISNUMBER({base}),MIN({base},{y}),{y}),{y})"
+
+
+def _expressao_inclusao_ambigua_historico(linha: int) -> str:
+    """Nxxx criado por mais de uma linha "novo item": base economica ambigua.
+
+    So para item nascido depois de C0 (Y>0); o item original tem base C0 de
+    qualquer forma e nao depende de aditivos!N. Base vazia por outro motivo
+    segue caindo no nascimento.
+    """
+    y = f"posicao_contratual!$Y{linha}"
+    return (
+        f'AND({y}>0,COUNTIFS(aditivos!$A$2:$A$200,$A{linha},'
+        f'aditivos!$D$2:$D$200,"*novo*")>1)'
+    )
+
+
+def _formula_historico_vu_base_economica(linha: int, indice: int) -> str:
+    """VU do ciclo ``indice``: vazio antes do nascimento; dali em diante, o VU
+    original reajustado pelos fatores ainda nao incorporados (base economica).
+
+    No ciclo de nascimento o fator e o ultimo conhecido (mesmo carregamento de
+    aditivos!I e da CICLO_EM_EXECUCAO); nos ciclos seguintes o fator do ciclo
+    e exigido, como sempre (historico faltante nunca e inventado). Nxxx com
+    mais de uma inclusao fica vazio (fail-closed), sem cair no nascimento.
+    """
+    y = f"posicao_contratual!$Y{linha}"
+    vu = f"itens_Remanesc!C{linha}"
+    base = _expressao_base_economica_historico(linha)
+    ambigua = _expressao_inclusao_ambigua_historico(linha)
+
+    def carregado(k: str) -> str:
+        return f"INDEX($L$2:$L$6,MIN({k}+1,COUNT($L$2:$L$6)))"
+
+    fator_ciclo = f"$L${indice + 2}"
+    fator_base = f"INDEX($L$2:$L$6,{base}+1)"
+    return (
+        f'=IF(OR($A{linha}="",{y}=""),"",IF({y}>{indice},"",'
+        f'IF(OR(NOT(ISNUMBER({vu})),{ambigua}),"",'
+        f'IF({y}={indice},IF({base}={indice},{vu},'
+        f'IFERROR(ROUND({vu}*{carregado(str(indice))}/{carregado(base)},2),"")),'
+        f'IF(OR(NOT(ISNUMBER({fator_ciclo})),NOT(ISNUMBER({fator_base}))),"",'
+        f'ROUND({vu}*{fator_ciclo}/{fator_base},2))))))'
+    )
+
+
+def _historico_vu_base_economica_canonico(ws) -> bool:
+    """O template ja carrega a Coleta 11.7 (tools/aplicar_coleta_117_...)?"""
+    return all(
+        ws[f"{coluna}{linha}"].value == _formula_historico_vu_base_economica(linha, indice)
+        for coluna, indice in _COLUNAS_HISTORICO_VU
+        for linha in _LINHAS_HISTORICO_VU
+    )
+
+
+def _garantir_historico_vu_base_economica(wb) -> None:
+    """historico_VU segue a base economica de aditivos!N — Coleta 11.7.
+
+    So reescreve a forma anterior (nascimento como base) e so com aditivos!O
+    canonico; estrutura nao reconhecida fica intacta (nada e inventado). O
+    template oficial ja traz a forma nova: a migracao e idempotente.
+    """
+    if "historico_VU" not in wb.sheetnames or "aditivos" not in wb.sheetnames:
+        return
+    if not _aditivos_base_economica_canonica(wb["aditivos"]):
+        return
+    ws = wb["historico_VU"]
+    if _historico_vu_base_economica_canonico(ws):
+        return
+    for coluna, indice in _COLUNAS_HISTORICO_VU:
+        for linha in _LINHAS_HISTORICO_VU:
+            celula = ws[f"{coluna}{linha}"]
+            if celula.value == _formula_historico_vu_nascimento(linha, indice):
+                celula.value = _formula_historico_vu_base_economica(linha, indice)
+
+
+# Coleta 11.7 — gate fail-closed do VTA na origem canonica. Qualquer ALERTA:
+# em aditivos!M (o mesmo criterio que bloqueia o app em _coleta_reajuste)
+# esvazia VTA_FINAL (MEMORIA_RESULTADOS!B26) e VTA_SEM_POTENCIAL (T40); os
+# consumidores (RESULTADOS, RESULTADOS_DETALHE, comparativo_VTA) so herdam o
+# vazio. Fonte unica do template (tools/aplicar_coleta_117_...) e da migracao.
+_CELULA_GATE_VTA = "T48"
+_ROTULO_GATE_VTA = "Aditivos com ALERTA (VTA indisponivel se > 0)"
+_FORMULA_GATE_VTA = '=COUNTIF(aditivos!$M$2:$M$200,"ALERTA:*")'
+_GATE_VTA = 'IF($T$48>0,"",'
+# Ponto de insercao: em B26 logo apos a governanca homologada (B24 e B25
+# juntos), antes do override B25 e dos ramos Financeiro/PCs/Itens; em T40 no
+# inicio. O calculo economico de cada ramo fica literalmente intacto.
+_ANCORAS_GATE_VTA = {"B26": '=IF(AND(B24<>"",B25<>""),"",', "T40": "="}
+_CELULAS_VTA_COM_GATE = tuple(_ANCORAS_GATE_VTA)
+
+
+def _formula_com_gate_vta(celula: str, formula: str) -> str:
+    """Insere o gate na formula homologada do VTA (idempotente)."""
+    ancora = _ANCORAS_GATE_VTA[celula]
+    if formula.startswith(ancora + _GATE_VTA):
+        return formula
+    if not formula.startswith(ancora):
+        raise ValueError(f"MEMORIA_RESULTADOS!{celula} fora do formato esperado")
+    return f"{ancora}{_GATE_VTA}{formula[len(ancora):]})"
+
+
+def _gate_vta_canonico(ws) -> bool:
+    return (
+        ws["S48"].value == _ROTULO_GATE_VTA
+        and ws[_CELULA_GATE_VTA].value == _FORMULA_GATE_VTA
+        and all(
+            str(ws[celula].value or "").startswith(ancora + _GATE_VTA)
+            for celula, ancora in _ANCORAS_GATE_VTA.items()
+        )
+    )
+
+
+def _garantir_gate_vta_alertas_aditivos(wb) -> None:
+    """VTA indisponivel enquanto houver ALERTA: em aditivos!M — Coleta 11.7.
+
+    O template oficial ja traz o gate; so age em template anterior e so com
+    S48:T48 livres (estrutura nao reconhecida fica intacta).
+    """
+    if "MEMORIA_RESULTADOS" not in wb.sheetnames or "aditivos" not in wb.sheetnames:
+        return
+    ws = wb["MEMORIA_RESULTADOS"]
+    if _gate_vta_canonico(ws):
+        return
+    if ws["S48"].value not in (None, _ROTULO_GATE_VTA) or ws[_CELULA_GATE_VTA].value not in (
+        None, _FORMULA_GATE_VTA,
+    ):
+        return
+    if not all(
+        str(ws[celula].value or "").startswith(ancora)
+        for celula, ancora in _ANCORAS_GATE_VTA.items()
+    ):
+        return
+    ws["S48"].value = _ROTULO_GATE_VTA
+    ws[_CELULA_GATE_VTA].value = _FORMULA_GATE_VTA
+    for celula in _CELULAS_VTA_COM_GATE:
+        ws[celula].value = _formula_com_gate_vta(celula, ws[celula].value)
 
 
 def _garantir_destaque_novos_itens(wb) -> None:
@@ -1203,6 +1377,8 @@ def obter_coleta_oficial_bytes() -> bytes:
     _validar_estrutura_itens_pc(wb)
     _garantir_apresentacao_retroativos_e_aditivos(wb)
     _garantir_base_economica_vu_aditivos(wb)
+    _garantir_historico_vu_base_economica(wb)
+    _garantir_gate_vta_alertas_aditivos(wb)
     _garantir_destaque_novos_itens(wb)
     from _apresentacao_pc_xls import garantir_apresentacao_pc
     garantir_apresentacao_pc(wb)

@@ -593,18 +593,31 @@ def _formula_vu(linha: int, origem: int) -> str:
     # Coleta 11.4: o ciclo em execucao pode ser posterior ao ultimo ciclo com
     # fator (ex.: so C1 apurado, corte em C4) e o historico_VU fica vazio.
     # Mesmo encadeamento do historico_VU com o ultimo fator conhecido de
-    # parametros!F (o carregamento da MEMORIA DO FATOR APLICAVEL), a partir do
-    # nascimento do item (posicao_contratual!Y); nunca reajusta antes dele.
+    # parametros!F (o carregamento da MEMORIA DO FATOR APLICAVEL); nunca
+    # reajusta antes do nascimento do item (posicao_contratual!Y).
+    # Coleta 11.7: a base do fator e a base economica do VU (aditivos!O), nunca
+    # posterior ao nascimento; sem ela, o proprio nascimento (como antes).
     n = '(MATCH($C$3,{"C0","C1","C2","C3","C4"},0)-1)'
     y = f'posicao_contratual!$Y{origem}'
     vu = f'itens_Remanesc!$C{origem}'
+    indice_base = (
+        f'INDEX(aditivos!$O$2:$O$200,'
+        f'MATCH(itens_Remanesc!$A{origem},aditivos!$A$2:$A$200,0))'
+    )
+    base = f'IFERROR(IF(ISNUMBER({indice_base}),MIN({indice_base},{y}),{y}),{y})'
+    # Nxxx criado por mais de uma linha "novo item": base ambigua, VU vazio
+    # (fail-closed) em vez de cair no nascimento.
+    ambigua = (
+        f'AND({y}>0,COUNTIFS(aditivos!$A$2:$A$200,itens_Remanesc!$A{origem},'
+        f'aditivos!$D$2:$D$200,"*novo*")>1)'
+    )
 
     def fator(k: str) -> str:
         return f'INDEX(parametros!$F$2:$F$6,MIN({k}+1,COUNT(parametros!$F$2:$F$6)))'
 
     carregado = (
-        f'IFERROR(IF(OR(NOT(ISNUMBER({vu})),NOT(ISNUMBER({y})),{y}>{n}),"",'
-        f'IF({y}={n},{vu},ROUND({vu}*{fator(n)}/{fator(y)},2))),"")'
+        f'IFERROR(IF(OR(NOT(ISNUMBER({vu})),NOT(ISNUMBER({y})),{y}>{n},{ambigua}),"",'
+        f'IF({base}={n},{vu},ROUND({vu}*{fator(n)}/{fator(base)},2))),"")'
     )
     return f'=IF(A{linha}="","",IF(ISNUMBER({escolha}),{escolha},{carregado}))'
 

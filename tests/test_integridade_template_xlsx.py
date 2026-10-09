@@ -136,7 +136,9 @@ FORMULAS_POR_ABA = {
     # REESCRITAS, nao acrescentadas.
     # RESULTADOS-SEM-EFEITO-150: +76 helpers do quadro informativo "Execucao sem
     # efeito financeiro" em S78:W120 (18 linhas x 4 ciclos + 4 flags).
-    "MEMORIA_RESULTADOS": 4502,
+    # COLETA 11.7: +1 (T48, gate do VTA: ALERTA: em aditivos!M). B26 e T40
+    # sao REESCRITAS (envolvidas pelo gate), nao acrescentadas.
+    "MEMORIA_RESULTADOS": 4503,
     # 57 do prototipo + 4 selos por tabela + 1 premissa da estimativa - 1
     # helper J4 removido (status global agora agrega os selos H8/H14/H24/H33).
     # 26G: +5 (linha executiva A23:E23 dos PCs sem efeito financeiro).
