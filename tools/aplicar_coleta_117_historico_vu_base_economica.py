@@ -9,6 +9,8 @@ Aplica no template oficial, via Excel COM (openpyxl destroi a CF x14), somente:
   base economica (original ou Nxxx sem aditivos!N) mantem o resultado anterior;
   Nxxx com mais de uma linha "novo item" fica vazio (fail-closed).
 * aditivos!M2:M200 — alerta NOVO_ITEM_COM_MAIS_DE_UMA_INCLUSAO.
+* MEMORIA_RESULTADOS!S48:T48 — contagem de ALERTA: em aditivos!M; B26
+  (VTA_FINAL) e T40 (VTA_SEM_POTENCIAL) ficam vazios enquanto for > 0.
 
 As formulas vem de `_coleta_oficial` (fonte unica com a migracao runtime).
 Cada celula precisa estar na forma 11.6 ou ja na 11.7; qualquer outra coisa
@@ -70,6 +72,39 @@ def frente_status_aditivos(wb) -> None:
     faixa.Formula = tuple(novas)
 
 
+def frente_gate_vta(wb) -> None:
+    ws = wb.Worksheets("MEMORIA_RESULTADOS")
+    rotulo, gate = ws.Range("S48"), ws.Range(co._CELULA_GATE_VTA)
+    if rotulo.Formula not in ("", co._ROTULO_GATE_VTA) or gate.Formula not in (
+        "", co._FORMULA_GATE_VTA,
+    ):
+        raise RuntimeError("MEMORIA_RESULTADOS!S48:T48 nao esta livre; nada aplicado")
+    validar_formula(co._FORMULA_GATE_VTA)
+    novas = {}
+    for celula in co._CELULAS_VTA_COM_GATE:
+        nova = co._formula_com_gate_vta(celula, str(ws.Range(celula).Formula))
+        validar_formula(nova)
+        novas[celula] = nova
+    rotulo.Value = co._ROTULO_GATE_VTA
+    _copiar_formato_simples(ws.Range("S47"), rotulo)
+    gate.Formula = co._FORMULA_GATE_VTA
+    _copiar_formato_simples(ws.Range("T47"), gate)
+    gate.NumberFormat = "0"
+    for celula, nova in novas.items():
+        ws.Range(celula).Formula = nova
+
+
+def _copiar_formato_simples(origem, destino) -> None:
+    destino.Font.Name = origem.Font.Name
+    destino.Font.Size = origem.Font.Size
+    destino.Font.Bold = origem.Font.Bold
+    destino.Font.Color = origem.Font.Color
+    destino.HorizontalAlignment = origem.HorizontalAlignment
+    destino.VerticalAlignment = origem.VerticalAlignment
+    destino.WrapText = origem.WrapText
+    destino.Locked = origem.Locked
+
+
 def frente_historico_vu(wb) -> None:
     ws = wb.Worksheets("historico_VU")
     for coluna, indice in co._COLUNAS_HISTORICO_VU:
@@ -102,6 +137,7 @@ def aplicar(caminho: Path) -> None:
         excel.Calculation = XL_CALCULO_MANUAL
         frente_status_aditivos(wb)
         frente_historico_vu(wb)
+        frente_gate_vta(wb)
         excel.Calculation = XL_CALCULO_AUTOMATICO
         excel.CalculateFullRebuild()
         wb.Worksheets("CONTROLE").Activate()

@@ -48,6 +48,21 @@ VTA_11_6 = {
 }
 
 
+SUPERFICIES_VTA = (
+    ("RESULTADOS", "B9"),
+    ("RESULTADOS", "C18"),
+    ("RESULTADOS_DETALHE", "B86"),
+    ("RESULTADOS_DETALHE", "C86"),
+    ("comparativo_VTA", "B207"),
+    ("MEMORIA_RESULTADOS", "B28"),
+)
+ERRO_EXCEL = -2146826000  # valores de erro (#VALUE!, #N/A...) chegam como int < isso
+
+
+def _sem_erro(valores) -> bool:
+    return not any(isinstance(v, int) and v < ERRO_EXCEL for v in valores)
+
+
 def _dados() -> dict:
     return {
         "origem": "Validacao Coleta 11.7",
@@ -133,9 +148,11 @@ def _ler(livro) -> dict:
     aditivos = livro.Worksheets("aditivos")
     historico = livro.Worksheets("historico_VU")
     ciclo = livro.Worksheets("CICLO_EM_EXECUCAO")
+    valor, quantidade = aditivos.Range("J2").Value, aditivos.Range("L2").Value
     return {
         "aditivo_I": aditivos.Range("I2").Value,
-        "aditivo_VU": aditivos.Range("J2").Value / aditivos.Range("L2").Value,
+        # Base invalida deixa J vazio: sem VU atualizado do aditivo.
+        "aditivo_VU": valor / quantidade if isinstance(valor, float) and quantidade else None,
         "aditivo_M": aditivos.Range("M2").Value,
         "aditivo_M3": aditivos.Range("M3").Value,
         "hist_N001": [historico.Range(f"{c}3").Value for c in "CDEFG"],
@@ -144,10 +161,16 @@ def _ler(livro) -> dict:
         "cee_E": (ciclo.Range("E13").Value, ciclo.Range("E14").Value),
         "cee_G": (ciclo.Range("G13").Value, ciclo.Range("G14").Value),
         "vta": {nome: livro.Names(nome).RefersToRange.Value2 for nome in NOMES_VTA},
+        "gate": livro.Worksheets("MEMORIA_RESULTADOS").Range("T48").Value,
+        # Consumidores do VTA: herdam o vazio, sem erro de formula.
+        "superficies": [
+            livro.Worksheets(aba).Range(celula).Value
+            for aba, celula in SUPERFICIES_VTA
+        ],
     }
 
 
-def _rodar(tmp_path: Path, nome: str, base_vu: str, **kwargs) -> dict:
+def _rodar(tmp_path: Path, nome: str, base_vu, *, corrigir=None, **kwargs) -> dict:
     import pythoncom
     import win32com.client
 
@@ -167,6 +190,10 @@ def _rodar(tmp_path: Path, nome: str, base_vu: str, **kwargs) -> dict:
         _tentar(pythoncom, lambda: _preencher(livro, base_vu, **kwargs))
         _tentar(pythoncom, excel.CalculateFullRebuild)
         resultado = _tentar(pythoncom, lambda: _ler(livro))
+        if corrigir is not None:
+            _tentar(pythoncom, lambda: corrigir(livro))
+            _tentar(pythoncom, excel.CalculateFullRebuild)
+            resultado["corrigido"] = _tentar(pythoncom, lambda: _ler(livro))
         _tentar(pythoncom, livro.Save)
         _tentar(pythoncom, lambda: livro.Close(SaveChanges=False))
         livro = _tentar(pythoncom, abrir)
@@ -246,6 +273,45 @@ def test_nxxx_com_duas_inclusoes_alerta_e_vu_vazio(tmp_path: Path, segunda):
     assert r["cee_E"] == (pytest.approx(10.38), "")
     assert r["cee_G"][1] in (None, "")
     assert r["hist_11"] == [10.0, pytest.approx(10.38), "", "", ""]
+
+
+def _vta_indisponivel(r: dict, alerta: str) -> None:
+    assert str(r["aditivo_M"]).startswith(alerta)
+    assert r["gate"] >= 1
+    assert r["vta"]["VTA_FINAL"] in (None, "")
+    assert r["vta"]["VTA_SEM_POTENCIAL"] in (None, "")
+    assert _sem_erro(r["superficies"])
+    assert not any(isinstance(v, float) and v > 0 for v in r["superficies"][:4])
+
+
+def test_gate_vta_nxxx_duplicado(tmp_path: Path):
+    r = _rodar(tmp_path, "gate_dup", "C0", acrescimo_existente=False, segunda_inclusao="C1")
+    _vta_indisponivel(r, "ALERTA: NOVO_ITEM_COM_MAIS_DE_UMA_INCLUSAO")
+
+
+def test_gate_vta_base_economica_obrigatoria_ausente(tmp_path: Path):
+    r = _rodar(tmp_path, "gate_sem_base", None, acrescimo_existente=False)
+    _vta_indisponivel(r, "ALERTA: BASE_VU_OBRIGATORIA")
+
+
+def test_gate_vta_base_economica_posterior(tmp_path: Path):
+    # Base C3 com fator-alvo C1 (unico fator conhecido): posterior ao alvo.
+    r = _rodar(tmp_path, "gate_base_posterior", "C3", acrescimo_existente=False)
+    _vta_indisponivel(r, "ALERTA: BASE_VU_INVALIDA_OU_POSTERIOR_AO_FATOR_ALVO")
+
+
+def test_gate_vta_corrigido_no_mesmo_xls_volta_ao_valor(tmp_path: Path):
+    def corrigir(livro):
+        livro.Worksheets("aditivos").Range("N2").Value = "C0"
+
+    r = _rodar(tmp_path, "gate_corrigido", None, acrescimo_existente=False, corrigir=corrigir)
+    _vta_indisponivel(r, "ALERTA: BASE_VU_OBRIGATORIA")
+    c = r["corrigido"]
+    assert c["aditivo_M"] == "OK"
+    assert c["gate"] == 0
+    assert c["vta"]["VTA_FINAL"] == pytest.approx(1660.86)
+    assert c["vta"]["VTA_SEM_POTENCIAL"] == pytest.approx(1538.0)
+    assert c["hist_N001"][3] == pytest.approx(10.38)
 
 
 @pytest.mark.parametrize(("base_vu", "esperado"), (("C0", 10.38), ("C1", 10.0)))

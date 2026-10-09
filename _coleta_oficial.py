@@ -1049,6 +1049,69 @@ def _garantir_historico_vu_base_economica(wb) -> None:
                 celula.value = _formula_historico_vu_base_economica(linha, indice)
 
 
+# Coleta 11.7 — gate fail-closed do VTA na origem canonica. Qualquer ALERTA:
+# em aditivos!M (o mesmo criterio que bloqueia o app em _coleta_reajuste)
+# esvazia VTA_FINAL (MEMORIA_RESULTADOS!B26) e VTA_SEM_POTENCIAL (T40); os
+# consumidores (RESULTADOS, RESULTADOS_DETALHE, comparativo_VTA) so herdam o
+# vazio. Fonte unica do template (tools/aplicar_coleta_117_...) e da migracao.
+_CELULA_GATE_VTA = "T48"
+_ROTULO_GATE_VTA = "Aditivos com ALERTA (VTA indisponivel se > 0)"
+_FORMULA_GATE_VTA = '=COUNTIF(aditivos!$M$2:$M$200,"ALERTA:*")'
+_GATE_VTA = 'IF($T$48>0,"",'
+# Ponto de insercao: em B26 logo apos a governanca homologada (B24 e B25
+# juntos), antes do override B25 e dos ramos Financeiro/PCs/Itens; em T40 no
+# inicio. O calculo economico de cada ramo fica literalmente intacto.
+_ANCORAS_GATE_VTA = {"B26": '=IF(AND(B24<>"",B25<>""),"",', "T40": "="}
+_CELULAS_VTA_COM_GATE = tuple(_ANCORAS_GATE_VTA)
+
+
+def _formula_com_gate_vta(celula: str, formula: str) -> str:
+    """Insere o gate na formula homologada do VTA (idempotente)."""
+    ancora = _ANCORAS_GATE_VTA[celula]
+    if formula.startswith(ancora + _GATE_VTA):
+        return formula
+    if not formula.startswith(ancora):
+        raise ValueError(f"MEMORIA_RESULTADOS!{celula} fora do formato esperado")
+    return f"{ancora}{_GATE_VTA}{formula[len(ancora):]})"
+
+
+def _gate_vta_canonico(ws) -> bool:
+    return (
+        ws["S48"].value == _ROTULO_GATE_VTA
+        and ws[_CELULA_GATE_VTA].value == _FORMULA_GATE_VTA
+        and all(
+            str(ws[celula].value or "").startswith(ancora + _GATE_VTA)
+            for celula, ancora in _ANCORAS_GATE_VTA.items()
+        )
+    )
+
+
+def _garantir_gate_vta_alertas_aditivos(wb) -> None:
+    """VTA indisponivel enquanto houver ALERTA: em aditivos!M — Coleta 11.7.
+
+    O template oficial ja traz o gate; so age em template anterior e so com
+    S48:T48 livres (estrutura nao reconhecida fica intacta).
+    """
+    if "MEMORIA_RESULTADOS" not in wb.sheetnames or "aditivos" not in wb.sheetnames:
+        return
+    ws = wb["MEMORIA_RESULTADOS"]
+    if _gate_vta_canonico(ws):
+        return
+    if ws["S48"].value not in (None, _ROTULO_GATE_VTA) or ws[_CELULA_GATE_VTA].value not in (
+        None, _FORMULA_GATE_VTA,
+    ):
+        return
+    if not all(
+        str(ws[celula].value or "").startswith(ancora)
+        for celula, ancora in _ANCORAS_GATE_VTA.items()
+    ):
+        return
+    ws["S48"].value = _ROTULO_GATE_VTA
+    ws[_CELULA_GATE_VTA].value = _FORMULA_GATE_VTA
+    for celula in _CELULAS_VTA_COM_GATE:
+        ws[celula].value = _formula_com_gate_vta(celula, ws[celula].value)
+
+
 def _garantir_destaque_novos_itens(wb) -> None:
     """Fonte verde-escura para Nxxx, sem tocar nos preenchimentos funcionais."""
     if "itens_Remanesc" not in wb.sheetnames:
@@ -1315,6 +1378,7 @@ def obter_coleta_oficial_bytes() -> bytes:
     _garantir_apresentacao_retroativos_e_aditivos(wb)
     _garantir_base_economica_vu_aditivos(wb)
     _garantir_historico_vu_base_economica(wb)
+    _garantir_gate_vta_alertas_aditivos(wb)
     _garantir_destaque_novos_itens(wb)
     from _apresentacao_pc_xls import garantir_apresentacao_pc
     garantir_apresentacao_pc(wb)

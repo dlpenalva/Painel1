@@ -17,8 +17,11 @@ from _coleta_oficial import (
     _LINHAS_HISTORICO_VU,
     _formula_historico_vu_base_economica,
     _formula_historico_vu_nascimento,
+    _formula_com_gate_vta,
     _formula_status_aditivo,
+    _garantir_gate_vta_alertas_aditivos,
     _garantir_historico_vu_base_economica,
+    _gate_vta_canonico,
     obter_coleta_oficial_bytes,
 )
 
@@ -124,6 +127,42 @@ def test_migracao_nao_age_sem_base_economica_canonica_em_aditivos():
     wb["aditivos"]["O3"].value = None  # aditivos!O fora da forma canonica
     _garantir_historico_vu_base_economica(wb)
     assert ws["F3"].value == _formula_historico_vu_nascimento(3, 3)
+
+
+def test_gate_do_vta_na_origem_canonica(wb_template, wb_coleta_117):
+    for wb in (wb_template, wb_coleta_117):
+        mem = wb["MEMORIA_RESULTADOS"]
+        assert _gate_vta_canonico(mem)
+        assert mem["T48"].value == '=COUNTIF(aditivos!$M$2:$M$200,"ALERTA:*")'
+        # B26: gate logo apos a governanca B24/B25 (inicio homologado mantido).
+        assert mem["B26"].value.startswith('=IF(AND(B24<>"",B25<>""),"",IF($T$48>0,"",')
+        assert "IF(ISNUMBER(B25),B25," in mem["B26"].value
+        assert mem["T40"].value.startswith('=IF($T$48>0,"",')
+        for celula in ("B26", "T40"):
+            formula = mem[celula].value
+            assert formula.isascii() and formula.count("(") == formula.count(")")
+    # Os nomes publicados continuam apontando para a origem com gate.
+    nomes = wb_template.defined_names
+    assert nomes["VTA_FINAL"].attr_text == "MEMORIA_RESULTADOS!$B$26"
+    assert nomes["VTA_SEM_POTENCIAL"].attr_text == "MEMORIA_RESULTADOS!$T$40"
+
+
+def test_migracao_do_gate_e_idempotente():
+    wb = load_workbook(TEMPLATE_COLETA_OFICIAL, data_only=False)
+    mem = wb["MEMORIA_RESULTADOS"]
+    gate = 'IF($T$48>0,"",'
+    for celula in ("B26", "T40"):
+        com_gate = mem[celula].value
+        mem[celula].value = com_gate.replace(gate, "", 1)[:-1]
+        assert _formula_com_gate_vta(celula, mem[celula].value) == com_gate
+    mem["S48"].value = mem["T48"].value = None
+
+    _garantir_gate_vta_alertas_aditivos(wb)
+    assert _gate_vta_canonico(mem)
+    antes = {c: mem[c].value for c in ("B26", "T40", "S48", "T48")}
+    _garantir_gate_vta_alertas_aditivos(wb)
+    assert {c: mem[c].value for c in antes} == antes
+    assert _formula_com_gate_vta("B26", antes["B26"]) == antes["B26"]
 
 
 def test_fallback_da_ciclo_em_execucao_usa_a_mesma_base(wb_coleta_117):
