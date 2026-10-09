@@ -605,12 +605,18 @@ def _formula_vu(linha: int, origem: int) -> str:
         f'MATCH(itens_Remanesc!$A{origem},aditivos!$A$2:$A$200,0))'
     )
     base = f'IFERROR(IF(ISNUMBER({indice_base}),MIN({indice_base},{y}),{y}),{y})'
+    # Nxxx criado por mais de uma linha "novo item": base ambigua, VU vazio
+    # (fail-closed) em vez de cair no nascimento.
+    ambigua = (
+        f'AND({y}>0,COUNTIFS(aditivos!$A$2:$A$200,itens_Remanesc!$A{origem},'
+        f'aditivos!$D$2:$D$200,"*novo*")>1)'
+    )
 
     def fator(k: str) -> str:
         return f'INDEX(parametros!$F$2:$F$6,MIN({k}+1,COUNT(parametros!$F$2:$F$6)))'
 
     carregado = (
-        f'IFERROR(IF(OR(NOT(ISNUMBER({vu})),NOT(ISNUMBER({y})),{y}>{n}),"",'
+        f'IFERROR(IF(OR(NOT(ISNUMBER({vu})),NOT(ISNUMBER({y})),{y}>{n},{ambigua}),"",'
         f'IF({base}={n},{vu},ROUND({vu}*{fator(n)}/{fator(base)},2))),"")'
     )
     return f'=IF(A{linha}="","",IF(ISNUMBER({escolha}),{escolha},{carregado}))'

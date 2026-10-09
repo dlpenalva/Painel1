@@ -7,7 +7,9 @@ N001 nasce em C3 por R$ 10,00 com C1 = 3,81% e 100 unidades remanescentes:
 * B (base C1): fator 1,0000, VU 10,00 e VTA da Coleta 11.6;
 * item existente com simples acrescimo: historico herdado, nada muda;
 * ciclo em execucao C4 sem fator proprio: o fallback da CICLO_EM_EXECUCAO
-  usa a mesma base.
+  usa a mesma base;
+* N001 criado por duas linhas "novo item" (mesma data, H=Nao): alerta nas
+  duas linhas e VU vazio (fail-closed), sem cair no nascimento.
 """
 from __future__ import annotations
 
@@ -81,7 +83,10 @@ def _tentar(pythoncom, acao):
     raise ultimo
 
 
-def _preencher(livro, base_vu: str, *, acrescimo_existente: bool, corte=None) -> None:
+def _preencher(
+    livro, base_vu: str, *, acrescimo_existente: bool, corte=None,
+    segunda_inclusao: str | None = None,
+) -> None:
     from pywintypes import Time
 
     livro.Worksheets("CONTROLE").Range("B1").Value = "Financeiro (Mensalidade)"
@@ -102,6 +107,9 @@ def _preencher(livro, base_vu: str, *, acrescimo_existente: bool, corte=None) ->
         if c3 is not None:
             itens.Range(f"I{linha}").Value = c3
     eventos = [("N001", "Acréscimo - novo item", base_vu)]
+    if segunda_inclusao:
+        # Mesma data e H=Nao: o unico caso que a 11.6 deixava sem alerta.
+        eventos.append(("N001", "Acréscimo - novo item", segunda_inclusao))
     if acrescimo_existente:
         eventos.append(("1.1", "Acrescimo", None))
     aditivos = livro.Worksheets("aditivos")
@@ -109,8 +117,8 @@ def _preencher(livro, base_vu: str, *, acrescimo_existente: bool, corte=None) ->
         aditivos.Range(f"A{linha}").Value = item
         aditivos.Range(f"B{linha}").Value = Time(datetime(2026, 2, 1))
         aditivos.Range(f"D{linha}").Value = tipo
-        aditivos.Range(f"E{linha}").Value = 100
-        aditivos.Range(f"H{linha}").Value = "Sim"
+        aditivos.Range(f"E{linha}").Value = 50 if segunda_inclusao else 100
+        aditivos.Range(f"H{linha}").Value = "Nao" if segunda_inclusao else "Sim"
         aditivos.Range(f"K{linha}").Value = "Sim"
         if base:
             aditivos.Range(f"N{linha}").Value = base
@@ -129,6 +137,7 @@ def _ler(livro) -> dict:
         "aditivo_I": aditivos.Range("I2").Value,
         "aditivo_VU": aditivos.Range("J2").Value / aditivos.Range("L2").Value,
         "aditivo_M": aditivos.Range("M2").Value,
+        "aditivo_M3": aditivos.Range("M3").Value,
         "hist_N001": [historico.Range(f"{c}3").Value for c in "CDEFG"],
         "hist_11": [historico.Range(f"{c}2").Value for c in "CDEFG"],
         "cee_ciclo": ciclo.Range("C3").Value,
@@ -223,6 +232,20 @@ def test_item_existente_com_acrescimo_herda_o_historico(tmp_path: Path):
     assert r["cee_E"][0] == pytest.approx(10.38)
     assert r["cee_G"][0] == pytest.approx(9342.0)  # 900 x 10,38, como na 11.6
     assert r["hist_N001"][3] == pytest.approx(10.38)
+
+
+@pytest.mark.parametrize("segunda", ("C1", "C0"), ids=("3c_bases_C0_C1", "3d_ambas_C0"))
+def test_nxxx_com_duas_inclusoes_alerta_e_vu_vazio(tmp_path: Path, segunda):
+    r = _rodar(tmp_path, f"dup_{segunda}", "C0", acrescimo_existente=False,
+               segunda_inclusao=segunda)
+    alerta = "ALERTA: NOVO_ITEM_COM_MAIS_DE_UMA_INCLUSAO"
+    assert (r["aditivo_M"], r["aditivo_M3"]) == (alerta, alerta)
+    assert r["aditivo_I"] in (None, "")
+    # Fail-closed: nem a base C0 nem o nascimento (10,00) sao escolhidos.
+    assert r["hist_N001"] == ["", "", "", "", ""]
+    assert r["cee_E"] == (pytest.approx(10.38), "")
+    assert r["cee_G"][1] in (None, "")
+    assert r["hist_11"] == [10.0, pytest.approx(10.38), "", "", ""]
 
 
 @pytest.mark.parametrize(("base_vu", "esperado"), (("C0", 10.38), ("C1", 10.0)))

@@ -6,7 +6,9 @@ Aplica no template oficial, via Excel COM (openpyxl destroi a CF x14), somente:
 * historico_VU!D2:G200 (VU_C1..VU_C4) — o VU de cada ciclo parte do ultimo
   reajuste ja incorporado ao VU (aditivos!O), e nao mais do nascimento fisico
   (posicao_contratual!Y). Antes do nascimento a celula segue vazia; item sem
-  base economica (original ou Nxxx sem aditivos!N) mantem o resultado anterior.
+  base economica (original ou Nxxx sem aditivos!N) mantem o resultado anterior;
+  Nxxx com mais de uma linha "novo item" fica vazio (fail-closed).
+* aditivos!M2:M200 — alerta NOVO_ITEM_COM_MAIS_DE_UMA_INCLUSAO.
 
 As formulas vem de `_coleta_oficial` (fonte unica com a migracao runtime).
 Cada celula precisa estar na forma 11.6 ou ja na 11.7; qualquer outra coisa
@@ -35,6 +37,37 @@ TEMPLATE = RAIZ / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
 
 XL_CALCULO_MANUAL, XL_CALCULO_AUTOMATICO = -4135, -4105
 PRIMEIRA, ULTIMA = co._LINHAS_HISTORICO_VU[0], co._LINHAS_HISTORICO_VU[-1]
+
+
+def _clausula_inclusao_unica(linha: int) -> str:
+    return (
+        f'IF(AND(ISNUMBER(SEARCH("NOVO",D{linha})),'
+        f'COUNTIFS($A$2:$A$200,A{linha},$D$2:$D$200,"*novo*")>1),'
+        f'"{co._ALERTA_NOVO_ITEM_MAIS_DE_UMA_INCLUSAO}",'
+    )
+
+
+def formula_status_aditivo_11_6(linha: int) -> str:
+    """aditivos!M da Coleta 11.6: a 11.7 sem o alerta de inclusao duplicada."""
+    nova = co._formula_status_aditivo(linha)
+    clausula = _clausula_inclusao_unica(linha)
+    if nova.count(clausula) != 1 or not nova.endswith(")"):
+        raise RuntimeError("aditivos!M 11.7 fora do formato esperado")
+    return nova.replace(clausula, "")[:-1]
+
+
+def frente_status_aditivos(wb) -> None:
+    ws = wb.Worksheets("aditivos")
+    faixa = ws.Range(f"M{PRIMEIRA}:M{ULTIMA}")
+    novas = []
+    for deslocamento, (atual,) in enumerate(faixa.Formula):
+        linha = PRIMEIRA + deslocamento
+        nova = co._formula_status_aditivo(linha)
+        validar_formula(nova)
+        if atual not in (formula_status_aditivo_11_6(linha), nova):
+            raise RuntimeError(f"aditivos!M{linha} fora do formato esperado; nada aplicado")
+        novas.append((nova,))
+    faixa.Formula = tuple(novas)
 
 
 def frente_historico_vu(wb) -> None:
@@ -67,6 +100,7 @@ def aplicar(caminho: Path) -> None:
     try:
         wb = excel.Workbooks.Open(str(caminho))
         excel.Calculation = XL_CALCULO_MANUAL
+        frente_status_aditivos(wb)
         frente_historico_vu(wb)
         excel.Calculation = XL_CALCULO_AUTOMATICO
         excel.CalculateFullRebuild()

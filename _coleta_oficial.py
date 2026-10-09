@@ -762,6 +762,7 @@ _FORMULA_DESTAQUE_NOVOS_ITENS = (
     'ISERROR(FIND(" ",TRIM($A2))))'
 )
 _COR_FONTE_NOVOS_ITENS = "006100"
+_ALERTA_NOVO_ITEM_MAIS_DE_UMA_INCLUSAO = "ALERTA: NOVO_ITEM_COM_MAIS_DE_UMA_INCLUSAO"
 
 
 def _expressao_base_economica_item(linha: int) -> str:
@@ -822,6 +823,10 @@ def _formula_status_aditivo(linha: int) -> str:
         'VU_ORIGINAL (QTD_BASE_ORIGINAL sera 0 automaticamente); depois a data '
         'e a quantidade aqui.",'
         f'IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{linha})>1,"ALERTA: ITEM_DUPLICADO",'
+        # Coleta 11.7: um item so nasce uma vez; duas inclusoes tornam a base
+        # economica ambigua (aditivos!O fica vazio) e o app bloqueia.
+        f'IF(AND({novo},COUNTIFS($A$2:$A$200,A{linha},$D$2:$D$200,"*novo*")>1),'
+        f'"{_ALERTA_NOVO_ITEM_MAIS_DE_UMA_INCLUSAO}",'
         f'IF(OR(C{linha}="",C{linha}="Fora dos ciclos"),"ALERTA: CICLO_INVALIDO",'
         f'IF(NOT(ISNUMBER(E{linha})),"ALERTA: QTD_INVALIDA",'
         f'IF(AND(LEFT(UPPER(D{linha}),3)<>"ACR",LEFT(UPPER(D{linha}),4)<>"SUPR",'
@@ -837,7 +842,7 @@ def _formula_status_aditivo(linha: int) -> str:
         f'IF(AND(NOT({novo}),N{linha}<>""),"ALERTA: BASE_VU_NAO_APLICAVEL",'
         f'IF(AND(UPPER(H{linha})="SIM",NOT(ISNUMBER(I{linha}))),'
         '"ALERTA: BASE_VU_INVALIDA_OU_POSTERIOR_AO_FATOR_ALVO","OK")'
-        ')))))))))'
+        '))))))))))'
     )
 
 
@@ -971,17 +976,33 @@ def _expressao_base_economica_historico(linha: int) -> str:
     return f"IFERROR(IF(ISNUMBER({base}),MIN({base},{y}),{y}),{y})"
 
 
+def _expressao_inclusao_ambigua_historico(linha: int) -> str:
+    """Nxxx criado por mais de uma linha "novo item": base economica ambigua.
+
+    So para item nascido depois de C0 (Y>0); o item original tem base C0 de
+    qualquer forma e nao depende de aditivos!N. Base vazia por outro motivo
+    segue caindo no nascimento.
+    """
+    y = f"posicao_contratual!$Y{linha}"
+    return (
+        f'AND({y}>0,COUNTIFS(aditivos!$A$2:$A$200,$A{linha},'
+        f'aditivos!$D$2:$D$200,"*novo*")>1)'
+    )
+
+
 def _formula_historico_vu_base_economica(linha: int, indice: int) -> str:
     """VU do ciclo ``indice``: vazio antes do nascimento; dali em diante, o VU
     original reajustado pelos fatores ainda nao incorporados (base economica).
 
     No ciclo de nascimento o fator e o ultimo conhecido (mesmo carregamento de
     aditivos!I e da CICLO_EM_EXECUCAO); nos ciclos seguintes o fator do ciclo
-    e exigido, como sempre (historico faltante nunca e inventado).
+    e exigido, como sempre (historico faltante nunca e inventado). Nxxx com
+    mais de uma inclusao fica vazio (fail-closed), sem cair no nascimento.
     """
     y = f"posicao_contratual!$Y{linha}"
     vu = f"itens_Remanesc!C{linha}"
     base = _expressao_base_economica_historico(linha)
+    ambigua = _expressao_inclusao_ambigua_historico(linha)
 
     def carregado(k: str) -> str:
         return f"INDEX($L$2:$L$6,MIN({k}+1,COUNT($L$2:$L$6)))"
@@ -990,7 +1011,7 @@ def _formula_historico_vu_base_economica(linha: int, indice: int) -> str:
     fator_base = f"INDEX($L$2:$L$6,{base}+1)"
     return (
         f'=IF(OR($A{linha}="",{y}=""),"",IF({y}>{indice},"",'
-        f'IF(NOT(ISNUMBER({vu})),"",'
+        f'IF(OR(NOT(ISNUMBER({vu})),{ambigua}),"",'
         f'IF({y}={indice},IF({base}={indice},{vu},'
         f'IFERROR(ROUND({vu}*{carregado(str(indice))}/{carregado(base)},2),"")),'
         f'IF(OR(NOT(ISNUMBER({fator_ciclo})),NOT(ISNUMBER({fator_base}))),"",'

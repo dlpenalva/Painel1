@@ -17,6 +17,7 @@ from _coleta_oficial import (
     _LINHAS_HISTORICO_VU,
     _formula_historico_vu_base_economica,
     _formula_historico_vu_nascimento,
+    _formula_status_aditivo,
     _garantir_historico_vu_base_economica,
     obter_coleta_oficial_bytes,
 )
@@ -70,6 +71,23 @@ def test_formula_le_a_base_economica_e_respeita_o_nascimento():
     assert "INDEX($L$2:$L$6,MIN(3+1,COUNT($L$2:$L$6)))" in formula
     # Ciclos seguintes: fator do proprio ciclo exigido (historico nao inventado).
     assert "NOT(ISNUMBER($L$5))" in formula
+    # Nxxx com mais de uma inclusao: vazio, sem cair no nascimento.
+    assert (
+        'IF(OR(NOT(ISNUMBER(itens_Remanesc!C3)),AND(posicao_contratual!$Y3>0,'
+        'COUNTIFS(aditivos!$A$2:$A$200,$A3,aditivos!$D$2:$D$200,"*novo*")>1)),""'
+    ) in formula
+
+
+def test_aditivos_alerta_nxxx_com_mais_de_uma_inclusao(wb_template):
+    formula = _formula_status_aditivo(2)
+    assert formula.isascii()
+    assert formula.count("(") == formula.count(")")
+    assert (
+        'IF(AND(ISNUMBER(SEARCH("NOVO",D2)),COUNTIFS($A$2:$A$200,A2,'
+        '$D$2:$D$200,"*novo*")>1),"ALERTA: NOVO_ITEM_COM_MAIS_DE_UMA_INCLUSAO",'
+    ) in formula
+    ws = wb_template["aditivos"]
+    assert all(ws[f"M{linha}"].value == _formula_status_aditivo(linha) for linha in range(2, 201))
 
 
 def test_geracao_entrega_o_template_sem_reescrita(wb_template, wb_coleta_117):
@@ -118,5 +136,9 @@ def test_fallback_da_ciclo_em_execucao_usa_a_mesma_base(wb_coleta_117):
     ) in formula
     # Nunca reajusta antes do nascimento; historico_VU continua prevalecendo.
     assert "posicao_contratual!$Y3>(MATCH($C$3" in formula
+    assert (
+        'AND(posicao_contratual!$Y3>0,COUNTIFS(aditivos!$A$2:$A$200,'
+        'itens_Remanesc!$A3,aditivos!$D$2:$D$200,"*novo*")>1)),""'
+    ) in formula
     assert formula.startswith('=IF(A14="","",IF(ISNUMBER(IF($C$3="C0",historico_VU!$C3')
     assert wb_coleta_117["CICLO_EM_EXECUCAO"]["E14"].value == formula
