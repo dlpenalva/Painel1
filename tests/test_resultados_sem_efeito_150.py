@@ -237,13 +237,13 @@ def test_coleta_gerada_pelo_app_carrega_o_quadro_e_o_marcador_11_1():
     # Coleta 11.2 / Cl8us 11.5 (RESULTADOS-EXECUTIVO-V3): o quadro do PR #172
     # segue identico, agora na camada tecnica RESULTADOS_DETALHE.
     # Cl8us 11.7 / Coleta 11.3 (versionamento obrigatorio pos-#175).
-    assert (CL8US_VERSION, COLETA_VERSION) == ("12.4", "11.7")
+    assert (CL8US_VERSION, COLETA_VERSION) == ("12.5", "11.8")
     esperadas = ap.formulas_resultados()
     for conteudo in (obter_coleta_oficial_bytes(),
                      gerar_coleta_oficial_preenchida(_dados_calculadora())):
         wb = load_workbook(io.BytesIO(conteudo), data_only=False)
-        assert wb["CONTROLE"]["B24"].value == "11.7"
-        assert wb["CONTROLE"]["B25"].value == "12.4"
+        assert wb["CONTROLE"]["B24"].value == "11.8"
+        assert wb["CONTROLE"]["B25"].value == "12.5"
         res = wb[ap.ABA_RESULTADOS]
         for endereco, formula in esperadas.items():
             assert _normalizar(res[endereco].value) == _normalizar(formula), endereco

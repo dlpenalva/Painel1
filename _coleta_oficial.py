@@ -754,13 +754,19 @@ _DV_BASE_VU_ERRO = "Escolha C0, C1, C2, C3 ou C4."
 _FORMULA_CF_BASE_VU_NAO_APLICAVEL = 'AND($A2<>"",ISERROR(SEARCH("NOVO",$D2)))'
 _COR_BASE_VU_NAO_APLICAVEL = "D9D9D9"
 _FAIXA_DESTAQUE_NOVOS_ITENS = "A2:AC200"
-_FORMULA_DESTAQUE_NOVOS_ITENS = (
-    'AND(LEN(TRIM($A2))=4,LEFT(TRIM($A2),1)="N",'
-    'ISNUMBER(--MID(TRIM($A2),2,3)),ISERROR(FIND(".",$A2)),'
-    'ISERROR(FIND(",",$A2)),ISERROR(FIND("-",$A2)),'
-    'ISERROR(FIND("+",$A2)),ISERROR(SEARCH("E",$A2,2)),'
-    'ISERROR(FIND(" ",TRIM($A2))))'
-)
+def formula_destaque_novo_item(linha: int) -> str:
+    """Regra de CF (sem "=") que reconhece o item Nxxx na coluna A da linha."""
+    a = f"$A{linha}"
+    return (
+        f'AND(LEN(TRIM({a}))=4,LEFT(TRIM({a}),1)="N",'
+        f'ISNUMBER(--MID(TRIM({a}),2,3)),ISERROR(FIND(".",{a})),'
+        f'ISERROR(FIND(",",{a})),ISERROR(FIND("-",{a})),'
+        f'ISERROR(FIND("+",{a})),ISERROR(SEARCH("E",{a},2)),'
+        f'ISERROR(FIND(" ",TRIM({a}))))'
+    )
+
+
+_FORMULA_DESTAQUE_NOVOS_ITENS = formula_destaque_novo_item(2)
 _COR_FONTE_NOVOS_ITENS = "006100"
 _ALERTA_NOVO_ITEM_MAIS_DE_UMA_INCLUSAO = "ALERTA: NOVO_ITEM_COM_MAIS_DE_UMA_INCLUSAO"
 
@@ -1110,6 +1116,226 @@ def _garantir_gate_vta_alertas_aditivos(wb) -> None:
     ws[_CELULA_GATE_VTA].value = _FORMULA_GATE_VTA
     for celula in _CELULAS_VTA_COM_GATE:
         ws[celula].value = _formula_com_gate_vta(celula, ws[celula].value)
+
+
+# Coleta 11.8 — ajustes da Coleta em uso. Fonte unica das formulas gravadas no
+# template por tools/aplicar_coleta_118_ajustes_em_uso.py (Excel COM) e
+# conferidas pelos testes. Cada formula nova nasce da forma 11.7 por troca
+# literal de um trecho; trecho ausente aborta (nada e reescrito as cegas).
+
+# itens_PC!K/L. "Nao" e "Não" sao o mesmo valor em PC_PAGO_A_CONTRATADA; o
+# acento nao gera pendencia. PC de ciclo PRECLUSO sem INICIO_EFEITO_FINANCEIRO
+# nao tem efeito financeiro proprio (L="Nao"), como o financeiro!G ja faz com
+# as competencias do ciclo precluso; ciclo ativo sem inicio segue em alerta.
+_SITUACAO_CICLO_PC = 'IFERROR(INDEX(parametros!$G$2:$G$6,MATCH(C{r},parametros!$B$2:$B$6,0)),"")'
+_INICIO_EFEITO_CICLO_PC = 'IFERROR(INDEX(parametros!$H$2:$H$6,MATCH(C{r},parametros!$B$2:$B$6,0)),"")'
+
+
+def _formula_check_pc_11_7(r: int) -> str:
+    inicio = _INICIO_EFEITO_CICLO_PC.format(r=r)
+    return (
+        f'=IF(AND(A{r}="",B{r}="",D{r}="",G{r}=""),"",'
+        f'IF(AND(A{r}<>"",COUNTIF($A$2:$A$5001,A{r})>1),"NUMERO_PC duplicado",'
+        f'IF(B{r}="","DATA_PC vazia",IF(NOT(ISNUMBER(B{r})),"DATA_PC invalida",'
+        f'IF(OR(C{r}="",C{r}="Fora dos ciclos"),"CICLO_PC nao identificado",'
+        f'IF(OR(D{r}="",D{r}=0),"VALOR_PC vazio ou zero",'
+        f'IF(AND(G{r}<>"Sim",G{r}<>"Nao",G{r}<>""),"PC_PAGO_A_CONTRATADA invalido",'
+        f'IF(AND(C{r}<>"C0",IFERROR(INDEX(parametros!$A$2:$A$6,'
+        f'MATCH(C{r},parametros!$B$2:$B$6,0)),"")="Sim",{inicio}=""),'
+        f'"INICIO_EFEITO ausente: PC "&A{r}&" - "&C{r},'
+        f'IF(L{r}="","EFEITO_PC nao calculado: PC "&A{r}&" - "&C{r},"OK")))))))))'
+    )
+
+
+def _formula_check_pc(r: int) -> str:
+    anterior = _formula_check_pc_11_7(r)
+    inicio = _INICIO_EFEITO_CICLO_PC.format(r=r)
+    situacao = _SITUACAO_CICLO_PC.format(r=r)
+    pago = f'AND(G{r}<>"Sim",G{r}<>"Nao",G{r}<>"")'
+    pago_novo = f'AND({pago},SUBSTITUTE(UPPER(G{r}),_xlfn.UNICHAR(195),"A")<>"NAO")'
+    ausente = f'{inicio}=""),"INICIO_EFEITO ausente'
+    ausente_novo = f'{inicio}="",ISERROR(SEARCH("PRECLUSO",{situacao}))),"INICIO_EFEITO ausente'
+    for trecho in (pago, ausente):
+        if anterior.count(trecho) != 1:
+            raise ValueError("itens_PC!K 11.7 fora do formato esperado")
+    return anterior.replace(pago, pago_novo).replace(ausente, ausente_novo)
+
+
+def _formula_efeito_pc_11_7(r: int) -> str:
+    inicio = _INICIO_EFEITO_CICLO_PC.format(r=r)
+    return (
+        f'=IF(AND(A{r}="",B{r}="",D{r}="",G{r}=""),"",'
+        f'IF(OR(B{r}="",NOT(ISNUMBER(B{r})),C{r}="",C{r}="Fora dos ciclos"),"",'
+        f'IF(C{r}="C0","Nao",IF(IFERROR(INDEX(parametros!$A$2:$A$6,'
+        f'MATCH(C{r},parametros!$B$2:$B$6,0)),"")<>"Sim","Nao",'
+        f'IF({inicio}="","",IF(B{r}>={inicio},"Sim","Nao"))))))'
+    )
+
+
+def _formula_efeito_pc(r: int) -> str:
+    anterior = _formula_efeito_pc_11_7(r)
+    inicio = _INICIO_EFEITO_CICLO_PC.format(r=r)
+    situacao = _SITUACAO_CICLO_PC.format(r=r)
+    trecho = f'IF({inicio}="","",'
+    if anterior.count(trecho) != 1:
+        raise ValueError("itens_PC!L 11.7 fora do formato esperado")
+    return anterior.replace(
+        trecho, f'IF({inicio}="",IF(ISNUMBER(SEARCH("PRECLUSO",{situacao})),"Nao",""),'
+    )
+
+
+# VTA com a posicao atual (Financeiro e PCs). Sem a fotografia do ciclo
+# vigente (residual de itens_Remanesc), a posicao itemizada completa da
+# CICLO_EM_EXECUCAO passa a ser o remanescente atual: execucao historica pelo
+# metodo ate a data da posicao + remanescente medido nela. O consumo do ciclo
+# vigente vem do metodo (T50), nunca de CICLO_EM_EXECUCAO!F, que ja esta na
+# execucao historica quando a referencia fisica e anterior ao ciclo. Com o
+# residual do ciclo vigente completo (T26=0) T49=0 e todas as formulas abaixo
+# reproduzem a 11.7. Itens Consumidos nao muda: ja e execucao + saldo derivado.
+_POSICAO_DATA = 'INDIRECT("CICLO_EM_EXECUCAO!$D$5")'
+_POSICAO_ITENS = 'INDIRECT("CICLO_EM_EXECUCAO!$A$13:$A$211")'
+_POSICAO_QTD = 'INDIRECT("CICLO_EM_EXECUCAO!$C$13:$C$211")'
+
+_CELULAS_POSICAO_ATUAL_VTA: dict[str, tuple[str, str]] = {
+    "T49": (
+        "Posicao atual (CICLO_EM_EXECUCAO) no lugar do residual ausente do ciclo vigente? (1 = sim)",
+        '=IFERROR(IF(OR($T$20="",$T$26=0,$W$49<>1),0,IF($B$4="PCs",1,'
+        'IF(AND($B$4="Financeiro",OR(cobertura_temporal!$B$12="",'
+        f'cobertura_temporal!$B$12<={_POSICAO_DATA})),1,0))),0)',
+    ),
+    "T50": (
+        "Execucao do ciclo vigente pelo metodo oficial ate a data da posicao atual (so com T49 = 1)",
+        '=IF($T$49<>1,0,IFERROR(IF($B$4="PCs",'
+        'ROUND(SUMIFS(itens_PC!$D$2:$D$5001,itens_PC!$C$2:$C$5001,"C"&$T$20,'
+        f'itens_PC!$B$2:$B$5001,"<="&{_POSICAO_DATA})'
+        '+SUMIFS(itens_PC!$H$2:$H$5001,itens_PC!$C$2:$C$5001,"C"&$T$20,'
+        f'itens_PC!$B$2:$B$5001,"<="&{_POSICAO_DATA}),2),'
+        'ROUND(SUMIFS(financeiro!$E$2:$E$73,financeiro!$B$2:$B$73,"c"&$T$20,'
+        f'financeiro!$A$2:$A$73,"<="&{_POSICAO_DATA}),2)),0))',
+    ),
+    "T51": (
+        "Remanescente atualizado na posicao atual (CICLO_EM_EXECUCAO!A9; so com T49 = 1)",
+        '=IF($T$49<>1,"",INDIRECT("CICLO_EM_EXECUCAO!$A$9"))',
+    ),
+    "T52": (
+        "Quantidade remanescente na posicao atual (so com T49 = 1)",
+        f'=IF($T$49<>1,"",ROUND(SUMPRODUCT(--({_POSICAO_ITENS}<>""),{_POSICAO_QTD}),2))',
+    ),
+    "T53": (
+        "Remanescente sem reajuste na posicao atual (qtd atual x VU_ORIGINAL; so com T49 = 1)",
+        f'=IF($T$49<>1,"",ROUND(SUMPRODUCT(--({_POSICAO_ITENS}<>""),{_POSICAO_QTD},'
+        'itens_Remanesc!$C$2:$C$200),2))',
+    ),
+}
+
+_TRECHOS_POSICAO_ATUAL_VTA: dict[tuple[str, str], tuple[tuple[str, str], ...]] = {
+    ("MEMORIA_RESULTADOS", "T23"): (
+        ("=SUM($Y$2:$Y$201)", "=IF($T$49=1,$T$51,SUM($Y$2:$Y$201))"),
+    ),
+    ("MEMORIA_RESULTADOS", "T25"): (
+        ("$T$26>0,", "AND($T$26>0,$T$49<>1),"),
+        ("ROUND($T$21+$T$22+$T$23+$T$39,2)", "ROUND($T$21+$T$22+$T$50+$T$23+$T$39,2)"),
+    ),
+    ("MEMORIA_RESULTADOS", "T40"): (
+        ("$T$26>0,", "AND($T$26>0,$T$49<>1),"),
+        ("ROUND($T$21+$T$22+$T$23,2)", "ROUND($T$21+$T$22+$T$50+$T$23,2)"),
+    ),
+    ("MEMORIA_RESULTADOS", "B35"): (
+        ('$B$4="PCs"),B32,', '$B$4="PCs"),IF($T$49=1,$T$52,B32),'),
+    ),
+    ("MEMORIA_RESULTADOS", "C35"): (
+        ('$B$4="PCs"),C32,', '$B$4="PCs"),IF($T$49=1,$T$53,C32),'),
+    ),
+    ("MEMORIA_RESULTADOS", "D35"): (
+        ('$B$4="Financeiro",D32,', '$B$4="Financeiro",IF($T$49=1,$T$51,D32),'),
+    ),
+    ("MEMORIA_RESULTADOS", "W50"): (
+        (
+            '$W$66+IFERROR(SUM(INDIRECT("CICLO_EM_EXECUCAO!F13:F211")),0)+',
+            '$W$66+IF($T$49=1,$T$50,IFERROR(SUM(INDIRECT("CICLO_EM_EXECUCAO!F13:F211")),0))+',
+        ),
+    ),
+    ("MEMORIA_RESULTADOS", "W52"): (
+        (
+            '"POSICAO ATUAL NAO INFORMADA",IF($W$48=""',
+            '"POSICAO ATUAL NAO INFORMADA",IF($T$49=1,'
+            '"POSICAO ATUAL SEM FOTOGRAFIA DO CICLO VIGENTE - CONFERIR",IF($W$48=""',
+        ),
+        ('"REVISE — DECOMPOSICOES DO VTA NAO RECONCILIADAS")))', '"REVISE — DECOMPOSICOES DO VTA NAO RECONCILIADAS"))))'),
+    ),
+    # Aditivos considerados: sem fotografia do ciclo vigente nao ha segunda
+    # decomposicao comparavel (W48 seria de um ciclo anterior); vale a trava
+    # anti-dupla-contagem (W55), como ja vale com a fotografia.
+    ("MEMORIA_RESULTADOS", "E26"): (
+        (
+            "NOT(AND(ISNUMBER($W$51),ROUND($W$51,2)=0,",
+            "NOT(AND(OR($T$49=1,AND(ISNUMBER($W$51),ROUND($W$51,2)=0)),",
+        ),
+    ),
+    ("RESULTADOS_DETALHE", "B36"): (
+        (
+            "=IF(MEMORIA_RESULTADOS!$W$49=1,",
+            "=IF(MEMORIA_RESULTADOS!$T$49=1,MEMORIA_RESULTADOS!$T$50,IF(MEMORIA_RESULTADOS!$W$49=1,",
+        ),
+        ('""))))))', '"")))))))'),
+    ),
+    ("RESULTADOS_DETALHE", "B37"): (
+        (
+            "=IFERROR(",
+            '=IF(MEMORIA_RESULTADOS!$T$49=1,IF(MEMORIA_RESULTADOS!$T$51="","",'
+            "ROUND($B$36+MEMORIA_RESULTADOS!$T$51,2)),IFERROR(",
+        ),
+        ('$A$26:$A$30,0)),"")', '$A$26:$A$30,0)),""))'),
+    ),
+    ("RESULTADOS_DETALHE", "B38"): (
+        (
+            '=IF(OR(B36="",B37=""),"",ROUND(B37-B36,2))',
+            '=IF(MEMORIA_RESULTADOS!$T$49=1,MEMORIA_RESULTADOS!$T$51,'
+            'IF(OR(B36="",B37=""),"",ROUND(B37-B36,2)))',
+        ),
+    ),
+    ("RESULTADOS_DETALHE", "A39"): (
+        (
+            "=IF(MEMORIA_RESULTADOS!$W$49=1,",
+            '=IF(MEMORIA_RESULTADOS!$T$49=1,"Posicao fisica atual informada pelo fiscal '
+            "(CICLO_EM_EXECUCAO), sem fotografia de abertura do ciclo: execucao do ciclo "
+            'pelo metodo oficial ("&$B$5&") e remanescente medido na data da posicao.",'
+            "IF(MEMORIA_RESULTADOS!$W$49=1,",
+        ),
+        ('do ciclo.",""))', 'do ciclo.","")))'),
+    ),
+}
+
+
+def _formula_posicao_atual_vta(aba: str, celula: str, anterior: str) -> str:
+    """Forma 11.8 de uma celula do VTA a partir da forma 11.7 (troca literal)."""
+    nova = anterior
+    for trecho, troca in _TRECHOS_POSICAO_ATUAL_VTA[(aba, celula)]:
+        if nova.count(trecho) != 1:
+            raise ValueError(f"{aba}!{celula} fora do formato 11.7 esperado")
+        nova = nova.replace(trecho, troca)
+    return nova
+
+
+# cobertura_temporal!B8: data real da posicao fisica (CICLO_EM_EXECUCAO!D5),
+# sem depender da posicao completa e sem presumir a data de corte (B3).
+_FORMULA_DATA_POSICAO_COBERTURA = (
+    '=IFERROR(IF(ISNUMBER(INDIRECT("CICLO_EM_EXECUCAO!$D$5")),'
+    'INDIRECT("CICLO_EM_EXECUCAO!$D$5"),""),"")'
+)
+_AJUDA_DATA_POSICAO_COBERTURA = (
+    "Automatico: data real da posicao fisica informada em CICLO_EM_EXECUCAO!D5. "
+    "Vazio enquanto a data nao for informada. Nao usa a data de corte da apuracao."
+)
+
+# Fonte verde dos itens Nxxx (mesma regra de itens_Remanesc) nas demais abas
+# itemizadas. Colunas de CHECK/ALERTA ficam de fora: alertas mantem prioridade.
+_FAIXAS_DESTAQUE_NOVOS_ITENS_118 = {
+    "posicao_contratual": "A2:W200 Y2:AL200",
+    "posicao_referencia": "A2:E200",
+    "aditivos": "A2:L200 N2:O200",
+    "historico_VU": "A2:H200",
+}
 
 
 def _garantir_destaque_novos_itens(wb) -> None:

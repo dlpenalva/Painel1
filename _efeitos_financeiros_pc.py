@@ -118,5 +118,9 @@ def efeito_financeiro_pc(
         return "Nao"
     inicio = como_data(registro.get("inicio_efeito_financeiro"))
     if inicio is None:
+        # Coleta 11.8: ciclo PRECLUSO sem inicio de efeito nao tem efeito
+        # financeiro proprio (mesma regra de itens_PC!L e de financeiro!G).
+        if "PRECLUSO" in str(registro.get("situacao") or "").upper():
+            return "Nao"
         return None
     return "Sim" if data_norm >= inicio else "Nao"

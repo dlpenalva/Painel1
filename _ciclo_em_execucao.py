@@ -762,11 +762,14 @@ def _criar_aba_itemizada(wb):
         'RIGHT("0"&MONTH($D$5),2)&"/"&YEAR($D$5))'
     )
     ws.merge_cells("A9:G10")
+    # Coleta 11.8: o total e a posicao remanescente medida na data, qualquer
+    # que seja a ultima referencia fisica do item (P). A referencia so define o
+    # consumo desde ela (F), que o VTA nao soma quando a referencia e anterior
+    # ao ciclo (MEMORIA_RESULTADOS!T49/T50).
     ws["A9"] = (
         '=IF(OR($D$5="",COUNTIF($A$13:$A$211,"<>")=0,'
         'COUNTIF($K$13:$K$211,"ERRO:*")>0,'
-        'COUNTIF($K$13:$K$211,"INCOMPLETO:*")>0,'
-        'SUMPRODUCT(($A$13:$A$211<>"")*($P$13:$P$211<>$C$3))>0),"",'
+        'COUNTIF($K$13:$K$211,"INCOMPLETO:*")>0),"",'
         'ROUND(SUM($G$13:$G$211),2))'
     )
     for coord in ("A7", "A8", "A9"):
@@ -992,6 +995,17 @@ def _criar_aba_itemizada(wb):
                 f'$C{PRIMEIRA_LINHA_ITEM}>$B{PRIMEIRA_LINHA_ITEM}+$I{PRIMEIRA_LINHA_ITEM})))'
             ],
             fill=PatternFill("solid", fgColor=vermelho_claro),
+        ),
+    )
+    # Coleta 11.8: fonte verde dos itens Nxxx, como em itens_Remanesc. Ultima
+    # regra (menor prioridade) e fora de J:K (CHECK/STATUS): alertas prevalecem.
+    from _coleta_oficial import _COR_FONTE_NOVOS_ITENS, formula_destaque_novo_item
+
+    ws.conditional_formatting.add(
+        f"A{PRIMEIRA_LINHA_ITEM}:I{ULTIMA_LINHA_ITEM}",
+        FormulaRule(
+            formula=[formula_destaque_novo_item(PRIMEIRA_LINHA_ITEM)],
+            font=Font(color="FF" + _COR_FONTE_NOVOS_ITENS),
         ),
     )
 

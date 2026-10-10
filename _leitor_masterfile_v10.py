@@ -86,6 +86,20 @@ def _norm(txt: Any) -> str:
     return "".join(ch for ch in t if not unicodedata.combining(ch))
 
 
+def _pc_pago_canonico(valor: Any) -> Any:
+    """PC_PAGO_A_CONTRATADA no padrao do dropdown (Sim/Nao); demais intactos.
+
+    "Não" chega por colagem ou arquivo externo e vale o mesmo que "Nao"; o
+    dropdown segue so com Sim/Nao.
+    """
+    normalizado = _norm(valor)
+    if normalizado == "sim":
+        return "Sim"
+    if normalizado == "nao":
+        return "Nao"
+    return valor
+
+
 def _achar_valor(ws, rotulo_norm: str, max_lin: int = 60) -> Any:
     for r in range(1, max_lin + 1):
         if _norm(ws.cell(r, 1).value) == _norm(rotulo_norm):
@@ -3258,7 +3272,8 @@ def _ler_itens_pc_v10(
             "valor_atualizado_em_analise": analise_lida,
             "delta_potencial": delta_lido,
             "entra_no_calculo": str(entra or "Sim"),
-            "pc_pago_a_contratada": pago,
+            # Coleta 11.8: "Não"/"NAO" colados equivalem ao padrao do dropdown.
+            "pc_pago_a_contratada": _pc_pago_canonico(pago),
             "observacao":       obs,
             "check":            ws.cell(r, col_check).value if col_check else None,
             "is_global":        is_global,
