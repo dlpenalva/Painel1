@@ -36,6 +36,8 @@ from datetime import datetime
 from pathlib import Path
 
 
+# 12.6: Coleta 11.9 — CONTROLE!B2 volta a ser estritamente automatico (sem
+# dropdown residual) e parametros!U:W ficam ocultas.
 # 12.5: Coleta 11.8 — ajustes da Coleta em uso: VTA (Financeiro/PCs) usa a
 # posicao atual da CICLO_EM_EXECUCAO quando falta a fotografia do ciclo
 # vigente; PC_PAGO aceita Nao/Não; PC de ciclo PRECLUSO sem inicio de efeito
@@ -75,8 +77,8 @@ from pathlib import Path
 # (Financeiro, PCs e Itens) — mudanca estrutural do XLS: COLETA_VERSION 11.1.
 # 11.3: modelos em branco do Despacho Saneador e do Termo de Apostila com a mesma
 # estrutura dos documentos gerados. 11.2: memoria de calculo da garantia em XLSX.
-CL8US_VERSION = "12.5"
-COLETA_VERSION = "11.8"
+CL8US_VERSION = "12.6"
+COLETA_VERSION = "11.9"
 # Modelos de Coleta da familia 11.x aceitos SEM adaptacao: o 11.1 so acrescentou
 # um quadro informativo na RESULTADOS/MEMORIA_RESULTADOS (formulas); a Coleta 11.0
 # nao o possui e continua valida. A 11.2 so separa a apresentacao (RESULTADOS
@@ -90,9 +92,11 @@ COLETA_VERSION = "11.8"
 # parametros!A8, a regra de destaque de parametros!E3:E6 e mensagens de entrada.
 # A 11.6 acrescenta aditivos!N/O fora das coordenadas de leitura; a 11.7 so
 # muda formulas de historico_VU!D:G. A 11.8 so muda formulas/apresentacao e
-# acrescenta MEMORIA_RESULTADOS!S49:T53 fora das coordenadas de leitura.
+# acrescenta MEMORIA_RESULTADOS!S49:T53 fora das coordenadas de leitura. A
+# 11.9 remove somente a validacao residual de CONTROLE!B2 e oculta
+# parametros!U:W.
 COLETA_VERSOES_ACEITAS = (
-    "11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8"
+    "11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8", "11.9"
 )
 # Marcadores publicos ANTERIORES a camada tecnica RESULTADOS_DETALHE: so neles
 # a RESULTADOS ainda e a aba tecnica. Qualquer outro marcador (11.2 ou
@@ -107,7 +111,7 @@ COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
 # Fallback conservador da ultima publicacao confirmada antes deste hotfix.
 # Quando o Git esta disponivel, este valor nunca prevalece sobre o commit real.
-ATUALIZADO_EM_FALLBACK = "10/10/2026 01:00"
+ATUALIZADO_EM_FALLBACK = "10/10/2026 11:21"
 
 
 def _data_ultimo_commit() -> str | None:
