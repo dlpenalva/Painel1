@@ -117,7 +117,9 @@ def test_ciclo_em_execucao_tem_fallback_por_item_e_rastreabilidade(wb_coleta_116
     )
     assert "CHOOSE(MATCH(P13," in str(ws["B13"].value)
     assert 'aditivos!$B$2:$B$200,">="&(INT(Q13)+1)' in str(ws["I13"].value)
-    assert "$P$13:$P$211<>$C$3" in str(ws["A9"].value)
+    # Coleta 11.8: A9 e a posicao medida qualquer que seja a referencia (P);
+    # o VTA nao soma o consumo desde referencia anterior (MEMORIA!T49/T50).
+    assert "$P$13:$P$211" not in str(ws["A9"].value)
 
     dv = next(
         d for d in ws.data_validations.dataValidation

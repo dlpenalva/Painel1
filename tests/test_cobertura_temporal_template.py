@@ -58,10 +58,11 @@ def test_reusa_painel_posicao_referencia():
     # ter origem automatica em CICLO_EM_EXECUCAO (D5 quando A9 valido), via
     # INDIRECT+ISERROR (compat. com arquivos sem a aba). B7/B11/B22/B23 seguem
     # reutilizando posicao_referencia.
+    # Coleta 11.8: B8 mostra a data real da posicao fisica (D5) sempre que
+    # informada, sem depender da posicao completa (A9) nem da data de corte.
     assert ws["B8"].value == (
-        '=IF(ISERROR(INDIRECT("CICLO_EM_EXECUCAO!A9")),"",'
-        'IF(INDIRECT("CICLO_EM_EXECUCAO!A9")="","",'
-        'INDIRECT("CICLO_EM_EXECUCAO!D5")))'
+        '=IFERROR(IF(ISNUMBER(INDIRECT("CICLO_EM_EXECUCAO!$D$5")),'
+        'INDIRECT("CICLO_EM_EXECUCAO!$D$5"),""),"")'
     )
     assert ws["B11"].value == "=posicao_referencia!$I$5"
     # Etapa VTA: linha "Fonte temporal de conferencia" (21) removida; as linhas
@@ -153,12 +154,10 @@ def test_projecao_categoria_nova_laranja():
     assert "nao cria retroativo" in ws["B23"].value
 
 
-def test_legenda_quatro_categorias():
+def test_legenda_removida_na_coleta_11_8():
     ws = _wb()[ABA]
-    # Etapa VTA: LEGENDA subiu de A26 para A25 (linha 21 removida).
-    assert "LEGENDA" in str(ws["A25"].value)
-    rotulos = [str(ws.cell(r, 1).value) for r in range(26, 30)]
-    assert rotulos == ["FISCAL", "GCC", "AUTOMATICO", "PROJECAO"]
+    # Coleta 11.8: a legenda A25:C29 (sem dependentes) foi excluida a pedido.
+    assert all(ws.cell(r, c).value in (None, "") for r in range(25, 30) for c in (1, 2, 3))
 
 
 def test_sem_today_now_hoje():

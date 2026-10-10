@@ -282,7 +282,11 @@ def test_i_j_resultados_preserva_formulas_e_vta():
     assert ws["A9"].value == "1. COMO O VTA FOI CALCULADO"
     assert "2. EXECUÇÃO RECONHECIDA EM PCs POR CICLO" in ws["A15"].value
     assert ws["B22"].value == '=IF(COUNT(B16:B20)=0,"",ROUND(SUM(B16:B20),2))'
-    assert ws["B38"].value == '=IF(OR(B36="",B37=""),"",ROUND(B37-B36,2))'
+    # Coleta 11.8: sem fotografia do ciclo vigente, o saldo e a posicao atual (T51).
+    assert ws["B38"].value == (
+        '=IF(MEMORIA_RESULTADOS!$T$49=1,MEMORIA_RESULTADOS!$T$51,'
+        'IF(OR(B36="",B37=""),"",ROUND(B37-B36,2)))'
+    )
     assert ws["B86"].value == '=IF(VTA_FINAL="","",VTA_FINAL)'
     assert "Esta conferência não altera o VTA Oficial" in ws["A70"].value
     assert ws["A78"].value is None

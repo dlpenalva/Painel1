@@ -975,8 +975,11 @@ def test_xls_b26_e_remanescente_do_ramo_itens_intactos(workbook):
         'ROUND($F$20+D35+IF(ISNUMBER(B24),B24,0)+IF(ISNUMBER($N$263),$N$263,0),2))'
     )
     assert ramo_itens in mem["B26"].value
+    # Coleta 11.8: Financeiro sem fotografia do ciclo vigente usa a posicao
+    # atual (T51); o ramo Itens (D33) segue intacto.
     assert mem["D35"].value == (
-        '=IF($B$4="PCs",$T$23,IF($B$4="Financeiro",D32,IF($B$4="Itens",D33,"")))'
+        '=IF($B$4="PCs",$T$23,IF($B$4="Financeiro",IF($T$49=1,$T$51,D32),'
+        'IF($B$4="Itens",D33,"")))'
     )
     # C33/D33 (remanescente derivado dos itens) nao foram tocados.
     assert "itens_Consumidos!$V$2:$V$200" in mem["C33"].value

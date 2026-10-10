@@ -42,6 +42,8 @@ CABECALHOS_MEMORIA_CALCULO = (
     "FATOR_MENSAL", "FATOR_ACUMULADO", "VARIACAO_FINAL", "METODO_FONTE",
 )
 COLUNAS_MEMORIA_CALCULO = ("J", "K", "L", "M", "N", "O", "P", "Q", "R")
+FORMATO_FATOR_ACUMULADO = "0.0000"
+FORMATO_VARIACAO_FINAL = "0.00%"
 LINHA_INICIO_MEMORIA = 2
 LINHA_FIM_MEMORIA = 80
 CAPACIDADE_MEMORIA_CALCULO = LINHA_FIM_MEMORIA - LINHA_INICIO_MEMORIA + 1  # 79
@@ -267,19 +269,16 @@ def escrever_memoria_calculo(ws_parametros, ciclos: dict[str, Any]) -> None:
         if fator_mensal is not None:
             ws_parametros[f"O{linha}"] = fator_mensal
             ws_parametros[f"O{linha}"].number_format = "0.000000"
-        bruta = tipo == TIPO_VARIACAO_BRUTA
+        # Coleta 11.8: so a exibicao fica enxuta (P com 4 casas, Q em xx,xx%);
+        # a celula guarda o valor integral, inclusive na VARIACAO_BRUTA.
         fator_acumulado = _numero(registro.get("fator_acumulado"))
         if fator_acumulado is not None:
             ws_parametros[f"P{linha}"] = fator_acumulado
-            ws_parametros[f"P{linha}"].number_format = (
-                "0.000000000000" if bruta else "0.000000"
-            )
+            ws_parametros[f"P{linha}"].number_format = FORMATO_FATOR_ACUMULADO
         variacao = _numero(registro.get("variacao_final"))
         if variacao is not None:
             ws_parametros[f"Q{linha}"] = variacao
-            ws_parametros[f"Q{linha}"].number_format = (
-                "0.000000000000%" if bruta else "0.00%"
-            )
+            ws_parametros[f"Q{linha}"].number_format = FORMATO_VARIACAO_FINAL
         metodo_fonte = registro.get("metodo_fonte")
         if metodo_fonte:
             ws_parametros[f"R{linha}"] = str(metodo_fonte)

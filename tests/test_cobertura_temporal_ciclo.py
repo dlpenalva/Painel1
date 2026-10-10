@@ -28,10 +28,10 @@ from _ciclo_em_execucao import ABA_CICLO_EM_EXECUCAO, garantir_aba_ciclo_em_exec
 ROOT = Path(__file__).resolve().parents[1]
 TEMPLATE = ROOT / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
 
+# Coleta 11.8: B8 e a data real da posicao fisica (D5), sem depender de A9.
 B8_ESPERADA = (
-    '=IF(ISERROR(INDIRECT("CICLO_EM_EXECUCAO!A9")),"",'
-    'IF(INDIRECT("CICLO_EM_EXECUCAO!A9")="","",'
-    'INDIRECT("CICLO_EM_EXECUCAO!D5")))'
+    '=IFERROR(IF(ISNUMBER(INDIRECT("CICLO_EM_EXECUCAO!$D$5")),'
+    'INDIRECT("CICLO_EM_EXECUCAO!$D$5"),""),"")'
 )
 
 

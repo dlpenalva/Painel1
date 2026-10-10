@@ -887,6 +887,7 @@ def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
         reg_pc = {
             "computar_nesta_apuracao": parametros[f"A{linha_param}"].value,
             "inicio_efeito_financeiro": inicios_pc.get(ciclo_pc),
+            "situacao": parametros[f"G{linha_param}"].value,
         }
         efeito_esperado = efeito_financeiro_pc(data_pc, ciclo_pc, reg_pc)
         ciclo_ativo = ciclo_pc in ativos_nome

@@ -60,8 +60,8 @@ def wb_gerado():
 # --- estrutura do XLS gerado ---------------------------------------------
 
 def test_versoes_no_xls_gerado(wb_gerado):
-    assert wb_gerado["CONTROLE"]["B24"].value == "11.7"
-    assert wb_gerado["CONTROLE"]["B25"].value == "12.4"
+    assert wb_gerado["CONTROLE"]["B24"].value == "11.8"
+    assert wb_gerado["CONTROLE"]["B25"].value == "12.5"
 
 
 def test_ciclo_em_execucao_e_formula_da_data_de_corte(wb_gerado):

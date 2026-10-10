@@ -157,6 +157,9 @@ def test_quadro_2_espelha_tabela_2_inclusive_total_e_ajuste():
         assert f"RESULTADOS_DETALHE!${col_det}$22" in f[f"{col_exe}49"]
 
 
+COLETA_11_8 = ("B36", "B37", "B38", "A39")
+
+
 def test_camada_tecnica_preserva_formulas_homologadas():
     """RESULTADOS_DETALHE == RESULTADOS da main (exceto titulos A1/A2)."""
     esperado = json.loads(SNAPSHOT_PRE.read_text(encoding="utf-8"))["formulas"]
@@ -168,8 +171,15 @@ def test_camada_tecnica_preserva_formulas_homologadas():
     diferentes = sorted(
         k for k in set(esperado) | set(obtido)
         if esperado.get(k) != obtido.get(k) and k not in ("A1", "A2", "C12")
+        and k not in COLETA_11_8
     )
     assert not diferentes, f"formulas da camada tecnica mudaram: {diferentes[:10]}"
+    # Coleta 11.8: bloco do ciclo atual com a posicao atual = forma homologada
+    # com o ramo T49 acrescentado por troca literal (nada mais muda).
+    from _coleta_oficial import _formula_posicao_atual_vta
+
+    for k in COLETA_11_8:
+        assert obtido[k] == _formula_posicao_atual_vta(ABA_RESULTADOS_DETALHE, k, esperado[k])
     assert obtido["C12"] == esperado["C12"].replace(
         "x RESULTADOS!H5", "x RESULTADOS_DETALHE!H5"
     )
@@ -291,11 +301,11 @@ def test_versionamento_e_linhagem():
     from _versao import COLETA_VERSION, COLETA_VERSOES_ACEITAS
 
     # Coleta 11.3 (PR #175, UX) mantem a arquitetura executiva + detalhe da 11.2.
-    assert COLETA_VERSION == "11.7"
+    assert COLETA_VERSION == "11.8"
     assert {"11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6"} <= set(COLETA_VERSOES_ACEITAS)
     deteccao = detectar_linhagem_coleta(_gerado())
     assert deteccao["codigo"] == LINHAGEM_COLETA_11
-    assert deteccao["marcador_publico"] == "11.7"
+    assert deteccao["marcador_publico"] == "11.8"
 
 
 def _como_arquivo_anterior(marcador: str | None = "11.1"):

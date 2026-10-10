@@ -29,7 +29,11 @@ FORMULAS_PRESERVADAS = {
           'COUNTIF($H$43:$H$50,"REVISE")>0),"REVISE",'
           'IF($H$33="ESTIMADO","ESTIMADO","VALIDADO"))',
     "B22": '=IF(COUNT(B16:B20)=0,"",ROUND(SUM(B16:B20),2))',
-    "B38": '=IF(OR(B36="",B37=""),"",ROUND(B37-B36,2))',
+    # Coleta 11.8: sem fotografia do ciclo vigente o saldo e a posicao atual.
+    "B38": (
+        '=IF(MEMORIA_RESULTADOS!$T$49=1,MEMORIA_RESULTADOS!$T$51,'
+        'IF(OR(B36="",B37=""),"",ROUND(B37-B36,2)))'
+    ),
     "B86": '=IF(VTA_FINAL="","",VTA_FINAL)',
 }
 

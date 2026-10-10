@@ -264,7 +264,7 @@ def test_o_potencial_e_somado_ao_vta_exatamente_uma_vez(wb):
     assert encontradas == REFERENCIAS_POTENCIAL_VTA
     t25 = str(wb["MEMORIA_RESULTADOS"]["T25"].value)
     assert t25.count("$T$39") == 1
-    assert t25.endswith("ROUND($T$21+$T$22+$T$23+$T$39,2))")
+    assert t25.endswith("ROUND($T$21+$T$22+$T$50+$T$23+$T$39,2))")
     # A conferencia do quadro 9 continua fechando pela soma das parcelas.
     assert wb[_aba_tecnica_resultados(wb)]["B87"].value == (
         '=IF(OR($B$83="",$B$85="",$B$86=""),"",'
@@ -297,7 +297,7 @@ def test_potencial_negativo_nao_reduz_o_vta(wb):
     """T39 e soma de parcelas positivas: por construcao nunca e negativo."""
     mem = wb["MEMORIA_RESULTADOS"]
     assert "MAX(" not in str(mem["T39"].value)
-    assert str(mem["T25"].value).endswith("ROUND($T$21+$T$22+$T$23+$T$39,2))")
+    assert str(mem["T25"].value).endswith("ROUND($T$21+$T$22+$T$50+$T$23+$T$39,2))")
 
 
 def test_financeiro_e_consumidos_nao_herdam_a_parcela(wb):
