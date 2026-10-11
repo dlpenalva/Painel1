@@ -2,14 +2,10 @@
 
 Aplica no template oficial, via Excel COM (openpyxl destroi a CF x14), somente:
 
-* CONTROLE!B2 — "Ciclo vigente (em execucao)" passa a ser DERIVADO da data de
-  corte (CONTROLE!B3) na CRONOLOGIA FIXA DA EXECUCAO — a mesma regra de
-  _motor_posicao_contratual.calendario_execucao_por_ciclo: ancora = inicio
-  (dia 1) do ciclo mais antigo com DATA_INICIO real em parametros!C2:C6 e
-  blocos contiguos de 12 meses C0..C4. As janelas de reajuste
-  (parametros!C:D, que podem ter intervalo intencional) NAO enquadram a
-  execucao e nao sao alteradas. Fora de C0..C4: vazio. O ciclo ANALISADO
-  continua em parametros!A (COMPUTAR) e CONTROLE!B12.
+* CONTROLE!B2 — "Ciclo vigente (em execucao)" apenas identifica a linha de
+  parametros!B2:D6 cujo intervalo DATA_INICIO/DATA_FIM ja existente contem a
+  data de corte (CONTROLE!B3). Nenhuma data, janela ou ancora e recalculada.
+  O ciclo ANALISADO continua em parametros!A (COMPUTAR) e CONTROLE!B12.
 * aditivos!I2:I200 — fator efetivo do item = fator vigente no marco / fator
   vigente no nascimento (posicao_contratual!Y). O fator vigente e o ultimo
   fator conhecido da cadeia parametros!F (F2:F6 formam prefixo numerico), o
@@ -33,18 +29,15 @@ RAIZ = Path(__file__).resolve().parents[1]
 if str(RAIZ) not in sys.path:
     sys.path.insert(0, str(RAIZ))
 
-from _ciclo_em_execucao import formula_inicio_execucao  # noqa: E402
 TEMPLATE = RAIZ / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
 
 OPCOES_TIPO = ("Acrescimo", "Acréscimo - novo item", "Supressao")
 
 FORMULA_CICLO_VIGENTE = (
     '=IFERROR(IF(NOT(ISNUMBER($B$3)),"",'
-    f'IF(OR($B$3<{formula_inicio_execucao("0")},$B$3>={formula_inicio_execucao("5")}),"",'
-    f'IF($B$3>={formula_inicio_execucao("4")},"C4",'
-    f'IF($B$3>={formula_inicio_execucao("3")},"C3",'
-    f'IF($B$3>={formula_inicio_execucao("2")},"C2",'
-    f'IF($B$3>={formula_inicio_execucao("1")},"C1","C0")))))),"")'
+    'INDEX(parametros!$B$2:$B$6,MATCH(1,'
+    'INDEX((ISNUMBER(parametros!$C$2:$C$6))*(ISNUMBER(parametros!$D$2:$D$6))*'
+    '($B$3>=parametros!$C$2:$C$6)*($B$3<=parametros!$D$2:$D$6),0),0))),"")'
 )
 
 _N = '(MATCH($C2,{"C0","C1","C2","C3","C4"},0)-1)'

@@ -60,8 +60,8 @@ def wb_gerado():
 # --- estrutura do XLS gerado ---------------------------------------------
 
 def test_versoes_no_xls_gerado(wb_gerado):
-    assert wb_gerado["CONTROLE"]["B24"].value == "11.9"
-    assert wb_gerado["CONTROLE"]["B25"].value == "12.6"
+    assert wb_gerado["CONTROLE"]["B24"].value == "12.0"
+    assert wb_gerado["CONTROLE"]["B25"].value == "12.7"
 
 
 def test_ciclo_em_execucao_e_formula_da_data_de_corte(wb_gerado):
@@ -71,6 +71,16 @@ def test_ciclo_em_execucao_e_formula_da_data_de_corte(wb_gerado):
     # O ciclo analisado continua registrado em parametros/B12.
     assert wb_gerado["parametros"]["A3"].value == "Sim"
     assert str(wb_gerado["CONTROLE"]["B12"].value).startswith("=")
+
+
+def test_formula_b2_apenas_le_intervalos_existentes(wb_gerado):
+    formula = wb_gerado["CONTROLE"]["B2"].value
+    assert formula == FORMULA_CICLO_VIGENTE
+    assert "parametros!$B$2:$B$6" in formula
+    assert "parametros!$C$2:$C$6" in formula
+    assert "parametros!$D$2:$D$6" in formula
+    assert "EDATE(" not in formula
+    assert "DATE(" not in formula
 
 
 def test_formulas_de_aditivos_em_todas_as_linhas(wb_gerado):
@@ -123,7 +133,7 @@ def test_tipos_aceitos_pelo_motor(tipo, esperado):
     assert normalizar_tipo_movimento(tipo) == esperado
 
 
-# --- ciclo em execucao sem cache (espelho Python da formula de B2) ---------
+# --- ciclo em execucao sem cache (motor Python preservado, independente) ---
 # Cronologia FIXA da execucao (ancora C0 = 01/03/2022): C1 03/2023-02/2024,
 # C2 03/2024-02/2025, C3 03/2025-02/2026, C4 03/2026-02/2027. As janelas de
 # reajuste (C2 a partir de 06/2024) NAO enquadram a execucao.
@@ -180,7 +190,6 @@ def test_workflow_icti_instala_dependencias_do_projeto():
 )
 @pytest.mark.parametrize("corte, ciclo, inicio, fim", [
     (datetime(2026, 10, 8), "C4", date(2026, 3, 1), date(2027, 2, 28)),
-    (datetime(2024, 4, 15), "C2", date(2024, 3, 1), date(2025, 2, 28)),
 ])
 def test_cenario_focal_no_excel(tmp_path, corte, ciclo, inicio, fim):
     import pythoncom

@@ -494,7 +494,7 @@ def test_cl8us_11_4_e_modelo_de_coleta_11_1_sao_independentes():
     # Cl8us 11.5 / Coleta 11.2 (RESULTADOS-EXECUTIVO-V3); a regra testada —
     # versao do gerador independente da linhagem — e a mesma.
     # Cl8us 11.7 / Coleta 11.3 (versionamento obrigatorio pos-#175).
-    assert CL8US_VERSION == "12.6" and COLETA_VERSION == "11.9"
+    assert CL8US_VERSION == "12.7" and COLETA_VERSION == "12.0"
     wb = load_workbook(PASTA / "coleta_11_financeiro.xlsx")
     assert cc.detectar_linhagem_coleta(wb)["codigo"] == cc.LINHAGEM_COLETA_11
     wb["CONTROLE"]["B25"] = CL8US_VERSION            # quem GEROU a Coleta: Cl8us 11.4
@@ -519,7 +519,7 @@ def test_coleta_11_1_e_coleta_11_0_sao_a_mesma_linhagem_sem_adaptacao():
         assert deteccao["modelo_canonico"] == COLETA_VERSION
     # Marcador fora da familia 11.x continua rejeitado (nada e inferido).
     wb = load_workbook(PASTA / "coleta_11_financeiro.xlsx")
-    wb["CONTROLE"]["B24"] = "11.9"
+    wb["CONTROLE"]["B24"] = "12.1"
     assert cc.detectar_linhagem_coleta(wb)["codigo"] == cc.LINHAGEM_NAO_HOMOLOGADA
 
 
