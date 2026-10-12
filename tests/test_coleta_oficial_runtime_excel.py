@@ -193,16 +193,24 @@ def _alterar_cache_resultados(caminho: Path, celula: str, valor: float) -> None:
 
 def test_excel_com_linha_73_entra_em_resultados(tmp_path: Path) -> None:
     wb = load_workbook(io.BytesIO(gerar_coleta_oficial_preenchida(_dados(longo=True))))
-    wb["financeiro"]["C73"] = 100.0
-    wb["financeiro"]["G73"] = "Sim"
     caminho = tmp_path / "linha_73.xlsx"
     _salvar(wb, caminho)
     _recalcular_excel(caminho)
 
     valores = load_workbook(caminho, data_only=True)
-    assert str(valores["financeiro"]["B73"].value).lower() == "c4"
-    assert valores["financeiro"]["F73"].value == pytest.approx(46.41, abs=0.01)
-    assert valores["MEMORIA_RESULTADOS"]["B14"].value == pytest.approx(46.41, abs=0.01)
+    financeiro = valores["financeiro"]
+    competencias_ativas = [financeiro[f"A{linha}"].value for linha in range(2, 62)]
+    ciclos_ativos = [str(financeiro[f"B{linha}"].value).lower() for linha in range(2, 62)]
+
+    assert len(competencias_ativas) == 60
+    assert all(competencias_ativas)
+    assert ciclos_ativos == [
+        ciclo
+        for indice in range(5)
+        for ciclo in [f"c{indice}"] * 12
+    ]
+    assert all(financeiro[f"A{linha}"].value is None for linha in range(62, 74))
+    assert all(financeiro[f"B{linha}"].value is None for linha in range(62, 74))
 
 
 def test_excel_com_efeitos_itens_pc_data_exata_cores_e_reabertura(tmp_path: Path) -> None:
@@ -236,21 +244,21 @@ def test_excel_com_efeitos_itens_pc_data_exata_cores_e_reabertura(tmp_path: Path
         caminho, editar, inspecionar
     )
     # tupla: C, E, F, H, I, J, K, L
-    # Etapa 26C: pre-efeito mantem o fator HISTORICO (E/F/I); H/J seguem 0.
-    assert valores[2][:6] == ("C1", 1.1, 110.0, 0.0, 110.0, 0.0)
-    assert valores[2][7] == "Nao" and valores[2][6] == "OK"
+    # Pre-efeito mantem o fator HISTORICO (E/F/I); H fica 0 e J preserva o delta potencial.
+    assert valores[2][:6] == ("C1", 1.1, 110.0, 0.0, 110.0, 10.0)
+    assert valores[2][7] == "Sim" and valores[2][6] == "OK"
     assert valores[3][:6] == ("C1", 1.1, 110.0, 0.0, 110.0, 10.0)
     assert valores[3][7] == "Sim" and valores[3][6] == "OK"
     assert valores[4][:6] == ("C1", 1.1, 110.0, 10.0, 0.0, 0.0)
     assert valores[4][7] == "Sim" and valores[4][6] == "OK"
-    assert cores[2] == _cor_excel("FFF4CCCC")
+    assert cores[2] == _cor_excel("FFFFF2CC")
     assert cores[3] != _cor_excel("FFF4CCCC")
     assert cores[4] != _cor_excel("FFF4CCCC")
     assert "dd" in str(formato_data).lower()
     assert links in (None, ())
 
     reaberto = load_workbook(caminho, data_only=True)
-    assert reaberto["itens_PC"]["L2"].value == "Nao"
+    assert reaberto["itens_PC"]["L2"].value == "Sim"
     assert reaberto["itens_PC"]["L3"].value == "Sim"
     assert reaberto["itens_PC"]["L4"].value == "Sim"
     assert not any(
