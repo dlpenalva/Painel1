@@ -1147,7 +1147,7 @@ def _formula_check_pc_11_7(r: int) -> str:
     )
 
 
-def _formula_check_pc(r: int) -> str:
+def _formula_check_pc_11_8(r: int) -> str:
     anterior = _formula_check_pc_11_7(r)
     inicio = _INICIO_EFEITO_CICLO_PC.format(r=r)
     situacao = _SITUACAO_CICLO_PC.format(r=r)
@@ -1317,6 +1317,271 @@ def _formula_posicao_atual_vta(aba: str, celula: str, anterior: str) -> str:
     return nova
 
 
+# Coleta 12.0 — itens_PC com filtro, PC_PAGO normalizado e coerencia entre o
+# metodo (CONTROLE!B1) e a fonte de dados. Fonte unica das formulas gravadas
+# no template por tools/aplicar_coleta_120_itens_pc_simnao_coerencia.py (Excel
+# COM) e conferidas pelos testes. Formulas em ASCII puro: os textos acentuados
+# ficam como constantes em MEMORIA_RESULTADOS!AG e sao concatenados.
+
+# itens_PC!G segue como campo bruto (dropdown so com Sim/Nao); a coluna tecnica
+# oculta AD guarda o valor normalizado — sem diferenca de maiusculas, do acento
+# de "Não" e de espacos externos (inclusive o espaco nao separavel de colagens).
+# O que nao for Sim nem Nao vira INVALIDO: nenhum significado e inventado.
+COLUNA_PC_PAGO_NORMALIZADO = "AD"
+CABECALHO_PC_PAGO_NORMALIZADO = "PC_PAGO_NORMALIZADO"
+PC_PAGO_INVALIDO = "INVALIDO"
+FAIXA_FILTRO_ITENS_PC = f"A1:L{ULTIMA_LINHA_PCS}"
+
+
+def _formula_pc_pago_normalizado(r: int) -> str:
+    bruto = f'UPPER(TRIM(SUBSTITUTE(G{r},CHAR(160)," ")))'
+    sem_acento = f'SUBSTITUTE(SUBSTITUTE({bruto},_xlfn.UNICHAR(195),"A"),_xlfn.UNICHAR(227),"A")'
+    return (
+        f'=IFERROR(IF({bruto}="","",IF({bruto}="SIM","Sim",'
+        f'IF({sem_acento}="NAO","Nao","{PC_PAGO_INVALIDO}"))),"{PC_PAGO_INVALIDO}")'
+    )
+
+
+def _formula_retro_pc_11_8(r: int) -> str:
+    return (
+        f'=IF(G{r}="Sim",IF(OR(F{r}="",D{r}="",L{r}=""),"",'
+        f'IF(L{r}="Sim",ROUND(F{r}-D{r},2),0)),0)'
+    )
+
+
+def _formula_em_analise_pc_11_8(r: int) -> str:
+    return f'=IF(G{r}="Sim",0,IF(OR(F{r}="",L{r}=""),"",F{r}))'
+
+
+def _formula_potencial_pc_11_8(r: int) -> str:
+    return (
+        f'=IF(G{r}="Sim",0,IF(OR(F{r}="",D{r}="",L{r}=""),"",'
+        f'IF(L{r}="Sim",ROUND(F{r}-D{r},2),0)))'
+    )
+
+
+def _pago_normalizado(anterior: str, r: int) -> str:
+    trecho = f'IF(G{r}="Sim",'
+    if anterior.count(trecho) != 1:
+        raise ValueError(f"itens_PC linha {r}: formula 11.8 fora do formato esperado")
+    return anterior.replace(trecho, f'IF({COLUNA_PC_PAGO_NORMALIZADO}{r}="Sim",')
+
+
+def _formula_retro_pc(r: int) -> str:
+    return _pago_normalizado(_formula_retro_pc_11_8(r), r)
+
+
+def _formula_em_analise_pc(r: int) -> str:
+    return _pago_normalizado(_formula_em_analise_pc_11_8(r), r)
+
+
+def _formula_potencial_pc(r: int) -> str:
+    return _pago_normalizado(_formula_potencial_pc_11_8(r), r)
+
+
+def _formula_check_pc(r: int) -> str:
+    """itens_PC!K: PC_PAGO invalido so quando AD nao reconhece Sim nem Nao."""
+    anterior = _formula_check_pc_11_8(r)
+    pago = (
+        f'AND(AND(G{r}<>"Sim",G{r}<>"Nao",G{r}<>""),'
+        f'SUBSTITUTE(UPPER(G{r}),_xlfn.UNICHAR(195),"A")<>"NAO")'
+    )
+    if anterior.count(pago) != 1:
+        raise ValueError("itens_PC!K 11.8 fora do formato esperado")
+    return anterior.replace(pago, f'{COLUNA_PC_PAGO_NORMALIZADO}{r}="{PC_PAGO_INVALIDO}"')
+
+
+# Criterio "Sim" dos quadros e somatorios passa a ler o valor normalizado.
+# MEMORIA_RESULTADOS!D44 continua em G: so testa presenca, nao a grafia.
+_TRECHO_PC_PAGO_SIM = '$G$2:$G$5001,"Sim"'
+_TROCA_PC_PAGO_SIM = f'${COLUNA_PC_PAGO_NORMALIZADO}$2:${COLUNA_PC_PAGO_NORMALIZADO}$5001,"Sim"'
+_FAIXAS_PC_PAGO_SIM = {
+    "itens_PC": "N12:Q17",
+    "MEMORIA_RESULTADOS": "C10:C14",
+    "RESULTADOS_DETALHE": "B16:B20",
+}
+
+
+def _formula_pc_pago_sim_normalizado(anterior: str) -> str:
+    if _TRECHO_PC_PAGO_SIM not in anterior:
+        raise ValueError("formula sem o criterio PC_PAGO = Sim esperado")
+    return anterior.replace(_TRECHO_PC_PAGO_SIM, _TROCA_PC_PAGO_SIM)
+
+
+# Textos acentuados (constantes) — MEMORIA_RESULTADOS!AG43:AG64.
+_TEXTOS_COLETA_120: dict[str, str] = {
+    "AG43": "REVISE O MÉTODO DE APURAÇÃO. Método selecionado: ",
+    "AG44": ". Fonte esperada: aba ",
+    "AG45": ", sem valores informados. Foram encontrados dados em: ",
+    "AG46": ". Confirme o método da apuração antes de prosseguir — nenhuma outra fonte é usada automaticamente.",
+    "AG47": ", sem valores informados. Não há dados informados para o método selecionado: preencha essa aba ou revise o método antes de prosseguir.",
+    "AG48": "CONFERIR: método selecionado ",
+    "AG49": " (fonte: aba ",
+    "AG50": "). Também há dados em: ",
+    "AG51": ", que não entram neste método. O método selecionado prevalece.",
+    "AG52": " valores foram reconhecidos como 'Nao', embora tenham sido colados com grafia diferente.",
+    "AG53": " valor foi reconhecido como 'Nao', embora tenha sido colado com grafia diferente.",
+    "AG54": " valores foram reconhecidos como 'Sim', embora tenham sido colados com grafia diferente.",
+    "AG55": " valor foi reconhecido como 'Sim', embora tenha sido colado com grafia diferente.",
+    "AG56": " valores de PC_PAGO_A_CONTRATADA não puderam ser reconhecidos como Sim ou Nao: corrija na coluna G (ver CHECK_PC_FINANCEIRO).",
+    "AG57": " valor de PC_PAGO_A_CONTRATADA não pôde ser reconhecido como Sim ou Nao: corrija na coluna G (ver CHECK_PC_FINANCEIRO).",
+    "AG58": "REVISE O MÉTODO: aba ",
+    "AG59": " sem valores informados; há dados em ",
+    "AG60": ". Confirme o método antes de prosseguir (ver RESULTADOS).",
+    "AG61": " sem valores informados: não há dados para o método selecionado (ver RESULTADOS).",
+    "AG62": "CONFERIR: também há dados em ",
+    "AG63": "; prevalece o método selecionado (aba ",
+    "AG64": ").",
+}
+
+# Coerencia metodo x fonte: 1 = BLOQUEIO (a fonte do metodo esta vazia; o VTA
+# e o retroativo ficam indisponiveis, sem usar outra fonte); 2 = AVISO (outra
+# fonte tambem tem dados; o metodo selecionado prevalece); 0 = OK.
+COERENCIA_BLOQUEIO, COERENCIA_AVISO = 1, 2
+_PRESENCA_PCS = (
+    '(((itens_PC!$A$2:$A$5001<>"")+(itens_PC!$B$2:$B$5001<>"")'
+    '+(itens_PC!$D$2:$D$5001<>"")+(itens_PC!$G$2:$G$5001<>""))>0)'
+)
+_AD = f"itens_PC!${COLUNA_PC_PAGO_NORMALIZADO}$2:${COLUNA_PC_PAGO_NORMALIZADO}$5001"
+
+_CELULAS_COLETA_120: dict[str, tuple[str, str]] = {
+    "T54": (
+        "Financeiro: linhas com VALOR_PAGO informado (financeiro!C)",
+        '=SUMPRODUCT(--(financeiro!$C$2:$C$73<>""))',
+    ),
+    "T55": (
+        "itens_PC: linhas com dados (A, B, D ou G)",
+        f"=SUMPRODUCT(--{_PRESENCA_PCS})",
+    ),
+    "T56": (
+        "itens_Consumidos: quantidades consumidas informadas (E, G, I, K, M)",
+        "=" + "+".join(
+            f'SUMPRODUCT(--(itens_Consumidos!${c}$2:${c}$200<>""))' for c in "EGIKM"
+        ),
+    ),
+    "T57": (
+        "Registros na fonte do metodo selecionado (vazio = metodo nao selecionado)",
+        '=IF($B$4="Financeiro",$T$54,IF($B$4="PCs",$T$55,IF($B$4="Itens",$T$56,"")))',
+    ),
+    "T58": (
+        "Coerencia metodo x fonte (0 = OK; 1 = BLOQUEIO: fonte do metodo vazia; "
+        "2 = AVISO: outra fonte tambem preenchida)",
+        f'=IF(NOT(ISNUMBER($T$57)),0,IF($T$57=0,{COERENCIA_BLOQUEIO},'
+        f'IF($T$54+$T$55+$T$56>$T$57,{COERENCIA_AVISO},0)))',
+    ),
+    "T59": (
+        "Aba de dados esperada pelo metodo selecionado",
+        '=IF($B$4="Financeiro","financeiro",IF($B$4="PCs","itens_PC",'
+        'IF($B$4="Itens","itens_Consumidos","")))',
+    ),
+    "T60": (
+        "Outras abas de dados preenchidas (nao usadas pelo metodo)",
+        '=MID(IF(AND($B$4<>"Financeiro",$T$54>0),", financeiro","")'
+        '&IF(AND($B$4<>"PCs",$T$55>0),", itens_PC","")'
+        '&IF(AND($B$4<>"Itens",$T$56>0),", itens_Consumidos",""),3,200)',
+    ),
+    "T61": (
+        "Mensagem de coerencia metodo x fonte (RESULTADOS)",
+        f'=IF($T$58={COERENCIA_BLOQUEIO},$AG$43&CONTROLE!$B$1&$AG$44&$T$59'
+        '&IF($T$60<>"",$AG$45&$T$60&$AG$46,$AG$47),'
+        f'IF($T$58={COERENCIA_AVISO},$AG$48&CONTROLE!$B$1&$AG$49&$T$59&$AG$50'
+        '&$T$60&$AG$51,""))',
+    ),
+    "T62": (
+        "Mensagem curta de coerencia metodo x fonte (CONTROLE!C1)",
+        f'=IF($T$58={COERENCIA_BLOQUEIO},$AG$58&$T$59'
+        '&IF($T$60<>"",$AG$59&$T$60&$AG$60,$AG$61),'
+        f'IF($T$58={COERENCIA_AVISO},$AG$62&$T$60&$AG$63&$T$59&$AG$64,""))',
+    ),
+    "T63": (
+        "itens_PC: PC_PAGO reconhecido como Nao com grafia diferente",
+        f'=SUMPRODUCT(--({_AD}="Nao"),--(EXACT(itens_PC!$G$2:$G$5001,"Nao")=FALSE))',
+    ),
+    "T64": (
+        "itens_PC: PC_PAGO reconhecido como Sim com grafia diferente",
+        f'=SUMPRODUCT(--({_AD}="Sim"),--(EXACT(itens_PC!$G$2:$G$5001,"Sim")=FALSE))',
+    ),
+    "T65": (
+        "itens_PC: PC_PAGO invalido (nem Sim nem Nao)",
+        f'=COUNTIF({_AD},"{PC_PAGO_INVALIDO}")',
+    ),
+}
+
+_M = "MEMORIA_RESULTADOS!"
+# Avisos visiveis: CONTROLE!C1 ao lado do metodo; itens_PC!M31/M32 abaixo da
+# legenda dos PCs (informativo e invalido).
+_FORMULA_AVISO_METODO_CONTROLE = f"={_M}$T$62"
+_FORMULA_AVISO_GRAFIA_PC = (
+    f'=IF({_M}$T$63+{_M}$T$64=0,"",TRIM('
+    f'IF({_M}$T$63>0,{_M}$T$63&IF({_M}$T$63=1,{_M}$AG$53,{_M}$AG$52),"")&" "&'
+    f'IF({_M}$T$64>0,{_M}$T$64&IF({_M}$T$64=1,{_M}$AG$55,{_M}$AG$54),"")))'
+)
+_FORMULA_AVISO_INVALIDO_PC = (
+    f'=IF({_M}$T$65=0,"",{_M}$T$65&IF({_M}$T$65=1,{_M}$AG$57,{_M}$AG$56))'
+)
+
+# Destaque em itens_PC!G: amarelo = grafia diferente reconhecida; vermelho =
+# invalido. Regras so na coluna G, acima das regras de linha existentes.
+_FORMULA_DESTAQUE_GRAFIA_PC = (
+    f'AND(${COLUNA_PC_PAGO_NORMALIZADO}2<>"",${COLUNA_PC_PAGO_NORMALIZADO}2<>"{PC_PAGO_INVALIDO}",'
+    f'EXACT($G2,${COLUNA_PC_PAGO_NORMALIZADO}2)=FALSE)'
+)
+_FORMULA_DESTAQUE_INVALIDO_PC = f'${COLUNA_PC_PAGO_NORMALIZADO}2="{PC_PAGO_INVALIDO}"'
+_COR_DESTAQUE_GRAFIA_PC = "FFEB9C"
+_COR_DESTAQUE_INVALIDO_PC = "FFC7CE"
+
+# Bloqueio do metodo incoerente: VTA (B26 e T40) e retroativo exibido ficam
+# indisponiveis; status, contagem e lista de pendencias passam a citar a causa.
+_BLOQUEIO_COERENCIA = f'IF({_M}$T$58={COERENCIA_BLOQUEIO},'
+_TRECHOS_COERENCIA_120: dict[tuple[str, str], tuple[tuple[str, str], ...]] = {
+    ("MEMORIA_RESULTADOS", "B26"): (
+        ('IF($T$48>0,"",', f'IF($T$48>0,"",IF($T$58={COERENCIA_BLOQUEIO},"",'),
+    ),
+    ("MEMORIA_RESULTADOS", "T40"): (
+        ('=IF($T$48>0,"",', f'=IF($T$48>0,"",IF($T$58={COERENCIA_BLOQUEIO},"",'),
+    ),
+    ("RESULTADOS_DETALHE", "D22"): (
+        ('=IFERROR(RETRO_OFICIAL,"")', f'={_BLOQUEIO_COERENCIA}"",IFERROR(RETRO_OFICIAL,""))'),
+    ),
+    ("RESULTADOS_DETALHE", "H14"): (
+        ('=IF(ISNUMBER(SEARCH("MANUAL VALIDADO",', f'={_BLOQUEIO_COERENCIA}"REVISE",IF(ISNUMBER(SEARCH("MANUAL VALIDADO",'),
+    ),
+    ("RESULTADOS_DETALHE", "B3"): (
+        ('=IF(OR($H$8="REVISE",', f'=IF(OR({_M}$T$58={COERENCIA_BLOQUEIO},$H$8="REVISE",'),
+    ),
+    ("RESULTADOS_DETALHE", "J5"): (
+        ('COUNTIF($H$43:$H$50,"REVISE")', f'COUNTIF($H$43:$H$50,"REVISE")+({_M}$T$58={COERENCIA_BLOQUEIO})'),
+    ),
+    ("RESULTADOS_DETALHE", "B7"): (
+        ('"Informar / concluir: "&',
+         f'{_BLOQUEIO_COERENCIA}{_M}$T$61&" | ","")&"Informar / concluir: "&'),
+    ),
+}
+# Celulas em que o bloqueio envolve a formula ate o fim: fecha mais um IF.
+_FECHA_BLOQUEIO_COERENCIA_120 = frozenset({
+    ("MEMORIA_RESULTADOS", "B26"),
+    ("MEMORIA_RESULTADOS", "T40"),
+    ("RESULTADOS_DETALHE", "H14"),
+})
+
+
+def _formula_coerencia_120(aba: str, celula: str, anterior: str) -> str:
+    """Forma 12.0 a partir da forma vigente (troca literal; idempotente)."""
+    trocas = _TRECHOS_COERENCIA_120[(aba, celula)]
+    if all(troca in anterior for _, troca in trocas):
+        return anterior
+    nova = anterior
+    for trecho, troca in trocas:
+        if nova.count(trecho) != 1:
+            raise ValueError(f"{aba}!{celula} fora do formato esperado")
+        nova = nova.replace(trecho, troca)
+    if (aba, celula) in _FECHA_BLOQUEIO_COERENCIA_120:
+        nova += ")"
+    if nova.count("(") != nova.count(")"):
+        raise ValueError(f"{aba}!{celula}: parenteses desbalanceados")
+    return nova
+
+
 # cobertura_temporal!B8: data real da posicao fisica (CICLO_EM_EXECUCAO!D5),
 # sem depender da posicao completa e sem presumir a data de corte (B3).
 _FORMULA_DATA_POSICAO_COBERTURA = (
@@ -1427,6 +1692,16 @@ def _itens_pc_tem_bloco_tecnico_oficial(ws) -> bool:
     ) == _CABECALHOS_TECNICOS_ITENS_PC
 
 
+_COL_PC_PAGO_NORMALIZADO_IDX = 30  # AD
+
+
+def _itens_pc_tem_pc_pago_normalizado(ws) -> bool:
+    return (
+        str(ws.cell(1, _COL_PC_PAGO_NORMALIZADO_IDX).value or "").strip().upper()
+        == CABECALHO_PC_PAGO_NORMALIZADO
+    )
+
+
 def _garantir_colunas_tecnicas_itens_pc_ocultas(wb) -> None:
     """Assegura que itens_PC!V:AC saiam OCULTAS no XLSX entregue.
 
@@ -1447,12 +1722,16 @@ def _garantir_colunas_tecnicas_itens_pc_ocultas(wb) -> None:
     ws = wb["itens_PC"]
     if not _itens_pc_tem_bloco_tecnico_oficial(ws):
         return
-    pendentes = set(_COLS_TECNICAS_ITENS_PC)
+    tecnicas = set(_COLS_TECNICAS_ITENS_PC)
+    # Coleta 12.0: AD (PC_PAGO_NORMALIZADO) e tecnica e tambem fica oculta.
+    if _itens_pc_tem_pc_pago_normalizado(ws):
+        tecnicas.add(_COL_PC_PAGO_NORMALIZADO_IDX)
+    pendentes = set(tecnicas)
     for dimensao in list(ws.column_dimensions.values()):
         if dimensao.min is None or dimensao.max is None:
             continue
         alcance = set(range(dimensao.min, dimensao.max + 1))
-        if alcance and alcance <= _COLS_TECNICAS_ITENS_PC:
+        if alcance and alcance <= tecnicas:
             dimensao.hidden = True
             pendentes -= alcance
     if pendentes:
@@ -1527,6 +1806,12 @@ def _garantir_protecao_formulas_itens_pc(wb) -> None:
     ws.protection.selectUnlockedCells = False
     ws.protection.formatColumns = False
     ws.protection.formatRows = False
+    # Coleta 12.0: filtro nativo no cabecalho, utilizavel com a aba protegida
+    # (autoFilter=False libera o uso). Ordenar segue bloqueado: moveria linhas
+    # de formulas protegidas.
+    if not ws.auto_filter.ref:
+        ws.auto_filter.ref = FAIXA_FILTRO_ITENS_PC
+    ws.protection.autoFilter = False
 
 
 def _validar_estrutura_itens_pc(wb) -> None:
