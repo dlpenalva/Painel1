@@ -203,7 +203,10 @@ def test_aditivos_k_sai_com_o_dropdown_original_do_template(entrega):
 
 
 def test_itens_pc_v_ate_ac_saem_ocultas(entrega):
-    """AJUSTE 2: V:AC ocultas no XML entregue, sem ocultar U nem AD."""
+    """AJUSTE 2: V:AC ocultas no XML entregue, sem ocultar U.
+
+    Coleta 12.0: AD (PC_PAGO_NORMALIZADO) tambem e coluna tecnica oculta.
+    """
     dados, _base, runtime = entrega
     ws = runtime["itens_PC"]
     ocultas = {
@@ -215,7 +218,7 @@ def test_itens_pc_v_ate_ac_saem_ocultas(entrega):
     for letra in COLUNAS_TECNICAS_ITENS_PC:
         assert column_index_from_string(letra) in ocultas, letra
     assert column_index_from_string("U") not in ocultas
-    assert column_index_from_string("AD") not in ocultas
+    assert column_index_from_string("AD") in ocultas
 
     xml = _xml_da_aba(dados, "itens_PC")
     cobertas: set[int] = set()
@@ -226,7 +229,7 @@ def test_itens_pc_v_ate_ac_saem_ocultas(entrega):
         maximo = int(re.search(r'max="(\d+)"', col).group(1))
         cobertas.update(range(minimo, maximo + 1))
     assert cobertas == {
-        column_index_from_string(letra) for letra in COLUNAS_TECNICAS_ITENS_PC
+        column_index_from_string(letra) for letra in (*COLUNAS_TECNICAS_ITENS_PC, "AD")
     }
 
 

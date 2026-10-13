@@ -100,7 +100,8 @@ def test_cabecalho_de_r_diz_nao_pagos_nos_dois_quadros(wb, wb_runtime):
         ws = livro["itens_PC"]
         assert ws["R2"].value == R2_ESPERADO
         assert ws["R11"].value == R11_ESPERADO
-    assert '=IF(G2="Sim",0,' in str(wb["itens_PC"]["I2"].value)
+    # Coleta 12.0: I le o PC_PAGO normalizado (AD), nao a grafia bruta de G.
+    assert '=IF(AD2="Sim",0,' in str(wb["itens_PC"]["I2"].value)
 
 
 def test_faixa_operacional_a_l_permanece_intacta(wb):
@@ -134,14 +135,17 @@ def test_linha_19_fecha_o_retroativo_sem_inserir_linha(wb):
 
 
 def test_colunas_tecnicas_v_ac_seguem_ocultas(wb, wb_runtime):
-    """Template e copia entregue: V:AC em UM grupo, oculto e sem divisao."""
+    """Template e copia entregue: V:AC em UM grupo, oculto e sem divisao.
+
+    Coleta 12.0: AD (PC_PAGO_NORMALIZADO) e coluna tecnica oculta a parte.
+    """
     for livro in (wb, wb_runtime):
         ocultas = {
             letra: (dim.min, dim.max)
             for letra, dim in livro["itens_PC"].column_dimensions.items()
             if dim.hidden
         }
-        assert ocultas == {"V": (22, 29)}
+        assert ocultas == {"V": (22, 29), "AD": (30, 30)}
 
 
 # ------------------------------------------- RESULTADOS: bloco superior (3:8)
