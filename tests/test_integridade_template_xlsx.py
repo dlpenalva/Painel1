@@ -216,8 +216,11 @@ FORMULAS_POR_ABA = {
     # Excel para RESULTADOS_DETALHE com as MESMAS 191 formulas; a RESULTADOS
     # nova e a pagina executiva, com 155 formulas de puro espelhamento
     # (tools/aplicar_resultados_executivo_v3.formulas_executivo).
+    # Coleta 12.1: +2 na executiva (status e texto da faixa SITUACAO DA
+    # APURACAO); os cards seguem 12 formulas
+    # (tools/aplicar_resultados_retro_reconhecido_potencial.formulas_executivo).
     "RESULTADOS_DETALHE": 191,
-    "RESULTADOS": 155,
+    "RESULTADOS": 157,
 }
 
 

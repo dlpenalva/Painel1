@@ -77,4 +77,5 @@ jobs:
             tests/test_protecao_formulas_itens_pc.py \
             tests/test_termo_apostila_ajustes_consolidados.py \
             tests/test_verificar_versionamento.py \
-            tests/test_versionamento_cl8us_coleta_11.py
+            tests/test_versionamento_cl8us_coleta_11.py \
+            tests/test_resultados_retro_reconhecido_potencial.py

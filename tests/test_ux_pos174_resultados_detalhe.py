@@ -98,12 +98,13 @@ def test_f2_coleta_preenchida_mantem_detalhe_oculto():
 def test_f2_d31_texto_normal_sem_hiperlink(template, coleta_branca):
     for wb in (template, coleta_branca):
         ws = wb["RESULTADOS"]
-        assert ws["D31"].hyperlink is None
-        assert ws["D31"].value == ux.TEXTO_AJUSTES_D31
-        assert not ws["D31"].font.u
+        # Coleta 12.1: +3 linhas (faixa da situacao) — a D31 da 11.3 e a D34.
+        assert ws["D34"].hyperlink is None
+        assert ws["D34"].value == ux.TEXTO_AJUSTES_D31
+        assert not ws["D34"].font.u
         assert ws["B3"].value == ux.SUBTITULO_B3
-    # C31 (situacao dos ajustes) segue espelhando a camada tecnica.
-    assert "RESULTADOS_DETALHE!$C$43:$G$50" in template["RESULTADOS"]["C31"].value
+    # C34 (situacao dos ajustes; C31 ate a 12.0) segue espelhando a camada tecnica.
+    assert "RESULTADOS_DETALHE!$C$43:$G$50" in template["RESULTADOS"]["C34"].value
 
 
 def test_f2_nomes_e_ajustes_manuais_preservados(template):

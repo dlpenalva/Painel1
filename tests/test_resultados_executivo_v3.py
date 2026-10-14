@@ -30,6 +30,10 @@ RAIZ = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(RAIZ / "tools"))
 
 import aplicar_resultados_executivo_v3 as v3  # noqa: E402
+# Coleta 12.1: o layout vigente da executiva (card RETRO. RECONHECIDO +
+# POTENCIAL e faixa SITUACAO DA APURACAO; +3 linhas a partir da 12) e descrito
+# por este modulo, derivado do descritor v3.
+import aplicar_resultados_retro_reconhecido_potencial as atual  # noqa: E402
 from _resultados_abas import (  # noqa: E402
     ABA_RESULTADOS,
     ABA_RESULTADOS_DETALHE,
@@ -86,7 +90,7 @@ def test_aba_executiva_nao_tem_motor_de_calculo():
     """Nenhuma soma, arredondamento ou operacao aritmetica na aba executiva."""
     proibidas = ("SUM", "ROUND", "PRODUCT", "AVERAGE", "MINIFS", "MAXIFS", "INDIRECT")
     formulas = _formulas_executivas(_template())
-    assert len(formulas) == len(v3.formulas_executivo())
+    assert len(formulas) == len(atual.formulas_executivo())
     for endereco, formula in formulas.items():
         corpo = _sem_literais(formula)[1:].upper()
         for funcao in proibidas:
@@ -118,19 +122,20 @@ def test_aba_executiva_so_le_fontes_canonicas():
 
 
 def test_cards_espelham_as_mesmas_fontes_da_aba_anterior():
-    f = v3.formulas_executivo()
+    f = atual.formulas_executivo()
     assert "VTA_FINAL" in f["B9"]
     assert "RESULTADOS_DETALHE!$D$22" in f["C9"]          # = RETRO_OFICIAL
     assert "RETROATIVO_POTENCIAL_VTA" in f["D9"]
-    assert "SALDO_REMANESCENTE_ATUAL" in f["E9"]
-    assert "RESULTADOS_DETALHE!$D$6" in f["F6"] and f["F9"] == "=F6"
+    assert "MEMORIA_RESULTADOS!$T$66" in f["E9"]          # soma-resumo (12.1)
+    assert "SALDO_REMANESCENTE_ATUAL" in f["F9"]
+    assert "RESULTADOS_DETALHE!$D$6" in f["F6"] and f["G9"] == "=F6"
     assert "STATUS_RESULTADOS" in f["G6"]
 
 
 def test_quadro_sem_efeito_e_espelho_integral_do_pr172():
     """E15:H21 do detalhe chegam inteiros; nada entra em VTA ou total."""
-    f = v3.formulas_executivo()
-    for n, linha in zip(range(1, 5), range(54, 58)):
+    f = atual.formulas_executivo()
+    for n, linha in zip(range(1, 5), range(57, 61)):
         origem = 16 + n
         assert f[f"C{linha}"] == (
             f'=IF(RESULTADOS_DETALHE!$F${origem}="","",RESULTADOS_DETALHE!$F${origem})'
@@ -138,23 +143,23 @@ def test_quadro_sem_efeito_e_espelho_integral_do_pr172():
         assert f[f"D{linha}"].endswith(f"RESULTADOS_DETALHE!$G${origem})")
         assert f[f"E{linha}"].endswith(f"RESULTADOS_DETALHE!$H${origem})")
         assert f[f"F{linha}"] == f'=RESULTADOS_DETALHE!$E${origem}&""'
-    assert f["B58"] == '=RESULTADOS_DETALHE!$E$21&""'
+    assert f["B61"] == '=RESULTADOS_DETALHE!$E$21&""'
     usados_fora = [
         k for k, formula in f.items()
         if re.search(r"RESULTADOS_DETALHE!\$[FGH]\$(1[7-9]|20)\b", formula)
-        and not re.match(r"[C-E](5[4-7])$", k)
+        and not re.match(r"[C-E](5[7-9]|60)$", k)
     ]
     assert not usados_fora, usados_fora
 
 
 def test_quadro_2_espelha_tabela_2_inclusive_total_e_ajuste():
-    f = v3.formulas_executivo()
+    f = atual.formulas_executivo()
     for n in range(5):
         for col_exe, col_det in (("C", "B"), ("D", "C"), ("E", "D")):
-            assert f"RESULTADOS_DETALHE!${col_det}${16 + n}" in f[f"{col_exe}{43 + n}"]
-    assert "RESULTADOS_DETALHE!$D$21" in f["E48"]
+            assert f"RESULTADOS_DETALHE!${col_det}${16 + n}" in f[f"{col_exe}{46 + n}"]
+    assert "RESULTADOS_DETALHE!$D$21" in f["E51"]
     for col_exe, col_det in (("C", "B"), ("D", "C"), ("E", "D")):
-        assert f"RESULTADOS_DETALHE!${col_det}$22" in f[f"{col_exe}49"]
+        assert f"RESULTADOS_DETALHE!${col_det}$22" in f[f"{col_exe}52"]
 
 
 COLETA_11_8 = ("B36", "B37", "B38", "A39")
@@ -250,12 +255,12 @@ def test_gerado_preserva_aba_executiva_no_roundtrip_openpyxl():
     formatacao condicional e a indicacao dos ajustes manuais (texto normal:
     com a camada tecnica oculta, o hiperlink deixou de existir)."""
     ws = _gerado()[ABA_RESULTADOS]
-    for endereco, formula in v3.formulas_executivo().items():
+    for endereco, formula in atual.formulas_executivo().items():
         assert ws[endereco].value == formula, endereco
     assert len(ws.merged_cells.ranges) >= 30
     assert len(ws.conditional_formatting) >= 10
-    assert ws["D31"].hyperlink is None
-    assert "RESULTADOS_DETALHE" in ws["D31"].value and "Reexibir" in ws["D31"].value
+    assert ws["D34"].hyperlink is None
+    assert "RESULTADOS_DETALHE" in ws["D34"].value and "Reexibir" in ws["D34"].value
 
 
 def test_formatacao_condicional_executiva_sobrevive_a_geracao():
@@ -282,10 +287,11 @@ def test_formatacao_condicional_executiva_sobrevive_a_geracao():
         for faixa in ws.conditional_formatting:
             for regra in faixa.rules:
                 assert not regra.stopIfTrue, f"{faixa.sqref}: stopIfTrue"
-    # F53:G53 e mesclada: o Excel grava a faixa como B53:F53.
-    assert "B53:F53" in _faixas(_template()[ABA_RESULTADOS])
-    assert "B54:F57" in _faixas(_template()[ABA_RESULTADOS])
-    assert "G8:G10" in _faixas(_template()[ABA_RESULTADOS])
+    # F56:G56 e mesclada: o Excel grava a faixa como B56:F56 (Coleta 12.1:
+    # +3 linhas; a cor da situacao saiu de G8:G10 para a faixa B12:G13).
+    assert "B56:F56" in _faixas(_template()[ABA_RESULTADOS])
+    assert "B57:F60" in _faixas(_template()[ABA_RESULTADOS])
+    assert "B12:G13" in _faixas(_template()[ABA_RESULTADOS])
 
 
 def test_seguranca_aceita_a_estrutura_nova_com_17_abas():
@@ -458,19 +464,19 @@ def test_referencias_vta_leem_a_camada_tecnica_e_nao_a_executiva():
 # C. CONTRATO VISUAL
 # =========================================================================== #
 def test_formulas_ascii_e_balanceadas():
-    v3.validar_ascii_e_parenteses(v3.formulas_executivo())
+    v3.validar_ascii_e_parenteses(atual.formulas_executivo())
 
 
 def test_percentuais_datas_e_moeda_sao_numeros_formatados():
     ws = _template()[ABA_RESULTADOS]
-    for endereco in ("F6", "F9", "E35", "E36", "E37", "E38", "E39"):
+    for endereco in ("F6", "G9", "E38", "E39", "E40", "E41", "E42"):
         assert ws[endereco].number_format.startswith("0.00%"), endereco
-    for endereco in ("D6", "C35", "D39", "F37", "C28"):
+    for endereco in ("D6", "C38", "D42", "F40", "C31"):
         assert ws[endereco].number_format.startswith("dd/mm/yyyy"), endereco
-    for endereco in ("B9", "C9", "D9", "E9", "C14", "C17", "C43", "E49", "C54", "C64"):
+    for endereco in ("B9", "C9", "D9", "E9", "F9", "C17", "C20", "C46", "E52", "C57", "C67"):
         fmt = ws[endereco].number_format
         assert "R$" in fmt and "#,##0.00" in fmt, (endereco, fmt)
-    for formula in v3.formulas_executivo().values():
+    for formula in atual.formulas_executivo().values():
         assert "TEXT(" not in formula.upper()
 
 
@@ -501,8 +507,8 @@ def test_larguras_e_cards_comportam_valores_altos():
 
 
 def test_secao_detalhes_do_metodo_some_fora_de_pcs():
-    f = v3.formulas_executivo()
-    for linha in range(62, 72):
+    f = atual.formulas_executivo()
+    for linha in range(65, 75):
         for col in "BCD":
             chave = f"{col}{linha}"
             if chave in f:
