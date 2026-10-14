@@ -39,7 +39,10 @@ from pathlib import Path
 # 12.8: Coleta 12.1 — RESULTADOS ganha o card RETRO. RECONHECIDO + POTENCIAL
 # (soma-resumo dos dois cards, sem nova parcela financeira) e a SITUACAO DA
 # APURACAO vira faixa de largura total com tres estados (concluida, concluida
-# com retroativo potencial, revise). Nenhum calculo financeiro muda.
+# com retroativo potencial, revise). As abas financeiro, itens_Consumidos e
+# itens_PC ganham no topo (linha 1) a orientacao do metodo selecionado em
+# quatro estados (ativo, outro metodo, outro metodo com dados, sem metodo).
+# Nenhum calculo financeiro muda.
 # 12.7: Coleta 12.0 — itens_PC com filtro nativo (aba protegida), PC_PAGO
 # normalizado na coluna tecnica oculta AD (Sim/Nao sem diferenca de maiusculas,
 # acento ou espacos; demais grafias invalidas) e alerta de coerencia entre o
@@ -106,7 +109,9 @@ COLETA_VERSION = "12.1"
 # parametros!U:W. A 12.0 acrescenta itens_PC!AD (oculta), MEMORIA_RESULTADOS
 # S54:T65/AG43:AG64 e CONTROLE!C1 fora das coordenadas de leitura. A 12.1 so
 # muda a RESULTADOS executiva (apresentacao) e acrescenta MEMORIA_RESULTADOS
-# S66:T67/AF65:AG70 fora das coordenadas de leitura.
+# S66:T67/AF65:AG79 e a orientacao na linha 1 de financeiro (H1:L1),
+# itens_Consumidos (AH1:AL1) e itens_PC (AE1:AI1), fora das coordenadas de
+# leitura.
 COLETA_VERSOES_ACEITAS = (
     "11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8", "11.9",
     "12.0", "12.1",

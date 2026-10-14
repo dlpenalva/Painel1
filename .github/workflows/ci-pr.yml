@@ -78,4 +78,5 @@ jobs:
             tests/test_termo_apostila_ajustes_consolidados.py \
             tests/test_verificar_versionamento.py \
             tests/test_versionamento_cl8us_coleta_11.py \
-            tests/test_resultados_retro_reconhecido_potencial.py
+            tests/test_resultados_retro_reconhecido_potencial.py \
+            tests/test_coleta_121_orientacao_abas_metodo.py

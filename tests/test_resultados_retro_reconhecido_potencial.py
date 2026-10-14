@@ -392,8 +392,9 @@ def test_9_10_11_vta_reconhecido_e_potencial_identicos_a_coleta_120(tmp_path, mo
         "fin": (FINANCEIRO, {"financeiro": True}),
         "bloqueio": (_pc(), {"financeiro": True}),
     }
+    # AF71:AG79: textos da orientacao das abas de metodo (mesma Coleta 12.1).
     novas = {(66, 19), (66, 20), (67, 19), (67, 20)} | {
-        (linha, col) for linha in range(65, 71) for col in (32, 33)}
+        (linha, col) for linha in range(65, 80) for col in (32, 33)}
     for nome, (metodo, opcoes) in casos.items():
         antes = _rodar(tmp_path, f"base_{nome}", metodo, template=base,
                        monkeypatch=monkeypatch, **opcoes)

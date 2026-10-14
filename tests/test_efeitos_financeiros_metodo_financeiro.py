@@ -198,9 +198,11 @@ def test_valor_invalido_bloqueia():
 def test_dropdown_e_formatacao_condicional_sao_dinamicos():
     ws = load_workbook(TEMPLATE_COLETA_OFICIAL, data_only=False)["financeiro"]
     assert any(str(dv.sqref) == "G2:G73" and dv.formula1 == '"Sim,Nao"' for dv in ws.data_validations.dataValidation)
+    # Coleta 12.1: A1:K1 e a orientacao do metodo no cabecalho (fora da grade).
     regras = [
         (str(intervalo), formula)
         for intervalo, itens in ws.conditional_formatting._cf_rules.items()
+        if str(intervalo.sqref) != "A1:K1"
         for regra in itens for formula in (regra.formula or [])
     ]
     assert all(intervalo == "<ConditionalFormatting A2:G73>" for intervalo, _ in regras)
@@ -230,7 +232,10 @@ def test_limites_operacionais_convergem_na_linha_73():
     assert ws["B74"].value == "TOTAL"
     assert all(str(ws[f"{col}74"].value).upper().startswith("=SUM") for col in "CEF")
     assert all(ws[f"{col}74"].value is None for col in "ADG")
-    assert all(str(intervalo.sqref) == "A2:G73" for intervalo in ws.conditional_formatting._cf_rules)
+    assert all(
+        str(intervalo.sqref) in ("A2:G73", "A1:K1")   # A1:K1: orientacao do metodo (12.1)
+        for intervalo in ws.conditional_formatting._cf_rules
+    )
     # O invariante e sobre FORMULAS que referenciam a aba financeiro. Filtrar
     # so por "financeiro!" no texto tambem captura os rotulos de V61:V65
     # ("Financeiro considerado C0 (financeiro!E)" etc.), que sao legendas e
