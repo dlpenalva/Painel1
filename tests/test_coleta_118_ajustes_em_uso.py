@@ -54,7 +54,7 @@ def test_itens_pc_k_l_na_forma_11_8_em_toda_a_grade():
 
 
 def test_check_pc_aceita_nao_com_e_sem_acento_e_mantem_o_contrato():
-    k = co._formula_check_pc(2)
+    k = co._formula_check_pc_11_8(2)
     # Contrato da 27B preservado; o "Não" (Ã = UNICHAR 195) vira "NAO".
     assert 'AND(G2<>"Sim",G2<>"Nao",G2<>"")' in k
     assert 'SUBSTITUTE(UPPER(G2),_xlfn.UNICHAR(195),"A")<>"NAO"' in k

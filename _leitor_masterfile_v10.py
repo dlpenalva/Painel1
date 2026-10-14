@@ -2358,9 +2358,7 @@ def _totais_canonicos_pc(
         retro = float(item.get("retroativo_reconhecido_a_pagar") or 0.0)
         em_analise = float(item.get("valor_atualizado_em_analise") or 0.0)
         potencial = float(item.get("delta_potencial") or 0.0)
-        pago_confirmado = str(item.get("pc_pago_a_contratada") or "").strip().lower() in (
-            "sim", "s", "true", "1"
-        )
+        pago_confirmado = _pc_pago_canonico(item.get("pc_pago_a_contratada")) == "Sim"
         enq = str(item.get("enquadramento") or ENQ_CICLO)
         no_corte = bool(item.get("dentro_do_corte", True))
 
@@ -3108,8 +3106,10 @@ def _ler_itens_pc_v10(
             if col_pago and not col_pagto_smart:
                 valor_pago_oficial = _tofl(valor, default=None)
                 pago_norm_oficial = _norm(pago)
-                pago_oficial = pago_norm_oficial in {"sim", "s", "yes", "true", "1"}
-                nao_pago_oficial = pago_norm_oficial in {"nao", "n", "no", "false", "0"}
+                # Coleta 12.0: so Sim/Nao (sem diferenca de maiusculas, acento
+                # e espacos), como itens_PC!AD. S, N, 1, 0... sao invalidos.
+                pago_oficial = _pc_pago_canonico(pago) == "Sim"
+                nao_pago_oficial = _pc_pago_canonico(pago) == "Nao"
                 if pago_norm_oficial and not pago_oficial and not nao_pago_oficial:
                     resultado["alertas"].append(
                         f"PC '{ident}' linha {r}: PC_PAGO_A_CONTRATADA invalido "
@@ -3206,7 +3206,6 @@ def _ler_itens_pc_v10(
         _validar_campos_vta(campos_vta, ident, r, resultado["alertas"])
         _atualizar_resumo_vta(resultado["resumo_vta"], campos_vta)
 
-        pago_norm = _norm(pago)
         retro_lido = _tofl(ws.cell(r, col_retro).value, default=None) if col_retro else None
         analise_lida = _tofl(ws.cell(r, col_analise).value, default=None) if col_analise else None
         delta_lido = _tofl(ws.cell(r, col_delta).value, default=None) if col_delta else None
@@ -3223,7 +3222,7 @@ def _ler_itens_pc_v10(
         )
         # Etapa 27B: G="Sim" -> reconhecido; G="Nao" OU vazio -> potencial
         # (vazio = pagamento nao confirmado; nunca zera silenciosamente).
-        pago_confirmado_fb = pago_norm in {"sim", "s", "true", "1"}
+        pago_confirmado_fb = _pc_pago_canonico(pago) == "Sim"
         if retro_lido is None and pago_confirmado_fb:
             retro_lido = incremento_retroativo
         if analise_lida is None and not pago_confirmado_fb and valor not in (None, ""):

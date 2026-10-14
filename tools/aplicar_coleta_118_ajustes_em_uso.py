@@ -79,7 +79,7 @@ def frente_itens_pc(wb) -> None:
     ws = wb.Worksheets("itens_PC")
     estado, selecao = _capturar_protecao(ws)
     for coluna, anterior, nova in (
-        ("K", co._formula_check_pc_11_7, co._formula_check_pc),
+        ("K", co._formula_check_pc_11_7, co._formula_check_pc_11_8),
         ("L", co._formula_efeito_pc_11_7, co._formula_efeito_pc),
     ):
         faixa = ws.Range(f"{coluna}{PRIMEIRA_PC}:{coluna}{ULTIMA_PC}")

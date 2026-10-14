@@ -25,7 +25,8 @@ ULTIMA_LINHA_AJUSTES = 50
 
 # Pinos tecnicos que a frente jurou preservar nas mesmas coordenadas.
 FORMULAS_PRESERVADAS = {
-    "B3": '=IF(OR($H$8="REVISE",$H$14="REVISE",$H$24="REVISE",$H$33="REVISE",'
+    # Coleta 12.0: o bloqueio de coerencia metodo x fonte (T58 = 1) tambem revisa.
+    "B3": '=IF(OR(MEMORIA_RESULTADOS!$T$58=1,$H$8="REVISE",$H$14="REVISE",$H$24="REVISE",$H$33="REVISE",'
           'COUNTIF($H$43:$H$50,"REVISE")>0),"REVISE",'
           'IF($H$33="ESTIMADO","ESTIMADO","VALIDADO"))',
     "B22": '=IF(COUNT(B16:B20)=0,"",ROUND(SUM(B16:B20),2))',
@@ -177,7 +178,8 @@ def test_retroativo_potencial_se_declara_em_analise(res):
 
 def test_retroativo_potencial_fica_ao_lado_do_reconhecido_sem_deslocar(res):
     """E22:H22 e a linha do TOTAL do retroativo reconhecido (D22)."""
-    assert res["D22"].value == '=IFERROR(RETRO_OFICIAL,"")'
+    # Coleta 12.0: o bloqueio de coerencia metodo x fonte (T58 = 1) esvazia D22.
+    assert res["D22"].value == '=IF(MEMORIA_RESULTADOS!$T$58=1,"",IFERROR(RETRO_OFICIAL,""))'
     mesclas = {str(m) for m in res.merged_cells.ranges}
     assert {"E22:F22", "G22:H22"} <= mesclas
     # As mesclas vizinhas nao foram absorvidas. E16:H21 (texto antigo do PC) foi
