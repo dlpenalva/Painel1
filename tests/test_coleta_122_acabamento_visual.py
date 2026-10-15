@@ -109,9 +109,13 @@ def assinatura_valores(ws, faixa: str) -> str:
 
 
 # CONTROLE ganha o ORIENTADOR DA COLETA (D4:H34 + auxiliares J:L ocultas); o
-# bloco A1:B14 (metodo, ciclo, data de corte e RESUMO DO REAJUSTE) segue
-# identico ao da 12.1.
-ASSINATURA_CONTROLE_A1_B14_121 = "a3e42ddf6d5fe80a8060e3f5d56031ecc19360c89dac222c6521c5c3b6f5ecc3"
+# bloco A:B (metodo, ciclo, data de corte e RESUMO DO REAJUSTE) segue
+# identico ao da 12.1, exceto a orientacao do fluxo antigo em A4:B4 (oculta
+# na 12.1), removida porque a linha 4 passa a ser exibida para mostrar D4.
+ASSINATURAS_CONTROLE_A_B_121 = {
+    "A1:B3": "86458ff2a1f66102f6969fb8d869256281535ec565626a729d8c1435a02170fb",
+    "A5:B14": "0074da42ce3bd9721a309cae1180e3ee45eb3e98f5e744cad0849f3146f2df75",
+}
 
 
 def test_template_tem_a_mesma_estrutura_da_coleta_121_em_todas_as_abas():
@@ -125,7 +129,18 @@ def test_template_tem_a_mesma_estrutura_da_coleta_121_em_todas_as_abas():
 
 def test_controle_bloco_a_b_identico_ao_da_121():
     for wb in (_template(), _gerado()):
-        assert assinatura_valores(wb["CONTROLE"], "A1:B14") == ASSINATURA_CONTROLE_A1_B14_121
+        ws = wb["CONTROLE"]
+        for faixa, esperado in ASSINATURAS_CONTROLE_A_B_121.items():
+            assert assinatura_valores(ws, faixa) == esperado, faixa
+
+
+def test_controle_sem_a_orientacao_do_fluxo_antigo_em_a4_b4():
+    for wb in (_template(), _gerado()):
+        ws = wb["CONTROLE"]
+        assert (ws["A4"].value, ws["B4"].value) == (None, None)
+        assert ws["D4"].value == "Data-limite considerada nos cálculos e resultados."
+        textos = " ".join(str(c.value) for linha in ws.iter_rows() for c in linha if c.value)
+        assert "ciclos fora da analise" not in textos and "Preencher FINANCEIRO" not in textos
 
 
 def test_ciclo_em_execucao_gerada_tem_a_mesma_estrutura_da_121():

@@ -6,10 +6,11 @@ retroativo ou admissibilidade muda; nenhuma aba de calculo e tocada (o quadro
 so LE CONTROLE!B1:B3, MEMORIA_RESULTADOS!B4, parametros!U3:U6 e aditivos!A).
 
 LAYOUT DA CONTROLE
-  * bloco A:B preservado (B4 so ganha quebra de texto: o texto legado
-    transbordava por C:G e D4 deixa de estar livre). As linhas 4 e 15:18,
-    ocultas na 12.1, voltam a ser exibidas (D4, diagnostico, marcadores);
-    a 14 (data de geracao) segue oculta;
+  * bloco A:B preservado, exceto a orientacao do fluxo antigo em A4:B4 ("C0 e
+    ciclos fora da analise / Preencher FINANCEIRO..."), oculta na 12.1, que e
+    removida: a linha 4 volta a ser exibida (D4) e ela competiria com o
+    orientador. As linhas 4 e 15:18, ocultas na 12.1, voltam a ser exibidas
+    (D4, diagnostico, marcadores); a 14 (data de geracao) segue oculta;
   * coluna C reduzida a separador; a explicacao da data de corte (antes em C3)
     passa a D4; sem linhas de grade;
   * a orientacao do metodo em C1 (Ajuste 3) passa a pintar C1:H1, pois o texto
@@ -202,7 +203,7 @@ BORDA = "BFBFBF"
 
 LARGURAS = {"C": 2.0, "D": 40.0, "E": 18.0, "F": 30.0, "G": 16.0, "H": 16.0}
 COLUNAS_OCULTAS = ("J", "K", "L")
-ALTURAS = {4: 64.0, 5: 26.0, 6: 34.0, 7: 20.0, 13: 22.0, 15: 22.0, 16: 26.0,
+ALTURAS = {4: 22.0, 5: 26.0, 6: 34.0, 7: 20.0, 13: 22.0, 15: 22.0, 16: 26.0,
            17: 30.0, 18: 30.0, 19: 30.0, 20: 30.0, 21: 30.0, 22: 30.0, 23: 30.0,
            25: 22.0, 26: 22.0, **{linha: 30.0 for linha in LINHAS_SAIDA}, 34: 22.0}
 # Linhas ocultas no template 12.1 que passam a ser usadas (D4, diagnostico e
@@ -356,6 +357,23 @@ def _lista(ws, faixa: str, fonte: str, titulo: str, mensagem: str) -> None:
 
 
 # ------------------------------------------------------------- frente COM
+# Orientacao do fluxo antigo (oculta na 12.1 com a linha 4): sai da CONTROLE,
+# pois a linha 4 passa a ser exibida (D4) e ela competiria com o orientador.
+A4_LEGADO = "C0 e ciclos fora da analise"
+B4_LEGADO_INICIO = "Preencher FINANCEIRO:"
+
+
+def limpar_orientacao_legada(ws) -> None:
+    a4, b4 = ws.Range("A4").Value, ws.Range("B4").Value
+    if (a4, b4) == (None, None):
+        return
+    if a4 != A4_LEGADO or not str(b4 or "").startswith(B4_LEGADO_INICIO):
+        raise RuntimeError("CONTROLE!A4:B4 fora do texto legado esperado; nada aplicado")
+    ws.Range("A4:B4").ClearContents()
+    ws.Range("B4").WrapText = False
+    ws.Rows(4).RowHeight = ALTURAS[4]
+
+
 def frente_controle(wb) -> None:
     import aplicar_coleta_120_itens_pc_simnao_coerencia as c120
     import aplicar_coleta_122_acabamento_visual as av
@@ -382,9 +400,7 @@ def frente_controle(wb) -> None:
         ws.Rows(linha).RowHeight = altura
     for linha in LINHAS_OCULTAS:
         ws.Rows(linha).Hidden = True
-    ws.Range("B4").WrapText = True
-    for celula in ("A4", "B4"):
-        ws.Range(celula).VerticalAlignment = v3.XL_TOP
+    limpar_orientacao_legada(ws)
     # C1 estreita: recuo para o alerta nao nascer sob o botao do dropdown de B1.
     ws.Range("C1").IndentLevel = 1
     _bloco(ws, "D4:H4", EXPLICACAO_CORTE, cor="595959", italico=True, borda=False)
@@ -515,11 +531,54 @@ def aplicar(caminho: Path) -> None:
         pythoncom.CoUninitialize()
 
 
+def aplicar_limpeza_a4(caminho: Path) -> None:
+    """Etapa isolada sobre um arquivo que ja tem o orientador (PR #190)."""
+    import pythoncom
+    import win32com.client as com
+
+    import aplicar_coleta_120_itens_pc_simnao_coerencia as c120
+
+    pythoncom.CoInitialize()
+    excel = com.DispatchEx("Excel.Application")
+    excel.Visible = False
+    excel.DisplayAlerts = False
+    wb = None
+    try:
+        wb = excel.Workbooks.Open(str(caminho))
+        ws = wb.Worksheets(ABA)
+        if ws.Range("D4").Value != EXPLICACAO_CORTE:
+            raise RuntimeError("CONTROLE sem o orientador da coleta; nada aplicado")
+        estado, selecao = c120._capturar_protecao(ws)
+        limpar_orientacao_legada(ws)
+        c120._restaurar_protecao(ws, estado, selecao)
+        conferir_resultado(wb)
+        wb.Save()
+        v3._fechar(wb)
+        wb = None
+    finally:
+        if wb is not None:
+            v3._fechar(wb)
+        for _ in range(10):
+            try:
+                excel.Quit()
+                break
+            except Exception:
+                time.sleep(1.0)
+        wb = excel = None
+        gc.collect()
+        pythoncom.CoUninitialize()
+
+
 def main() -> int:
-    caminho = Path(sys.argv[1]).resolve() if len(sys.argv) > 1 else TEMPLATE
+    argumentos = [a for a in sys.argv[1:] if a != "--limpar-a4"]
+    caminho = Path(argumentos[0]).resolve() if argumentos else TEMPLATE
     if not caminho.exists():
         print("ERRO: arquivo nao encontrado: %s" % caminho)
         return 1
+    if "--limpar-a4" in sys.argv:
+        aplicar_limpeza_a4(caminho)
+        print("OK: orientacao legada de CONTROLE!A4:B4 removida em %s" % caminho)
+        return 0
     aplicar(caminho)
     print("OK: orientador da coleta aplicado em %s" % caminho)
     return 0
