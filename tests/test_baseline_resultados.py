@@ -189,6 +189,9 @@ def test_as_entradas_de_ajuste_manual_sao_contrato_dentro_do_excel():
     # Contrato vigente em origin/main: comparativo_VTA também consome o fator
     # histórico exibido em RESULTADOS_DETALHE!H5. PC-UX-1 preserva essa referência.
     esperadas.add("H5")
+    # Coleta 12.1: MEMORIA_RESULTADOS!T66/T67 (RETRO. RECONHECIDO + POTENCIAL)
+    # leem o retroativo reconhecido (D22) e o status da apuracao (A7/B7).
+    esperadas |= {"D22", "A7", "B7"}
     assert set(referencias) == esperadas, (
         "mudou o conjunto de celulas da RESULTADOS consumidas por formulas de "
         "outras abas"
