@@ -134,7 +134,7 @@ def test_posicao_referencia_temporal(wb_template):
 
 def test_aditivos_mensagem_novo_item(wb_template):
     ws = wb_template["aditivos"]
-    m2 = str(ws["M2"].value)
+    m2 = str(ws["O2"].value)  # Coleta 12.1: CHECK em O
     assert ("NOVO ITEM NAO CADASTRADO - CADASTRAR EM itens_Remanesc; "
             "QTD_BASE_ORIGINAL sera 0 automaticamente; "
             "informar VU_ORIGINAL.") in m2
@@ -158,7 +158,7 @@ def test_mensagens_ao_fiscal_sao_literais_e_nao_ambiguas(wb_template):
         "NOVO ITEM NAO CADASTRADO - CADASTRAR EM itens_Remanesc; "
         "QTD_BASE_ORIGINAL sera 0 automaticamente; informar VU_ORIGINAL."
     )
-    assert mensagem_cadastro in str(ad["M2"].value)
+    assert mensagem_cadastro in str(ad["O2"].value)  # Coleta 12.1: CHECK em O
     assert "cadastrar em itens_Remanesc" in str(ad["A1"].value)
     assert "QTD_BASE_ORIGINAL fica 0 automaticamente" in str(ad["A1"].value)
     assert "informar o VU_ORIGINAL" in str(ad["A1"].value)
@@ -268,7 +268,7 @@ def test_invariante_fronteira_cadastro_200_201(wb_template):
     for coord in ("J253", "K253", "L253", "M253", "N253"):
         assert memoria[coord].value == '=""', f"{coord} ainda consome A201"
     ad = wb_template["aditivos"]
-    assert "COUNTIF(itens_Remanesc!$A$2:$A$200,A2)" in str(ad["M2"].value)
+    assert "COUNTIF(itens_Remanesc!$A$2:$A$200,A2)" in str(ad["O2"].value)  # 12.1: CHECK em O
     # Padrao N+3 digitos: N200 e novo item valido; a fronteira nao o afeta.
     assert eh_novo_item("N200") is True
 

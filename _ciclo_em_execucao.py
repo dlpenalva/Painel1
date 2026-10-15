@@ -23,6 +23,8 @@ from openpyxl.utils import get_column_letter
 from openpyxl.worksheet.datavalidation import DataValidation
 from openpyxl.workbook.defined_name import DefinedName
 
+from _layout_aditivos import COLUNAS_ADITIVOS_12_1, colunas_aditivos_do_workbook
+
 
 ABA_CICLO_EM_EXECUCAO = "CICLO_EM_EXECUCAO"
 MARCADOR_LAYOUT = "CICLO_EM_EXECUCAO_LAYOUT_VERSION"
@@ -491,7 +493,20 @@ _REFERENCIAS_FISICAS = (
 _CICLOS_REFERENCIA = '{"C0","C1","C2","C3","C4"}'
 
 
-def _abertura_ciclo_atual(linha: int, origem: int) -> str:
+def _faixa_aditivos(adt: Mapping[str, Any], chave: str) -> str:
+    """Faixa absoluta 2:200 da coluna ``chave`` de aditivos no layout ``adt``.
+
+    Coleta 12.1: DELTA_QTD_CONTRATUAL em N e o indice da base economica em P
+    (L e O ate a 12.0). A aba e criada sobre o proprio workbook, entao segue
+    o layout de aditivos que ele traz (_layout_aditivos).
+    """
+    letra = adt[chave]
+    return f"aditivos!${letra}$2:${letra}$200"
+
+
+def _abertura_ciclo_atual(
+    linha: int, origem: int, adt: Mapping[str, Any] = COLUNAS_ADITIVOS_12_1,
+) -> str:
     """Fotografia de abertura do ciclo em execucao — regra da Coleta 11.5.
 
     Mantida sem alteracao: e ela que alimenta A9 e, por ela, a cadeia oficial
@@ -504,8 +519,9 @@ def _abertura_ciclo_atual(linha: int, origem: int) -> str:
     for ciclo, coluna, _linha, _indice in reversed(_REFERENCIAS_FISICAS):
         ref = f"posicao_contratual!${coluna}{origem}"
         escolha = f'IF($C$3="{ciclo}",{ref},{escolha})'
+    delta = _faixa_aditivos(adt, "delta")
     delta_abertura = (
-        f'ROUND(SUMIFS(aditivos!$L$2:$L$200,'
+        f'ROUND(SUMIFS({delta},'
         f'aditivos!$A$2:$A$200,A{linha},'
         f'aditivos!$C$2:$C$200,$C$3,'
         f'aditivos!$B$2:$B$200,"<"&(INT($F$3)+1)),2)'
@@ -514,13 +530,15 @@ def _abertura_ciclo_atual(linha: int, origem: int) -> str:
         f'IF(AND(posicao_contratual!$Z{origem},'
         f'COUNTIFS(aditivos!$A$2:$A$200,itens_Remanesc!$A{origem},'
         f'aditivos!$B$2:$B$200,"<"&(INT($F$3)+1),'
-        f'aditivos!$L$2:$L$200,">0")=0),0,'
+        f'{delta},">0")=0),0,'
         f'IF(ISNUMBER({escolha}),ROUND({escolha}+{delta_abertura},2),'
         f'IF({delta_abertura}>0,{delta_abertura},"")))'
     )
 
 
-def _formula_ciclo_referencia(linha: int, origem: int) -> str:
+def _formula_ciclo_referencia(
+    linha: int, origem: int, adt: Mapping[str, Any] = COLUNAS_ADITIVOS_12_1,
+) -> str:
     """Ciclo da ultima referencia fisica conhecida do item (coluna P).
 
     O ciclo em execucao prevalece sempre que a regra da 11.5 produz numero.
@@ -535,7 +553,7 @@ def _formula_ciclo_referencia(linha: int, origem: int) -> str:
             f'ISNUMBER(posicao_contratual!${coluna}{origem}),'
             f'ISNUMBER(parametros!$I${linha_param})),"{ciclo}",{anterior})'
         )
-    atual = _abertura_ciclo_atual(linha, origem)
+    atual = _abertura_ciclo_atual(linha, origem, adt)
     return (
         f'=IF(A{linha}="","",IFERROR(IF(ISNUMBER({atual}),$C$3,'
         f'{anterior}),""))'
@@ -551,7 +569,9 @@ def _formula_data_referencia(linha: int) -> str:
     )
 
 
-def _formula_abertura(linha: int, origem: int) -> str:
+def _formula_abertura(
+    linha: int, origem: int, adt: Mapping[str, Any] = COLUNAS_ADITIVOS_12_1,
+) -> str:
     """Saldo na ultima referencia conhecida (coluna B).
 
     Referencia anterior Ck segue a mesma convencao de QTD_REM_ABERTURA da
@@ -567,19 +587,21 @@ def _formula_abertura(linha: int, origem: int) -> str:
         + ")"
     )
     delta_anterior = (
-        f'ROUND(SUMIFS(aditivos!$L$2:$L$200,'
+        f'ROUND(SUMIFS({_faixa_aditivos(adt, "delta")},'
         f'aditivos!$A$2:$A$200,A{linha},'
         f'aditivos!$C$2:$C$200,P{linha},'
         f'aditivos!$B$2:$B$200,"<"&(INT(Q{linha})+1)),2)'
     )
     return (
         f'=IF(OR(A{linha}="",P{linha}=""),"",IF(P{linha}=$C$3,'
-        f'{_abertura_ciclo_atual(linha, origem)},'
+        f'{_abertura_ciclo_atual(linha, origem, adt)},'
         f'IFERROR(ROUND({saldo_anterior}+{delta_anterior},2),"")))'
     )
 
 
-def _formula_vu(linha: int, origem: int) -> str:
+def _formula_vu(
+    linha: int, origem: int, adt: Mapping[str, Any] = COLUNAS_ADITIVOS_12_1,
+) -> str:
     por_ciclo = {
         "C0": f"historico_VU!$C{origem}",
         "C1": f"historico_VU!$D{origem}",
@@ -595,13 +617,14 @@ def _formula_vu(linha: int, origem: int) -> str:
     # Mesmo encadeamento do historico_VU com o ultimo fator conhecido de
     # parametros!F (o carregamento da MEMORIA DO FATOR APLICAVEL); nunca
     # reajusta antes do nascimento do item (posicao_contratual!Y).
-    # Coleta 11.7: a base do fator e a base economica do VU (aditivos!O), nunca
-    # posterior ao nascimento; sem ela, o proprio nascimento (como antes).
+    # Coleta 11.7: a base do fator e a base economica do VU (indice em
+    # aditivos!P na 12.1; O ate a 12.0), nunca posterior ao nascimento; sem
+    # ela, o proprio nascimento (como antes).
     n = '(MATCH($C$3,{"C0","C1","C2","C3","C4"},0)-1)'
     y = f'posicao_contratual!$Y{origem}'
     vu = f'itens_Remanesc!$C{origem}'
     indice_base = (
-        f'INDEX(aditivos!$O$2:$O$200,'
+        f'INDEX({_faixa_aditivos(adt, "indice_base")},'
         f'MATCH(itens_Remanesc!$A{origem},aditivos!$A$2:$A$200,0))'
     )
     base = f'IFERROR(IF(ISNUMBER({indice_base}),MIN({indice_base},{y}),{y}),{y})'
@@ -650,6 +673,8 @@ def _registrar_nome_layout(wb) -> None:
 
 
 def _criar_aba_itemizada(wb):
+    adt = colunas_aditivos_do_workbook(wb)
+    delta = _faixa_aditivos(adt, "delta")
     indice = (
         wb.sheetnames.index("posicao_referencia") + 1
         if "posicao_referencia" in wb.sheetnames
@@ -832,7 +857,7 @@ def _criar_aba_itemizada(wb):
             f'=IF(itens_Remanesc!$A{origem}="","",'
             f'COUNTIFS(aditivos!$A$2:$A$200,itens_Remanesc!$A{origem},'
             f'aditivos!$B$2:$B$200,"<="&$D$5,'
-            f'aditivos!$L$2:$L$200,">0"))'
+            f'{delta},">0"))'
         )
         ws.cell(linha, 1).value = (
             f'=IF(itens_Remanesc!$A{origem}="","",'
@@ -840,13 +865,13 @@ def _criar_aba_itemizada(wb):
             f'IF(AND(ISNUMBER($D$5),$O{linha}>0),'
             f'itens_Remanesc!$A{origem},"")))'
         )
-        ws.cell(linha, 2).value = _formula_abertura(linha, origem)
+        ws.cell(linha, 2).value = _formula_abertura(linha, origem, adt)
         ws.cell(linha, 3).value = None  # vazio real; zero somente quando confirmado
         ws.cell(linha, 4).value = (
             f'=IF(OR(A{linha}="",$D$5="",C{linha}=""),"",'
             f'IF(NOT(ISNUMBER(B{linha})),"",ROUND(B{linha}+I{linha}-C{linha},2)))'
         )
-        ws.cell(linha, 5).value = _formula_vu(linha, origem)
+        ws.cell(linha, 5).value = _formula_vu(linha, origem, adt)
         ws.cell(linha, 6).value = (
             f'=IF(OR(D{linha}="",E{linha}=""),"",ROUND(D{linha}*E{linha},2))'
         )
@@ -855,7 +880,7 @@ def _criar_aba_itemizada(wb):
         )
         ws.cell(linha, 9).value = (
             f'=IF(OR(A{linha}="",$D$5="",NOT(ISNUMBER(Q{linha}))),"",'
-            f'ROUND(SUMIFS(aditivos!$L$2:$L$200,'
+            f'ROUND(SUMIFS({delta},'
             f'aditivos!$A$2:$A$200,A{linha},'
             f'aditivos!$B$2:$B$200,">="&(INT(Q{linha})+1),'
             f'aditivos!$B$2:$B$200,"<="&$D$5),2))'
@@ -885,7 +910,7 @@ def _criar_aba_itemizada(wb):
             f'ROUND(D{linha}-L{linha},2))'
         )
         ws.cell(linha, 14).value = _formula_conferencia(linha, contar=True)
-        ws.cell(linha, 16).value = _formula_ciclo_referencia(linha, origem)
+        ws.cell(linha, 16).value = _formula_ciclo_referencia(linha, origem, adt)
         ws.cell(linha, 17).value = _formula_data_referencia(linha)
         ws.cell(linha, 17).number_format = FORMATO_DATA
         ws.cell(linha, 18).value = (

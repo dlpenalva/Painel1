@@ -324,7 +324,7 @@ def test_aplicador_canonico_sincronizado_com_o_template_homologado():
         assert f'IF(OR(parametros!$C${n}="",parametros!$I${n}=""),0,' in formula, ciclo
         # classificacao mensal do aditivo intacta
         assert f'aditivos!$C$2:$C$200,"C{ciclo}"' in formula, ciclo
-        assert "SUMIFS(aditivos!$L$2:$L$200" in formula, ciclo
+        assert "SUMIFS(aditivos!$N$2:$N$200" in formula, ciclo  # 12.1: DELTA em N
 
     # sincronizacao exata: o que o tool gera == o que esta homologado no template
     wb = load_workbook(TEMPLATE)

@@ -130,25 +130,26 @@ def test_ciclo_em_execucao_tem_fallback_por_item_e_rastreabilidade(wb_coleta_116
 
 
 def test_aditivos_separa_nascimento_fisico_da_base_economica(wb_coleta_116):
+    # Coleta 12.1: base economica em G, indice oculto em P, CHECK em O.
     ws = wb_coleta_116["aditivos"]
-    assert ws["N1"].value == "ÚLTIMO REAJUSTE JÁ INCORPORADO AO VU"
-    assert ws["O1"].value == "INDICE_BASE_ECONOMICA_VU"
-    assert ws.column_dimensions["O"].hidden
+    assert ws["G1"].value == "Último reajuste já incorporado ao VU"
+    assert ws["P1"].value == "INDICE_BASE_ECONOMICA_VU"
+    assert ws.column_dimensions["P"].hidden
 
     validacao = next(
         d for d in ws.data_validations.dataValidation
-        if str(d.sqref) == "N2:N200"
+        if str(d.sqref) == "G2:G200"
     )
     assert validacao.formula1 == '"C0,C1,C2,C3,C4"'
 
     fator = str(ws["I2"].value)
-    assert "$O2" in fator
+    assert "$P2" in fator
     assert "posicao_contratual!$Y$2:$Y$200" not in fator
-    assert "/INDEX(parametros!$F$2:$F$6,($O2)+1)" in fator
+    assert "/INDEX(parametros!$F$2:$F$6,($P2)+1)" in fator
     assert 'UPPER(H2)="SIM"' in str(ws["J2"].value)
-    assert "BASE_VU_OBRIGATORIA" in str(ws["M2"].value)
-    assert "BASE_VU_NAO_APLICAVEL" in str(ws["M2"].value)
-    assert "BASE_VU_INVALIDA_OU_POSTERIOR_AO_FATOR_ALVO" in str(ws["M2"].value)
+    assert "BASE_VU_OBRIGATORIA" in str(ws["O2"].value)
+    assert "BASE_VU_NAO_APLICAVEL" in str(ws["O2"].value)
+    assert "BASE_VU_INVALIDA_OU_POSTERIOR_AO_FATOR_ALVO" in str(ws["O2"].value)
 
 
 def test_novos_itens_recebem_fonte_verde_sem_preenchimento(wb_coleta_116):
@@ -196,8 +197,8 @@ def test_template_oficial_ja_carrega_a_coleta_116():
     wb = load_workbook(TEMPLATE_COLETA_OFICIAL, data_only=False)
     ws = wb["aditivos"]
     assert co._aditivos_base_economica_canonica(ws)
-    assert ws["O1"].value == co._CABECALHO_INDICE_BASE_VU
-    assert ws.column_dimensions["O"].hidden
+    assert ws["P1"].value == co._CABECALHO_INDICE_BASE_VU
+    assert ws.column_dimensions["P"].hidden
     validacao = next(
         d for d in ws.data_validations.dataValidation
         if str(d.sqref) == co._FAIXA_BASE_ECONOMICA_VU

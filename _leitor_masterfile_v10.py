@@ -53,6 +53,7 @@ from _masterfile_config_v10 import (
     MODOS_VALIDOS_V10,
 )
 from _capacidade_pcs import ULTIMA_LINHA_PCS
+from _layout_aditivos import colunas_aditivos, indice_coluna
 from _motor_vta_sombra import calcular_vta_sombra
 from _motor_composicao_vta import montar_composicao_vta
 from _motor_reconciliacao import reconciliar_execucoes
@@ -2188,24 +2189,31 @@ def _ler_parcelas_sombra_aditivos(wb) -> list[dict[str, Any]]:
     """Materializa aditivos como parcelas auditaveis.
 
     Novo modelo oficial (sem aba historico): le diretamente a aba aditivos
-    — linhas com ITEM preenchido e K=CONSIDERADO NO CALCULO FINANCEIRO=Sim
-    geram parcela com o valor atualizado da alteracao (J, cache do Excel)
-    e ciclo (C, cache; sem cache, derivado da data do aditivo em B).
+    — linhas com ITEM preenchido e CONSIDERADO NO CALCULO FINANCEIRO=Sim
+    geram parcela com o valor atualizado da alteracao (cache do Excel) e
+    ciclo (C, cache; sem cache, derivado da data do aditivo em B). As letras
+    seguem o layout do arquivo (_layout_aditivos): considerado/valor
+    atualizado/valor original em M/L/K na Coleta 12.1 e K/J/G antes.
     Layout legado: consolidado homologado de historico!D23:D27 (ou D28).
     """
     if "historico" not in wb.sheetnames:
         if "aditivos" not in wb.sheetnames:
             return []
         ws_adt = wb["aditivos"]
+        col = {
+            chave: indice_coluna(letra)
+            for chave, letra in colunas_aditivos(ws_adt).items()
+            if letra is not None
+        }
         parcelas_novo: list[dict[str, Any]] = []
         for r in range(2, min(ws_adt.max_row, 200) + 1):
             item = ws_adt.cell(r, 1).value
             if item in (None, ""):
                 continue
-            considerado = str(ws_adt.cell(r, 11).value or "").strip().lower()
+            considerado = str(ws_adt.cell(r, col["considerado"]).value or "").strip().lower()
             if considerado != "sim":
                 continue
-            valor = _to_float_sombra(ws_adt.cell(r, 10).value)  # J: valor atualizado
+            valor = _to_float_sombra(ws_adt.cell(r, col["valor_atualizado"]).value)
             if not valor:
                 # Formula sem cache do Excel — sem valor confiavel; o upload
                 # sem cache ja e bloqueado pela politica (posicao_contratual).
@@ -2221,7 +2229,7 @@ def _ler_parcelas_sombra_aditivos(wb) -> list[dict[str, Any]]:
                 "tipo_alteracao": ws_adt.cell(r, 4).value,
                 "quantidade": ws_adt.cell(r, 5).value,
                 "vu_original": ws_adt.cell(r, 6).value,
-                "valor_original": ws_adt.cell(r, 7).value,
+                "valor_original": ws_adt.cell(r, col["valor_original"]).value,
                 "origem_dado": "Aditivo",
                 "tipo_parcela": "Aditivo",
                 "tipo_financeiro": "Aditivo Computavel",
@@ -2230,7 +2238,7 @@ def _ler_parcelas_sombra_aditivos(wb) -> list[dict[str, Any]]:
                 "valor": valor,
                 "justificativa_vta": (
                     "Aditivo computavel lido da aba aditivos (novo modelo, "
-                    "K=Sim; valor atualizado J)."
+                    "considerado=Sim; valor atualizado da alteracao)."
                 ),
             })
         return parcelas_novo

@@ -163,8 +163,15 @@ def _itens_consumidos(wb, itens: list[dict[str, Any]]) -> None:
 
 
 def _aditivos(wb, registros: list[dict[str, Any]]) -> None:
-    """aditivos!A (identificacao), C (data), F (VU), H/K (marcadores)."""
+    """aditivos!A (identificacao), C (data), F (VU), H/considerado (marcadores).
+
+    "considerado no calculo" e K ate a Coleta 12.0 e M na 12.1: a coluna vem
+    do layout do proprio template (_layout_aditivos), mantendo o cenario.
+    """
+    from _layout_aditivos import colunas_aditivos, indice_coluna
+
     ws = wb["aditivos"]
+    coluna_considerado = indice_coluna(colunas_aditivos(ws)["considerado"])
     for indice, registro in enumerate(registros):
         linha = indice + 2
         ws.cell(linha, 1).value = registro["identificacao"]
@@ -173,7 +180,7 @@ def _aditivos(wb, registros: list[dict[str, Any]]) -> None:
             ws.cell(linha, 6).value = registro["valor_unitario"]
         ws.cell(linha, 8).value = registro.get("computar", "Sim")
         if registro.get("novo_item"):
-            ws.cell(linha, 11).value = registro["novo_item"]
+            ws.cell(linha, coluna_considerado).value = registro["novo_item"]
 
 
 def _ciclo_em_execucao(wb, *, data: date, linhas: list[tuple[str, float]]) -> None:

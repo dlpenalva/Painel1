@@ -182,24 +182,25 @@ def test_aditivos_k_sai_com_o_dropdown_original_do_template(entrega):
         return [
             (str(dv.sqref), dv.type, dv.formula1, dv.allowBlank)
             for dv in ws.data_validations.dataValidation
-            if any(str(f) == "K2:K200" for f in dv.sqref.ranges)
+            # Coleta 12.1: "considerado no calculo" passou de K para M.
+            if any(str(f) == "M2:M200" for f in dv.sqref.ranges)
         ]
 
     assert lista_de_k(runtime) == lista_de_k(base)
-    assert lista_de_k(runtime) == [("H2:H200 K2:K200", "list", '"Sim,Nao"', True)]
+    assert lista_de_k(runtime) == [("H2:H200 M2:M200", "list", '"Sim,Nao"', True)]
 
     xml = _xml_da_aba(dados, "aditivos")
     blocos = re.findall(
         r"<dataValidation\b[^>]*>.*?</dataValidation>", xml, re.DOTALL
     )
-    com_k = [b for b in blocos if "K2:K200" in b]
+    com_k = [b for b in blocos if "M2:M200" in b]
     assert len(com_k) == 1
     assert "<formula1>\"Sim,Nao\"</formula1>" in com_k[0]
 
     ws = runtime["aditivos"]
-    assert ws.column_dimensions["K"].hidden is False
-    assert ws.column_dimensions["K"].width == base["aditivos"].column_dimensions["K"].width
-    assert [ws[f"K{linha}"].value for linha in range(2, 201)] == [None] * 199
+    assert ws.column_dimensions["M"].hidden is False
+    assert ws.column_dimensions["M"].width == base["aditivos"].column_dimensions["M"].width
+    assert [ws[f"M{linha}"].value for linha in range(2, 201)] == [None] * 199
 
 
 def test_itens_pc_v_ate_ac_saem_ocultas(entrega):

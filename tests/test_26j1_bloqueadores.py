@@ -257,12 +257,13 @@ def test_d_round_trip_reaplica_formatacao_da_mensagem_fiscal(tmp_path):
     from _gerador_masterfile import gerar_masterfile_preenchido
 
     # Simula linhagem antiga (pre-26H.2): sem WrapText e dimensoes reduzidas.
+    # Coleta 12.1: a mensagem fiscal (CHECK) mora em aditivos!O (coluna 15).
     wb = load_workbook(TEMPLATE_COLETA_OFICIAL)
     ws = wb["aditivos"]
-    ws.column_dimensions["M"].width = 30.0
+    ws.column_dimensions["O"].width = 30.0
     from copy import copy as _copy
     for row in range(2, 201):
-        cel = ws.cell(row=row, column=13)
+        cel = ws.cell(row=row, column=15)
         alin = _copy(cel.alignment)
         alin.wrapText = False
         cel.alignment = alin
@@ -280,9 +281,9 @@ def test_d_round_trip_reaplica_formatacao_da_mensagem_fiscal(tmp_path):
 
     reaberto = load_workbook(caminho)
     ws_final = reaberto["aditivos"]
-    assert ws_final.column_dimensions["M"].width >= LARGURA_MINIMA_ADITIVOS_M
+    assert ws_final.column_dimensions["O"].width >= LARGURA_MINIMA_ADITIVOS_M
     for row in (2, 50, 200):
-        assert ws_final.cell(row=row, column=13).alignment.wrap_text is True
+        assert ws_final.cell(row=row, column=15).alignment.wrap_text is True
         assert (
             ws_final.row_dimensions[row].height or 0
         ) >= ALTURA_MINIMA_LINHAS_ADITIVOS

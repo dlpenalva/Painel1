@@ -79,8 +79,10 @@ def test_financeiro_gerado_oculta_capacidade_nao_usada():
 # ------------------------------------------------------------- aditivos linha 1
 
 def test_aditivos_linha1_altura_suficiente(wb):
+    # Coleta 12.1: A1 e so "ITEM" (a orientacao longa foi para a validacao de
+    # A2:A200); a linha 1 precisa caber os cabecalhos de ate 3 linhas.
     ws = wb["aditivos"]
-    assert (ws.row_dimensions[1].height or 0) >= 90
+    assert (ws.row_dimensions[1].height or 0) >= 50
     a1 = ws["A1"]
     assert a1.alignment.wrap_text is True
     assert str(a1.value).startswith("ITEM")

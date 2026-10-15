@@ -41,6 +41,7 @@ from _coleta_oficial import (
     COLS_MANUAIS_ITENS_PC,
     eh_layout_itens_pc_protegivel,
 )
+from _layout_aditivos import colunas_aditivos_do_workbook
 from _reajuste_utils import percentual_contexto_oficial, percentual_oficial_do_payload
 from _efeitos_financeiros_pc import (
     efeito_financeiro_pc,
@@ -724,9 +725,12 @@ def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
         bloqueios_estruturais.append(
             "Formula estrutural ausente em itens_PC!L2."
         )
+    # Coleta 12.1 reorganizou aditivos (DELTA em N, CHECK em O); arquivos
+    # anteriores, ainda aceitos, seguem com L/M. A letra vem do proprio arquivo.
+    colunas_adt = colunas_aditivos_do_workbook(wb)
     if possui_posicao_contratual:
         for chave in (
-            "aditivos!L2",
+            f"aditivos!{colunas_adt['delta']}2",
             "posicao_contratual!E2",
             "posicao_contratual!I2",
             "posicao_contratual!M2",
@@ -1028,10 +1032,11 @@ def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
             )
         )
         if possui_posicao_contratual:
+            check = colunas_adt["check"]
             alertas_aditivos = [
-                f"aditivos!M{row}={wb_valores['aditivos'][f'M{row}'].value}"
+                f"aditivos!{check}{row}={wb_valores['aditivos'][f'{check}{row}'].value}"
                 for row in range(2, 201)
-                if str(wb_valores["aditivos"][f"M{row}"].value or "").startswith("ALERTA:")
+                if str(wb_valores["aditivos"][f"{check}{row}"].value or "").startswith("ALERTA:")
             ]
             alertas_posicao = [
                 f"posicao_contratual!X{row}={wb_valores['posicao_contratual'][f'X{row}'].value}"

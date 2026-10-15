@@ -65,11 +65,11 @@ def test_formula_le_a_base_economica_e_respeita_o_nascimento():
     assert formula.isascii()
     assert formula.count("(") == formula.count(")")
     assert len(formula) < 8192
-    assert "aditivos!$O$2:$O$200" in formula
+    assert "aditivos!$P$2:$P$200" in formula  # Coleta 12.1: indice em P
     assert "MATCH($A3,aditivos!$A$2:$A$200,0)" in formula
     # Antes do nascimento o item nao existe; base nunca posterior a ele.
     assert 'IF(posicao_contratual!$Y3>3,""' in formula
-    assert "MIN(INDEX(aditivos!$O$2:$O$200" in formula
+    assert "MIN(INDEX(aditivos!$P$2:$P$200" in formula
     # Ciclo de nascimento: ultimo fator conhecido (mesmo carregamento de aditivos!I).
     assert "INDEX($L$2:$L$6,MIN(3+1,COUNT($L$2:$L$6)))" in formula
     # Ciclos seguintes: fator do proprio ciclo exigido (historico nao inventado).
@@ -90,7 +90,7 @@ def test_aditivos_alerta_nxxx_com_mais_de_uma_inclusao(wb_template):
         '$D$2:$D$200,"*novo*")>1),"ALERTA: NOVO_ITEM_COM_MAIS_DE_UMA_INCLUSAO",'
     ) in formula
     ws = wb_template["aditivos"]
-    assert all(ws[f"M{linha}"].value == _formula_status_aditivo(linha) for linha in range(2, 201))
+    assert all(ws[f"O{linha}"].value == _formula_status_aditivo(linha) for linha in range(2, 201))
 
 
 def test_geracao_entrega_o_template_sem_reescrita(wb_template, wb_coleta_117):
@@ -124,7 +124,7 @@ def test_migracao_nao_age_sem_base_economica_canonica_em_aditivos():
     wb = load_workbook(TEMPLATE_COLETA_OFICIAL, data_only=False)
     ws = wb["historico_VU"]
     ws["F3"].value = _formula_historico_vu_nascimento(3, 3)
-    wb["aditivos"]["O3"].value = None  # aditivos!O fora da forma canonica
+    wb["aditivos"]["P3"].value = None  # indice (aditivos!P) fora da forma canonica
     _garantir_historico_vu_base_economica(wb)
     assert ws["F3"].value == _formula_historico_vu_nascimento(3, 3)
 
@@ -133,7 +133,7 @@ def test_gate_do_vta_na_origem_canonica(wb_template, wb_coleta_117):
     for wb in (wb_template, wb_coleta_117):
         mem = wb["MEMORIA_RESULTADOS"]
         assert _gate_vta_canonico(mem)
-        assert mem["T48"].value == '=COUNTIF(aditivos!$M$2:$M$200,"ALERTA:*")'
+        assert mem["T48"].value == '=COUNTIF(aditivos!$O$2:$O$200,"ALERTA:*")'
         # B26: gate logo apos a governanca B24/B25 (inicio homologado mantido).
         assert mem["B26"].value.startswith('=IF(AND(B24<>"",B25<>""),"",IF($T$48>0,"",')
         assert "IF(ISNUMBER(B25),B25," in mem["B26"].value
@@ -170,7 +170,7 @@ def test_fallback_da_ciclo_em_execucao_usa_a_mesma_base(wb_coleta_117):
     assert formula.isascii()
     assert formula.count("(") == formula.count(")")
     assert (
-        "MIN(INDEX(aditivos!$O$2:$O$200,"
+        "MIN(INDEX(aditivos!$P$2:$P$200,"
         "MATCH(itens_Remanesc!$A3,aditivos!$A$2:$A$200,0)),posicao_contratual!$Y3)"
     ) in formula
     # Nunca reajusta antes do nascimento; historico_VU continua prevalecendo.

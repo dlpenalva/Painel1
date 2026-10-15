@@ -290,11 +290,18 @@ def test_caso_f_guarda_temporal_da_posicao_preservada(wb_runtime, wb_template):
 # Orientacao de UX — discreta, reaproveitando espaco existente                 #
 # --------------------------------------------------------------------------- #
 def test_orientacao_indica_comecar_por_itens_remanesc(wb_runtime):
-    a1 = str(wb_runtime["aditivos"]["A1"].value)
-    assert a1.startswith("ITEM")          # chave do leitor preservada
-    assert "itens_Remanesc PRIMEIRO" in a1
-    assert "Depois, a data e a quantidade aqui." in a1
-    m2 = str(wb_runtime["aditivos"]["M2"].value)
+    # Coleta 12.1: o cabecalho A1 e so "ITEM"; a orientacao vive na mensagem
+    # de entrada da validacao de A2:A200 (celula, sem caixa de texto) e a
+    # mensagem fiscal do CHECK passou de M para O.
+    ws = wb_runtime["aditivos"]
+    assert ws["A1"].value == "ITEM"       # chave do leitor preservada
+    prompt = next(
+        dv.prompt for dv in ws.data_validations.dataValidation
+        if str(dv.sqref) == "A2:A200"
+    )
+    assert "Novo item: cadastrar primeiro em itens_Remanesc como N001, N002..." in prompt
+    assert "Depois, registre aqui a data, a quantidade" in prompt
+    m2 = str(ws["O2"].value)
     assert "CADASTRAR EM itens_Remanesc: ITEM + VU_ORIGINAL" in m2
     assert "depois a data e a quantidade aqui." in m2
 

@@ -176,9 +176,10 @@ class TestTemplateRealDatasEFormulas(unittest.TestCase):
         self.assertNotIn("\\y", fmt)
 
     def test_template_formulas_toleram_acento(self):
-        # §12.1: cadeia DELTA (L) + CHECK (M) com prefixos ACR/SUPR.
-        l2 = self.wb["aditivos"]["L2"].value
-        m2 = self.wb["aditivos"]["M2"].value
+        # §12.1: cadeia DELTA + CHECK com prefixos ACR/SUPR (Coleta 12.1:
+        # DELTA em N e CHECK em O; L/M ate a 12.0).
+        l2 = self.wb["aditivos"]["N2"].value
+        m2 = self.wb["aditivos"]["O2"].value
         self.assertIn('LEFT(UPPER(D2),3)="ACR"', l2)
         self.assertIn('LEFT(UPPER(D2),4)="SUPR"', l2)
         self.assertIn('LEFT(UPPER(D2),3)<>"ACR"', m2)

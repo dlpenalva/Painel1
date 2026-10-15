@@ -145,14 +145,16 @@ COLS_QTD_ABERTURA_MANUAL = (("E", 1), ("G", 2), ("I", 3), ("K", 4))
 # outra planilha, e a extensao x14 e invisivel para o openpyxl — a linhagem que
 # gera cada Coleta. Com o espelho, a CF continua OOXML padrao.
 COL_ESPELHO_NASCIMENTO = "BI"
+# DELTA_QTD_CONTRATUAL da aba aditivos (Coleta 12.1: coluna N; L ate a 12.0).
+DELTA_ADITIVOS = "aditivos!$N$2:$N$200"
 
 
 def _criterios_aditivo(linha_pc: int) -> str:
     """Criterios *IFS: aditivos do item com delta numerico != 0 e data valida."""
     return (
         f'aditivos!$A$2:$A$200,$A{linha_pc},'
-        f'aditivos!$L$2:$L$200,"<>",'
-        f'aditivos!$L$2:$L$200,"<>0",'
+        f'{DELTA_ADITIVOS},"<>",'
+        f'{DELTA_ADITIVOS},"<>0",'
         f'aditivos!$B$2:$B$200,">0"'
     )
 
@@ -191,7 +193,7 @@ def _formula_delta_posterior(r: int, ciclo: int) -> str:
     return (
         f'=IF($A{r}="","",'
         f'IF(OR(parametros!$C${linha_param}="",parametros!$I${linha_param}=""),0,'
-        f'ROUND(SUMIFS(aditivos!$L$2:$L$200,'
+        f'ROUND(SUMIFS({DELTA_ADITIVOS},'
         f'aditivos!$A$2:$A$200,$A{r},'
         f'aditivos!$C$2:$C$200,"C{ciclo}",'
         f'aditivos!$B$2:$B$200,">="&(INT(parametros!$I${linha_param})+1)),2)))'

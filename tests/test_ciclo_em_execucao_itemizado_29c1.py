@@ -353,7 +353,7 @@ ABERTURA_CICLO_ATUAL_COLETA_115 = (
     'C$2:$C$200,$C$3,aditivos!$B$2:$B$200,"<"&(INT($F$3)+1)),2)>0,ROUND(S'
     'UMIFS(aditivos!$L$2:$L$200,aditivos!$A$2:$A$200,A13,aditivos!$C$2:$C'
     '$200,$C$3,aditivos!$B$2:$B$200,"<"&(INT($F$3)+1)),2),"")))'
-)
+).replace("aditivos!$L$2:$L$200", "aditivos!$N$2:$N$200")  # Coleta 12.1: DELTA em N
 
 
 def test_ciclo_em_execucao_prevalece_com_a_regra_da_coleta_115(coleta_runtime):
