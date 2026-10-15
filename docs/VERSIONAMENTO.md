@@ -1,7 +1,7 @@
 # Versionamento público do Cl8us — regra pétrea
 
-Fonte única das versões: `_versao.py`. Formato sempre `XX.X` (sem SemVer de três
-componentes). A guarda `tools/verificar_versionamento.py` roda no CI rápido e
+Fonte única das versões: `_versao.py`. Formato sempre `XX.N`, com dois dígitos
+antes do ponto e um ou mais depois dele (sem SemVer de três componentes). A guarda `tools/verificar_versionamento.py` roda no CI rápido e
 **falha** quando a regra é violada; ela nunca altera versão sozinha — o
 desenvolvedor decide o número, no mesmo PR.
 
@@ -75,7 +75,7 @@ HEAD é o merge do PR sobre `main`.
 | arquivo user-facing alterado e `CL8US_VERSION` igual à base | "Alteração user-facing detectada sem incremento de CL8US_VERSION." |
 | arquivo da Coleta alterado e `COLETA_VERSION` igual à base | "Alteração da Coleta detectada sem incremento de COLETA_VERSION." |
 | `COLETA_VERSION` fora de `COLETA_VERSOES_ACEITAS` | "COLETA_VERSION atual não consta em COLETA_VERSOES_ACEITAS." |
-| versão alterada que não avança, ou fora de `XX.X` | mensagem específica |
+| versão alterada que não avança, ou fora de `XX.N` | mensagem específica |
 | `CL8US_VERSION` incrementada com `ATUALIZADO_EM_FALLBACK` igual ao da base, anterior a ele ou fora de `dd/mm/aaaa HH:MM` | "CL8US_VERSION incrementada sem atualizar ATUALIZADO_EM_FALLBACK …" |
 
 Superfícies (listas declarativas no próprio script — revisar no PR quando um

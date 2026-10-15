@@ -135,7 +135,12 @@ def test_versao_que_retrocede_ou_fora_do_formato_falha():
     volta = vv.Versoes("11.6", "11.3", BASE.aceitas, "06/10/2026 10:00")
     assert any("nao avanca" in e for e in vv.avaliar(["app.py"], BASE, volta))
     torto = vv.Versoes("11.8.1", "11.3", BASE.aceitas, "06/10/2026 10:00")
-    assert any("formato XX.X" in e for e in vv.avaliar(["app.py"], BASE, torto))
+    assert any("formato XX.N" in e for e in vv.avaliar(["app.py"], BASE, torto))
+
+
+def test_versao_aceita_minor_com_mais_de_um_digito():
+    atual = vv.Versoes("12.10", "12.3", (*BASE.aceitas, "12.3"), "06/10/2026 10:00")
+    assert vv.avaliar(["app.py", "templates/COLETA_REAJUSTE_OFICIAL.xlsx"], BASE, atual) == []
 
 
 @pytest.mark.parametrize("fallback", [
