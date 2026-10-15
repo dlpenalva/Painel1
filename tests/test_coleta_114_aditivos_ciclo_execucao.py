@@ -74,14 +74,15 @@ def test_ciclo_em_execucao_e_formula_da_data_de_corte(wb_gerado):
 
 
 def test_formulas_de_aditivos_em_todas_as_linhas(wb_gerado):
+    # Coleta 12.1: valor atualizado em L, CHECK em O, indice da base em P.
     ws = wb_gerado["aditivos"]
     for linha in (2, 57, 200):
         assert ws[f"I{linha}"].value == _formula_fator_base_economica(linha)
-        assert ws[f"J{linha}"].value == _formula_valor_aditivo(linha)
-        assert ws[f"M{linha}"].value == _formula_status_aditivo(linha)
-        assert "ALERTA: NOVO ITEM INVALIDO" in ws[f"M{linha}"].value
+        assert ws[f"L{linha}"].value == _formula_valor_aditivo(linha)
+        assert ws[f"O{linha}"].value == _formula_status_aditivo(linha)
+        assert "ALERTA: NOVO ITEM INVALIDO" in ws[f"O{linha}"].value
     # Base economica separada do ciclo de nascimento fisico.
-    assert "$O2" in ws["I2"].value
+    assert "$P2" in ws["I2"].value
     assert "posicao_contratual!$Y" not in ws["I2"].value
     assert "parametros!$B:$F" not in ws["I2"].value
 
@@ -90,7 +91,8 @@ def test_formulas_novas_sao_ascii_e_balanceadas(wb_gerado):
     for formula in (FORMULA_CICLO_VIGENTE,
                     wb_gerado["aditivos"]["I2"].value,
                     wb_gerado["aditivos"]["J2"].value,
-                    wb_gerado["aditivos"]["M2"].value, _formula_vu(13, 2)):
+                    wb_gerado["aditivos"]["L2"].value,
+                    wb_gerado["aditivos"]["O2"].value, _formula_vu(13, 2)):
         validar_formula(formula)
 
 
@@ -218,7 +220,7 @@ def test_cenario_focal_no_excel(tmp_path, corte, ciclo, inicio, fim):
             # Coleta 11.6: novo item informa o ultimo reajuste ja incorporado
             # ao VU de inclusao (C1 = mesma premissa da 11.4 neste cenario).
             if tipo == "Acréscimo - novo item":
-                adi.Range(f"N{linha}").Value = "C1"
+                adi.Range(f"G{linha}").Value = "C1"  # Coleta 12.1: base em G
         cee = wb.Worksheets("CICLO_EM_EXECUCAO")
         cee.Range("D5").Value = corte
         xl.CalculateFull()
@@ -234,12 +236,14 @@ def test_cenario_focal_no_excel(tmp_path, corte, ciclo, inicio, fim):
         assert wb.Worksheets("parametros").Range("C4").Value.date() == date(2024, 6, 1)
         assert wb.Worksheets("parametros").Range("D4").Value.date() == date(2025, 5, 31)
 
+        # Coleta 12.1: VU atualizado em J, valor atualizado em L, CHECK em O.
         assert adi.Range("I2").Value == pytest.approx(1.0381)
-        assert adi.Range("J2").Value == pytest.approx(1038.00)
+        assert adi.Range("J2").Value == pytest.approx(10.38)
+        assert adi.Range("L2").Value == pytest.approx(1038.00)
         for linha in range(3, 8):
             assert adi.Range(f"I{linha}").Value == pytest.approx(1.0)
-            assert adi.Range(f"M{linha}").Value == "OK"
-        assert adi.Range("J5").Value == pytest.approx(round(1851 * 7.25, 2))
+            assert adi.Range(f"O{linha}").Value == "OK"
+        assert adi.Range("L5").Value == pytest.approx(round(1851 * 7.25, 2))
 
         if ciclo != "C4":
             wb.Close(False)
@@ -254,15 +258,15 @@ def test_cenario_focal_no_excel(tmp_path, corte, ciclo, inicio, fim):
         assert cee.Range("E13").Value == pytest.approx(10.38)
         assert cee.Range("E16").Value == pytest.approx(7.25)
 
-        adi.Range("N3").Value = None  # novo item sem base economica: bloqueio
+        adi.Range("G3").Value = None  # novo item sem base economica: bloqueio
         xl.CalculateFull()
         assert adi.Range("I3").Value in (None, "")
-        assert adi.Range("M3").Value == "ALERTA: BASE_VU_OBRIGATORIA"
-        adi.Range("N3").Value = "C1"
+        assert adi.Range("O3").Value == "ALERTA: BASE_VU_OBRIGATORIA"
+        adi.Range("G3").Value = "C1"
 
         adi.Range("D2").Value = "Acréscimo - novo item"  # item ja existente
         xl.CalculateFull()
-        assert str(adi.Range("M2").Value).startswith("ALERTA: NOVO ITEM INVALIDO")
+        assert str(adi.Range("O2").Value).startswith("ALERTA: NOVO ITEM INVALIDO")
         wb.Close(False)
     finally:
         xl.Quit()

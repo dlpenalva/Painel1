@@ -132,8 +132,8 @@ def _preencher_cenario(livro) -> None:
         aditivos.Range(f"D{linha}").Value = tipo
         aditivos.Range(f"E{linha}").Value = quantidade
         aditivos.Range(f"H{linha}").Value = aplicar
-        aditivos.Range(f"K{linha}").Value = "Sim"
-        aditivos.Range(f"N{linha}").Value = base_vu
+        aditivos.Range(f"M{linha}").Value = "Sim"  # 12.1: considerado em M
+        aditivos.Range(f"G{linha}").Value = base_vu  # 12.1: base em G
 
 
 def _inspecionar_hashes(livro, pythoncom) -> list[str]:
@@ -229,14 +229,15 @@ def test_coleta_116_no_excel_real(tmp_path: Path):
         assert ciclo.Range("D17").Value == 40
 
         assert aditivos.Range("I5").Value == pytest.approx(1.0381)
-        assert aditivos.Range("J5").Value / aditivos.Range("L5").Value == pytest.approx(10.38)
+        # Coleta 12.1: valor atualizado em L, DELTA em N, indice em P, CHECK em O.
+        assert aditivos.Range("L5").Value / aditivos.Range("N5").Value == pytest.approx(10.38)
         assert aditivos.Range("I6").Value == pytest.approx(1.0)
-        assert aditivos.Range("J6").Value / aditivos.Range("L6").Value == pytest.approx(10.0)
-        assert aditivos.Range("O7").Value == 0
+        assert aditivos.Range("L6").Value / aditivos.Range("N6").Value == pytest.approx(10.0)
+        assert aditivos.Range("P7").Value == 0
         assert aditivos.Range("I7").Value == pytest.approx(1.0381)
-        assert aditivos.Range("J8").Value == pytest.approx(500.0)
+        assert aditivos.Range("L8").Value == pytest.approx(500.0)
         assert aditivos.Range("I9").Value in (None, "")
-        assert "BASE_VU_INVALIDA" in str(aditivos.Range("M9").Value)
+        assert "BASE_VU_INVALIDA" in str(aditivos.Range("O9").Value)
 
         # Nascimento C3: nada e criado em C1/C2, embora o VU de C3 receba C1.
         assert posicao.Range("Y6").Value == 3
@@ -247,7 +248,7 @@ def test_coleta_116_no_excel_real(tmp_path: Path):
             "Acrescimo,Acréscimo - novo item,Supressao"
         )
         assert str(aditivos.Range("H2").Validation.Formula1).replace(";", ",") == "Sim,Nao"
-        assert str(aditivos.Range("N2").Validation.Formula1).replace(";", ",") == "C0,C1,C2,C3,C4"
+        assert str(aditivos.Range("G2").Validation.Formula1).replace(";", ",") == "C0,C1,C2,C3,C4"
 
         verde_escuro = 0 + (97 << 8) + (0 << 16)
         assert int(itens.Range("A6").DisplayFormat.Font.Color) == verde_escuro
@@ -359,8 +360,8 @@ def test_coleta_116_ciclo_em_execucao_prevalece_sem_data_exata(tmp_path: Path):
                 aditivos.Range(f"D{linha}").Value = tipo
                 aditivos.Range(f"E{linha}").Value = 100
                 aditivos.Range(f"H{linha}").Value = "Nao"
-                aditivos.Range(f"K{linha}").Value = "Sim"
-                aditivos.Range(f"N{linha}").Value = base_vu
+                aditivos.Range(f"M{linha}").Value = "Sim"  # 12.1: considerado em M
+                aditivos.Range(f"G{linha}").Value = base_vu  # 12.1: base em G
             livro.Worksheets("CICLO_EM_EXECUCAO").Range("D5").Value = Time(
                 datetime(2026, 8, 31)
             )

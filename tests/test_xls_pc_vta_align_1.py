@@ -59,6 +59,10 @@ REFERENCIAS_POTENCIAL_VTA = {
     # RESULTADOS executiva (Coleta 11.2): card do potencial (D9) e nota do
     # card do VTA (B10) apenas EXIBEM a parcela — nenhuma soma.
     "RESULTADOS!D9", "RESULTADOS!B10",
+    # Coleta 12.1: soma-resumo do card RETRO. RECONHECIDO + POTENCIAL (T66,
+    # lida SO pelo card RESULTADOS!E9; nao entra no VTA) e texto da SITUACAO
+    # DA APURACAO com o valor do potencial (T67). Nenhuma soma ao VTA.
+    "MEMORIA_RESULTADOS!T66", "MEMORIA_RESULTADOS!T67",
 }
 
 ROTULOS_BLOCO6 = [

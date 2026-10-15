@@ -44,6 +44,12 @@ from _reajuste_utils import (
     percentual_contexto_oficial,
     percentual_oficial_do_payload,
 )
+from _layout_aditivos import (
+    CABECALHOS_ADITIVOS_12_1,
+    COLUNAS_ADITIVOS_12_1,
+    colunas_aditivos,
+    indice_coluna,
+)
 from _versao import CL8US_VERSION, COLETA_VERSION
 
 ROOT = Path(__file__).resolve().parent
@@ -217,9 +223,10 @@ _RESIDUOS_POR_ABA["itens_Remanesc"] = [
     for col in ("A", "B", "C", "E", "G", "I", "K")
 ]
 # aditivos: eventos demonstrativos (F soh quando valor manual sobrepoe formula)
+# Coleta 12.1: entradas em A, B, D, E, G (base do VU), H e M (considerado).
 _RESIDUOS_POR_ABA["aditivos"] = [
     f"{col}{lin}" for lin in range(2, 201)
-    for col in ("A", "B", "D", "E", "F", "H", "K", "N")
+    for col in ("A", "B", "D", "E", "F", "G", "H", "M")
 ]
 # Etapa 26F: a unica interface manual fica na camada tecnica de RESULTADOS
 # (RESULTADOS_DETALHE na Coleta 11.2+; RESULTADOS antes — `_limpar_residuos`
@@ -661,17 +668,18 @@ def _garantir_orientacao_novo_item_por_aditivo(wb) -> None:
     O aditivo e o gatilho: quem inclui um item novo abre a aba `aditivos`. A
     orientacao passa a explicitar a ORDEM (itens_Remanesc primeiro: ITEM +
     VU_ORIGINAL; aditivos depois: data e quantidade), reescrevendo em runtime
-    os textos que JA EXISTEM — o cabecalho `A1` e a mensagem de validacao da
-    coluna `M`. Sem nova secao, sem linha nova, sem caixa e sem aba nova; o
-    template binario homologado permanece intacto.
+    os textos que JA EXISTEM — o cabecalho `A1` e a mensagem da coluna CHECK
+    (`M` ate a 12.0, `O` na 12.1). Sem nova secao, sem linha nova, sem caixa e
+    sem aba nova; o template binario homologado permanece intacto.
     """
     if "aditivos" not in wb.sheetnames:
         return
     ws = wb["aditivos"]
     if str(ws["A1"].value or "") == _ORIENTACAO_ADITIVOS_A1_ANTIGA:
         ws["A1"].value = _ORIENTACAO_ADITIVOS_A1_NOVA
+    coluna_check = indice_coluna(colunas_aditivos(ws)["check"])
     for row in range(2, ULTIMA_LINHA_ORIENTACAO_ADITIVOS + 1):
-        celula = ws.cell(row=row, column=13)  # coluna M
+        celula = ws.cell(row=row, column=coluna_check)
         atual = celula.value
         if isinstance(atual, str) and _MSG_NOVO_ITEM_ANTIGA in atual:
             celula.value = atual.replace(
@@ -737,12 +745,15 @@ def _garantir_apresentacao_retroativos_e_aditivos(wb) -> None:
                 ws[f"H{linha}"].value = "Nao"
 
 
-# Coleta 11.6 — fonte unica do template (tools/aplicar_coleta_116_...) e da
-# migracao runtime abaixo (so age em template que ainda nao as carregue).
-_CABECALHO_BASE_ECONOMICA_VU = "ÚLTIMO REAJUSTE JÁ INCORPORADO AO VU"
-_CABECALHO_INDICE_BASE_VU = "INDICE_BASE_ECONOMICA_VU"
+# Coleta 11.6 — fonte unica do template (tools/aplicar_coleta_116_...).
+# Coleta 12.1 — a aba foi reorganizada em blocos (_layout_aditivos): a base
+# economica do VU vai para G, o VU atualizado e exposto em J e as colunas de
+# totais/controles deslocam; as formulas abaixo seguem a geometria nova.
+_ADT = COLUNAS_ADITIVOS_12_1
+_CABECALHO_BASE_ECONOMICA_VU = CABECALHOS_ADITIVOS_12_1[_ADT["base_vu"]]
+_CABECALHO_INDICE_BASE_VU = CABECALHOS_ADITIVOS_12_1[_ADT["indice_base"]]
 _CICLOS_BASE_ECONOMICA = ("C0", "C1", "C2", "C3", "C4")
-_FAIXA_BASE_ECONOMICA_VU = "N2:N200"
+_FAIXA_BASE_ECONOMICA_VU = f"{_ADT['base_vu']}2:{_ADT['base_vu']}200"
 _LISTA_BASE_ECONOMICA_VU = ",".join(_CICLOS_BASE_ECONOMICA)
 _DV_BASE_VU_TITULO = "Base econômica do VU"
 _DV_BASE_VU_MENSAGEM = (
@@ -773,10 +784,11 @@ _ALERTA_NOVO_ITEM_MAIS_DE_UMA_INCLUSAO = "ALERTA: NOVO_ITEM_COM_MAIS_DE_UMA_INCL
 
 def _expressao_base_economica_item(linha: int) -> str:
     """Índice do fator já incorporado ao VU, herdado pelo item."""
+    g = _ADT["base_vu"]
     contagens = [
         (
             f'COUNTIFS($A$2:$A$200,$A{linha},$D$2:$D$200,"*novo*",'
-            f'$N$2:$N$200,"C{indice}")'
+            f'${g}$2:${g}$200,"C{indice}")'
         )
         for indice in range(5)
     ]
@@ -797,7 +809,7 @@ def _formula_indice_base_economica(linha: int) -> str:
 
 def _formula_fator_base_economica(linha: int) -> str:
     ciclos = '{"C0","C1","C2","C3","C4"}'
-    base = f'$O{linha}'
+    base = f'${_ADT["indice_base"]}{linha}'
     alvo = (
         f'MIN(MATCH($C{linha},{ciclos},0)-1,'
         'COUNT(parametros!$F$2:$F$6)-1)'
@@ -812,17 +824,38 @@ def _formula_fator_base_economica(linha: int) -> str:
     )
 
 
-def _formula_valor_aditivo(linha: int) -> str:
+def _formula_vu_atualizado_aditivo(linha: int) -> str:
+    """VALOR UNITARIO ATUALIZADO (Coleta 12.1): exposicao, sem regra nova.
+
+    E literalmente o VU que a formula do valor atualizado da alteracao ja
+    usava ate a Coleta 12.0 — ROUND(VU original x fator, 2) quando o reajuste
+    se aplica (vazio sem fator valido) e o VU original quando nao se aplica.
+    O valor atualizado da alteracao passa a ler esta celula.
+    """
+    f, h, i = _ADT["vu_original"], _ADT["aplicar"], _ADT["fator"]
     return (
-        f'=IF(OR(L{linha}="",F{linha}=""),"",'
-        f'IF(UPPER(H{linha})="SIM",'
-        f'IF(ISNUMBER(I{linha}),ROUND(L{linha}*ROUND(F{linha}*I{linha},2),2),""),'
-        f'ROUND(L{linha}*F{linha},2)))'
+        f'=IF({f}{linha}="","",IF(UPPER({h}{linha})="SIM",'
+        f'IF(ISNUMBER({i}{linha}),ROUND({f}{linha}*{i}{linha},2),""),'
+        f'{f}{linha}))'
+    )
+
+
+def _formula_valor_aditivo(linha: int) -> str:
+    """Valor atualizado da alteracao = ROUND(DELTA x VU atualizado, 2).
+
+    Identico a forma ate a 12.0 (ROUND(DELTA*ROUND(F*I,2),2) com reajuste;
+    ROUND(DELTA*F,2) sem reajuste; vazio sem fator valido ou sem VU).
+    """
+    n, j = _ADT["delta"], _ADT["vu_atualizado"]
+    return (
+        f'=IF(OR({n}{linha}="",{j}{linha}=""),"",'
+        f'ROUND({n}{linha}*{j}{linha},2))'
     )
 
 
 def _formula_status_aditivo(linha: int) -> str:
     novo = f'ISNUMBER(SEARCH("NOVO",D{linha}))'
+    g, n = _ADT["base_vu"], _ADT["delta"]
     return (
         f'=IF(A{linha}="","",IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{linha})=0,'
         '"NOVO ITEM NAO CADASTRADO - CADASTRAR EM itens_Remanesc: ITEM + '
@@ -830,7 +863,7 @@ def _formula_status_aditivo(linha: int) -> str:
         'e a quantidade aqui.",'
         f'IF(COUNTIF(itens_Remanesc!$A$2:$A$200,A{linha})>1,"ALERTA: ITEM_DUPLICADO",'
         # Coleta 11.7: um item so nasce uma vez; duas inclusoes tornam a base
-        # economica ambigua (aditivos!O fica vazio) e o app bloqueia.
+        # economica ambigua (indice da base vazio) e o app bloqueia.
         f'IF(AND({novo},COUNTIFS($A$2:$A$200,A{linha},$D$2:$D$200,"*novo*")>1),'
         f'"{_ALERTA_NOVO_ITEM_MAIS_DE_UMA_INCLUSAO}",'
         f'IF(OR(C{linha}="",C{linha}="Fora dos ciclos"),"ALERTA: CICLO_INVALIDO",'
@@ -840,12 +873,12 @@ def _formula_status_aditivo(linha: int) -> str:
         f'IF(AND({novo},OR(INDEX(posicao_contratual!$C$2:$C$200,'
         f'MATCH(A{linha},posicao_contratual!$A$2:$A$200,0))<>0,F{linha}="",'
         f'COUNTIFS($A$2:$A$200,A{linha},$B$2:$B$200,"<"&B{linha},'
-        f'$L$2:$L$200,">0")>0)),"ALERTA: NOVO ITEM INVALIDO - use Acrescimo '
+        f'${n}$2:${n}$200,">0")>0)),"ALERTA: NOVO ITEM INVALIDO - use Acrescimo '
         'se o item ja existia; novo item exige QTD_BASE_ORIGINAL 0, VU_ORIGINAL '
         'e ser o 1o acrescimo do item.",'
-        f'IF(AND({novo},OR(N{linha}="",ISERROR(MATCH(N{linha},'
+        f'IF(AND({novo},OR({g}{linha}="",ISERROR(MATCH({g}{linha},'
         '{"C0","C1","C2","C3","C4"},0)))),"ALERTA: BASE_VU_OBRIGATORIA",'
-        f'IF(AND(NOT({novo}),N{linha}<>""),"ALERTA: BASE_VU_NAO_APLICAVEL",'
+        f'IF(AND(NOT({novo}),{g}{linha}<>""),"ALERTA: BASE_VU_NAO_APLICAVEL",'
         f'IF(AND(UPPER(H{linha})="SIM",NOT(ISNUMBER(I{linha}))),'
         '"ALERTA: BASE_VU_INVALIDA_OU_POSTERIOR_AO_FATOR_ALVO","OK")'
         '))))))))))'
@@ -853,16 +886,18 @@ def _formula_status_aditivo(linha: int) -> str:
 
 
 _FORMULAS_BASE_ECONOMICA_VU = (
-    ("I", _formula_fator_base_economica),
-    ("J", _formula_valor_aditivo),
-    ("M", _formula_status_aditivo),
-    ("O", _formula_indice_base_economica),
+    (_ADT["fator"], _formula_fator_base_economica),
+    (_ADT["vu_atualizado"], _formula_vu_atualizado_aditivo),
+    (_ADT["valor_atualizado"], _formula_valor_aditivo),
+    (_ADT["check"], _formula_status_aditivo),
+    (_ADT["indice_base"], _formula_indice_base_economica),
 )
 
 
 def _aditivos_base_economica_canonica(ws) -> bool:
-    """O template ja carrega a Coleta 11.6 (tools/aplicar_coleta_116_...)?"""
-    return ws["N1"].value == _CABECALHO_BASE_ECONOMICA_VU and all(
+    """O template ja carrega a base economica do VU na geometria da 12.1?"""
+    base = f"{_ADT['base_vu']}1"
+    return ws[base].value == _CABECALHO_BASE_ECONOMICA_VU and all(
         ws[f"{coluna}{linha}"].value == funcao(linha)
         for coluna, funcao in _FORMULAS_BASE_ECONOMICA_VU
         for linha in range(2, 201)
@@ -870,82 +905,19 @@ def _aditivos_base_economica_canonica(ws) -> bool:
 
 
 def _garantir_base_economica_vu_aditivos(wb) -> None:
-    """Acrescenta em N a base econômica do VU sem deslocar A:M.
+    """Exige a base econômica do VU na forma canônica da Coleta 12.1.
 
     O template oficial ja traz a estrutura (PR3B-1: o template atravessa a
-    geracao sem conserto); a migracao abaixo so age em template anterior.
+    geracao sem conserto). A antiga migracao em runtime (acrescentar N/O a um
+    template anterior a 11.6) nao cabe na geometria reorganizada da 12.1:
+    template fora da forma canonica falha explicitamente, nunca e remendado.
     """
     if "aditivos" not in wb.sheetnames:
         return
-    from copy import copy
-    from openpyxl.formatting.rule import FormulaRule
-    from openpyxl.styles import PatternFill
-    from openpyxl.worksheet.datavalidation import DataValidation
-
-    ws = wb["aditivos"]
-    conflitos = [
-        f"N{linha}" for linha in range(1, 201)
-        if ws[f"N{linha}"].value not in (None, _CABECALHO_BASE_ECONOMICA_VU)
-    ]
-    if conflitos:
+    if not _aditivos_base_economica_canonica(wb["aditivos"]):
         raise ValueError(
-            "aditivos!N deixou de estar livre para a base economica do VU: "
-            + ", ".join(conflitos[:5])
-        )
-    if _aditivos_base_economica_canonica(ws):
-        return
-
-    ws["N1"].value = _CABECALHO_BASE_ECONOMICA_VU
-    for atributo in ("font", "fill", "border", "alignment", "protection"):
-        setattr(ws["N1"], atributo, copy(getattr(ws["H1"], atributo)))
-    ws["N1"].number_format = ws["H1"].number_format
-    ws.column_dimensions["N"].width = 34
-    ws["O1"].value = _CABECALHO_INDICE_BASE_VU
-    for atributo in ("font", "fill", "border", "alignment", "protection"):
-        setattr(ws["O1"], atributo, copy(getattr(ws["M1"], atributo)))
-    ws["O1"].number_format = ws["M1"].number_format
-    ws.column_dimensions["O"].hidden = True
-
-    for linha in range(2, 201):
-        alvo = ws[f"N{linha}"]
-        modelo = ws[f"H{linha}"]
-        for atributo in ("font", "fill", "border", "alignment", "protection"):
-            setattr(alvo, atributo, copy(getattr(modelo, atributo)))
-        alvo.number_format = modelo.number_format
-        for coluna, funcao in _FORMULAS_BASE_ECONOMICA_VU:
-            ws[f"{coluna}{linha}"].value = funcao(linha)
-
-    faixa = _FAIXA_BASE_ECONOMICA_VU
-    lista = f'"{_LISTA_BASE_ECONOMICA_VU}"'
-    encontrada = False
-    for dv in ws.data_validations.dataValidation:
-        if faixa in {str(rng) for rng in dv.sqref.ranges}:
-            dv.type = "list"
-            dv.formula1 = lista
-            encontrada = True
-    if not encontrada:
-        dv = DataValidation(type="list", formula1=lista, allow_blank=True)
-        dv.promptTitle = _DV_BASE_VU_TITULO
-        dv.prompt = _DV_BASE_VU_MENSAGEM
-        dv.errorTitle = _DV_BASE_VU_ERRO_TITULO
-        dv.error = _DV_BASE_VU_ERRO
-        dv.showInputMessage = True
-        dv.showErrorMessage = True
-        ws.add_data_validation(dv)
-        dv.add(faixa)
-
-    formula_cinza = _FORMULA_CF_BASE_VU_NAO_APLICAVEL
-    if not any(
-        str(cf.sqref) == faixa
-        and any(formula_cinza in (rule.formula or []) for rule in cf.rules)
-        for cf in ws.conditional_formatting
-    ):
-        ws.conditional_formatting.add(
-            faixa,
-            FormulaRule(
-                formula=[formula_cinza],
-                fill=PatternFill("solid", fgColor="FF" + _COR_BASE_VU_NAO_APLICAVEL),
-            ),
+            "aditivos fora da forma canonica da Coleta 12.1 (base economica do "
+            "VU em G, VU atualizado em J): template invalido"
         )
 
 
@@ -973,12 +945,14 @@ def _formula_historico_vu_nascimento(linha: int, indice: int) -> str:
 def _expressao_base_economica_historico(linha: int) -> str:
     """Indice do ultimo reajuste ja incorporado ao VU do item da linha.
 
-    aditivos!O do item quando numerico, nunca posterior ao nascimento; sem base
-    economica (item original, ou Nxxx sem aditivos!N) vale o nascimento — o
-    comportamento anterior.
+    Indice da base (aditivos!P na 12.1; O ate a 12.0) do item quando
+    numerico, nunca posterior ao nascimento; sem base economica (item
+    original, ou Nxxx sem base informada) vale o nascimento — o comportamento
+    anterior.
     """
     y = f"posicao_contratual!$Y{linha}"
-    base = f"INDEX(aditivos!$O$2:$O$200,MATCH($A{linha},aditivos!$A$2:$A$200,0))"
+    p = _ADT["indice_base"]
+    base = f"INDEX(aditivos!${p}$2:${p}$200,MATCH($A{linha},aditivos!$A$2:$A$200,0))"
     return f"IFERROR(IF(ISNUMBER({base}),MIN({base},{y}),{y}),{y})"
 
 
@@ -1062,7 +1036,9 @@ def _garantir_historico_vu_base_economica(wb) -> None:
 # vazio. Fonte unica do template (tools/aplicar_coleta_117_...) e da migracao.
 _CELULA_GATE_VTA = "T48"
 _ROTULO_GATE_VTA = "Aditivos com ALERTA (VTA indisponivel se > 0)"
-_FORMULA_GATE_VTA = '=COUNTIF(aditivos!$M$2:$M$200,"ALERTA:*")'
+_FORMULA_GATE_VTA = (
+    f'=COUNTIF(aditivos!${_ADT["check"]}$2:${_ADT["check"]}$200,"ALERTA:*")'
+)
 _GATE_VTA = 'IF($T$48>0,"",'
 # Ponto de insercao: em B26 logo apos a governanca homologada (B24 e B25
 # juntos), antes do override B25 e dos ramos Financeiro/PCs/Itens; em T40 no
@@ -1598,7 +1574,7 @@ _AJUDA_DATA_POSICAO_COBERTURA = (
 _FAIXAS_DESTAQUE_NOVOS_ITENS_118 = {
     "posicao_contratual": "A2:W200 Y2:AL200",
     "posicao_referencia": "A2:E200",
-    "aditivos": "A2:L200 N2:O200",
+    "aditivos": "A2:N200 P2:P200",
     "historico_VU": "A2:H200",
 }
 
@@ -1627,17 +1603,18 @@ def _garantir_destaque_novos_itens(wb) -> None:
 
 _VALIDACOES_CRITICAS_ADITIVOS: dict[str, tuple[str, str]] = {
     "H2:H200": ("list", '"Sim,Nao"'),
-    "K2:K200": ("list", '"Sim,Nao"'),
+    f"{_ADT['considerado']}2:{_ADT['considerado']}200": ("list", '"Sim,Nao"'),
     # Coleta 11.4: "Acréscimo - novo item" marca o nascimento contratual do
-    # item; Acrescimo/Supressao seguem como antes (formulas L/M por prefixo).
+    # item; Acrescimo/Supressao seguem como antes (DELTA/CHECK por prefixo).
     "D2:D200": ("list", '"Acrescimo,Acréscimo - novo item,Supressao"'),
-    "N2:N200": ("list", '"C0,C1,C2,C3,C4"'),
+    _FAIXA_BASE_ECONOMICA_VU: ("list", '"C0,C1,C2,C3,C4"'),
 }
 
 
 def _validar_validacoes_aditivos_criticas(wb) -> None:
-    """Barreira contra regressao critica: aditivos!H, K e D jamais podem sair
-    sem a lista suspensa (Sim/Nao, Sim/Nao e Acrescimo/Supressao).
+    """Barreira contra regressao critica: aditivos!H, M (considerado; K ate a
+    12.0) e D jamais podem sair sem a lista suspensa (Sim/Nao, Sim/Nao e
+    Acrescimo/Supressao), nem G (base do VU) sem C0..C4.
 
     Mesma familia de guarda de ``_validar_estrutura_itens_pc``: nao e so o
     teste que protege a entrega, e a propria geracao. Se por qualquer motivo
@@ -1648,9 +1625,18 @@ def _validar_validacoes_aditivos_criticas(wb) -> None:
     if "aditivos" not in wb.sheetnames:
         return
     ws = wb["aditivos"]
-    esperadas = dict(_VALIDACOES_CRITICAS_ADITIVOS)
-    if str(ws["N1"].value or "").strip() != _CABECALHO_BASE_ECONOMICA_VU:
-        esperadas.pop("N2:N200", None)  # Coletas 11.5 e anteriores
+    if colunas_aditivos(ws) == COLUNAS_ADITIVOS_12_1:
+        esperadas = dict(_VALIDACOES_CRITICAS_ADITIVOS)
+    else:
+        # Layout ate a 12.0: considerado em K, base do VU em N (11.6+).
+        esperadas = {
+            "H2:H200": ("list", '"Sim,Nao"'),
+            "K2:K200": ("list", '"Sim,Nao"'),
+            "D2:D200": _VALIDACOES_CRITICAS_ADITIVOS["D2:D200"],
+            "N2:N200": ("list", '"C0,C1,C2,C3,C4"'),
+        }
+        if str(ws["N1"].value or "").strip() != "ÚLTIMO REAJUSTE JÁ INCORPORADO AO VU":
+            esperadas.pop("N2:N200", None)  # Coletas 11.5 e anteriores
     encontradas = {
         str(faixa): (dv.type, dv.formula1)
         for dv in ws.data_validations.dataValidation
@@ -2180,21 +2166,24 @@ ULTIMA_LINHA_ORIENTACAO_ADITIVOS = 200
 
 
 def garantir_formatacao_orientacao_aditivos(wb) -> None:
-    """Garante a mensagem fiscal integralmente legivel em aditivos!M.
+    """Garante a mensagem fiscal integralmente legivel na coluna CHECK.
 
     Reaplica WrapText e dimensoes minimas no workbook FINAL gerado/migrado,
     protegendo contra linhagens de arquivo anteriores a 26H.2 em que a
-    formatacao do template nao existia.
+    formatacao do template nao existia. CHECK = aditivos!O na Coleta 12.1 e
+    aditivos!M nas anteriores (o nome da constante de largura e historico).
     """
     if "aditivos" not in wb.sheetnames:
         return
     ws = wb["aditivos"]
-    dim = ws.column_dimensions["M"]
+    letra_check = colunas_aditivos(ws)["check"]
+    dim = ws.column_dimensions[letra_check]
     if not dim.width or dim.width < LARGURA_MINIMA_ADITIVOS_M:
         dim.width = LARGURA_MINIMA_ADITIVOS_M
     from copy import copy as _copy
+    coluna_check = indice_coluna(letra_check)
     for row in range(2, ULTIMA_LINHA_ORIENTACAO_ADITIVOS + 1):
-        celula = ws.cell(row=row, column=13)
+        celula = ws.cell(row=row, column=coluna_check)
         if not celula.alignment.wrap_text:
             alinhamento = _copy(celula.alignment)
             alinhamento.wrapText = True

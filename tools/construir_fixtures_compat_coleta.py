@@ -196,14 +196,17 @@ PCS_PADRAO = [
 
 
 def _aditivo_simples(wb) -> None:
-    """aditivos!A (item), B (data), D (tipo), E (quantidade), H e K (Sim)."""
+    """aditivos!A (item), B (data), D (tipo), E (quantidade), H e considerado
+    (Sim). "considerado" e K ate a Coleta 12.0 e M na 12.1 (_layout_aditivos)."""
+    from _layout_aditivos import colunas_aditivos
+
     ws = wb["aditivos"]
     ws["A2"] = "ITEM-001"
     ws["B2"] = date(2024, 6, 15)
     ws["D2"] = "Acrescimo"
     ws["E2"] = 10.0
     ws["H2"] = "Sim"
-    ws["K2"] = "Sim"
+    ws[f"{colunas_aditivos(ws)['considerado']}2"] = "Sim"
 
 
 def _extras_completo(wb) -> None:

@@ -59,10 +59,11 @@ def test_leitor_aceita_rotulos_tecnicos_antigos_e_novos(wb_template, wb_runtime)
 
 
 def test_aditivos_k_preserva_entrada_e_dropdown_do_template(wb_runtime):
+    # Coleta 12.1: "considerado no calculo" passou de K para M.
     ws = wb_runtime["aditivos"]
-    assert ws.column_dimensions["K"].hidden is False
-    assert ws["K2"].value is None
-    assert any("K2" in str(dv.sqref) for dv in ws.data_validations.dataValidation)
+    assert ws.column_dimensions["M"].hidden is False
+    assert ws["M2"].value is None
+    assert any("M2" in str(dv.sqref) for dv in ws.data_validations.dataValidation)
 
 
 def test_template_integra_delta_no_remanescente_uma_vez(wb_template):

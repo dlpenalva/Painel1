@@ -34,7 +34,7 @@ from pathlib import Path
 
 ABA = "RESULTADOS"
 COLUNAS = "BCDEFG"
-ULTIMA = 71
+ULTIMA = 74  # Coleta 12.1: +3 linhas da faixa SITUACAO DA APURACAO
 RE_ERRO = re.compile(r"#(REF!|NAME\?|VALUE!|DIV/0!|N/A|NUM!|NULL!)")
 RE_PCT = re.compile(r"-?\d{1,3}(\.\d{3})*,\d{2}%$")
 XL_SCREEN, XL_BITMAP = 1, 2
@@ -254,10 +254,12 @@ def _exportar(ws, saida: Path, base: str) -> None:
 
 def _estressar(ws) -> None:
     """Valores monetarios extremos nas celulas monetarias (copia descartavel)."""
-    alvos = [f"{c}9" for c in "BCDE"] + [f"C{n}" for n in range(14, 21)] + [
-        f"{c}{n}" for c in "CDE" for n in range(43, 50)] + [
-        f"{c}{n}" for c in "CDE" for n in range(54, 58)] + [
-        f"C{n}" for n in range(64, 72)] + ["C30"]
+    # Coleta 12.1: cards monetarios em B:F (E = RETRO. RECONHECIDO +
+    # POTENCIAL) e tres linhas inseridas a partir da 12 (faixa da situacao).
+    alvos = [f"{c}9" for c in "BCDEF"] + [f"C{n}" for n in range(17, 24)] + [
+        f"{c}{n}" for c in "CDE" for n in range(46, 53)] + [
+        f"{c}{n}" for c in "CDE" for n in range(57, 61)] + [
+        f"C{n}" for n in range(67, 75)] + ["C33"]
     for i, endereco in enumerate(alvos):
         ws.Range(endereco).Value = VALORES_ESTRESSE[i % len(VALORES_ESTRESSE)]
 

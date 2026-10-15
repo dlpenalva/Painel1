@@ -16,6 +16,7 @@ from openpyxl import load_workbook
 
 from _coleta_reajuste import ler_coleta_reajuste
 from _contexto_coleta import ContextoColeta
+from _layout_aditivos import colunas_aditivos
 from _leitor_masterfile_v10 import ler_masterfile_v10
 from _politica_entrega_segura import (
     MENSAGEM_COLETA_PRECISAO_ANTERIOR,
@@ -305,6 +306,8 @@ def adaptar_coleta_reajuste_para_documentos(
     df_valores = pd.DataFrame(valores_rows)
 
     aditivos_rows = []
+    # Letras do layout do proprio arquivo (Coleta 12.1 reorganizou aditivos).
+    adt = colunas_aditivos(aditivos)
     for row in range(2, 201):
         item = aditivos[f"A{row}"].value
         if item in (None, ""):
@@ -316,12 +319,12 @@ def adaptar_coleta_reajuste_para_documentos(
                 "Ciclo/Marco": aditivos[f"C{row}"].value or "",
                 "Tipo de alteração": aditivos[f"D{row}"].value or "",
                 "Quantidade da alteração": _numero(aditivos[f"E{row}"].value),
-                "Delta quantitativo contratual": _numero(aditivos[f"L{row}"].value),
-                "Status da posição": aditivos[f"M{row}"].value or "",
-                "Valor do aditivo na assinatura": _numero(aditivos[f"G{row}"].value),
-                "Fator aplicado": _numero(aditivos[f"I{row}"].value, 1.0),
-                "Valor do aditivo reajustado": _numero(aditivos[f"J{row}"].value),
-                "Computa no Valor Global": str(aditivos[f"K{row}"].value or "").lower() == "sim",
+                "Delta quantitativo contratual": _numero(aditivos[f"{adt['delta']}{row}"].value),
+                "Status da posição": aditivos[f"{adt['check']}{row}"].value or "",
+                "Valor do aditivo na assinatura": _numero(aditivos[f"{adt['valor_original']}{row}"].value),
+                "Fator aplicado": _numero(aditivos[f"{adt['fator']}{row}"].value, 1.0),
+                "Valor do aditivo reajustado": _numero(aditivos[f"{adt['valor_atualizado']}{row}"].value),
+                "Computa no Valor Global": str(aditivos[f"{adt['considerado']}{row}"].value or "").lower() == "sim",
             }
         )
     df_aditivos = pd.DataFrame(aditivos_rows)

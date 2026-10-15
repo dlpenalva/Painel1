@@ -24,6 +24,10 @@ from tools.aplicar_coleta_115_historico_orientacao import (
     ORIENTACOES,
     validar_orientacoes,
 )
+from tools.aplicar_coleta_aditivos_reorganizacao import (
+    ORIENTACAO_ITEM,
+    TITULO_ORIENTACAO_ITEM,
+)
 
 RAIZ = Path(__file__).resolve().parents[1]
 TEMPLATE = RAIZ / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
@@ -113,6 +117,9 @@ def test_textos_cabem_nos_limites_do_excel():
 def test_mensagens_de_entrada_presentes(fonte, request):
     prompts = _prompts(request.getfixturevalue(fonte))
     for aba, faixa, titulo, mensagem in ORIENTACOES:
+        if (aba, faixa) == ("aditivos", "A2:A200"):
+            # Coleta 12.1 reescreveu esta orientacao (reorganizacao de aditivos).
+            titulo, mensagem = TITULO_ORIENTACAO_ITEM, ORIENTACAO_ITEM
         _tipo, _lista, titulo_lido, mensagem_lida, mostra = prompts[(aba, faixa)]
         assert (titulo_lido, mensagem_lida, mostra) == (titulo, mensagem, True)
 

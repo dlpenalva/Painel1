@@ -134,9 +134,9 @@ def _preencher(
         aditivos.Range(f"D{linha}").Value = tipo
         aditivos.Range(f"E{linha}").Value = 50 if segunda_inclusao else 100
         aditivos.Range(f"H{linha}").Value = "Nao" if segunda_inclusao else "Sim"
-        aditivos.Range(f"K{linha}").Value = "Sim"
+        aditivos.Range(f"M{linha}").Value = "Sim"  # 12.1: considerado em M
         if base:
-            aditivos.Range(f"N{linha}").Value = base
+            aditivos.Range(f"G{linha}").Value = base  # 12.1: base em G
     ciclo = livro.Worksheets("CICLO_EM_EXECUCAO")
     ciclo.Range("D5").Value2 = livro.Worksheets("CONTROLE").Range("B3").Value2
     livro.Application.CalculateFullRebuild()
@@ -148,13 +148,14 @@ def _ler(livro) -> dict:
     aditivos = livro.Worksheets("aditivos")
     historico = livro.Worksheets("historico_VU")
     ciclo = livro.Worksheets("CICLO_EM_EXECUCAO")
-    valor, quantidade = aditivos.Range("J2").Value, aditivos.Range("L2").Value
+    # Coleta 12.1: valor atualizado em L, DELTA em N, CHECK em O.
+    valor, quantidade = aditivos.Range("L2").Value, aditivos.Range("N2").Value
     return {
         "aditivo_I": aditivos.Range("I2").Value,
         # Base invalida deixa J vazio: sem VU atualizado do aditivo.
         "aditivo_VU": valor / quantidade if isinstance(valor, float) and quantidade else None,
-        "aditivo_M": aditivos.Range("M2").Value,
-        "aditivo_M3": aditivos.Range("M3").Value,
+        "aditivo_M": aditivos.Range("O2").Value,
+        "aditivo_M3": aditivos.Range("O3").Value,
         "hist_N001": [historico.Range(f"{c}3").Value for c in "CDEFG"],
         "hist_11": [historico.Range(f"{c}2").Value for c in "CDEFG"],
         "cee_ciclo": ciclo.Range("C3").Value,
@@ -302,7 +303,7 @@ def test_gate_vta_base_economica_posterior(tmp_path: Path):
 
 def test_gate_vta_corrigido_no_mesmo_xls_volta_ao_valor(tmp_path: Path):
     def corrigir(livro):
-        livro.Worksheets("aditivos").Range("N2").Value = "C0"
+        livro.Worksheets("aditivos").Range("G2").Value = "C0"  # 12.1: base em G
 
     r = _rodar(tmp_path, "gate_corrigido", None, acrescimo_existente=False, corrigir=corrigir)
     _vta_indisponivel(r, "ALERTA: BASE_VU_OBRIGATORIA")

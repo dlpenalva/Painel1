@@ -161,12 +161,12 @@ class FormulasOficialModeloB(unittest.TestCase):
         self.assertNotIn("SEM_ADITIVO", self.rem["E1"].value)
 
     def test_delta_assinado(self):
-        f = self.ad["L2"].value
+        f = self.ad["N2"].value  # Coleta 12.1: DELTA_QTD_CONTRATUAL em N
         self.assertIn("ROUND(ABS(E2),2)", f)
         self.assertIn("ROUND(-ABS(E2),2)", f)
 
     def test_contratada_cumulativa(self):
-        self.assertIn("SUMIFS(aditivos!$L$2:$L$200", self.pos["D2"].value)
+        self.assertIn("SUMIFS(aditivos!$N$2:$N$200", self.pos["D2"].value)
         self.assertIn("ROUND(C2+D2,2)", self.pos["E2"].value)
         self.assertIn("ROUND(E2+H2,2)", self.pos["I2"].value)
         self.assertIn("ROUND(I2+L2,2)", self.pos["M2"].value)

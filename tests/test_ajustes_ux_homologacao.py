@@ -86,7 +86,7 @@ def test_itens_pc_coluna_a_border_coerente():
 
 # ---- H/I aditivos ----
 def test_aditivos_check_item_ausente_explicito():
-    f = _wb()["aditivos"]["M2"].value
+    f = _wb()["aditivos"]["O2"].value  # Coleta 12.1: CHECK em O
     assert "NOVO ITEM NAO CADASTRADO" in f
     assert "itens_Remanesc" in f
     assert "sera 0 automaticamente" in f                     # mensagem 26H (base zero)
@@ -98,8 +98,13 @@ def test_orientacao_novo_item_n001():
     wb = _wb()
     assert "N001" in str(wb["itens_Remanesc"]["A1"].value)   # orientacao discreta
     assert str(wb["itens_Remanesc"]["A1"].value).startswith("ITEM")  # chave do leitor
-    assert "N001" in str(wb["aditivos"]["A1"].value)
-    assert str(wb["aditivos"]["A1"].value).startswith("ITEM")
+    # Coleta 12.1: cabecalho so "ITEM"; orientacao na validacao de A2:A200.
+    assert wb["aditivos"]["A1"].value == "ITEM"
+    assert any(
+        "N001" in str(dv.prompt)
+        for dv in wb["aditivos"].data_validations.dataValidation
+        if str(dv.sqref) == "A2:A200"
+    )
 
 
 def test_aditivos_vu_vem_de_itens_remanesc():

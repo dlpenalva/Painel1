@@ -69,19 +69,21 @@ def test_a_aditivos_h_tem_lista_sim_nao(workbooks):
     assert len(validacoes) == 1
     assert validacoes[0].type == "list"
     assert validacoes[0].formula1 == '"Sim,Nao"'
-    # Faixa combinada do template oficial: a mesma lista atende H e K.
-    assert str(validacoes[0].sqref) == "H2:H200 K2:K200"
+    # Faixa combinada do template oficial: a mesma lista atende H e o
+    # "considerado no calculo" (M na Coleta 12.1; K ate a 12.0).
+    assert str(validacoes[0].sqref) == "H2:H200 M2:M200"
 
 
 def test_b_aditivos_k_preserva_dropdown_e_visibilidade_do_template(workbooks):
     """Determinacao anterior (K automatico e oculto) REVOGADA: K volta a ser
-    entrada do usuario, exatamente como o template oficial a define."""
+    entrada do usuario, exatamente como o template oficial a define.
+    Coleta 12.1: a coluna "considerado no calculo" passou de K para M."""
     base, runtime = workbooks
     ws = runtime["aditivos"]
-    assert ws.column_dimensions["K"].hidden is base["aditivos"].column_dimensions["K"].hidden
-    assert ws.column_dimensions["K"].hidden is False
-    assert ws["K2"].value is None
-    assert any("K2:K200" in str(dv.sqref) for dv in ws.data_validations.dataValidation)
+    assert ws.column_dimensions["M"].hidden is base["aditivos"].column_dimensions["M"].hidden
+    assert ws.column_dimensions["M"].hidden is False
+    assert ws["M2"].value is None
+    assert any("M2:M200" in str(dv.sqref) for dv in ws.data_validations.dataValidation)
 
 
 def test_c_aditivos_d_preserva_validacao_existente(workbooks):
@@ -106,18 +108,21 @@ def test_d_todas_as_demais_validacoes_do_template_sao_preservadas(workbooks):
 
 
 def test_e_f_j_consumindo_h_preserva_os_dois_ramos(workbooks):
+    # Coleta 12.1: os dois ramos de H vivem no VU atualizado (J); o valor
+    # atualizado da alteracao (L) multiplica o DELTA (N) por ele.
     base, runtime = workbooks
     formula = runtime["aditivos"]["J2"].value
     assert formula == base["aditivos"]["J2"].value
     assert 'UPPER(H2)="SIM"' in formula.upper()
     assert "ROUND(F2*I2,2)" in formula
-    assert formula.endswith("ROUND(L2*F2,2)))")
+    assert formula.endswith(",F2))")
+    assert runtime["aditivos"]["L2"].value == '=IF(OR(N2="",J2=""),"",ROUND(N2*J2,2))'
 
 
 def test_g_h_nao_altera_delta_de_quantidade_l(workbooks):
     base, runtime = workbooks
-    formula = runtime["aditivos"]["L2"].value
-    assert formula == base["aditivos"]["L2"].value
+    formula = runtime["aditivos"]["N2"].value  # DELTA (L ate a 12.0)
+    assert formula == base["aditivos"]["N2"].value
     assert "H2" not in formula.upper()
 
 
@@ -195,7 +200,7 @@ def test_i_xml_bruto_do_xlsx_real_persiste_h_e_d():
     derruba este teste."""
     xml_aditivos = _xml_da_aba(obter_coleta_oficial_bytes(), "aditivos")
     validacoes = _validacoes_lista_do_xml(xml_aditivos)
-    assert validacoes.get("H2:H200 K2:K200") == '"Sim,Nao"'
+    assert validacoes.get("H2:H200 M2:M200") == '"Sim,Nao"'
     # O Excel grava o acento como entidade XML (&#233;): decodificar.
     assert html.unescape(validacoes.get("D2:D200") or "") == (
         '"Acrescimo,Acréscimo - novo item,Supressao"'

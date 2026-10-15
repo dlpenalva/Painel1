@@ -80,7 +80,7 @@ def test_data_ciclo_e_origem_derivam_de_ciclo_em_execucao():
 
 def test_qtd_contratada_usa_data_do_aditivo_e_data_referencia():
     f = _wb()[ABA]["C2"].value
-    assert "SUMIFS(aditivos!$L$2:$L$200" in f
+    assert "SUMIFS(aditivos!$N$2:$N$200" in f  # Coleta 12.1: DELTA em N
     assert 'aditivos!$B$2:$B$200,"<="&$I$5' in f  # <= DATA_POSICAO_REFERENCIA
 
 

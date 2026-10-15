@@ -216,8 +216,11 @@ FORMULAS_POR_ABA = {
     # Excel para RESULTADOS_DETALHE com as MESMAS 191 formulas; a RESULTADOS
     # nova e a pagina executiva, com 155 formulas de puro espelhamento
     # (tools/aplicar_resultados_executivo_v3.formulas_executivo).
+    # Coleta 12.1: +2 na executiva (status e texto da faixa SITUACAO DA
+    # APURACAO); os cards seguem 12 formulas
+    # (tools/aplicar_resultados_retro_reconhecido_potencial.formulas_executivo).
     "RESULTADOS_DETALHE": 191,
-    "RESULTADOS": 155,
+    "RESULTADOS": 157,
 }
 
 
@@ -320,13 +323,16 @@ def test_financeiro_preservada():
         for celula in linha
         if isinstance(celula.value, str) and celula.value.startswith("=")
     )
-    assert formulas == 291  # 72 fórmulas B + 216 DEF linhas 2-73 + 3 SUM em C74/E74/F74
+    # 72 fórmulas B + 216 DEF linhas 2-73 + 3 SUM em C74/E74/F74
+    # + Coleta 12.1: estado L1 e texto H1 da orientação do método (linha 1).
+    assert formulas == 293
     validacoes = [
         (dv.type, str(dv.sqref)) for dv in ws.data_validations.dataValidation
     ]
     assert validacoes == [("list", "G2:G73")]
     condicionais = sorted(str(rng.sqref) for rng in ws.conditional_formatting)
-    assert condicionais == ["A2:G73"]
+    # A1:K1 = cabeçalho A1:G1 + faixa H1:K1 da orientação (Coleta 12.1).
+    assert condicionais == ["A1:K1", "A2:G73"]
 
 
 def test_itens_pc_efeito_financeiro_aplicado():
