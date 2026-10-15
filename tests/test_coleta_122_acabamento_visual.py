@@ -12,9 +12,11 @@ from __future__ import annotations
 
 import hashlib
 import io
+import os
 import sys
 from pathlib import Path
 
+import pytest
 from openpyxl import load_workbook
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -97,11 +99,33 @@ ASSINATURA_CICLO_121 = "44775bfa3c587759ab8d0f1fc177119355cdef65a06c74bfd032a317
 # =========================================================================== #
 # INTEGRIDADE ESTRUTURAL
 # =========================================================================== #
+def assinatura_valores(ws, faixa: str) -> str:
+    """Hash de valores/formulas e celulas editaveis de uma faixa da aba."""
+    partes = [
+        f"{c.coordinate}={_valor(c.value)}|{c.protection.locked}"
+        for linha in ws[faixa] for c in linha
+    ]
+    return hashlib.sha256("\n".join(partes).encode("utf-8")).hexdigest()
+
+
+# CONTROLE ganha o ORIENTADOR DA COLETA (D4:H34 + auxiliares J:L ocultas); o
+# bloco A1:B14 (metodo, ciclo, data de corte e RESUMO DO REAJUSTE) segue
+# identico ao da 12.1.
+ASSINATURA_CONTROLE_A1_B14_121 = "a3e42ddf6d5fe80a8060e3f5d56031ecc19360c89dac222c6521c5c3b6f5ecc3"
+
+
 def test_template_tem_a_mesma_estrutura_da_coleta_121_em_todas_as_abas():
     wb = _template()
     assert wb.sheetnames == list(ASSINATURAS_TEMPLATE_121)
     for aba, esperado in ASSINATURAS_TEMPLATE_121.items():
+        if aba == "CONTROLE":
+            continue                   # orientador da coleta: teste proprio abaixo
         assert assinatura(wb[aba]) == esperado, aba
+
+
+def test_controle_bloco_a_b_identico_ao_da_121():
+    for wb in (_template(), _gerado()):
+        assert assinatura_valores(wb["CONTROLE"], "A1:B14") == ASSINATURA_CONTROLE_A1_B14_121
 
 
 def test_ciclo_em_execucao_gerada_tem_a_mesma_estrutura_da_121():
@@ -169,8 +193,10 @@ def test_aditivos_dropdowns_e_demais_validacoes_preservados():
 # AJUSTE 3 — CONTROLE!B1: largura + orientacao em C1 por formatacao condicional
 # =========================================================================== #
 def _regras_c1(ws):
-    return [regra for faixa in ws.conditional_formatting
-            if str(faixa.sqref) == "C1" for regra in faixa.rules]
+    # Alerta 12.0 em C1; orientacao do metodo em C1:H1 (C estreita no
+    # orientador da coleta: o fundo acompanha o texto que transborda).
+    por_faixa = {str(faixa.sqref): faixa.rules for faixa in ws.conditional_formatting}
+    return [por_faixa["C1"][0], por_faixa["C1:H1"][0]]
 
 
 def test_controle_b1_mesmo_dropdown_e_coluna_mais_larga():
@@ -194,7 +220,7 @@ def test_controle_orientacao_nao_sobrescreve_nada():
     for wb in (_template(), _gerado()):
         ws = wb["CONTROLE"]
         assert ws["C1"].value == av.FORMULA_C1               # alerta 12.0 intacto
-        assert all(ws[f"{c}1"].value is None for c in "DEFG")
+        assert all(ws[f"{c}1"].value is None for c in "DEFGH")
         regras = _regras_c1(ws)
         assert [r.formula for r in regras] == [
             ['LEFT($C$1,8)="CONFERIR"'], [av.FORMULA_CF_ORIENTACAO[1:]]]
@@ -288,6 +314,233 @@ def test_ciclo_colunas_mais_confortaveis():
 # =========================================================================== #
 # VERSAO
 # =========================================================================== #
-def test_marcador_do_xls_mostra_a_coleta_122():
+def test_marcador_do_xls_mostra_a_coleta_122_em_a16_b17():
     ws = _gerado()["CONTROLE"]
-    assert (ws["B24"].value, ws["B25"].value) == ("12.2", "12.9")
+    assert [ws[c].value for c in ("A16", "B16", "A17", "B17")] == [
+        "Modelo de Coleta", "12.2", "Gerado pelo Cl8us", "12.9"]
+    assert all(ws[c].value is None for c in ("A24", "B24", "A25", "B25"))
+    assert not ws.row_dimensions[16].hidden and not ws.row_dimensions[17].hidden
+
+
+def test_leitura_do_marcador_por_rotulo_vale_para_a_nova_e_as_anteriores():
+    from _compatibilidade_coleta import detectar_linhagem_coleta
+
+    assert detectar_linhagem_coleta(_gerado())["marcador_publico"] == "12.2"
+    anterior = RAIZ / "tests" / "fixtures" / "coletas_compat" / "coleta_11_pc.xlsx"
+    wb = load_workbook(anterior, data_only=False)
+    assert wb["CONTROLE"]["B24"].value == "11.0"                 # marcador antigo
+    assert detectar_linhagem_coleta(wb)["marcador_publico"] == "11.0"
+
+
+# =========================================================================== #
+# ORIENTADOR DA COLETA (CONTROLE)
+# =========================================================================== #
+import aplicar_coleta_122_orientador_controle as orc  # noqa: E402
+
+
+def test_orientador_formulas_batem_com_o_descritor_e_sao_ascii():
+    orc.validar_ascii_e_parenteses()
+    for wb in (_template(), _gerado()):
+        ws = wb["CONTROLE"]
+        for celula, formula in orc.formulas().items():
+            assert ws[celula].value == formula, celula
+        for linha, (chave, texto) in orc.CONSTANTES.items():
+            assert (ws[f"J{linha}"].value, ws[f"K{linha}"].value) == (chave, texto), linha
+
+
+def test_orientador_le_so_controle_metodo_parametros_e_aditivos():
+    externas = set()
+    for formula in orc.formulas().values():
+        externas |= {ref.split("!")[0] for ref in formula.replace("(", " ").replace(",", " ")
+                     .replace("&", " ").replace("=", " ").split() if "!" in ref}
+    assert externas == {"MEMORIA_RESULTADOS", "parametros", "aditivos"}
+    # So leitura: nenhuma formula de outra aba aponta para o orientador.
+    for aba in _template().worksheets:
+        if aba.title == "CONTROLE":
+            continue
+        for linha in aba.iter_rows():
+            for celula in linha:
+                if isinstance(celula.value, str) and "CONTROLE!" in celula.value:
+                    for alvo in ("$D$", "$E$", "$F$", "$J$", "$K$", "$L$"):
+                        assert f"CONTROLE!{alvo}" not in celula.value, celula.coordinate
+
+
+def test_orientador_textos_fixos_e_layout():
+    for wb in (_template(), _gerado()):
+        ws = wb["CONTROLE"]
+        assert ws["C3"].value is None
+        assert ws["D4"].value == "Data-limite considerada nos cálculos e resultados."
+        assert ws["D5"].value == "ORIENTADOR DA COLETA — O QUE PEDIR AO FISCAL"
+        assert ws["D6"].value.startswith("Use este quadro para definir o mínimo necessário")
+        assert ws["D8"].value == "Histórico da execução está completo?"
+        assert ws["D9"].value == "Aditivos/supressões no período"
+        assert [ws[f"{c}10"].value for c in "EFGH"] == ["C1", "C2", "C3", "C4"]
+        assert [ws[f"{c}16"].value for c in "DEF"] == [
+            "INFORMAÇÃO", "STATUS", "POR QUE / PARA QUE SERVE"]
+        assert ws["D25"].value == "O QUE VOCÊ VAI PEDIR AO FISCAL"
+        assert ws["D34"].value.startswith("Objetivos da coleta: apurar retroativo")
+        assert "Base histórica do método" not in str(
+            [c.value for linha in ws.iter_rows() for c in linha])
+        assert ws.column_dimensions["C"].width < 4
+        # J:L podem vir agrupadas num unico <col min..max>: confere pela faixa.
+        ocultas = {i for d in ws.column_dimensions.values() if d.hidden
+                   for i in range(d.min, d.max + 1)}
+        assert {10, 11, 12} <= ocultas and not {4, 5, 6, 7, 8} & ocultas
+        assert ws.sheet_view.showGridLines is False
+        for linha in (4, 15, 16, 17, 18):
+            assert not ws.row_dimensions[linha].hidden, linha
+
+
+def test_orientador_dropdowns_e_campos_editaveis():
+    for wb in (_template(), _gerado()):
+        ws = wb["CONTROLE"]
+        dvs = {str(dv.sqref): dv for dv in ws.data_validations.dataValidation}
+        assert (dvs["E8"].type, dvs["E8"].formula1) == ("list", "$K$56:$K$58")
+        assert (dvs["E9"].type, dvs["E9"].formula1) == ("list", "$K$60:$K$62")
+        assert (dvs["E12:H12"].type, dvs["E12:H12"].formula1) == ("list", "$K$64:$K$65")
+        assert [ws[f"K{r}"].value for r in (56, 57, 58)] == ["Sim", "Parcialmente", "Não confirmado"]
+        assert [ws[f"K{r}"].value for r in (60, 61, 62)] == ["Não", "Sim", "Não sei"]
+        assert [ws[f"K{r}"].value for r in (64, 65)] == ["Sim", "Não"]
+        for celula in ("E8", "E9", "E12", "F12", "G12", "H12"):
+            assert ws[celula].protection.locked is False, celula
+        for celula in ("D26", "D27", "E17", "E11", "E13", "J48"):
+            assert ws[celula].protection.locked is not False, celula
+
+
+def test_orientador_status_coloridos_pelo_codigo_oculto():
+    for wb in (_template(), _gerado()):
+        ws = wb["CONTROLE"]
+        regras = {r.formula[0] for faixa in ws.conditional_formatting
+                  if str(faixa.sqref) == "E17:E23" for r in faixa.rules}
+        assert regras == {f"$J17={codigo}" for codigo in orc.CORES_STATUS}
+        assert [ws[f"K{r}"].value for r in range(50, 55)] == [
+            "OBRIGATÓRIO", "COMPLEMENTAR", "DISPENSÁVEL", "VERIFICAR", "NÃO SE APLICA"]
+
+
+def test_orientador_regra_abertura_nunca_dispensada_e_sem_literal_de_ano():
+    # A posicao na abertura do ultimo ciclo e sempre OBRIGATORIO (codigo 1).
+    assert orc.DIAGNOSTICO[3][1] == "=1"
+    textos = " ".join(t for _l, (_c, t) in orc.CONSTANTES.items())
+    assert "YYYY" not in textos and "até o dia atual" not in textos
+    assert "mais recentes disponíveis até a data de corte da apuração" in textos
+    # dd/mm sem ano e sem TEXT() (formato de TEXT depende do idioma).
+    assert "YEAR" not in orc.ESTADO["J38"] and "TEXT(" not in orc.ESTADO["J38"]
+
+
+# --------------------------------------------------------------------------- #
+# Excel real (RUN_EXCEL_INTEGRATION=1): textos dinamicos por cenario
+# --------------------------------------------------------------------------- #
+excel_real = pytest.mark.skipif(
+    os.environ.get("RUN_EXCEL_INTEGRATION") != "1",
+    reason="defina RUN_EXCEL_INTEGRATION=1 para executar o Excel COM",
+)
+PC, FIN, IT = "PC (Pedidos de Compra)", "Financeiro (Mensalidade)", "Itens Consumidos"
+
+
+@pytest.fixture(scope="module")
+def cenarios_excel(tmp_path_factory):
+    import gc
+    import pythoncom
+    import win32com.client
+
+    from _coleta_oficial import gerar_coleta_oficial_preenchida
+    from test_coleta_118_excel_real import _dados, _tentar
+
+    caminho = tmp_path_factory.mktemp("orientador") / "Coleta_orientador.xlsx"
+    caminho.write_bytes(gerar_coleta_oficial_preenchida(_dados()))
+    casos = {
+        "pc_completo": (PC, "Sim", "Não", "Não"),
+        "pc_parcial_aditivos": (PC, "Parcialmente", "Sim", "Não"),
+        "fin_nao_confirmado_nao_sei": (FIN, "Não confirmado", "Não sei", "Não"),
+        "itens": (IT, "Sim", "Não", "Não"),
+        "sem_metodo": ("SELECIONE AQUI", None, None, None),
+    }
+    pythoncom.CoInitialize()
+    excel = win32com.client.DispatchEx("Excel.Application")
+    excel.Visible = False
+    excel.DisplayAlerts = False
+    leituras = {}
+    try:
+        livro = _tentar(pythoncom, lambda: excel.Workbooks.Open(
+            str(caminho.resolve()), UpdateLinks=0, ReadOnly=False, CorruptLoad=0))
+        ws = livro.Worksheets("CONTROLE")
+        for nome, (metodo, hist, adt, pedidos) in casos.items():
+            def passo():
+                ws.Unprotect()
+                ws.Range("B1").Value = metodo
+                ws.Range("E8").Value = hist
+                ws.Range("E9").Value = adt
+                for coluna in "FGH":                       # C2..C4 sem pedido
+                    ws.Range(f"{coluna}12").Value = pedidos
+                excel.CalculateFull()
+                return {
+                    "ciclo": ws.Range("B2").Text,
+                    "corte": ws.Range("B3").Value,
+                    "saida": [ws.Range(f"D{r}").Text for r in range(26, 34)
+                              if ws.Range(f"D{r}").Text],
+                    "status": [ws.Range(f"E{r}").Text for r in range(17, 24)],
+                    "c1": ws.Range("C1").Text,
+                }
+            leituras[nome] = _tentar(pythoncom, passo)
+        _tentar(pythoncom, lambda: livro.Close(SaveChanges=False))
+    finally:
+        try:
+            excel.Quit()
+        except Exception:
+            pass
+        excel = None
+        gc.collect()
+        pythoncom.CoUninitialize()
+    return leituras
+
+
+def _ddmm(valor) -> str:
+    return f"{valor.day:02d}/{valor.month:02d}"
+
+
+@excel_real
+def test_excel_pc_historico_completo_sem_aditivos(cenarios_excel):
+    r = cenarios_excel["pc_completo"]
+    ciclo = r["ciclo"]
+    assert r["saida"] == [
+        "Para concluir a apuração, favor informar:",
+        "1. os Pedidos de Compra mais recentes disponíveis até a data de corte da "
+        "apuração, indicando quais foram pagos/aceitos e quais não foram;",
+        f"2. as quantidades remanescentes por item na abertura do {ciclo};",
+        f"3. as quantidades remanescentes por item na data de corte ({_ddmm(r['corte'])}), "
+        "correspondente à posição atual.",
+    ]
+    assert r["status"] == ["OBRIGATÓRIO", "NÃO SE APLICA", "DISPENSÁVEL", "OBRIGATÓRIO",
+                           "OBRIGATÓRIO", "NÃO SE APLICA", "DISPENSÁVEL"]
+
+
+@excel_real
+def test_excel_historico_parcial_e_aditivos_acrescentam_itens(cenarios_excel):
+    r = cenarios_excel["pc_parcial_aditivos"]
+    ciclo = r["ciclo"]
+    assert r["saida"][2] == ("2. posição física ou evidência equivalente apenas para os "
+                             "períodos não cobertos pelo histórico da execução;")
+    assert r["saida"][4] == (f"4. os acréscimos e supressões ocorridos desde a abertura do "
+                             f"{ciclo}, com item, quantidade e data de efeito;")
+    assert r["saida"][-1].startswith("5. as quantidades remanescentes por item na data de corte")
+    assert r["status"][2] == "COMPLEMENTAR" and r["status"][5] == "OBRIGATÓRIO"
+
+
+@excel_real
+def test_excel_financeiro_e_itens(cenarios_excel):
+    fin = cenarios_excel["fin_nao_confirmado_nao_sei"]
+    assert fin["saida"][1].startswith("1. os valores do financeiro por competência")
+    assert any("a confirmação de que o histórico da execução cobre" in t for t in fin["saida"])
+    assert any("a confirmação sobre acréscimos ou supressões" in t for t in fin["saida"])
+    assert fin["status"][2] == "VERIFICAR" and fin["status"][5] == "VERIFICAR"
+    itens = cenarios_excel["itens"]
+    assert itens["saida"][1].startswith(
+        "1. as quantidades remanescentes por item na abertura de cada ciclo anterior")
+    assert itens["status"][:3] == ["NÃO SE APLICA", "NÃO SE APLICA", "OBRIGATÓRIO"]
+
+
+@excel_real
+def test_excel_sem_metodo_orienta_selecao(cenarios_excel):
+    r = cenarios_excel["sem_metodo"]
+    assert r["saida"] == ["Selecione primeiro o método de apuração em CONTROLE!B1."]
+    assert r["c1"] == "← Selecione o método de apuração"
