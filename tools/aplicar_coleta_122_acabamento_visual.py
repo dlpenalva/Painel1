@@ -43,7 +43,6 @@ for _caminho in (RAIZ, RAIZ / "tools"):
     if str(_caminho) not in sys.path:
         sys.path.insert(0, str(_caminho))
 
-import aplicar_coleta_120_itens_pc_simnao_coerencia as c120  # noqa: E402
 import aplicar_resultados_executivo_v3 as v3  # noqa: E402
 
 TEMPLATE = RAIZ / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
@@ -139,6 +138,10 @@ def frente_aditivos(wb) -> None:
 
 
 def frente_controle(wb) -> None:
+    # Import tardio: a ferramenta 12.0 exige pywin32, e os testes (CI Linux)
+    # importam este modulo so para ler as constantes.
+    import aplicar_coleta_120_itens_pc_simnao_coerencia as c120
+
     ws = wb.Worksheets("CONTROLE")
     estado, selecao = c120._capturar_protecao(ws)
     ws.Columns("B").ColumnWidth = LARGURA_CONTROLE_B
