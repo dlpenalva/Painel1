@@ -91,11 +91,13 @@ def test_versoes_publicas_e_politica_preparada() -> None:
     # coerencia metodo x fonte.
     # Cl8us 12.8 / Coleta 12.1: RESULTADOS com o card RETRO. RECONHECIDO +
     # POTENCIAL e a SITUACAO DA APURACAO em tres estados (XLS).
-    assert CL8US_VERSION == "12.8"
-    assert COLETA_VERSION == "12.1"
+    # Cl8us 12.9 / Coleta 12.2: acabamento visual de itens_PC, aditivos,
+    # CONTROLE e CICLO_EM_EXECUCAO (XLS).
+    assert CL8US_VERSION == "12.9"
+    assert COLETA_VERSION == "12.2"
     assert COLETA_VERSOES_ACEITAS == (
         "11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8", "11.9",
-        "12.0", "12.1",
+        "12.0", "12.1", "12.2",
     )
     assert CL8US_VERSION != COLETA_VERSION
     assert COLETA_COMPATIBILIDADE_ANTERIORES == 2
@@ -113,8 +115,8 @@ def test_sidebar_exibe_as_duas_versoes_da_fonte_unica(monkeypatch) -> None:
 
     assert legendas == [
         "Última atualização publicada em 30/09/2026 12:00",
-        "Cl8us 12.8",
-        "Modelo de Coleta 12.1",
+        "Cl8us 12.9",
+        "Modelo de Coleta 12.2",
     ]
 
 

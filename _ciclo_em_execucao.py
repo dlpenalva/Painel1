@@ -695,43 +695,51 @@ def _criar_aba_itemizada(wb):
     ws.print_area = f"A1:G{ULTIMA_LINHA_ITEM}"
     ws.print_title_rows = f"1:{LINHA_CABECALHO}"
 
-    branco = "FFFFFFFF"
-    verde = "FF0F5B50"
-    verde_auto = "FFE8F5F1"
-    laranja = "FFE67E22"
-    laranja_claro = "FFFCE4D6"
-    azul = "FF1F4E78"
+    # Coleta 12.2: mesma linguagem visual de aditivos/RESULTADOS (fundos claros,
+    # fontes escuras, bordas leves). Amarelo claro = entrada do usuario; cinza
+    # claro = calculo automatico; azul claro = identificacao/contexto/cabecalho;
+    # verde claro = resultado/situacao validada.
+    fonte = "Calibri"
+    texto = "FF1F1F1F"
+    texto_titulo = "FF1F4E79"
+    texto_calculo = "FF404040"
+    texto_entrada = "FF7F6000"
+    texto_resultado = "FF375623"
     azul_claro = "FFDDEBF7"
-    cinza = "FF4F5B66"
-    cinza_claro = "FFF2F2F2"
-    amarelo = "FFFFC000"
+    azul_suave = "FFF2F7FC"
+    cinza_claro = "FFEDEDED"
+    amarelo_claro = "FFFFF2CC"
+    verde_claro = "FFE2EFDA"
     vermelho_claro = "FFFFC7CE"
+    ambar = "FFBF9000"
 
-    fina = Side(style="thin", color="FFB7B7B7")
-    media_verde = Side(style="medium", color=verde)
-    media_laranja = Side(style="medium", color=laranja)
-    grossa_azul = Side(style="thick", color=azul)
+    fina = Side(style="thin", color="FFBFBFBF")
+    fina_dados = Side(style="thin", color="FFD9D9D9")
+    fina_entrada = Side(style="thin", color=ambar)
     borda = Border(left=fina, right=fina, top=fina, bottom=fina)
-    borda_realce = Border(
-        left=media_verde, right=media_verde, top=media_verde, bottom=media_verde
-    )
-    # Laranja identifica campo de preenchimento em todo o arquivo (D5 dourado,
-    # cobertura_temporal!B16/B23). A coluna C (unica entrada itemizada) segue o
-    # mesmo codigo; o verde fica reservado ao que e automatico/read-only.
+    borda_dados = Border(left=fina_dados, right=fina_dados, top=fina_dados, bottom=fina_dados)
     borda_entrada = Border(
-        left=media_laranja, right=media_laranja,
-        top=media_laranja, bottom=media_laranja,
+        left=fina_entrada, right=fina_entrada, top=fina_entrada, bottom=fina_entrada
     )
-    borda_total = Border(
-        left=grossa_azul, right=grossa_azul, top=grossa_azul, bottom=grossa_azul
-    )
+
+    def _contornar(faixa: str, lado: Side) -> None:
+        # Celula mesclada: o Excel desenha a moldura pelas celulas da borda.
+        linhas = ws[faixa] if ":" in faixa else ((ws[faixa],),)
+        for linha_celulas in linhas:
+            for celula in linha_celulas:
+                celula.border = Border(
+                    left=lado if celula.column == linha_celulas[0].column else None,
+                    right=lado if celula.column == linha_celulas[-1].column else None,
+                    top=lado if celula.row == linhas[0][0].row else None,
+                    bottom=lado if celula.row == linhas[-1][0].row else None,
+                )
 
     ws.merge_cells("A1:G1")
     ws["A1"] = "POSIÇÃO FÍSICA ATUAL DO REMANESCENTE NO CICLO EM EXECUÇÃO"
-    ws["A1"].font = Font(name="Aptos Display", size=16, bold=True, color=branco)
-    ws["A1"].fill = PatternFill("solid", fgColor=verde)
+    ws["A1"].font = Font(name=fonte, size=14, bold=True, color=texto_titulo)
+    ws["A1"].fill = PatternFill("solid", fgColor=azul_claro)
     ws["A1"].alignment = Alignment(horizontal="center", vertical="center")
-    ws["A1"].border = borda_realce
+    _contornar("A1:G1", fina)
     ws.row_dimensions[1].height = 30
 
     ws.merge_cells("A3:B3")
@@ -748,15 +756,15 @@ def _criar_aba_itemizada(wb):
     ws["H3"] = '=IF(ISNUMBER($F$3),EDATE($F$3,12)-1,"")'
     ws["H3"].number_format = FORMATO_DATA
     for coord in ("A3", "D3"):
-        ws[coord].fill = PatternFill("solid", fgColor=cinza)
-        ws[coord].font = Font(name="Aptos", size=10, bold=True, color=branco)
+        ws[coord].fill = PatternFill("solid", fgColor=azul_claro)
+        ws[coord].font = Font(name=fonte, size=10, bold=True, color=texto)
         ws[coord].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        ws[coord].border = borda
     for coord in ("C3", "F3"):
         ws[coord].fill = PatternFill("solid", fgColor=cinza_claro)
-        ws[coord].font = Font(name="Aptos", size=11, bold=True, color="FF1F1F1F")
+        ws[coord].font = Font(name=fonte, size=11, bold=True, color=texto_calculo)
         ws[coord].alignment = Alignment(horizontal="center", vertical="center")
-        ws[coord].border = borda
+    for faixa in ("A3:B3", "C3", "D3:E3", "F3:G3"):
+        _contornar(faixa, fina)
     ws["F3"].number_format = FORMATO_DATA
     ws.row_dimensions[3].height = 28
 
@@ -764,16 +772,15 @@ def _criar_aba_itemizada(wb):
     ws["A5"] = "DATA DA POSIÇÃO FÍSICA (PREENCHER)"
     ws.merge_cells("D5:G5")
     ws["D5"] = None
+    ws["A5"].fill = PatternFill("solid", fgColor=azul_claro)
+    ws["A5"].font = Font(name=fonte, size=12, bold=True, color=texto)
+    ws["D5"].fill = PatternFill("solid", fgColor=amarelo_claro)
+    ws["D5"].font = Font(name=fonte, size=14, bold=True, color=texto_entrada)
     for coord in ("A5", "D5"):
-        ws[coord].fill = PatternFill("solid", fgColor=amarelo)
-        ws[coord].font = Font(name="Aptos Display", size=14, bold=True, color="FF3F2A00")
         ws[coord].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        ws[coord].border = Border(
-            left=Side(style="thick", color="FF9C6500"),
-            right=Side(style="thick", color="FF9C6500"),
-            top=Side(style="thick", color="FF9C6500"),
-            bottom=Side(style="thick", color="FF9C6500"),
-        )
+    _contornar("A5:C5", fina)
+    # Unica moldura media da aba: o campo de entrada principal.
+    _contornar("D5:G5", Side(style="medium", color=ambar))
     ws["D5"].number_format = FORMATO_DATA
     ws["D5"].protection = Protection(locked=False)
     ws.row_dimensions[5].height = 34
@@ -797,16 +804,17 @@ def _criar_aba_itemizada(wb):
         'COUNTIF($K$13:$K$211,"INCOMPLETO:*")>0),"",'
         'ROUND(SUM($G$13:$G$211),2))'
     )
+    ws["A7"].fill = PatternFill("solid", fgColor=azul_claro)
+    ws["A7"].font = Font(name=fonte, size=12, bold=True, color=texto_titulo)
+    ws["A8"].fill = PatternFill("solid", fgColor=azul_suave)
+    ws["A8"].font = Font(name=fonte, size=11, color=texto_titulo)
+    # O total so aparece com a posicao completa e sem erro: resultado validado.
+    ws["A9"].fill = PatternFill("solid", fgColor=verde_claro)
+    ws["A9"].font = Font(name=fonte, size=20, bold=True, color=texto_resultado)
     for coord in ("A7", "A8", "A9"):
-        ws[coord].fill = PatternFill("solid", fgColor=azul)
-        ws[coord].font = Font(
-            name="Aptos Display",
-            size=12 if coord != "A9" else 22,
-            bold=True,
-            color=branco,
-        )
         ws[coord].alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
-        ws[coord].border = borda_total
+    for faixa in ("A7:G7", "A8:G8", "A9:G10"):
+        _contornar(faixa, fina)
     ws["A9"].number_format = FORMATO_MOEDA
     ws.row_dimensions[7].height = 28
     ws.row_dimensions[8].height = 23
@@ -827,21 +835,23 @@ def _criar_aba_itemizada(wb):
         '"POSICAO FISICA ANTERIOR A DATA DE CORTE - REFERENCIA ESTIMADA."))))'
     )
     ws[CELULA_VALIDACAO_TEMPORAL].font = Font(
-        name="Aptos", size=10, bold=True, color="FF3F2A00"
+        name=fonte, size=10, bold=True, color=texto_calculo
     )
-    ws[CELULA_VALIDACAO_TEMPORAL].fill = PatternFill("solid", fgColor="FFFFF2CC")
+    ws[CELULA_VALIDACAO_TEMPORAL].fill = PatternFill("solid", fgColor=cinza_claro)
     ws[CELULA_VALIDACAO_TEMPORAL].alignment = Alignment(
         horizontal="center", vertical="center", wrap_text=True
     )
-    ws[CELULA_VALIDACAO_TEMPORAL].border = borda
+    _contornar("A11:G11", fina)
     ws.row_dimensions[11].height = 22
 
-    # C = preenchimento (laranja); D = derivada por formula (verde).
-    cores_cabecalho = (cinza, verde, laranja, verde, azul, azul, azul)
-    for coluna, (rotulo, cor) in enumerate(zip(COLUNAS_VISIVEIS, cores_cabecalho), start=1):
+    # Cabecalhos em azul claro; C (unica entrada itemizada) em amarelo claro.
+    for coluna, rotulo in enumerate(COLUNAS_VISIVEIS, start=1):
         celula = ws.cell(LINHA_CABECALHO, coluna, rotulo)
-        celula.fill = PatternFill("solid", fgColor=cor)
-        celula.font = Font(name="Aptos", size=10, bold=True, color=branco)
+        entrada = coluna == 3
+        celula.fill = PatternFill("solid", fgColor=amarelo_claro if entrada else azul_claro)
+        celula.font = Font(
+            name=fonte, size=10, bold=True, color=texto_entrada if entrada else texto
+        )
         celula.alignment = Alignment(horizontal="center", vertical="center", wrap_text=True)
         celula.border = borda
     ws.row_dimensions[LINHA_CABECALHO].height = 58
@@ -919,30 +929,23 @@ def _criar_aba_itemizada(wb):
 
         for coluna in range(1, 8):
             celula = ws.cell(linha, coluna)
-            celula.font = Font(name="Aptos", size=10, color="FF1F1F1F")
+            entrada = coluna == 3
+            celula.font = Font(name=fonte, size=10, color=texto if entrada else texto_calculo)
             celula.alignment = Alignment(
                 horizontal="left" if coluna == 1 else "right",
                 vertical="center",
             )
-            celula.border = borda_entrada if coluna == 3 else borda
-            if coluna == 1:
-                celula.fill = PatternFill("solid", fgColor=cinza_claro)
-            elif coluna == 2:
-                celula.fill = PatternFill("solid", fgColor=verde_auto)
-            elif coluna == 3:
-                celula.fill = PatternFill("solid", fgColor=laranja_claro)
+            celula.border = borda_entrada if entrada else borda_dados
+            celula.fill = PatternFill("solid", fgColor=amarelo_claro if entrada else cinza_claro)
+            if entrada:
                 celula.protection = Protection(locked=False)
-            elif coluna == 4:
-                celula.fill = PatternFill("solid", fgColor=verde_auto)
-            else:
-                celula.fill = PatternFill("solid", fgColor=azul_claro)
             if coluna in (2, 3, 4):
                 celula.number_format = FORMATO_QTD
             elif coluna in (5, 6, 7):
                 celula.number_format = FORMATO_MOEDA
         ws.row_dimensions[linha].height = 20
 
-    larguras = {"A": 18, "B": 24, "C": 24, "D": 23, "E": 18, "F": 20, "G": 25}
+    larguras = {"A": 20, "B": 26, "C": 26, "D": 26, "E": 20, "F": 22, "G": 28}
     for coluna, largura in larguras.items():
         ws.column_dimensions[coluna].width = largura
     for coluna in range(8, 19):
@@ -994,7 +997,28 @@ def _criar_aba_itemizada(wb):
         FormulaRule(
             formula=['$D$5=""'],
             fill=PatternFill("solid", fgColor="FFFFE699"),
-            font=Font(name="Aptos Display", size=14, bold=True, color="FF9C0006"),
+            font=Font(name=fonte, size=14, bold=True, color="FF9C0006"),
+        ),
+    )
+    # Coleta 12.2: so a COR acompanha a mensagem ja calculada em A11.
+    ws.conditional_formatting.add(
+        "A11:G11",
+        FormulaRule(
+            formula=['$A$11="POSICAO FISICA NA DATA DE CORTE - REFERENCIA VALIDADA."'],
+            # Em formatacao condicional o Excel pinta pelo bgColor.
+            fill=PatternFill("solid", fgColor=verde_claro, bgColor=verde_claro),
+            font=Font(color=texto_resultado),
+        ),
+    )
+    ws.conditional_formatting.add(
+        "A11:G11",
+        FormulaRule(
+            formula=[
+                'OR($A$11="POSICAO FISICA POSTERIOR A DATA DE CORTE.",'
+                '$A$11="DATA DE CORTE DA APURACAO NAO INFORMADA EM CONTROLE!B3.")'
+            ],
+            fill=PatternFill("solid", fgColor="FFFBE5E8", bgColor="FFFBE5E8"),
+            font=Font(color="FF9B2C3F"),
         ),
     )
     ws.conditional_formatting.add(
@@ -1006,7 +1030,7 @@ def _criar_aba_itemizada(wb):
                 f'$I{PRIMEIRA_LINHA_ITEM},2)=0)'
             ],
             fill=PatternFill("solid", fgColor="FFD9D9D9"),
-            font=Font(name="Aptos", size=10, color="FF7F7F7F"),
+            font=Font(name=fonte, size=10, color="FF7F7F7F"),
         ),
     )
     ws.conditional_formatting.add(
