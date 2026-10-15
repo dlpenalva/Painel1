@@ -36,6 +36,9 @@ from datetime import datetime
 from pathlib import Path
 
 
+# 12.10: Coleta 12.3 — CONTROLE simplificada (dropdowns visiveis e caixa verde
+# unica) e carimbo de versao no final logico da sidebar. Nenhuma regra financeira
+# ou estrutural das abas de calculo muda.
 # 12.9: Coleta 12.2 — acabamento visual: separacao L|M em itens_PC, mensagem
 # NOVO ITEM em aditivos!A2:A200, CONTROLE!B mais larga com orientacao do metodo
 # em C1 (formatacao condicional) e CICLO_EM_EXECUCAO na paleta clara das demais
@@ -93,8 +96,8 @@ from pathlib import Path
 # (Financeiro, PCs e Itens) — mudanca estrutural do XLS: COLETA_VERSION 11.1.
 # 11.3: modelos em branco do Despacho Saneador e do Termo de Apostila com a mesma
 # estrutura dos documentos gerados. 11.2: memoria de calculo da garantia em XLSX.
-CL8US_VERSION = "12.9"
-COLETA_VERSION = "12.2"
+CL8US_VERSION = "12.10"
+COLETA_VERSION = "12.3"
 # Modelos de Coleta da familia 11.x aceitos SEM adaptacao: o 11.1 so acrescentou
 # um quadro informativo na RESULTADOS/MEMORIA_RESULTADOS (formulas); a Coleta 11.0
 # nao o possui e continua valida. A 11.2 so separa a apresentacao (RESULTADOS
@@ -119,7 +122,7 @@ COLETA_VERSION = "12.2"
 # entrada e formatacao condicional): mesmas coordenadas de leitura da 12.1.
 COLETA_VERSOES_ACEITAS = (
     "11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8", "11.9",
-    "12.0", "12.1", "12.2",
+    "12.0", "12.1", "12.2", "12.3",
 )
 # Marcadores publicos ANTERIORES a camada tecnica RESULTADOS_DETALHE: so neles
 # a RESULTADOS ainda e a aba tecnica. Qualquer outro marcador (11.2 ou
@@ -134,7 +137,7 @@ COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
 # Fallback conservador da ultima publicacao confirmada antes deste hotfix.
 # Quando o Git esta disponivel, este valor nunca prevalece sobre o commit real.
-ATUALIZADO_EM_FALLBACK = "15/10/2026 11:20"
+ATUALIZADO_EM_FALLBACK = "15/10/2026 18:02"
 
 
 def _data_ultimo_commit() -> str | None:

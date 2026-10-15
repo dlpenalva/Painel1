@@ -10,7 +10,7 @@ HEAD:
   -> "Alteracao da Coleta detectada sem incremento de COLETA_VERSION.";
 * COLETA_VERSION fora de COLETA_VERSOES_ACEITAS
   -> "COLETA_VERSION atual nao consta em COLETA_VERSOES_ACEITAS.";
-* versao alterada que nao avanca, ou fora do formato XX.X;
+* versao alterada que nao avanca, ou fora do formato XX.N;
 * CL8US_VERSION incrementada sem atualizar ATUALIZADO_EM_FALLBACK, ou com
   fallback fora do formato dd/mm/aaaa HH:MM.
 
@@ -80,7 +80,7 @@ MSG_FALLBACK = (
     "(formato dd/mm/aaaa HH:MM)."
 )
 
-FORMATO_VERSAO = re.compile(r"\d{2}\.\d")
+FORMATO_VERSAO = re.compile(r"\d{2}\.\d+")
 FORMATO_FALLBACK = "%d/%m/%Y %H:%M"
 
 
@@ -178,7 +178,7 @@ def avaliar(
 
     for nome, valor in (("CL8US_VERSION", atual.cl8us), ("COLETA_VERSION", atual.coleta)):
         if not FORMATO_VERSAO.fullmatch(valor):
-            erros.append(f"{nome} fora do formato XX.X: {valor!r}.")
+            erros.append(f"{nome} fora do formato XX.N: {valor!r}.")
     if erros:
         return erros
 

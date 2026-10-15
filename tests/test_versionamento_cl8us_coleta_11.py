@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import re
+from contextlib import nullcontext
+from pathlib import Path
 
 import pytest
 from openpyxl import load_workbook
@@ -93,31 +95,50 @@ def test_versoes_publicas_e_politica_preparada() -> None:
     # POTENCIAL e a SITUACAO DA APURACAO em tres estados (XLS).
     # Cl8us 12.9 / Coleta 12.2: acabamento visual de itens_PC, aditivos,
     # CONTROLE e CICLO_EM_EXECUCAO (XLS).
-    assert CL8US_VERSION == "12.9"
-    assert COLETA_VERSION == "12.2"
+    # Cl8us 12.10 / Coleta 12.3: CONTROLE simplificada e carimbo ao fim da sidebar.
+    assert CL8US_VERSION == "12.10"
+    assert COLETA_VERSION == "12.3"
     assert COLETA_VERSOES_ACEITAS == (
         "11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8", "11.9",
-        "12.0", "12.1", "12.2",
+        "12.0", "12.1", "12.2", "12.3",
     )
     assert CL8US_VERSION != COLETA_VERSION
     assert COLETA_COMPATIBILIDADE_ANTERIORES == 2
-    assert re.fullmatch(r"\d{2}\.\d", CL8US_VERSION)
+    assert re.fullmatch(r"\d{2}\.\d+", CL8US_VERSION)
     assert re.fullmatch(r"\d{2}\.\d", COLETA_VERSION)
 
 
 def test_sidebar_exibe_as_duas_versoes_da_fonte_unica(monkeypatch) -> None:
     legendas: list[str] = []
+    containers: list[str] = []
     monkeypatch.setattr(_ui_utils.st, "markdown", lambda *_a, **_k: None)
     monkeypatch.setattr(_ui_utils.st, "caption", legendas.append)
+    monkeypatch.setattr(
+        _ui_utils.st,
+        "container",
+        lambda *, key: containers.append(key) or nullcontext(),
+    )
     monkeypatch.setattr(_ui_utils, "atualizado_em", lambda: "30/09/2026 12:00")
 
     _ui_utils.render_versao_sidebar()
 
     assert legendas == [
         "Última atualização publicada em 30/09/2026 12:00",
-        "Cl8us 12.9",
-        "Modelo de Coleta 12.2",
+        "Cl8us 12.10",
+        "Modelo de Coleta 12.3",
     ]
+    assert containers == ["cl8us_version_sidebar"]
+
+
+def test_carimbo_tem_ordem_final_escopada_a_sidebar() -> None:
+    app = (Path(__file__).resolve().parents[1] / "app.py").read_text(encoding="utf-8")
+    assert ".st-key-cl8us_version_sidebar" in app
+    assert 'data-testid="stLayoutWrapper"' in app
+    assert "order: 9999" in app
+    trecho = app[app.index(".st-key-cl8us_version_sidebar"):
+                 app.index(".cl8us-page-header")]
+    assert "position: fixed" not in trecho
+    assert "position: sticky" not in trecho
 
 
 def test_area_de_versao_estava_livre_no_template_oficial() -> None:

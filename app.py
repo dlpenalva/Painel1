@@ -173,6 +173,21 @@ def _render_css() -> None:
             border-top: 1px solid rgba(18, 59, 99, .19);
             margin: 2.15rem 0 1.05rem;
         }
+        /* O carimbo e renderizado uma unica vez antes da pagina. A key identifica
+           somente esse bloco; a ordem visual o leva ao fim do conteudo rolavel da
+           sidebar, sem fixed/sticky e sem reordenar outros containers. */
+        [data-testid="stSidebar"] [data-testid="stVerticalBlock"]:has(
+            > [data-testid="stLayoutWrapper"] > .st-key-cl8us_version_sidebar
+        ) {
+            display: flex;
+            flex-direction: column;
+        }
+        [data-testid="stSidebar"] [data-testid="stVerticalBlock"]
+            > [data-testid="stLayoutWrapper"]:has(
+                > .st-key-cl8us_version_sidebar
+            ) {
+            order: 9999;
+        }
         .cl8us-page-header {
             background: rgba(255, 252, 247, .96);
             border: 1px solid rgba(156, 132, 92, .28);
