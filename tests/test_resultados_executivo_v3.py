@@ -317,7 +317,7 @@ def test_versionamento_e_linhagem():
 def _como_arquivo_anterior(marcador: str | None = "11.1"):
     """Coleta anterior simulada: uma unica RESULTADOS tecnica, sem executiva.
 
-    O marcador publico (CONTROLE!B24) acompanha a versao simulada: 11.0/11.1,
+    O marcador publico (CONTROLE!B16 desde a 12.2) acompanha a versao simulada: 11.0/11.1,
     ou nenhum (linhagem PRE_11, sem versionamento publico)."""
     wb = load_workbook(io.BytesIO(_bytes(_gerado())))
     del wb[ABA_RESULTADOS]
@@ -326,7 +326,7 @@ def _como_arquivo_anterior(marcador: str | None = "11.1"):
     # com a camada tecnica oculta, entao a simulacao a reexibe.
     wb[ABA_RESULTADOS].sheet_state = "visible"
     wb[ABA_RESULTADOS]["A1"] = "RESULTADOS CONSOLIDADOS — REAJUSTE CONTRATUAL"
-    wb["CONTROLE"]["B24"] = marcador
+    wb["CONTROLE"]["B16"] = marcador  # Coleta 12.2: marcador em A16:B17
     # `.title` do openpyxl nao reescreve nomes nem formulas (o Excel reescreve):
     # num 11.x anterior eles apontam para RESULTADOS!.
     for dn in wb.defined_names.values():

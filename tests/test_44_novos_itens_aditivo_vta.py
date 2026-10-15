@@ -299,8 +299,9 @@ def test_orientacao_indica_comecar_por_itens_remanesc(wb_runtime):
         dv.prompt for dv in ws.data_validations.dataValidation
         if str(dv.sqref) == "A2:A200"
     )
-    assert "Novo item: cadastrar primeiro em itens_Remanesc como N001, N002..." in prompt
-    assert "Depois, registre aqui a data, a quantidade" in prompt
+    # Coleta 12.2: mensagem NOVO ITEM (mesma ordem: itens_Remanesc primeiro).
+    assert "Cadastre primeiro em itens_Remanesc como N001, N002..." in prompt
+    assert "depois, registre aqui a data e a quantidade" in prompt
     m2 = str(ws["O2"].value)
     assert "CADASTRAR EM itens_Remanesc: ITEM + VU_ORIGINAL" in m2
     assert "depois a data e a quantidade aqui." in m2

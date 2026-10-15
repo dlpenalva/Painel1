@@ -62,11 +62,14 @@ NOME_DOWNLOAD_COLETA = "Coleta_Reajuste.xlsx"
 # Marcadores publicos do XLS gerado. As coordenadas foram escolhidas apos
 # confirmar que CONTROLE!A24:B25 nao possui conteudo, formulas, validacoes,
 # nomes definidos, merges, tabelas ou desenhos no template oficial.
+# Coleta 12.2: marcadores em A16:B17 (antes A24:B25), sob o RESUMO DO REAJUSTE.
+# A leitura (_compatibilidade_coleta._marcador_publico) procura o rotulo na
+# coluna A, entao arquivos anteriores com o marcador em A24 seguem validos.
 _MARCADORES_VERSAO_COLETA = {
-    "A24": "Modelo de Coleta",
-    "B24": COLETA_VERSION,
-    "A25": "Gerado pelo Cl8us",
-    "B25": CL8US_VERSION,
+    "A16": "Modelo de Coleta",
+    "B16": COLETA_VERSION,
+    "A17": "Gerado pelo Cl8us",
+    "B17": CL8US_VERSION,
 }
 
 

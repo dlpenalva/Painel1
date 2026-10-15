@@ -50,7 +50,7 @@ def _formulas(wb) -> dict[tuple[str, str], str]:
 
 
 def _conteudo_exceto_marcadores(wb) -> dict[tuple[str, str], tuple]:
-    ignorar = {("CONTROLE", ref) for ref in ("A24", "B24", "A25", "B25")}
+    ignorar = {("CONTROLE", ref) for ref in ("A16", "B16", "A17", "B17")}
     return {
         (ws.title, cell.coordinate): (
             cell.value,
@@ -91,11 +91,13 @@ def test_versoes_publicas_e_politica_preparada() -> None:
     # coerencia metodo x fonte.
     # Cl8us 12.8 / Coleta 12.1: RESULTADOS com o card RETRO. RECONHECIDO +
     # POTENCIAL e a SITUACAO DA APURACAO em tres estados (XLS).
-    assert CL8US_VERSION == "12.8"
-    assert COLETA_VERSION == "12.1"
+    # Cl8us 12.9 / Coleta 12.2: acabamento visual de itens_PC, aditivos,
+    # CONTROLE e CICLO_EM_EXECUCAO (XLS).
+    assert CL8US_VERSION == "12.9"
+    assert COLETA_VERSION == "12.2"
     assert COLETA_VERSOES_ACEITAS == (
         "11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8", "11.9",
-        "12.0", "12.1",
+        "12.0", "12.1", "12.2",
     )
     assert CL8US_VERSION != COLETA_VERSION
     assert COLETA_COMPATIBILIDADE_ANTERIORES == 2
@@ -113,20 +115,20 @@ def test_sidebar_exibe_as_duas_versoes_da_fonte_unica(monkeypatch) -> None:
 
     assert legendas == [
         "Última atualização publicada em 30/09/2026 12:00",
-        "Cl8us 12.8",
-        "Modelo de Coleta 12.1",
+        "Cl8us 12.9",
+        "Modelo de Coleta 12.2",
     ]
 
 
 def test_area_de_versao_estava_livre_no_template_oficial() -> None:
     wb = load_workbook(TEMPLATE_COLETA_OFICIAL, data_only=False)
     ws = wb["CONTROLE"]
-    assert all(ws[coordenada].value is None for coordenada in ("A24", "B24", "A25", "B25"))
+    assert all(ws[coordenada].value is None for coordenada in ("A16", "B16", "A17", "B17"))
     assert not any(
         faixa.min_row <= linha <= faixa.max_row
         and faixa.min_col <= coluna <= faixa.max_col
         for faixa in ws.merged_cells.ranges
-        for linha in (24, 25)
+        for linha in (16, 17)
         for coluna in (1, 2)
     )
     assert not ws.tables
@@ -143,13 +145,13 @@ def test_area_de_versao_estava_livre_no_template_oficial() -> None:
             min_col, min_row, max_col, max_row = range_boundaries(
                 referencia.replace("$", "")
             )
-            assert max_row < 24 or min_row > 25 or max_col < 1 or min_col > 2
+            assert max_row < 16 or min_row > 17 or max_col < 1 or min_col > 2
     assert not any(
         faixa.min_row <= linha <= faixa.max_row
         and faixa.min_col <= coluna <= faixa.max_col
         for validacao in ws.data_validations.dataValidation
         for faixa in validacao.ranges.ranges
-        for linha in (24, 25)
+        for linha in (16, 17)
         for coluna in (1, 2)
     )
 
@@ -170,20 +172,20 @@ def test_registro_de_versao_nao_altera_formulas() -> None:
         nome: definido.attr_text for nome, definido in wb.defined_names.items()
     } == nomes_antes
     ws = wb["CONTROLE"]
-    assert ws["A24"].value == "Modelo de Coleta"
-    assert ws["B24"].value == COLETA_VERSION
-    assert ws["A25"].value == "Gerado pelo Cl8us"
-    assert ws["B25"].value == CL8US_VERSION
+    assert ws["A16"].value == "Modelo de Coleta"
+    assert ws["B16"].value == COLETA_VERSION
+    assert ws["A17"].value == "Gerado pelo Cl8us"
+    assert ws["B17"].value == CL8US_VERSION
 
 
 def test_registro_de_versao_nunca_sobrescreve_conteudo() -> None:
     wb = load_workbook(TEMPLATE_COLETA_OFICIAL, data_only=False)
-    wb["CONTROLE"]["A24"] = "Conteudo preexistente"
+    wb["CONTROLE"]["A16"] = "Conteudo preexistente"
 
-    with pytest.raises(ValueError, match="A24"):
+    with pytest.raises(ValueError, match="A16"):
         registrar_versoes_coleta(wb)
 
-    assert wb["CONTROLE"]["A24"].value == "Conteudo preexistente"
+    assert wb["CONTROLE"]["A16"].value == "Conteudo preexistente"
 
 
 def test_coleta_nova_em_branco_e_preenchida_recebem_os_marcadores() -> None:
@@ -192,10 +194,10 @@ def test_coleta_nova_em_branco_e_preenchida_recebem_os_marcadores() -> None:
         gerar_coleta_oficial_preenchida(_dados_calculadora()),
     ):
         ws = load_workbook(io.BytesIO(conteudo), data_only=False)["CONTROLE"]
-        assert ws["A24"].value == "Modelo de Coleta"
-        assert ws["B24"].value == COLETA_VERSION
-        assert ws["A25"].value == "Gerado pelo Cl8us"
-        assert ws["B25"].value == CL8US_VERSION
+        assert ws["A16"].value == "Modelo de Coleta"
+        assert ws["B16"].value == COLETA_VERSION
+        assert ws["A17"].value == "Gerado pelo Cl8us"
+        assert ws["B17"].value == CL8US_VERSION
 
 
 def test_leitor_recupera_versao_explicita_da_coleta_nova() -> None:
@@ -223,7 +225,7 @@ def test_coleta_11_2_e_11_3_com_detalhe_sao_aceitas(marcador) -> None:
     )
 
     wb = load_workbook(io.BytesIO(obter_coleta_oficial_bytes()), data_only=False)
-    wb["CONTROLE"]["B24"] = marcador
+    wb["CONTROLE"]["B16"] = marcador
     deteccao = detectar_linhagem_coleta(wb)
     assert deteccao["codigo"] == LINHAGEM_COLETA_11
     assert deteccao["marcador_publico"] == marcador

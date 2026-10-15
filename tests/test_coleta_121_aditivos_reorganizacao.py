@@ -99,9 +99,10 @@ def test_dropdowns_e_orientacao_de_novo_item(wb_template):
     assert (base.type, base.formula1) == ("list", '"C0,C1,C2,C3,C4"')
     assert base.promptTitle == "Base econômica do VU" and base.showErrorMessage
     item = dvs["A2:A200"]
-    assert item.showInputMessage and item.promptTitle == "ITEM DO ADITIVO"
-    assert "Novo item: cadastrar primeiro em itens_Remanesc como N001, N002..." in item.prompt
-    assert "Informe o VU original. Depois, registre aqui a data, a quantidade" in item.prompt
+    # Coleta 12.2: titulo NOVO ITEM e texto do cadastro Nxxx (mesma validacao).
+    assert item.showInputMessage and item.promptTitle == "NOVO ITEM"
+    assert "Cadastre primeiro em itens_Remanesc como N001, N002..." in item.prompt
+    assert "Informe o VU_ORIGINAL e, depois, registre aqui a data e a quantidade" in item.prompt
     assert len(item.prompt) <= 255
     assert dvs["E2:E200"].promptTitle == "QUANTIDADE DO ADITIVO"
 
@@ -377,8 +378,8 @@ def test_excel_reabertura_dropdowns_e_orientacao(excel_caso_real):
     for chave in ("adt", "hist", "pos", "cee_E", "cee_ciclo", "gate"):
         assert reaberto[chave] == r[chave], chave
     titulo, mensagem = reaberto["dv_a2"]
-    assert titulo == "ITEM DO ADITIVO"
-    assert "Novo item: cadastrar primeiro em itens_Remanesc" in mensagem
+    assert titulo == "NOVO ITEM"                                   # Coleta 12.2
+    assert "Cadastre primeiro em itens_Remanesc" in mensagem
     assert reaberto["dv_h2"] == "Sim,Nao" and reaberto["dv_m2"] == "Sim,Nao"
     assert reaberto["dv_g2"] == "C0,C1,C2,C3,C4"
     assert reaberto["j_formula"] == co._formula_vu_atualizado_aditivo(2)

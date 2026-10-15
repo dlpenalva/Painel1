@@ -290,17 +290,18 @@ def test_coluna_c_e_preenchimento_e_coluna_d_e_automatica(unico):
     ws = unico["CICLO_EM_EXECUCAO"]
     for linha in (13, 100, 211):
         entrada, derivada = ws.cell(linha, 3), ws.cell(linha, 4)
-        assert entrada.fill.fgColor.rgb == "FFFCE4D6"       # laranja claro
-        assert _estilo(entrada.border, "left") == "medium"
-        assert entrada.border.left.color.rgb == "FFE67E22"  # laranja
+        # Coleta 12.2: entrada em amarelo claro com borda fina ambar; calculo
+        # automatico em cinza claro (paleta das demais abas).
+        assert entrada.fill.fgColor.rgb == "FFFFF2CC"       # amarelo claro
+        assert _estilo(entrada.border, "left") == "thin"
+        assert entrada.border.left.color.rgb == "FFBF9000"  # ambar
         assert entrada.protection.locked is False
-        assert derivada.fill.fgColor.rgb == "FFE8F5F1"      # verde suave
+        assert derivada.fill.fgColor.rgb == "FFEDEDED"      # cinza claro
         assert derivada.value.startswith("=")
-    assert ws["C12"].fill.fgColor.rgb == "FFE67E22"
-    assert ws["D12"].fill.fgColor.rgb == "FF0F5B50"
-    # A area vizinha nao foi repintada.
-    assert ws["A13"].fill.fgColor.rgb == "FFF2F2F2"
-    assert ws["E13"].fill.fgColor.rgb == "FFDDEBF7"
+    assert ws["C12"].fill.fgColor.rgb == "FFFFF2CC"
+    assert ws["D12"].fill.fgColor.rgb == "FFDDEBF7"
+    assert ws["A13"].fill.fgColor.rgb == "FFEDEDED"
+    assert ws["E13"].fill.fgColor.rgb == "FFEDEDED"
 
 
 # ---------------------------------------------------------------------------

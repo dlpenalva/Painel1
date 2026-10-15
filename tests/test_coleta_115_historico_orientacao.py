@@ -24,9 +24,9 @@ from tools.aplicar_coleta_115_historico_orientacao import (
     ORIENTACOES,
     validar_orientacoes,
 )
-from tools.aplicar_coleta_aditivos_reorganizacao import (
-    ORIENTACAO_ITEM,
-    TITULO_ORIENTACAO_ITEM,
+from tools.aplicar_coleta_122_acabamento_visual import (
+    MENSAGEM_NOVO_ITEM,
+    TITULO_NOVO_ITEM,
 )
 
 RAIZ = Path(__file__).resolve().parents[1]
@@ -118,8 +118,9 @@ def test_mensagens_de_entrada_presentes(fonte, request):
     prompts = _prompts(request.getfixturevalue(fonte))
     for aba, faixa, titulo, mensagem in ORIENTACOES:
         if (aba, faixa) == ("aditivos", "A2:A200"):
-            # Coleta 12.1 reescreveu esta orientacao (reorganizacao de aditivos).
-            titulo, mensagem = TITULO_ORIENTACAO_ITEM, ORIENTACAO_ITEM
+            # Coleta 12.1 reescreveu esta orientacao (reorganizacao de aditivos)
+            # e a 12.2 a trocou pela mensagem NOVO ITEM.
+            titulo, mensagem = TITULO_NOVO_ITEM, MENSAGEM_NOVO_ITEM
         _tipo, _lista, titulo_lido, mensagem_lida, mostra = prompts[(aba, faixa)]
         assert (titulo_lido, mensagem_lida, mostra) == (titulo, mensagem, True)
 

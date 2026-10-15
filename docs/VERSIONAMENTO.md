@@ -59,7 +59,7 @@ ajuste manual depois do merge. Gate antes do merge (também no template de PR):
 - [ ] A Coleta XLSX muda?
 - [ ] Se sim, `COLETA_VERSION` foi incrementada?
 - [ ] `COLETA_VERSOES_ACEITAS` inclui a nova versão?
-- [ ] O marcador gravado no XLS (`CONTROLE!B24`/`B25`) mostra a nova versão?
+- [ ] O marcador gravado no XLS (`CONTROLE!B16`/`B17` desde a Coleta 12.2; `B24`/`B25` antes) mostra a nova versão?
 
 **FALLBACK**
 - [ ] `ATUALIZADO_EM_FALLBACK` foi atualizado?
