@@ -91,10 +91,11 @@ def render_cabecalho_pagina(titulo, descricao=""):
 
 def render_versao_sidebar():
     """Exibe o carimbo obrigatório da versão efetivamente publicada."""
-    st.markdown('<div class="cl8us-version-rule"></div>', unsafe_allow_html=True)
-    st.caption(f"Última atualização publicada em {atualizado_em()}")
-    st.caption(f"Cl8us {CL8US_VERSION}")
-    st.caption(f"Modelo de Coleta {COLETA_VERSION}")
+    with st.container(key="cl8us_version_sidebar"):
+        st.markdown('<div class="cl8us-version-rule"></div>', unsafe_allow_html=True)
+        st.caption(f"Última atualização publicada em {atualizado_em()}")
+        st.caption(f"Cl8us {CL8US_VERSION}")
+        st.caption(f"Modelo de Coleta {COLETA_VERSION}")
 
 
 def _normalizar_mes_ano_ist(valor):

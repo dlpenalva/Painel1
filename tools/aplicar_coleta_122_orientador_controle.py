@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""Coleta 12.2 — ORIENTADOR DA COLETA na aba CONTROLE.
+"""Coleta 12.3 — acabamento final do ORIENTADOR DA COLETA.
 
 Somente ORIENTACAO/COLETA. Nenhuma formula economica, fator, VTA,
 retroativo ou admissibilidade muda; nenhuma aba de calculo e tocada (o quadro
@@ -19,17 +19,16 @@ LAYOUT DA CONTROLE
     _coleta_oficial.registrar_versoes_coleta; antes A24:B25).
 
 ORIENTADOR (D5:H34)
-  D5   titulo + introducao
-  D7   PARAMETROS COMPLEMENTARES: historico completo? (E8) e aditivos (E9)
-  D10  CICLOS COM PEDIDO DE REAJUSTE: leitura automatica de parametros!U
-       (DATA_PEDIDO) e, so na falta dela, dropdown Sim/Nao (E12:H12)
+  D5   titulo; D6 introducao
+  D7:H9 parametros complementares em tres colunas
+  D10:H12 pedido de reajuste simplificado, com dropdown Sim/Nao em E11:H11
   D15  DIAGNOSTICO — INFORMACAO / STATUS / POR QUE
-  D25  O QUE VOCE VAI PEDIR AO FISCAL (texto dinamico, itens numerados)
-  D34  objetivos da coleta
+  D25  O QUE VOCE VAI PEDIR AO FISCAL
+  D26:H34 uma unica caixa verde com texto dinamico e objetivos
 
 AUXILIARES (colunas J:L ocultas)
   J17:J23 codigo de status (1..5); J37:J49 estado; J40:L46 itens candidatos
-  (flag, ordem, texto); J50:K89 constantes de texto (acentos so como VALOR —
+  (flag, ordem, texto); J50:K96 constantes de texto (acentos so como VALOR —
   regra ZERO CORRUPCAO: formulas ASCII, parenteses balanceados).
 
 uso: python tools/aplicar_coleta_122_orientador_controle.py [caminho.xlsx]
@@ -96,6 +95,20 @@ CONSTANTES = {
     88: ("DIAG_ABERTURA", "Posição física na abertura do "),
     89: ("SAIDA_CORTE_FORA", "A data de corte não está dentro dos ciclos da apuração; "
                             "confira CONTROLE!B3."),
+    90: ("HIST_IMPACTO_SIM", "O histórico do método cobre a execução passada; retratos "
+                              "físicos antigos podem ser dispensados."),
+    91: ("HIST_IMPACTO_PARCIAL", "Solicitar posição física ou evidência equivalente apenas "
+                                  "para os períodos não cobertos pelo histórico."),
+    92: ("HIST_IMPACTO_NAO", "Confirmar a cobertura do histórico; nas lacunas, solicitar "
+                              "posição física ou evidência equivalente."),
+    93: ("ADT_IMPACTO_NAO", "Sem alteração informada, o ciclo atual pode ser reconciliado "
+                             "apenas com abertura e posição atual."),
+    94: ("ADT_IMPACTO_SIM", "Solicitar os acréscimos e supressões, com item, quantidade e "
+                             "data de efeito."),
+    95: ("ADT_IMPACTO_NAO_SEI", "Solicitar confirmação sobre acréscimos ou supressões no "
+                                 "período."),
+    96: ("OBJETIVOS", "Objetivos da coleta: apurar retroativo, VU por ciclo, VTA e o valor "
+                        "remanescente atualizado na abertura do último ciclo."),
 }
 K = {chave: f"$K${linha}" for linha, (chave, _t) in CONSTANTES.items()}
 
@@ -104,21 +117,20 @@ TITULO = "ORIENTADOR DA COLETA — O QUE PEDIR AO FISCAL"
 INTRODUCAO = ("Use este quadro para definir o mínimo necessário à apuração: retroativo, "
               "VU por ciclo, VTA e saldo atualizado na abertura do último ciclo.")
 EXPLICACAO_CORTE = "Data-limite considerada nos cálculos e resultados."
-SECAO_PARAMETROS = "PARÂMETROS COMPLEMENTARES"
+CABECALHO_PARAMETROS = (
+    "PARÂMETRO COMPLEMENTAR", "SELEÇÃO", "COMO ISSO MUDA O PEDIDO AO FISCAL")
 ROTULO_HISTORICO = "Histórico da execução está completo?"
 DICA_HISTORICO = ("Sim: a fonte do método (PCs ou financeiro) cobre todo o período até a "
                   "abertura do ciclo em execução.")
 ROTULO_ADITIVOS = "Aditivos/supressões no período"
-SECAO_CICLOS = "CICLOS COM PEDIDO DE REAJUSTE"
+ROTULO_PEDIDO = "Pedido de reajuste?"
+ROTULO_SITUACAO = "Situação"
+ROTULO_CICLOS_PEDIDO = "Ciclos com pedido nesta análise"
 CICLOS = ("C1", "C2", "C3", "C4")            # parametros!B3:B6
 COLUNAS_CICLOS = ("E", "F", "G", "H")
-ROTULOS_CICLOS = ("Leitura automática (parametros)", "Informar, se não houver leitura",
-                  "Considerado")
 SECAO_DIAGNOSTICO = "DIAGNÓSTICO — INFORMAÇÕES A SOLICITAR"
 CABECALHO_DIAGNOSTICO = ("INFORMAÇÃO", "STATUS", "POR QUE / PARA QUE SERVE")
 SECAO_SAIDA = "O QUE VOCÊ VAI PEDIR AO FISCAL"
-OBJETIVOS = ("Objetivos da coleta: apurar retroativo, VU por ciclo, VTA e o valor "
-             "remanescente atualizado na abertura do último ciclo.")
 
 # ------------------------------------------------------------- estado (J37:J49)
 M = "$J$39"            # codigo do metodo (MEMORIA_RESULTADOS!B4)
@@ -152,7 +164,6 @@ ITENS = [
     (f"={GATE}*1", f'={K["ITEM_ATUAL_A"]}&{DDMM}&{K["ITEM_ATUAL_B"]}'),
 ]
 PRIMEIRA_LINHA_ITEM = 40
-LINHAS_SAIDA = range(27, 27 + len(ITENS))      # D27:D33
 
 # Diagnostico (linhas 17..23): (informacao, codigo de status, por que).
 _CICLO_N = '(MATCH($B$2,{"C0","C1","C2","C3","C4"},0)-1)'
@@ -180,8 +191,8 @@ DIAGNOSTICO = [
      f'=IF($E$9={K["ADT_SIM"]},1,IF($E$9={K["ADT_NAO"]},5,4))',
      "Ajustam a diferença entre a abertura e a posição atual."),
     ("Ciclos com pedido de reajuste",
-     f'=IFERROR(IF(SUMPRODUCT(($E$13:$H$13={K["PED_NAO_INFORMADO"]})*'
-     f'((COLUMN($E$13:$H$13)-COLUMN($E$13)+1)<={_CICLO_N}))>0,4,3),4)',
+     f'=IFERROR(IF(SUMPRODUCT(($E$11:$H$11="")*'
+     f'((COLUMN($E$11:$H$11)-COLUMN($E$11)+1)<={_CICLO_N}))>0,4,3),4)',
      "Definem os ciclos com retroativo e efeitos financeiros a apurar; lidos de "
      "parametros (DATA_PEDIDO) quando disponíveis."),
 ]
@@ -203,9 +214,10 @@ BORDA = "BFBFBF"
 
 LARGURAS = {"C": 2.0, "D": 40.0, "E": 18.0, "F": 30.0, "G": 16.0, "H": 16.0}
 COLUNAS_OCULTAS = ("J", "K", "L")
-ALTURAS = {4: 22.0, 5: 26.0, 6: 34.0, 7: 20.0, 13: 22.0, 15: 22.0, 16: 26.0,
+ALTURAS = {4: 22.0, 5: 26.0, 6: 34.0, 7: 26.0, 10: 22.0, 11: 24.0, 12: 24.0,
+           13: 22.0, 15: 22.0, 16: 26.0,
            17: 30.0, 18: 30.0, 19: 30.0, 20: 30.0, 21: 30.0, 22: 30.0, 23: 30.0,
-           25: 22.0, 26: 22.0, **{linha: 30.0 for linha in LINHAS_SAIDA}, 34: 22.0}
+           25: 22.0, **{linha: 24.0 for linha in range(26, 35)}}
 # Linhas ocultas no template 12.1 que passam a ser usadas (D4, diagnostico e
 # marcadores de versao em A16:B17). A 14 (data de geracao) segue oculta.
 LINHAS_REEXIBIDAS = (4, 15, 16, 17, 18)
@@ -216,24 +228,44 @@ XL_EDGES = (7, 8, 9, 10)            # left, top, bottom, right
 XL_INSIDE = (11, 12)                # vertical, horizontal
 
 
-def formula_saida(i: int) -> str:
-    return (f'=IF({TOTAL}<{i},"",{i}&". "&INDEX($L$40:$L$46,MATCH({i},$K$40:$K$46,0))'
-            f'&IF({i}={TOTAL},".",";"))')
-
-
 FORMULA_ABERTURA_SAIDA = (
     f'=IF(NOT({METODO_OK}),{K["SAIDA_SEM_METODO"]},IF(NOT(ISNUMBER($B$3)),'
     f'{K["SAIDA_SEM_CORTE"]},IF($B$2="",{K["SAIDA_CORTE_FORA"]},{K["SAIDA_ABERTURA"]})))'
 )
 
 
-def formula_ciclo_automatico(indice: int) -> str:
-    return f'=IF(ISNUMBER(parametros!$U${indice + 3}),{K["PED_SIM"]},"")'
+FORMULA_IMPACTO_HISTORICO = (
+    f'=IF($E$8={K["HIST_SIM"]},{K["HIST_IMPACTO_SIM"]},'
+    f'IF($E$8={K["HIST_PARCIAL"]},{K["HIST_IMPACTO_PARCIAL"]},'
+    f'IF($E$8={K["HIST_NAO_CONFIRMADO"]},{K["HIST_IMPACTO_NAO"]},"")))'
+)
 
 
-def formula_ciclo_considerado(coluna: str) -> str:
-    return (f'=IF({coluna}11<>"",{coluna}11,IF({coluna}12<>"",{coluna}12,'
-            f'{K["PED_NAO_INFORMADO"]}))')
+FORMULA_IMPACTO_ADITIVOS = (
+    f'=IF($E$9={K["ADT_NAO"]},{K["ADT_IMPACTO_NAO"]},'
+    f'IF($E$9={K["ADT_SIM"]},{K["ADT_IMPACTO_SIM"]},'
+    f'IF($E$9={K["ADT_NAO_SEI"]},{K["ADT_IMPACTO_NAO_SEI"]},"")))'
+)
+
+
+FORMULA_CICLOS_PEDIDO = (
+    f'=IF(COUNTIF($E$11:$H$11,{K["PED_SIM"]})=0,"Nenhum",'
+    f'TRIM(IF($E$11={K["PED_SIM"]},"C1 ","")&'
+    f'IF($F$11={K["PED_SIM"]},"C2 ","")&'
+    f'IF($G$11={K["PED_SIM"]},"C3 ","")&'
+    f'IF($H$11={K["PED_SIM"]},"C4","")))'
+)
+
+
+def formula_caixa_saida() -> str:
+    partes = [FORMULA_ABERTURA_SAIDA]
+    for linha in range(PRIMEIRA_LINHA_ITEM, PRIMEIRA_LINHA_ITEM + len(ITENS)):
+        partes.append(
+            f'IF($J${linha}=1,CHAR(10)&$K${linha}&". "&$L${linha}'
+            f'&IF($K${linha}={TOTAL},".",";"),"")'
+        )
+    partes.append(f'CHAR(10)&CHAR(10)&{K["OBJETIVOS"]}')
+    return "=" + "&".join(p.lstrip("=") for p in partes)
 
 
 def formulas() -> dict[str, str]:
@@ -250,13 +282,10 @@ def formulas() -> dict[str, str]:
         resultado[f"E{linha}"] = f"=INDEX($K$50:$K$54,J{linha})"
         if info.startswith("="):
             resultado[f"D{linha}"] = info
-    for indice, coluna in enumerate(COLUNAS_CICLOS):
-        resultado[f"{coluna}11"] = formula_ciclo_automatico(indice)
-        resultado[f"{coluna}13"] = formula_ciclo_considerado(coluna)
-    resultado["F9"] = f'={K["ADT_LANCADOS"]}&COUNTA(aditivos!$A$2:$A$200)'
-    resultado["D26"] = FORMULA_ABERTURA_SAIDA
-    for i, linha in enumerate(LINHAS_SAIDA, start=1):
-        resultado[f"D{linha}"] = formula_saida(i)
+    resultado["F8"] = FORMULA_IMPACTO_HISTORICO
+    resultado["F9"] = FORMULA_IMPACTO_ADITIVOS
+    resultado["G12"] = FORMULA_CICLOS_PEDIDO
+    resultado["D26"] = formula_caixa_saida()
     return resultado
 
 
@@ -266,24 +295,28 @@ def validar_ascii_e_parenteses() -> None:
 
 # ------------------------------------------------------------- conferencias
 AREA_NOVA = "D4:H34"
-AREA_AUXILIAR = "J17:L89"
-C3_ANTERIOR = ("Última data considerada nos cálculos, PCs, competências e resultados "
-               "da apuração.")
+AREA_AUXILIAR = "J17:L96"
 
 
 def conferir(wb) -> None:
-    """Forma 12.2 (PR #190) exigida antes de qualquer escrita (fail-closed)."""
+    """Forma 12.2 (PR #190) exigida antes da migracao 12.3 (fail-closed)."""
     ws = wb.Worksheets(ABA)
     if ws.Range("C1").Formula != "=MEMORIA_RESULTADOS!$T$62":
         raise RuntimeError("CONTROLE!C1 fora da forma 12.2; nada aplicado")
     if ws.Range("C1").FormatConditions.Count != 2:
         raise RuntimeError("CONTROLE!C1 sem a orientacao do Ajuste 3; nada aplicado")
-    if ws.Range("C3").Value != C3_ANTERIOR:
-        raise RuntimeError("CONTROLE!C3 fora do texto 12.1; nada aplicado")
-    for faixa in (AREA_NOVA, AREA_AUXILIAR, "A16:B17", "C4:C34", "D1:H3"):
-        rng = ws.Range(faixa)
-        if rng.MergeCells or any(c.Formula != "" for c in rng.Cells):
-            raise RuntimeError(f"CONTROLE!{faixa} nao esta livre; nada aplicado")
+    esperados = {"D4": EXPLICACAO_CORTE, "D5": TITULO, "D25": SECAO_SAIDA}
+    for endereco, valor in esperados.items():
+        if ws.Range(endereco).Value != valor:
+            raise RuntimeError(f"CONTROLE!{endereco} fora da forma 12.2; nada aplicado")
+    cabecalho_122 = (ws.Range("A6").Value, ws.Range("B6").Value)
+    cabecalho_123 = (ws.Range("A5").Value, ws.Range("B5").Value)
+    if cabecalho_122 != ("RESUMO DO REAJUSTE", "VALOR") and cabecalho_123 != (
+        "RESUMO DO REAJUSTE", "VALOR"
+    ):
+        raise RuntimeError("cabecalho do resumo fora das formas 12.2/12.3; nada aplicado")
+    if ws.Range("D26").MergeArea.Address not in ("$D$26:$H$26", "$D$26:$H$34"):
+        raise RuntimeError("CONTROLE!D26 fora das formas 12.2/12.3; nada aplicado")
     for endereco, rotulo in (("A1", "MODO DE LEITURA"), ("A3", "DATA DE CORTE DA APURAÇÃO")):
         if ws.Range(endereco).Value != rotulo:
             raise RuntimeError(f"CONTROLE!{endereco} fora do layout; nada aplicado")
@@ -309,12 +342,12 @@ def _com_seguro(funcao):
 
 @_com_seguro
 def _estilo(rng, *, fundo=None, cor=TEXTO, tamanho=10, negrito=False, italico=False,
-            h=v3.XL_LEFT, quebra=True, borda=True) -> None:
+            h=v3.XL_LEFT, v=v3.XL_VCENTER, quebra=True, borda=True) -> None:
     if fundo:
         v3._preencher(rng, fundo)
     rng.Font.Name = "Calibri"
     v3._fonte(rng, tamanho=tamanho, negrito=negrito, cor=cor, italico=italico)
-    v3._alinhar(rng, h=h, quebra=quebra, recuo=1 if h == v3.XL_LEFT else 0)
+    v3._alinhar(rng, h=h, v=v, quebra=quebra, recuo=1 if h == v3.XL_LEFT else 0)
     if borda:
         for indice in XL_EDGES + XL_INSIDE:
             try:
@@ -381,15 +414,33 @@ def frente_controle(wb) -> None:
     ws = wb.Worksheets(ABA)
     estado, selecao = c120._capturar_protecao(ws)
 
+    # Limpa somente a area autorizada do orientador 12.2 e seus auxiliares.
+    for faixa in ("E8", "E9", "E12:H12", "E11:H11"):
+        try:
+            ws.Range(faixa).Validation.Delete()
+        except Exception:
+            pass
+    ws.Range("E17:E23").FormatConditions.Delete()
+    ws.Range("D7:H34").UnMerge()
+    ws.Range("D7:H34").ClearContents()
+    ws.Range("D7:H34").ClearFormats()
+    ws.Range(AREA_AUXILIAR).ClearContents()
+
     # constantes (valores) nas colunas ocultas
     for linha, (chave, texto) in CONSTANTES.items():
         ws.Range(f"J{linha}").Value = chave
         celula = ws.Range(f"K{linha}")
         celula.NumberFormat = "@"
         celula.Value = texto
+    ws.Range("L40:L46").ClearFormats()
+
+    # Alinha apenas o cabecalho visual do resumo; formulas/valores de A7:B13
+    # permanecem nas coordenadas funcionais consumidas pelo restante do modelo.
+    if ws.Range("A6").Value == "RESUMO DO REAJUSTE":
+        ws.Range("A6:B6").Copy(ws.Range("A5:B5"))
+        ws.Range("A6:B6").ClearContents()
 
     # layout A:C e D4
-    ws.Range("C3").ClearContents()
     for coluna, largura in LARGURAS.items():
         ws.Columns(coluna).ColumnWidth = largura
     for coluna in COLUNAS_OCULTAS:
@@ -400,7 +451,6 @@ def frente_controle(wb) -> None:
         ws.Rows(linha).RowHeight = altura
     for linha in LINHAS_OCULTAS:
         ws.Rows(linha).Hidden = True
-    limpar_orientacao_legada(ws)
     # C1 estreita: recuo para o alerta nao nascer sob o botao do dropdown de B1.
     ws.Range("C1").IndentLevel = 1
     _bloco(ws, "D4:H4", EXPLICACAO_CORTE, cor="595959", italico=True, borda=False)
@@ -415,30 +465,32 @@ def frente_controle(wb) -> None:
     _bloco(ws, "D5:H5", TITULO, fundo=AZUL_CLARO, cor=TEXTO_TITULO, tamanho=12, negrito=True)
     _bloco(ws, "D6:H6", INTRODUCAO, fundo=AZUL_SUAVE, cor=TEXTO_TITULO)
 
-    # parametros complementares
-    _secao(ws, 7, SECAO_PARAMETROS)
+    # parametros complementares: tres colunas simples
+    for faixa, texto in zip(("D7", "E7", "F7:H7"), CABECALHO_PARAMETROS):
+        _bloco(ws, faixa, texto, fundo=AZUL_CLARO, cor=TEXTO_TITULO, negrito=True,
+               h=v3.XL_CENTER)
     _bloco(ws, "D8", ROTULO_HISTORICO, fundo=AZUL_SUAVE, negrito=True)
     _lista(ws, "E8", f'={K["HIST_SIM"]}:{K["HIST_NAO_CONFIRMADO"]}', "HISTÓRICO DA EXECUÇÃO",
            "Sim: a fonte do método cobre todo o período até a abertura do ciclo em execução.\n"
            "Parcialmente: há lacunas.\nNão confirmado: ainda não verificado.")
-    _bloco(ws, "F8:H8", DICA_HISTORICO, cor="595959", italico=True)
+    _bloco(ws, "F8:H8", None, cor="595959")
     _bloco(ws, "D9", ROTULO_ADITIVOS, fundo=AZUL_SUAVE, negrito=True)
     _lista(ws, "E9", f'={K["ADT_NAO"]}:{K["ADT_NAO_SEI"]}', "ADITIVOS/SUPRESSÕES",
            "Houve acréscimos ou supressões de quantidade desde a abertura do ciclo em "
            "execução?")
-    _bloco(ws, "F9:H9", None, fundo=CINZA, cor=TEXTO_CALCULO)
+    _bloco(ws, "F9:H9", None, cor="595959")
 
-    # ciclos com pedido de reajuste
-    _bloco(ws, "D10", SECAO_CICLOS, fundo=AZUL_CLARO, cor=TEXTO_TITULO, negrito=True)
+    # Pedido de reajuste: uma unica linha visivel de escolhas.
+    _bloco(ws, "D10", ROTULO_PEDIDO, fundo=AZUL_CLARO, cor=TEXTO_TITULO, negrito=True)
     for coluna, ciclo in zip(COLUNAS_CICLOS, CICLOS):
         _bloco(ws, f"{coluna}10", ciclo, fundo=AZUL_CLARO, cor=TEXTO_TITULO, negrito=True,
                h=v3.XL_CENTER)
-    for linha, rotulo in zip((11, 12, 13), ROTULOS_CICLOS):
-        _bloco(ws, f"D{linha}", rotulo, fundo=AZUL_SUAVE)
-    _estilo(ws.Range("E11:H11"), fundo=CINZA, cor=TEXTO_CALCULO, h=v3.XL_CENTER)
-    _lista(ws, "E12:H12", f'={K["PED_SIM"]}:{K["PED_NAO"]}', "PEDIDO DE REAJUSTE",
-           "Use só quando a leitura automática (linha acima) estiver vazia.")
-    _estilo(ws.Range("E13:H13"), fundo=CINZA, cor=TEXTO_CALCULO, negrito=True, h=v3.XL_CENTER)
+    _bloco(ws, "D11", ROTULO_SITUACAO, fundo=AZUL_SUAVE)
+    _lista(ws, "E11:H11", f'={K["PED_SIM"]}:{K["PED_NAO"]}', "PEDIDO DE REAJUSTE",
+           "Selecione Sim ou Não para cada ciclo.")
+    _bloco(ws, "D12:F12", ROTULO_CICLOS_PEDIDO, fundo=AZUL_SUAVE, negrito=True)
+    _bloco(ws, "G12:H12", None, fundo=CINZA, cor=TEXTO_CALCULO, negrito=True,
+           h=v3.XL_CENTER)
 
     # diagnostico
     _secao(ws, 15, SECAO_DIAGNOSTICO)
@@ -453,17 +505,17 @@ def frente_controle(wb) -> None:
     # o que voce vai pedir ao fiscal
     _bloco(ws, "D25:H25", SECAO_SAIDA, fundo=VERDE_FORTE, cor=TEXTO_VERDE, tamanho=11,
            negrito=True)
-    _bloco(ws, "D26:H26", None, fundo=VERDE_CLARO, cor=TEXTO_VERDE, negrito=True, borda=False)
-    for linha in LINHAS_SAIDA:
-        _bloco(ws, f"D{linha}:H{linha}", None, fundo=VERDE_CLARO, cor=TEXTO, borda=False)
-    contorno = ws.Range(f"D26:H{LINHAS_SAIDA[-1]}")
+    _bloco(ws, "D26:H34", None, fundo=VERDE_CLARO, cor=TEXTO,
+           v=v3.XL_TOP, borda=False)
+    contorno = ws.Range("D26:H34")
     for indice in XL_EDGES:
         v3._borda(contorno, indice, BORDA)
-    _bloco(ws, "D34:H34", OBJETIVOS, cor="595959", tamanho=9, italico=True, borda=False)
-
     # formulas (depois das mesclas: ancora de cada bloco)
     for celula, formula in formulas().items():
-        ws.Range(celula).Formula = formula
+        try:
+            ws.Range(celula).Formula = formula
+        except Exception as exc:
+            raise RuntimeError(f"Excel rejeitou a formula de CONTROLE!{celula}: {formula}") from exc
 
     # cores do STATUS por codigo oculto (formula sem funcoes: igual em qualquer idioma)
     ws.Activate()
@@ -487,9 +539,13 @@ def conferir_resultado(wb) -> None:
     for celula, formula in formulas().items():
         if ws.Range(celula).Formula != formula:
             raise RuntimeError(f"CONTROLE!{celula} diverge do descritor: {ws.Range(celula).Formula}")
-    for celula in ("E8", "E9", "E12", "F12", "G12", "H12", "B1", "B3"):
+    for celula in ("E8", "E9", "E11", "F11", "G11", "H11", "B1", "B3"):
         if ws.Range(celula).Locked:
             raise RuntimeError(f"CONTROLE!{celula} deveria ser editavel")
+    if ws.Range("D26").MergeArea.Address != "$D$26:$H$34":
+        raise RuntimeError("CONTROLE!D26:H34 nao forma uma unica caixa")
+    if ws.Range("A5").Value != "RESUMO DO REAJUSTE" or ws.Range("A6").Value not in (None, ""):
+        raise RuntimeError("cabecalho do resumo nao foi alinhado na linha 5")
 
 
 def aplicar(caminho: Path) -> None:
