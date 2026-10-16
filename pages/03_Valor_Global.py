@@ -141,7 +141,8 @@ def normalizar_texto(valor):
 
 def moeda(valor):
     try:
-        valor = round(float(valor), 2)
+        # + 0.0 normaliza o zero negativo (-0,000001 -> R$ 0,00, nunca -R$ 0,00)
+        valor = round(float(valor), 2) + 0.0
     except Exception:
         valor = 0.0
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
@@ -5031,7 +5032,7 @@ def _moeda_resultado(valor, *, nao_aplicavel=False):
     if valor is None or isinstance(valor, bool):
         return "INDISPONÍVEL"
     try:
-        numero = float(valor)
+        numero = round(float(valor), 2) + 0.0  # sem -R$ 0,00 (zero negativo)
     except (TypeError, ValueError):
         return "INDISPONÍVEL"
     return "R$ " + f"{numero:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")

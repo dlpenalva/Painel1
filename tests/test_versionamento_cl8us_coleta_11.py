@@ -96,11 +96,12 @@ def test_versoes_publicas_e_politica_preparada() -> None:
     # Cl8us 12.9 / Coleta 12.2: acabamento visual de itens_PC, aditivos,
     # CONTROLE e CICLO_EM_EXECUCAO (XLS).
     # Cl8us 12.10 / Coleta 12.3: CONTROLE simplificada e carimbo ao fim da sidebar.
-    assert CL8US_VERSION == "12.10"
-    assert COLETA_VERSION == "12.3"
+    # Cl8us 12.11 / Coleta 12.4: precisao financeira canonica e saldo remanescente.
+    assert CL8US_VERSION == "12.11"
+    assert COLETA_VERSION == "12.4"
     assert COLETA_VERSOES_ACEITAS == (
         "11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8", "11.9",
-        "12.0", "12.1", "12.2", "12.3",
+        "12.0", "12.1", "12.2", "12.3", "12.4",
     )
     assert CL8US_VERSION != COLETA_VERSION
     assert COLETA_COMPATIBILIDADE_ANTERIORES == 2
@@ -124,8 +125,8 @@ def test_sidebar_exibe_as_duas_versoes_da_fonte_unica(monkeypatch) -> None:
 
     assert legendas == [
         "Última atualização publicada em 30/09/2026 12:00",
-        "Cl8us 12.10",
-        "Modelo de Coleta 12.3",
+        "Cl8us 12.11",
+        "Modelo de Coleta 12.4",
     ]
     assert containers == ["cl8us_version_sidebar"]
 

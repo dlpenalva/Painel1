@@ -89,6 +89,8 @@ def test_memoria_resultados_t49_t53_e_celulas_do_vta_na_forma_11_8():
         assert formula.isascii() and formula.count("(") == formula.count(")")
     for (aba, celula), trocas in co._TRECHOS_POSICAO_ATUAL_VTA.items():
         valor = tpl[aba][celula].value
+        # Coleta 12.4: a soma do ramo 11.7 passa a fechar em 2 casas.
+        valor = valor.replace("ROUND(SUM($Y$2:$Y$201),2)", "SUM($Y$2:$Y$201)")
         assert all(troca in valor for _, troca in trocas), f"{aba}!{celula}"
         assert valor.count("(") == valor.count(")")
 
@@ -96,7 +98,8 @@ def test_memoria_resultados_t49_t53_e_celulas_do_vta_na_forma_11_8():
 def test_sem_posicao_atual_as_formulas_reproduzem_a_11_7():
     """T49=0: cada troca so acrescenta um ramo que devolve a expressao 11.7."""
     mem = _template()["MEMORIA_RESULTADOS"]
-    assert mem["T23"].value == "=IF($T$49=1,$T$51,SUM($Y$2:$Y$201))"
+    # Coleta 12.4: mesmo ramo 11.7, com a soma fechada em 2 casas.
+    assert mem["T23"].value == "=IF($T$49=1,$T$51,ROUND(SUM($Y$2:$Y$201),2))"
     assert mem["T50"].value.startswith("=IF($T$49<>1,0,")
     assert "AND($T$26>0,$T$49<>1)" in mem["T25"].value
     assert "ROUND($T$21+$T$22+$T$50+$T$23+$T$39,2)" in mem["T25"].value

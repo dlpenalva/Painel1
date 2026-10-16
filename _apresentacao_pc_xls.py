@@ -36,7 +36,9 @@ def valores_apresentacao_pc(ws):
     # intactos. Na posição física, F/G já contêm as parcelas canônicas.
     for celula, expressao in {
         "B83": 'IF(MEMORIA_RESULTADOS!$T$25="CALCULO MANUAL REQUERIDO","",ROUND(MEMORIA_RESULTADOS!$T$21+MEMORIA_RESULTADOS!$T$22+IF(MEMORIA_RESULTADOS!$W$49=1,$B$36,0),2))',
-        "B85": 'IF(MEMORIA_RESULTADOS!$T$25="CALCULO MANUAL REQUERIDO","",IF(MEMORIA_RESULTADOS!$W$49=1,SUM(INDIRECT("CICLO_EM_EXECUCAO!G13:G211")),MEMORIA_RESULTADOS!$T$23))',
+        # Coleta 12.4: soma da posicao atual fechada em 2 casas (mesma forma
+        # gravada no template por tools/aplicar_coleta_124_precisao_saldo.py).
+        "B85": 'IF(MEMORIA_RESULTADOS!$T$25="CALCULO MANUAL REQUERIDO","",IF(MEMORIA_RESULTADOS!$W$49=1,ROUND(SUM(INDIRECT("CICLO_EM_EXECUCAO!G13:G211")),2),MEMORIA_RESULTADOS!$T$23))',
     }.items():
         prefixo = '=IF($B$5="PCs",' + expressao + ','
         anterior = ws[celula].value

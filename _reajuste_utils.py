@@ -152,7 +152,8 @@ def _parse_moeda_br(valor):
 
 def _formatar_moeda_br(valor):
     try:
-        valor = round(float(valor), 2)
+        # + 0.0 normaliza o zero negativo (-0,000001 -> R$ 0,00, nunca -R$ 0,00)
+        valor = round(float(valor), 2) + 0.0
     except Exception:
         valor = 0.0
     return f"R$ {valor:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")

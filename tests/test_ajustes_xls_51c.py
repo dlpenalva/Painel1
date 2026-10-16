@@ -48,9 +48,9 @@ def test_financeiro_total_ancora_intacta_e_destacada(wb):
     ws = wb["financeiro"]
     # Ancora canonica: NADA se move (linhas 62:73 sao capacidade estrutural).
     assert ws["B74"].value == "TOTAL"
-    assert ws["C74"].value == "=SUM(C2:C73)"
-    assert ws["E74"].value == "=SUM(E2:E73)"
-    assert ws["F74"].value == "=SUM(F2:F73)"
+    assert ws["C74"].value == "=ROUND(SUM(C2:C73),2)"  # Coleta 12.4
+    assert ws["E74"].value == "=ROUND(SUM(E2:E73),2)"
+    assert ws["F74"].value == "=ROUND(SUM(F2:F73),2)"
     assert str(ws["B64"].value).startswith("=IF(A64")   # grade viva na linha 64
     # Destaque visual: linha inteira em negrito com fill institucional.
     for col in range(1, 8):
@@ -73,7 +73,7 @@ def test_financeiro_gerado_oculta_capacidade_nao_usada():
     assert all(ws.row_dimensions[r].hidden for r in range(62, 74))
     assert not ws.row_dimensions[74].hidden
     assert ws["B74"].value == "TOTAL"
-    assert ws["C74"].value == "=SUM(C2:C73)"
+    assert ws["C74"].value == "=ROUND(SUM(C2:C73),2)"  # Coleta 12.4
 
 
 # ------------------------------------------------------------- aditivos linha 1

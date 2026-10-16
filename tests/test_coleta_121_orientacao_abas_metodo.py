@@ -156,7 +156,7 @@ def test_cabecalhos_e_grade_preservados():
         assert ic["A1"].value == "ITEM" and ic["AG1"].value == "AJUSTE_STATUS"
         assert ic["W1"].value is None
         # Dados continuam a partir da linha 2 (nenhuma linha inserida).
-        assert fin["B74"].value == "TOTAL" and fin["C74"].value == "=SUM(C2:C73)"
+        assert fin["B74"].value == "TOTAL" and fin["C74"].value == "=ROUND(SUM(C2:C73),2)"
         assert pc["AD2"].value.startswith("=IFERROR(IF(UPPER(TRIM(SUBSTITUTE(G2,")
         assert ic["D2"].value == '=IF(OR(A2="",B2="",C2=""),"",ROUND(B2*C2,2))'
         assert ic.freeze_panes == "D2"

@@ -323,7 +323,9 @@ def montar_painel_executivo(
 # --------------------------------------------------------------------------- #
 def _brl(valor: Any) -> str:
     try:
-        return "R$ " + f"{float(valor):,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
+        # + 0.0 normaliza o zero negativo (-0,000001 -> R$ 0,00, nunca -R$ 0,00)
+        numero = round(float(valor), 2) + 0.0
+        return "R$ " + f"{numero:,.2f}".replace(",", "X").replace(".", ",").replace("X", ".")
     except (TypeError, ValueError):
         return "—"
 
