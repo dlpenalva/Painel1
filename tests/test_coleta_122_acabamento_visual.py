@@ -76,23 +76,25 @@ def assinatura(ws) -> str:
 
 
 # Coleta 12.1 (2ae72bd). Nenhuma aba do template muda de estrutura nesta frente.
+# Coleta 12.4: as abas marcadas recebem ROUND(...,2) nas agregacoes monetarias
+# e a RESULTADOS ganha SALDO REMANESCENTE — EVOLUCAO (aplicar_coleta_124_precisao_saldo).
 ASSINATURAS_TEMPLATE_121: dict[str, str] = {
     "comparativo_VTA": "2a4be709d887f1c136d00c3e918eead47f921d4290070414f67bb78645a06a67",
     "CONTROLE": "8f0c95e47e79daeb831c587957a06a979c3012ac085eb93e2e42b2d822014452",
     "parametros": "e9a30868b83a2e3c276f7d4801ae6c2add0bcc557b92fd79872ca3bab86e38e1",
-    "financeiro": "d48da5ea0c3da9ebbd82fdc0df1ff325826c193f7b0d853f5025e1cecc08702d",
+    "financeiro": "291a637da251e2d579c9dbb85bdc3e01d51814d059ba6b7f1d549d62273c1fed",  # 12.4
     "itens_Remanesc": "09a29c9cacee3851a9288f7986f59d308fc119fd665d8f8a38c0fec8c752f9d1",
-    "itens_Consumidos": "ed2b7648f27b92b2a711b14f4ac24f36047f01b339906a1ec53aa19499ac2aa5",
-    "itens_PC": "d1a21adb9af3cfcd488b80d6d027f156e210bb56a4ddcdaaf29ed12c2c68c8ef",
+    "itens_Consumidos": "f50c1e368498ac92046097cf28b566b1f8a5967e33aaf6ddf7e633bcd2460d63",  # 12.4
+    "itens_PC": "fc7fa79ce3c0d519a80239392e7acd161036682c740fdc69bb60396b5b3d1758",  # 12.4
     "aditivos": "b307532ca71a0384856210d49c445db3b479520e7c8e58ebbc5c26c7cd622e61",
     "posicao_referencia": "efbda739d9886cff654c64974511799115730c88f69fe65cbdd52c75cc388ea5",
     "posicao_contratual": "6cbdd37302efba8e84f55718fd2b8fb7b137ea87f26fa48b0698dd0cd4b179f1",
     "itens_RC": "efd87949078538d682dc306a0a33fcb894000e6864386fb8188c65d3ee8ef567",
     "historico_VU": "de7563cfcbda1421db08cb47e4130f5b865c57c2640c0794e8739d54b0aade42",
     "cobertura_temporal": "73a4170a46302eb390ec72fada1c82cc326d1db97c0a47c23bc12979bba6b708",
-    "MEMORIA_RESULTADOS": "b905191d1f3c68b3d565a8f88749055a3fb2e455a1f4d9ef7c00857b2b34d9f3",
-    "RESULTADOS_DETALHE": "68beb26b643b0d475217a101249b163f4ee9e5fe593d6f33974e5de5761df989",
-    "RESULTADOS": "b4ce52bb2564d8691ec7281369c5eea644349615583cd904a64d1bd03af0382f",
+    "MEMORIA_RESULTADOS": "2e3db31c217b642993d3c038f9e0aae39cf3dd5d5c8aeee2c4aa825701d4fa98",  # 12.4
+    "RESULTADOS_DETALHE": "028ce6c370008be3e7802b1d69f7e3262973e8cd256fed00410312959bedae93",  # 12.4
+    "RESULTADOS": "77fed3c48e887ce1a45453e49e00ebe41d0bc32745b171ffa98eebbba16c25a6",  # 12.4
 }
 ASSINATURA_CICLO_121 = "44775bfa3c587759ab8d0f1fc177119355cdef65a06c74bfd032a31721ded638"
 
@@ -332,7 +334,7 @@ def test_ciclo_colunas_mais_confortaveis():
 def test_marcador_do_xls_mostra_a_coleta_123_em_a16_b17():
     ws = _gerado()["CONTROLE"]
     assert [ws[c].value for c in ("A16", "B16", "A17", "B17")] == [
-        "Modelo de Coleta", "12.3", "Gerado pelo Cl8us", "12.10"]
+        "Modelo de Coleta", "12.4", "Gerado pelo Cl8us", "12.11"]
     assert all(ws[c].value is None for c in ("A24", "B24", "A25", "B25"))
     assert not ws.row_dimensions[16].hidden and not ws.row_dimensions[17].hidden
 
@@ -340,7 +342,7 @@ def test_marcador_do_xls_mostra_a_coleta_123_em_a16_b17():
 def test_leitura_do_marcador_por_rotulo_vale_para_a_nova_e_as_anteriores():
     from _compatibilidade_coleta import detectar_linhagem_coleta
 
-    assert detectar_linhagem_coleta(_gerado())["marcador_publico"] == "12.3"
+    assert detectar_linhagem_coleta(_gerado())["marcador_publico"] == "12.4"
     anterior = RAIZ / "tests" / "fixtures" / "coletas_compat" / "coleta_11_pc.xlsx"
     wb = load_workbook(anterior, data_only=False)
     assert wb["CONTROLE"]["B24"].value == "11.0"                 # marcador antigo

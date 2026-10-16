@@ -178,11 +178,12 @@ def test_h_quadro_itens_pc_le_exclusivamente_colunas_canonicas():
     assert ws["M1"].value == "TODOS OS PCs CADASTRADOS POR CICLO"
     assert ws["M8"].value == "Outras situações / fora dos ciclos"
     assert ws.column_dimensions["M"].width >= 20
-    assert ws["O8"].value == "=SUM($D$2:$D$5001)-SUM(O3:O7)"
-    assert ws["P8"].value == "=SUM($F$2:$F$5001)-SUM(P3:P7)"
-    assert ws["Q8"].value == "=SUM($H$2:$H$5001)-SUM(Q3:Q7)"
-    assert ws["R8"].value == "=SUM($I$2:$I$5001)-SUM(R3:R7)"
-    assert ws["S8"].value == "=SUM($J$2:$J$5001)-SUM(S3:S7)"
+    # Coleta 12.4: valores do quadro fecham em 2 casas; contagens (N/T) intactas.
+    assert ws["O8"].value == "=ROUND(SUM($D$2:$D$5001)-SUM(O3:O7),2)"
+    assert ws["P8"].value == "=ROUND(SUM($F$2:$F$5001)-SUM(P3:P7),2)"
+    assert ws["Q8"].value == "=ROUND(SUM($H$2:$H$5001)-SUM(Q3:Q7),2)"
+    assert ws["R8"].value == "=ROUND(SUM($I$2:$I$5001)-SUM(R3:R7),2)"
+    assert ws["S8"].value == "=ROUND(SUM($J$2:$J$5001)-SUM(S3:S7),2)"
     # A-01: K e coluna de formula ate 5001 e devolve "" nas linhas sem PC. Sem
     # ancorar em A (coluna de entrada), o residual contava as 5.000 vazias.
     assert ws["T8"].value == (
@@ -192,7 +193,7 @@ def test_h_quadro_itens_pc_le_exclusivamente_colunas_canonicas():
     assert "$A$2:$A$5001" in ws["T8"].value
     assert ws["T9"].value == "=SUM(T3:T8)"
     assert ws["M9"].value == "TOTAL"
-    assert ws["O9"].value == "=SUM(O3:O8)"
+    assert ws["O9"].value == "=ROUND(SUM(O3:O8),2)"
     assert ws["M10"].value == "PCs CONSIDERADOS NA APURAÇÃO ATÉ A DATA DE CORTE"
     assert [ws.cell(11, c).value for c in range(13, 21)] == [
         "Ciclo", "PCs pagos/reconhecidos", "Valor original reconhecido",
@@ -210,7 +211,7 @@ def test_h_quadro_itens_pc_le_exclusivamente_colunas_canonicas():
     assert ws["M17"].value == "Outras situações / fora dos ciclos"
     assert ws["M17"].alignment.wrap_text is True
     assert "SUMIFS($D$2:$D$5001" in ws["T17"].value
-    assert ws["T18"].value == "=SUM(T12:T17)"
+    assert ws["T18"].value == "=ROUND(SUM(T12:T17),2)"  # Coleta 12.4
 
 
 def test_pipeline_real_entrega_os_tres_blocos_pc_ux_sem_cabecalho_legado():

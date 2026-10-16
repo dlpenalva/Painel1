@@ -169,7 +169,9 @@ def test_cores_da_situacao_so_leem_a_propria_aba():
 
 
 def test_descritor_bate_com_template_e_coleta_gerada():
-    esperado = novo.formulas_executivo()
+    # Coleta 12.4: + tabela SALDO REMANESCENTE — EVOLUCAO (B76:G83, so espelhos).
+    import aplicar_coleta_124_precisao_saldo as c124
+    esperado = {**novo.formulas_executivo(), **c124.formulas_saldo()}
     for wb in (_template(), _gerado()):
         ws = wb[ABA_RESULTADOS]
         formulas = {
@@ -188,7 +190,8 @@ def test_formatos_cor_e_area_de_impressao():
         assert "R$" in ws[endereco].number_format, endereco
     assert ws["G9"].number_format.startswith("0.00%")
     assert ws["E9"].fill.fgColor.rgb == "FFEDE7F6"      # lilas muito claro
-    assert str(ws.print_area).replace("'", "").endswith("RESULTADOS!$B$1:$G$74")
+    # Coleta 12.4: a area cobre a tabela SALDO REMANESCENTE — EVOLUCAO.
+    assert str(ws.print_area).replace("'", "").endswith("RESULTADOS!$B$1:$G$83")
 
 
 # =========================================================================== #

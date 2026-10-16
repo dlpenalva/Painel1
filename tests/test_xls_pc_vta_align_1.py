@@ -134,8 +134,8 @@ def test_linha_19_fecha_o_retroativo_sem_inserir_linha(wb):
     assert ws["S19"].value == (
         "=ROUND(N($Q$18)+N(MEMORIA_RESULTADOS!$T$39),2)"
     )
-    assert ws["Q18"].value == "=SUM(Q12:Q17)"
-    assert ws["S18"].value == "=SUM(S12:S17)"
+    assert ws["Q18"].value == "=ROUND(SUM(Q12:Q17),2)"  # Coleta 12.4
+    assert ws["S18"].value == "=ROUND(SUM(S12:S17),2)"
 
 
 def test_colunas_tecnicas_v_ac_seguem_ocultas(wb, wb_runtime):

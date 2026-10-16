@@ -90,7 +90,9 @@ def test_aba_executiva_nao_tem_motor_de_calculo():
     """Nenhuma soma, arredondamento ou operacao aritmetica na aba executiva."""
     proibidas = ("SUM", "ROUND", "PRODUCT", "AVERAGE", "MINIFS", "MAXIFS", "INDIRECT")
     formulas = _formulas_executivas(_template())
-    assert len(formulas) == len(atual.formulas_executivo())
+    # Coleta 12.4: + tabela SALDO REMANESCENTE — EVOLUCAO (so espelhos).
+    import aplicar_coleta_124_precisao_saldo as c124
+    assert len(formulas) == len(atual.formulas_executivo()) + len(c124.formulas_saldo())
     for endereco, formula in formulas.items():
         corpo = _sem_literais(formula)[1:].upper()
         for funcao in proibidas:

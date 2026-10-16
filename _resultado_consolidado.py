@@ -97,7 +97,8 @@ def _moeda_br(valor: Any) -> str:
     numero = _numero(valor)
     if numero is None:
         return "—"
-    texto = f"{float(numero):,.2f}".replace(",", "\x00").replace(".", ",")
+    # + 0.0 normaliza o zero negativo (-0,000001 -> R$ 0,00, nunca -R$ 0,00)
+    texto = f"{round(float(numero), 2) + 0.0:,.2f}".replace(",", "\x00").replace(".", ",")
     return "R$ " + texto.replace("\x00", ".")
 
 
