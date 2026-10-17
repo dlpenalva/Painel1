@@ -78,6 +78,8 @@ def assinatura(ws) -> str:
 # Coleta 12.1 (2ae72bd). Nenhuma aba do template muda de estrutura nesta frente.
 # Coleta 12.4: as abas marcadas recebem ROUND(...,2) nas agregacoes monetarias
 # e a RESULTADOS ganha SALDO REMANESCENTE — EVOLUCAO (aplicar_coleta_124_precisao_saldo).
+# Coleta 12.5: saldo sobe para B65:G72 e o bloco PCs desce para B74:G83; o rotulo
+# MEMORIA_RESULTADOS!V68 acompanha (aplicar_coleta_125_saldo_posicao).
 ASSINATURAS_TEMPLATE_121: dict[str, str] = {
     "comparativo_VTA": "2a4be709d887f1c136d00c3e918eead47f921d4290070414f67bb78645a06a67",
     "CONTROLE": "8f0c95e47e79daeb831c587957a06a979c3012ac085eb93e2e42b2d822014452",
@@ -92,9 +94,9 @@ ASSINATURAS_TEMPLATE_121: dict[str, str] = {
     "itens_RC": "efd87949078538d682dc306a0a33fcb894000e6864386fb8188c65d3ee8ef567",
     "historico_VU": "de7563cfcbda1421db08cb47e4130f5b865c57c2640c0794e8739d54b0aade42",
     "cobertura_temporal": "73a4170a46302eb390ec72fada1c82cc326d1db97c0a47c23bc12979bba6b708",
-    "MEMORIA_RESULTADOS": "2e3db31c217b642993d3c038f9e0aae39cf3dd5d5c8aeee2c4aa825701d4fa98",  # 12.4
+    "MEMORIA_RESULTADOS": "f16abe3dc9fcdabeff3c6d032b60964c80a5c12dfff914761917216fd3a0dbcc",  # 12.5
     "RESULTADOS_DETALHE": "028ce6c370008be3e7802b1d69f7e3262973e8cd256fed00410312959bedae93",  # 12.4
-    "RESULTADOS": "77fed3c48e887ce1a45453e49e00ebe41d0bc32745b171ffa98eebbba16c25a6",  # 12.4
+    "RESULTADOS": "29e39099892cd2cd898ff770b3b66cf4ccd6d9dcf4930ac1e8c99d00388a46d8",  # 12.5
 }
 ASSINATURA_CICLO_121 = "44775bfa3c587759ab8d0f1fc177119355cdef65a06c74bfd032a31721ded638"
 
@@ -334,7 +336,7 @@ def test_ciclo_colunas_mais_confortaveis():
 def test_marcador_do_xls_mostra_a_coleta_123_em_a16_b17():
     ws = _gerado()["CONTROLE"]
     assert [ws[c].value for c in ("A16", "B16", "A17", "B17")] == [
-        "Modelo de Coleta", "12.4", "Gerado pelo Cl8us", "12.11"]
+        "Modelo de Coleta", "12.5", "Gerado pelo Cl8us", "12.12"]
     assert all(ws[c].value is None for c in ("A24", "B24", "A25", "B25"))
     assert not ws.row_dimensions[16].hidden and not ws.row_dimensions[17].hidden
 
@@ -342,7 +344,7 @@ def test_marcador_do_xls_mostra_a_coleta_123_em_a16_b17():
 def test_leitura_do_marcador_por_rotulo_vale_para_a_nova_e_as_anteriores():
     from _compatibilidade_coleta import detectar_linhagem_coleta
 
-    assert detectar_linhagem_coleta(_gerado())["marcador_publico"] == "12.4"
+    assert detectar_linhagem_coleta(_gerado())["marcador_publico"] == "12.5"
     anterior = RAIZ / "tests" / "fixtures" / "coletas_compat" / "coleta_11_pc.xlsx"
     wb = load_workbook(anterior, data_only=False)
     assert wb["CONTROLE"]["B24"].value == "11.0"                 # marcador antigo
