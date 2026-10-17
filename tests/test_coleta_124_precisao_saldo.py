@@ -21,6 +21,7 @@ sys.path.insert(0, str(RAIZ))
 sys.path.insert(0, str(RAIZ / "tools"))
 
 import aplicar_coleta_124_precisao_saldo as c124  # noqa: E402
+import aplicar_coleta_125_saldo_posicao as c125  # noqa: E402  (12.5: B65:G72)
 
 TEMPLATE = RAIZ / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
 _CACHE: dict[str, object] = {}
@@ -87,12 +88,12 @@ def test_web_nunca_exibe_zero_negativo(modulo, funcao):
 # ------------------------------------------------------------------- saldo
 def test_tabela_saldo_espelha_fontes_canonicas():
     ws = _template()["RESULTADOS"]
-    for celula, texto in c124.rotulos_saldo().items():
+    for celula, texto in c125.rotulos_saldo().items():
         assert ws[celula].value == texto
-    for celula, formula in c124.formulas_saldo().items():
+    for celula, formula in c125.formulas_saldo().items():
         assert ws[celula].value == formula
-    assert ws["B76"].value == "SALDO REMANESCENTE — EVOLUÇÃO"
-    assert [ws[f"B{linha}"].value for linha in range(78, 84)] == [
+    assert ws["B65"].value == "SALDO REMANESCENTE — EVOLUÇÃO"
+    assert [ws[f"B{linha}"].value for linha in range(67, 73)] == [
         "Abertura C0", "Abertura C1", "Abertura C2", "Abertura C3", "Abertura C4",
         "Última posição informada",
     ]
@@ -101,20 +102,20 @@ def test_tabela_saldo_espelha_fontes_canonicas():
 
 
 def test_ausencia_de_posicao_nunca_vira_zero():
-    formulas = c124.formulas_saldo()
-    for linha in range(78, 84):
+    formulas = c125.formulas_saldo()
+    for linha in range(67, 73):
         assert formulas[f"D{linha}"].endswith(f"{c124.TRACO})")   # fallback e "—"
         assert ",0)" not in formulas[f"D{linha}"]
     # abertura so vale com a fotografia completa (W41:W45), nunca a soma parcial
     for n in range(5):
-        assert f"MEMORIA_RESULTADOS!$W${41 + n}=1" in formulas[f"D{78 + n}"]
+        assert f"MEMORIA_RESULTADOS!$W${41 + n}=1" in formulas[f"D{67 + n}"]
     mem = _template()["MEMORIA_RESULTADOS"]
     # ultima posicao: a escolha fica na camada de apoio; a executiva so espelha
-    for linha, (rotulo, formula) in c124.APOIO_ULTIMA.items():
+    for linha, (rotulo, formula) in c125.APOIO_ULTIMA.items():
         assert mem[f"V{linha}"].value == rotulo
         assert mem[f"W{linha}"].value == formula
     assert '$W$49=1' in mem["W69"].value and "$W$46+1" in mem["W69"].value
-    assert formulas["D83"] == "=IF(ISNUMBER(MEMORIA_RESULTADOS!$W$69),MEMORIA_RESULTADOS!$W$69,MEMORIA_RESULTADOS!$AG$2)"
+    assert formulas["D72"] == "=IF(ISNUMBER(MEMORIA_RESULTADOS!$W$69),MEMORIA_RESULTADOS!$W$69,MEMORIA_RESULTADOS!$AG$2)"
     for formula in formulas.values():
         assert "INDIRECT(" not in formula and "+" not in formula
     assert mem["AG2"].value == "—"
@@ -131,13 +132,13 @@ def test_tabela_saldo_usa_o_estilo_existente_da_resultados():
         return (c.fill.fgColor.rgb, c.font.sz, c.font.b,
                 c.font.color.rgb if c.font.color else None)
 
-    assert assinatura("B76") == assinatura("B44")    # titulo azul-escuro
-    assert assinatura("B77") == assinatura("B45")    # cabecalho azul-claro
-    assert assinatura("D78") == assinatura("C46")    # moeda
-    assert assinatura("B83") == assinatura("B52")    # linha final no padrao TOTAL
-    assert ws["D79"].number_format == ws["C46"].number_format
-    assert ws["C79"].number_format == ws["C38"].number_format      # dd/mm/aaaa
-    assert ws["C83"].number_format == ws["C38"].number_format
+    assert assinatura("B65") == assinatura("B44")    # titulo azul-escuro
+    assert assinatura("B66") == assinatura("B45")    # cabecalho azul-claro
+    assert assinatura("D67") == assinatura("C46")    # moeda
+    assert assinatura("B72") == assinatura("B52")    # linha final no padrao TOTAL
+    assert ws["D68"].number_format == ws["C46"].number_format
+    assert ws["C68"].number_format == ws["C38"].number_format      # dd/mm/aaaa
+    assert ws["C72"].number_format == ws["C38"].number_format
 
 
 # ------------------------------------------------- Excel real (opt-in)
@@ -229,12 +230,12 @@ def test_excel_real_sem_residuo_e_ausencia_como_traco(tmp_path):
                         assert valor == round(valor, 2), (aba, celula, valor)
                         assert not (valor < 0 and round(valor, 2) == 0), (aba, celula)
             assert v("parametros", "E3") == 0.0381 and v("parametros", "F3") == 1.0381
-            assert v("RESULTADOS", "D81") == "—"                   # C3 incompleta
-            assert v("RESULTADOS", "E81") == "Não informado"
-            assert isinstance(v("RESULTADOS", "D80"), float)       # C2 completa
-            assert v("RESULTADOS", "E80") == "Posição de abertura"
-            assert v("RESULTADOS", "D83") == v("RESULTADOS_DETALHE", "C30")
-            assert v("RESULTADOS", "E83") == "Posição atual"
+            assert v("RESULTADOS", "D70") == "—"                   # C3 incompleta
+            assert v("RESULTADOS", "E70") == "Não informado"
+            assert isinstance(v("RESULTADOS", "D69"), float)       # C2 completa
+            assert v("RESULTADOS", "E69") == "Posição de abertura"
+            assert v("RESULTADOS", "D72") == v("RESULTADOS_DETALHE", "C30")
+            assert v("RESULTADOS", "E72") == "Posição atual"
         finally:
             _com(book.Close, False)
     finally:

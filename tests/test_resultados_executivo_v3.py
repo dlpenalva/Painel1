@@ -257,7 +257,9 @@ def test_gerado_preserva_aba_executiva_no_roundtrip_openpyxl():
     formatacao condicional e a indicacao dos ajustes manuais (texto normal:
     com a camada tecnica oculta, o hiperlink deixou de existir)."""
     ws = _gerado()[ABA_RESULTADOS]
-    for endereco, formula in atual.formulas_executivo().items():
+    # Coleta 12.5: bloco PCs em B74:G83 (aplicar_coleta_125_saldo_posicao).
+    import aplicar_coleta_125_saldo_posicao as c125
+    for endereco, formula in c125.formulas_executivo().items():
         assert ws[endereco].value == formula, endereco
     assert len(ws.merged_cells.ranges) >= 30
     assert len(ws.conditional_formatting) >= 10
@@ -475,7 +477,7 @@ def test_percentuais_datas_e_moeda_sao_numeros_formatados():
         assert ws[endereco].number_format.startswith("0.00%"), endereco
     for endereco in ("D6", "C38", "D42", "F40", "C31"):
         assert ws[endereco].number_format.startswith("dd/mm/yyyy"), endereco
-    for endereco in ("B9", "C9", "D9", "E9", "F9", "C17", "C20", "C46", "E52", "C57", "C67"):
+    for endereco in ("B9", "C9", "D9", "E9", "F9", "C17", "C20", "C46", "E52", "C57", "C76"):  # 12.5: C67 -> C76
         fmt = ws[endereco].number_format
         assert "R$" in fmt and "#,##0.00" in fmt, (endereco, fmt)
     for formula in atual.formulas_executivo().values():
