@@ -125,6 +125,13 @@ def montar_objeto_processo_reajuste(
     pendencias = _montar_pendencias(assistente_base, dossie_base, modo_base, contrato, leitura)
     resultados = _montar_resultados(leitura, painel_base, assistente_base)
     pcs = _montar_pcs(leitura, painel_base)
+    memoria_por_ciclo = _montar_memoria_por_ciclo(
+        leitura, resultados, pcs, assistente_base
+    )
+    # Issue #195: painel e assistente nascem antes da memoria; recebem aqui o
+    # VTA canonico ja apurado, para que os snapshots nao exibam R$ 0,00.
+    from _painel_executivo import vincular_vta_canonico
+    vincular_vta_canonico(painel_base, assistente_base, memoria_por_ciclo.get("vta"))
 
     processo: dict[str, Any] = {
         "tipo": TIPO_OBJETO_PROCESSO,
@@ -158,9 +165,7 @@ def montar_objeto_processo_reajuste(
         "dados_operacionais": _montar_dados_operacionais(leitura),
         "resultados": resultados,
         "pcs": pcs,
-        "memoria_por_ciclo": _montar_memoria_por_ciclo(
-            leitura, resultados, pcs, assistente_base
-        ),
+        "memoria_por_ciclo": memoria_por_ciclo,
         "pendencias": pendencias,
         "justificativas": _montar_justificativas(
             assistente_base, dossie_base, modo_base, contrato, pendencias

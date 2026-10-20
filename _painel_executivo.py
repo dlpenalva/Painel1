@@ -18,6 +18,7 @@ from typing import Any
 
 from _motor_metodologias import montar_motor_metodologias
 from _motor_temporal import montar_motor_temporal
+from _resultado_consolidado import ORIGEM_VTA_CANONICA, ORIGEM_VTA_INDISPONIVEL
 
 NIVEL_CRITICO = "critico"
 NIVEL_ATENCAO = "atencao"
@@ -131,6 +132,73 @@ def _parcelas_do_event_log(leitura: dict[str, Any]) -> list[dict[str, Any]]:
             "justificativa_vta": ev.get("justificativa"),
         })
     return parcelas
+
+
+def _numero_ou_none(valor: Any) -> float | None:
+    """Numero lido ou None: ausencia nunca vira zero."""
+    if valor in (None, "") or isinstance(valor, bool):
+        return None
+    try:
+        return float(valor)
+    except (TypeError, ValueError):
+        return None
+
+
+def vta_canonico_da_memoria(memoria_vta: dict[str, Any] | None) -> dict[str, Any]:
+    """VTA canonico ja apurado (memoria_por_ciclo.vta), sem novo calculo.
+
+    Issue #195: e a mesma fonte do resultado consolidado da pagina Valor Global
+    (== MEMORIA_RESULTADOS!B26). Sem valor canonico o VTA fica indisponivel,
+    com o motivo do proprio motor — nunca R$ 0,00 por campo ausente.
+    """
+    memoria_vta = memoria_vta or {}
+    valor = _numero_ou_none(memoria_vta.get("valor_total_atualizado"))
+    return {
+        "valor_total_atualizado": valor,
+        "vta_disponivel": valor is not None,
+        "origem_vta": ORIGEM_VTA_CANONICA if valor is not None else ORIGEM_VTA_INDISPONIVEL,
+        "metodo_vta": memoria_vta.get("metodo"),
+        "motivo_vta_indisponivel": None if valor is not None else (
+            memoria_vta.get("motivo")
+            or "VTA canônico não consolidado para este arquivo."
+        ),
+    }
+
+
+CAMPOS_VTA_CANONICO = (
+    "valor_total_atualizado", "vta_disponivel", "origem_vta",
+    "metodo_vta", "motivo_vta_indisponivel",
+)
+
+
+def campos_vta_canonico(painel: dict[str, Any] | None) -> dict[str, Any]:
+    """Repasse dos campos canonicos do VTA do painel aos consumidores."""
+    vta = (painel or {}).get("vta") or {}
+    if "vta_disponivel" not in vta:
+        return vta_canonico_da_memoria(None)
+    return {chave: vta.get(chave) for chave in CAMPOS_VTA_CANONICO}
+
+
+def vincular_vta_canonico(
+    painel: dict[str, Any],
+    assistente: dict[str, Any] | None,
+    memoria_vta: dict[str, Any] | None,
+) -> None:
+    """Grava o VTA canonico ja apurado no painel e no assistente (in-place).
+
+    Usado pelo Objeto Processo: painel e assistente sao montados antes da
+    memoria_por_ciclo, que e a fonte canonica do VTA.
+    """
+    canonico = vta_canonico_da_memoria(memoria_vta)
+    if isinstance(painel.get("vta"), dict):
+        painel["vta"].update(canonico)
+    if assistente is not None and isinstance(assistente.get("vta"), dict):
+        assistente["vta"].update(canonico)
+
+
+def _memoria_vta_da_leitura(leitura: dict[str, Any]) -> dict[str, Any]:
+    objeto = leitura.get("objeto_processo") or {}
+    return (objeto.get("memoria_por_ciclo") or {}).get("vta") or {}
 
 
 def _adaptar_para_motor(leitura: dict[str, Any]) -> dict[str, Any]:
@@ -275,7 +343,13 @@ def montar_painel_executivo(
     }
 
     # --- VTA (Q12 + metodologia sombra do leitor) ---
+    # `oficial` e a referencia historica do resumo do arquivo (nao e VTA). A
+    # conferencia sombra parte dessa base; sem ela (formato Coleta) a sombra
+    # usaria 0 como base, entao base e diferencas ficam indisponiveis em vez
+    # de virarem R$ 0,00. A sombra integral soma parcelas proprias e segue.
     vta_motor = dict(motor.vta or {})
+    resumo_historico = leitura.get("resumo") or leitura.get("historico_resumo") or {}
+    sombra_aplicavel = _numero_ou_none(resumo_historico.get("valor_total_atualizado")) is not None
     vta = {
         "oficial": vta_motor.get("oficial", vta_leitor.get("vta_oficial")),
         "metodologia_sombra": vta_motor.get("metodologia_sombra",
@@ -286,7 +360,16 @@ def montar_painel_executivo(
         "diferenca_integral": vta_motor.get("diferenca_integral"),
         "triangulacao": dict(vta_leitor.get("triangulacao") or {}),
         "potencial_futuro": dict(leitura.get("potencial_futuro") or {}),
+        "sombra_aplicavel": sombra_aplicavel,
+        "motivo_sombra": None if sombra_aplicavel else (
+            "Conferência sombra não aplicável: o arquivo não traz resumo "
+            "histórico de valor total (formato Coleta)."
+        ),
     }
+    if not sombra_aplicavel:
+        for chave in ("oficial", "metodologia_sombra", "diferenca_sombra", "diferenca_integral"):
+            vta[chave] = None
+    vta.update(vta_canonico_da_memoria(_memoria_vta_da_leitura(leitura)))
 
     # --- Retroativo (Q9 por PC + total) ---
     retroativo = {
@@ -376,9 +459,14 @@ def render_painel_executivo(leitura: dict[str, Any]) -> None:
         else "Valor do contrato hoje"
     )
     m1.metric(rotulo_valor, _brl(sc.get("valor_hoje")))
-    m2.metric("VTA (oficial)", _brl(vta.get("oficial")))
+    m2.metric(
+        "Valor Total Atualizado (VTA)",
+        _brl(vta.get("valor_total_atualizado")) if vta.get("vta_disponivel") else "Indisponível",
+    )
     m3.metric("Retroativo apurado", _brl(retro.get("total_apurado")))
     m4.metric("Delta pago × devido", _brl(fin["totais"].get("delta")))
+    if not vta.get("vta_disponivel") and vta.get("motivo_vta_indisponivel"):
+        st.caption(f"VTA indisponível: {vta['motivo_vta_indisponivel']}")
 
     # --- Conferencia: tudo abaixo responde "como esse calculo foi produzido?" ---
     with st.expander(
@@ -485,6 +573,8 @@ def render_painel_executivo(leitura: dict[str, Any]) -> None:
                 st.write(f"Conferência pela metodologia sombra: **{_brl(vta.get('metodologia_sombra'))}**")
                 st.write(f"Conferência sombra integral: **{_brl(vta.get('metodologia_sombra_integral'))}**")
                 st.write(f"Diferença entre conferências: **{_brl(vta.get('diferenca_sombra'))}**")
+                if vta.get("motivo_sombra"):
+                    st.caption(vta["motivo_sombra"])
                 st.write(f"Retroativo apurado (PCs): **{_brl(retro.get('total_apurado'))}**")
                 st.write(f"Retroativo no resumo oficial: **{_brl(retro.get('oficial_resumo'))}**")
                 if retro["por_pc"]:
