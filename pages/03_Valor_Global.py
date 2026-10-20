@@ -6287,6 +6287,9 @@ if resultado:
     resumo_ciclos.metric("Ciclos analisados", _ciclos_str)
     resumo_retro.metric("Retroativo reconhecido", _retro_str)
     resumo_acum.metric("Percentual acumulado", _acum_str)
+    # Informativo: so existe quando o hotfix em memoria da Coleta 12.5 foi aplicado.
+    if resultado.get("aviso_compatibilidade_coleta_125"):
+        st.caption(f"ℹ️ {resultado['aviso_compatibilidade_coleta_125']}")
     render_resultado_consolidado(resultado, diagnostico_coleta)
     if resultado.get("id_apuracao"):
         st.caption(f"ID da apuração: {resultado['id_apuracao']}")

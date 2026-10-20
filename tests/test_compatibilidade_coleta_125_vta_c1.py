@@ -9,7 +9,11 @@ from pathlib import Path
 import pytest
 from openpyxl import Workbook, load_workbook
 
-from _compatibilidade_valores import _compatibilidade_125_vta_c1
+from _compatibilidade_valores import (
+    AVISO_COMPATIBILIDADE_125,
+    _compatibilidade_125_vta_c1,
+    aviso_compatibilidade_coleta_125,
+)
 from _contexto_coleta import ContextoColeta
 from _coleta_reajuste import ler_coleta_reajuste
 from _coleta_oficial import (
@@ -20,6 +24,8 @@ from _coleta_oficial import (
 )
 
 TOL = 0.005
+ROOT = Path(__file__).resolve().parents[1]
+FIXTURES_COMPAT = Path(__file__).resolve().parent / "fixtures" / "coletas_compat"
 # Valores sinteticos: nenhum dado real de fiscalizacao entra no repositorio.
 VTA_SINTETICO = 620_123.45
 
@@ -102,6 +108,45 @@ def test_compatibilidade_125_falha_fechado_se_t25_nao_confirma_vta():
     assert wb["MEMORIA_RESULTADOS"]["B26"].value is None
 
 
+def test_aviso_125_so_quando_hotfix_efetivamente_aplicado():
+    wb = _workbook_125_minimo()
+    aplicada = _compatibilidade_125_vta_c1(
+        wb, {"marcador_publico": "12.5", "codigo": "COLETA_11"}
+    )
+    assert aviso_compatibilidade_coleta_125(aplicada) == AVISO_COMPATIBILIDADE_125
+    assert AVISO_COMPATIBILIDADE_125 == (
+        "Coleta 12.5: correção de compatibilidade aplicada automaticamente ao "
+        "processamento. O arquivo original não foi alterado. Recomenda-se "
+        "utilizar a Coleta 12.6 nas próximas apurações."
+    )
+    wb = _workbook_125_minimo()
+    wb["MEMORIA_RESULTADOS"]["T25"] = 600_000.0
+    recusada = _compatibilidade_125_vta_c1(
+        wb, {"marcador_publico": "12.5", "codigo": "COLETA_11"}
+    )
+    assert aviso_compatibilidade_coleta_125(recusada) is None
+    # Compatibilidade legada aplicada nao e o hotfix 12.5: sem aviso.
+    assert aviso_compatibilidade_coleta_125(
+        {"aplicada": True, "blocos_adaptados": ["financeiro"]}
+    ) is None
+    assert aviso_compatibilidade_coleta_125(None) is None
+
+
+@pytest.mark.parametrize("fixture", ["pre11_l1_financeiro", "coleta_11_financeiro"])
+def test_upload_legado_ou_atual_nao_exibe_aviso_125(fixture):
+    from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
+
+    conteudo = (FIXTURES_COMPAT / f"{fixture}.xlsx").read_bytes()
+    resultado, _ = processar_coleta_oficial_runtime(conteudo)
+    assert resultado["aviso_compatibilidade_coleta_125"] is None
+
+
+def test_pagina_valor_global_exibe_aviso_125_condicional_e_discreto():
+    fonte = (ROOT / "pages" / "03_Valor_Global.py").read_text(encoding="utf-8")
+    assert 'if resultado.get("aviso_compatibilidade_coleta_125"):' in fonte
+    assert "st.caption(f\"ℹ️ {resultado['aviso_compatibilidade_coleta_125']}\")" in fonte
+
+
 real_excel = pytest.mark.skipif(
     os.environ.get("RUN_EXCEL_INTEGRATION") != "1"
     or not os.environ.get("COLETA_125_REAL_XLSX"),
@@ -146,6 +191,10 @@ def test_coleta_125_real_compatibilizada_e_mesmos_dados_na_126(tmp_path):
     assert diagnostico["metadados"]["status_resultados"]["valores"]["vta_oficial"] == pytest.approx(
         vta_esperado, abs=TOL
     )
+    from _coleta_reajuste_documentos import processar_coleta_oficial_runtime
+
+    resultado, _ = processar_coleta_oficial_runtime(origem.read_bytes())
+    assert resultado["aviso_compatibilidade_coleta_125"] == AVISO_COMPATIBILIDADE_125
     with ContextoColeta(origem.read_bytes()) as contexto:
         mem = contexto.workbook_valores["MEMORIA_RESULTADOS"]
         assert mem["B26"].value == pytest.approx(vta_esperado, abs=TOL)

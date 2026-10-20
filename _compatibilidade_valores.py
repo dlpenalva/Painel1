@@ -55,6 +55,13 @@ ATRIBUTO_AUDITORIA = "_cl8us_compat_valores"
 # alteradas. Fica no workbook (nao na auditoria serializavel) e permite
 # reproduzir o resultado do XLS legado: ver `valores_legados`.
 ATRIBUTO_ALTERACOES = "_cl8us_compat_alteracoes"
+# Identifica, na auditoria, o hotfix em memoria da Coleta 12.5 (VTA do C1).
+HOTFIX_COLETA_125 = "COLETA_12_5_VTA_C1"
+AVISO_COMPATIBILIDADE_125 = (
+    "Coleta 12.5: correção de compatibilidade aplicada automaticamente ao "
+    "processamento. O arquivo original não foi alterado. Recomenda-se utilizar "
+    "a Coleta 12.6 nas próximas apurações."
+)
 
 _CICLOS = ("C0", "C1", "C2", "C3", "C4")
 _TOLERANCIA_DINHEIRO = 0.005
@@ -903,6 +910,7 @@ def _compatibilidade_125_vta_c1(wb, deteccao: dict[str, Any]) -> dict[str, Any] 
     return {
         "aplicada": True,
         "motivo": "hotfix seguro do zero financeiro e referencias temporais da Coleta 12.5",
+        "hotfix": HOTFIX_COLETA_125,
         "linhagem": deteccao.get("codigo"),
         "ciclos_precisao_bruta": [],
         "blocos_adaptados": ["MEMORIA_RESULTADOS", "RESULTADOS_DETALHE"],
@@ -913,6 +921,14 @@ def _compatibilidade_125_vta_c1(wb, deteccao: dict[str, Any]) -> dict[str, Any] 
             for a, l, c, antigo, novo in alteracoes[:_AMOSTRA_AUDITORIA]
         ],
     }
+
+
+def aviso_compatibilidade_coleta_125(auditoria: dict | None) -> str | None:
+    """Aviso de interface, so quando o hotfix 12.5 foi efetivamente aplicado."""
+    auditoria = auditoria or {}
+    if auditoria.get("aplicada") is True and auditoria.get("hotfix") == HOTFIX_COLETA_125:
+        return AVISO_COMPATIBILIDADE_125
+    return None
 
 
 def aplicar_compatibilidade_valores(wb, deteccao: dict | None = None) -> dict[str, Any]:

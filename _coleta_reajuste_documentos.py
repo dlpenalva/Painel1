@@ -26,6 +26,7 @@ from _politica_entrega_segura import (
 from _reajuste_utils import cadeia_fatores_oficiais, fechar_percentual_na_unidade
 from _reconciliacao_xls_python import campos_nao_confiaveis_para_documentos
 from _resultado_consolidado import montar_resultado_consolidado
+from _compatibilidade_valores import aviso_compatibilidade_coleta_125
 from _seguranca_xlsx import (
     ErroSegurancaXlsx,
     XlsxInvalidoError,
@@ -742,6 +743,9 @@ def _processar_com_contexto(
             "valores": leitura.get("compatibilidade_valores") or {},
             "restricoes": leitura.get("compatibilidade_restricoes") or [],
         },
+        "aviso_compatibilidade_coleta_125": aviso_compatibilidade_coleta_125(
+            leitura.get("compatibilidade_valores")
+        ),
         "campos_nao_confiaveis_documentos": campos_nao_confiaveis,
         "formalizacao_bloqueada": bool(bloqueios),
         "bloqueios_formalizacao": bloqueios,
