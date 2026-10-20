@@ -39,33 +39,41 @@ def test_abas_tecnicas_ocultas_em_todos_os_gerados():
         assert wb["RESULTADOS"].sheet_state == "visible"
 
 
+# Cenario ficticio (nenhum dado de fiscalizacao): C0 pago 100.000,00; C1 com
+# indice 3,75%; remanescente de 1.234,5 un a VU 250,00 (contratado 1.730,5 un,
+# coerente com a execucao: 496 un x 250,00 = 124.000,00).
+_PERCENTUAL_C1 = 0.0375
+_DATA_FOTO = date(2025, 10, 15)
+_QTD_REMANESCENTE = 1234.5
+
+
 def _cenario(destino: Path, pagamentos: list[tuple[date, float, str]]) -> Path:
     wb = load_workbook(io.BytesIO(obter_coleta_oficial_bytes()))
     ctl = wb["CONTROLE"]
     ctl["B1"], ctl["B2"], ctl["B3"] = (
-        "Financeiro (Mensalidade)", "C1", date(2026, 10, 16)
+        "Financeiro (Mensalidade)", "C1", _DATA_FOTO
     )
     par = wb["parametros"]
     par["A2"], par["B2"], par["C2"], par["D2"], par["I2"] = (
-        "Nao", "C0", date(2025, 8, 1), date(2026, 7, 31), date(2025, 8, 1)
+        "Nao", "C0", date(2024, 8, 1), date(2025, 7, 31), date(2024, 8, 1)
     )
     par["A3"], par["B3"], par["C3"], par["D3"], par["E3"] = (
-        "Sim", "C1", date(2026, 8, 1), date(2027, 7, 31), 0.0444
+        "Sim", "C1", date(2025, 8, 1), date(2026, 7, 31), _PERCENTUAL_C1
     )
-    par["H3"], par["I3"] = date(2026, 10, 1), date(2026, 10, 16)
+    par["H3"], par["I3"] = date(2025, 10, 1), _DATA_FOTO
     fin = wb["financeiro"]
-    linhas = [(date(2026, 7, 15), 857_200.0, "Nao"), *pagamentos]
+    linhas = [(date(2025, 7, 15), 100_000.0, "Nao"), *pagamentos]
     for linha, (competencia, valor, efeito) in enumerate(linhas, 2):
         fin[f"A{linha}"], fin[f"C{linha}"], fin[f"G{linha}"] = (
             competencia, valor, efeito
         )
     rem = wb["itens_Remanesc"]
     rem["A2"], rem["B2"], rem["C2"], rem["E2"] = (
-        "ITEM-01", 3607.2, 2000.0, 3092.88
+        "ITEM-01", 1730.5, 250.0, _QTD_REMANESCENTE
     )
     garantir_aba_ciclo_em_execucao(wb)
     cee = wb["CICLO_EM_EXECUCAO"]
-    cee["D5"], cee["C13"] = date(2026, 10, 16), 3092.88
+    cee["D5"], cee["C13"] = _DATA_FOTO, _QTD_REMANESCENTE
     wb.save(destino)
     return destino
 
@@ -125,18 +133,21 @@ com = pytest.mark.skipif(
 @com
 def test_c1_execucao_antes_dos_efeitos_retro_zero_e_vta(excel, tmp_path):
     arq = _cenario(tmp_path / "c1_zero.xlsx", [
-        (date(2026, 8, 15), 85_720.0, "Nao"),
-        (date(2026, 9, 15), 85_720.0, "Nao"),
+        (date(2025, 8, 15), 12_000.0, "Nao"),
+        (date(2025, 9, 15), 12_000.0, "Nao"),
     ])
     v = _valores(excel, arq)
+    # Execucao: 100.000,00 + 2 x 12.000,00. Remanescente atualizado com o VU
+    # atualizado arredondado antes da quantidade: 250,00 x 1,0375 = 259,375 ->
+    # 259,38; 1.234,5 x 259,38 = 320.204,61. VTA = execucao + remanescente.
     assert float(v["B11"]) == pytest.approx(0.0, abs=TOL)
     assert float(v["B16"]) == pytest.approx(0.0, abs=TOL)
-    assert float(v["T21"]) == pytest.approx(1_028_640.0, abs=TOL)
-    assert float(v["T23"]) == pytest.approx(6_460_407.74, abs=TOL)
-    assert float(v["T25"]) == pytest.approx(7_489_047.74, abs=TOL)
-    assert float(v["B26"]) == pytest.approx(7_489_047.74, abs=TOL)
-    assert float(v["W48"]) == pytest.approx(7_489_047.74, abs=TOL)
-    assert float(v["W50"]) == pytest.approx(7_489_047.74, abs=TOL)
+    assert float(v["T21"]) == pytest.approx(124_000.0, abs=TOL)
+    assert float(v["T23"]) == pytest.approx(320_204.61, abs=TOL)
+    assert float(v["T25"]) == pytest.approx(444_204.61, abs=TOL)
+    assert float(v["B26"]) == pytest.approx(444_204.61, abs=TOL)
+    assert float(v["W48"]) == pytest.approx(444_204.61, abs=TOL)
+    assert float(v["W50"]) == pytest.approx(444_204.61, abs=TOL)
     assert float(v["W51"]) == pytest.approx(0.0, abs=TOL)
     assert v["W52"] == "RECONCILIADO"
 
@@ -150,9 +161,10 @@ def test_c1_sem_execucao_permanece_ausente(excel, tmp_path):
 @com
 def test_c1_misto_soma_somente_parcela_elegivel(excel, tmp_path):
     arq = _cenario(tmp_path / "c1_misto.xlsx", [
-        (date(2026, 9, 15), 85_720.0, "Nao"),
-        (date(2026, 10, 15), 85_720.0, "Sim"),
+        (date(2025, 9, 15), 12_000.0, "Nao"),
+        (date(2025, 10, 10), 12_000.0, "Sim"),
     ])
     v = _valores(excel, arq)
-    assert float(v["B11"]) == pytest.approx(3_805.97, abs=TOL)
-    assert float(v["B16"]) == pytest.approx(3_805.97, abs=TOL)
+    # Apenas a parcela com efeito financeiro: 12.000,00 x 3,75% = 450,00.
+    assert float(v["B11"]) == pytest.approx(450.0, abs=TOL)
+    assert float(v["B16"]) == pytest.approx(450.0, abs=TOL)
