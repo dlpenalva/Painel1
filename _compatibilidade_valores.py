@@ -745,6 +745,176 @@ def _auditoria_vazia(motivo: str, deteccao: dict | None = None) -> dict[str, Any
     }
 
 
+def _compatibilidade_125_vta_c1(wb, deteccao: dict[str, Any]) -> dict[str, Any] | None:
+    """Recompõe, só em memória, o cache 12.5 afetado pelo zero financeiro.
+
+    A adaptação é deliberadamente estreita: método Financeiro, marcador 12.5,
+    ausência de entradas manuais e concordância do VTA recomposto com o T25 já
+    calculado pelo próprio arquivo. Qualquer falta de prova mantém o cache
+    original bloqueado. Entradas, fórmulas e bytes do upload nunca são tocados.
+    """
+    if deteccao.get("marcador_publico") != "12.5":
+        return None
+    obrigatorias = {
+        "CONTROLE", "parametros", "financeiro", "CICLO_EM_EXECUCAO",
+        "MEMORIA_RESULTADOS", "RESULTADOS_DETALHE",
+    }
+    if not obrigatorias <= set(wb.sheetnames):
+        return _auditoria_vazia("Coleta 12.5 sem as camadas exigidas", deteccao)
+    metodo = str(wb["CONTROLE"]["B1"].value or "").lower()
+    if "financeiro" not in metodo and "principal" not in metodo:
+        return _auditoria_vazia("Coleta 12.5 fora do metodo Financeiro", deteccao)
+
+    mem = wb["MEMORIA_RESULTADOS"]
+    fin = wb["financeiro"]
+    par = wb["parametros"]
+    det = wb["RESULTADOS_DETALHE"]
+    if any(not _vazio(mem[c].value) for c in ("B5", "B24", "B25")):
+        return _auditoria_vazia("Coleta 12.5 com entrada manual; mantida fail-closed", deteccao)
+    if _num(mem["T48"].value) != 0.0 or _num(mem["T58"].value) != 0.0:
+        return _auditoria_vazia("Coleta 12.5 com gate de VTA ativo", deteccao)
+
+    retroativos: list[float | None] = []
+    for indice, ciclo in enumerate(_CICLOS):
+        linhas = [
+            linha for linha in range(2, 74)
+            if str(fin.cell(linha, 2).value or "").strip().upper() == ciclo
+        ]
+        executado = any((_num(fin.cell(linha, 3).value) or 0.0) > 0 for linha in linhas)
+        if not executado:
+            retroativos.append(None)
+            continue
+        total = 0.0
+        for linha in linhas:
+            if str(fin.cell(linha, 7).value or "").strip().lower() != "sim":
+                continue
+            valor = _num(fin.cell(linha, 6).value)
+            pago = _num(fin.cell(linha, 3).value)
+            if pago is not None and pago > 0 and valor is None:
+                return _auditoria_vazia(
+                    f"Coleta 12.5 sem delta financeiro calculado em {ciclo}", deteccao
+                )
+            total += valor or 0.0
+        retroativos.append(_r2(total))
+
+    afetados = [
+        indice for indice, novo in enumerate(retroativos)
+        if novo == 0.0 and _vazio(mem[f"B{10 + indice}"].value)
+    ]
+    if not afetados:
+        return _auditoria_vazia("Coleta 12.5 sem o caso de zero financeiro", deteccao)
+
+    b15 = _r2(sum(valor for valor in retroativos if valor is not None))
+    b20, b22 = _num(mem["B20"].value), _num(mem["B22"].value)
+    d20, d35 = _num(mem["D20"].value), _num(mem["D35"].value)
+    t25 = _num(mem["T25"].value)
+    n263 = _num(mem["N263"].value) or 0.0
+    if None in (b20, b22, d20, d35, t25):
+        return _auditoria_vazia("Coleta 12.5 sem componentes canonicos do VTA", deteccao)
+    b23 = _r2(b20 + b15 + b22)
+    b26 = _r2(d20 + b15 + d35 + n263)
+    if abs(b26 - t25) > _TOLERANCIA_DINHEIRO:
+        return _auditoria_vazia("Coleta 12.5 com T25 divergente do VTA recomposto", deteccao)
+
+    ciclo_foto = _num(mem["W46"].value)
+    if ciclo_foto is None or ciclo_foto not in range(5):
+        return _auditoria_vazia("Coleta 12.5 sem ciclo da fotografia", deteccao)
+    ciclo_foto = int(ciclo_foto)
+    data_foto = par.cell(ciclo_foto + 2, 9).value
+    data_atual = wb["CICLO_EM_EXECUCAO"]["D5"].value
+    if not isinstance(data_foto, (date, datetime)) or not isinstance(data_atual, (date, datetime)):
+        return _auditoria_vazia("Coleta 12.5 sem datas exatas das fotografias", deteccao)
+
+    def _execucao_ate(ciclo: int, limite: date | datetime) -> float | None:
+        total = 0.0
+        for linha in range(2, 74):
+            if str(fin.cell(linha, 2).value or "").strip().lower() != f"c{ciclo}":
+                continue
+            competencia = fin.cell(linha, 1).value
+            if not isinstance(competencia, (date, datetime)) or competencia > limite:
+                continue
+            valor = _num(fin.cell(linha, 5).value)
+            pago = _num(fin.cell(linha, 3).value)
+            if pago is not None and pago > 0 and valor is None:
+                return None
+            total += valor or 0.0
+        return _r2(total)
+
+    exec_foto = _execucao_ate(ciclo_foto, data_foto)
+    exec_atual = _execucao_ate(ciclo_foto, data_atual)
+    anteriores = [_num(mem[f"W{61 + i}"].value) for i in range(ciclo_foto)]
+    w53, w54, w66 = (_num(mem[c].value) for c in ("W53", "W54", "W66"))
+    if exec_foto is None or exec_atual is None or any(v is None for v in anteriores):
+        return _auditoria_vazia("Coleta 12.5 sem execucao temporal reproduzivel", deteccao)
+    if None in (w53, w54, w66):
+        return _auditoria_vazia("Coleta 12.5 sem componentes temporais", deteccao)
+    residual_atual = 0.0
+    cee = wb["CICLO_EM_EXECUCAO"]
+    for linha in range(13, 212):
+        valor = _num(cee.cell(linha, 7).value)
+        if valor is not None:
+            residual_atual += valor
+    w67 = _r2(sum(anteriores) + exec_foto)
+    w48 = _r2(w67 + w53 + w54)
+    w50 = _r2(w66 + exec_atual + residual_atual)
+    w51 = _r2(w50 - w48)
+    tolerancia = _num(mem["D4"].value)
+    if tolerancia is None or abs(w51) > tolerancia:
+        return _auditoria_vazia("Coleta 12.5 nao reconciliada apos recomposicao", deteccao)
+
+    ativos = [i for i in range(5) if str(par.cell(i + 2, 1).value or "").lower() == "sim"]
+    if any(_num(det[f"B{16 + i}"].value) is None for i in ativos):
+        return _auditoria_vazia("Coleta 12.5 sem execucao por ciclo comprovada", deteccao)
+    if det["H24"].value != "VALIDADO" or det["H33"].value not in ("VALIDADO", "ESTIMADO"):
+        return _auditoria_vazia("Coleta 12.5 com outro status pendente", deteccao)
+    if any(det[f"H{linha}"].value == "REVISE" for linha in range(43, 51)):
+        return _auditoria_vazia("Coleta 12.5 com entrada manual pendente", deteccao)
+
+    alvos: dict[tuple[str, str], Any] = {
+        **{("MEMORIA_RESULTADOS", f"B{10 + i}"): valor for i, valor in enumerate(retroativos)},
+        ("MEMORIA_RESULTADOS", "B15"): b15,
+        ("MEMORIA_RESULTADOS", "E15"): b15,
+        ("MEMORIA_RESULTADOS", "B16"): b15,
+        ("MEMORIA_RESULTADOS", "B21"): b15,
+        ("MEMORIA_RESULTADOS", "B23"): b23,
+        ("MEMORIA_RESULTADOS", "B26"): b26,
+        ("MEMORIA_RESULTADOS", "F16"): "CALCULADO — CONFERIR",
+        ("MEMORIA_RESULTADOS", "E26"): "CALCULADO — CONFERIR",
+        ("MEMORIA_RESULTADOS", "W67"): w67,
+        ("MEMORIA_RESULTADOS", "W48"): w48,
+        ("MEMORIA_RESULTADOS", "W50"): w50,
+        ("MEMORIA_RESULTADOS", "W51"): w51,
+        ("MEMORIA_RESULTADOS", "W52"): "RECONCILIADO",
+        ("RESULTADOS_DETALHE", "H8"): "VALIDADO",
+        ("RESULTADOS_DETALHE", "H14"): "VALIDADO",
+        ("RESULTADOS_DETALHE", "B3"): (
+            "ESTIMADO" if det["H33"].value == "ESTIMADO" else "VALIDADO"
+        ),
+    }
+    alteracoes: list[tuple] = []
+    for (aba, endereco), novo in alvos.items():
+        celula = wb[aba][endereco]
+        antigo = celula.value
+        if _igual(antigo, novo, _TOLERANCIA_DINHEIRO):
+            continue
+        celula.value = novo
+        alteracoes.append((aba, celula.row, celula.column, antigo, novo))
+    setattr(wb, ATRIBUTO_ALTERACOES, alteracoes)
+    return {
+        "aplicada": True,
+        "motivo": "hotfix seguro do zero financeiro e referencias temporais da Coleta 12.5",
+        "linhagem": deteccao.get("codigo"),
+        "ciclos_precisao_bruta": [],
+        "blocos_adaptados": ["MEMORIA_RESULTADOS", "RESULTADOS_DETALHE"],
+        "blocos_nao_reproduziveis": {},
+        "celulas_alteradas": len(alteracoes),
+        "amostra": [
+            {"aba": a, "linha": l, "coluna": c, "xls": antigo, "recomposto": novo}
+            for a, l, c, antigo, novo in alteracoes[:_AMOSTRA_AUDITORIA]
+        ],
+    }
+
+
 def aplicar_compatibilidade_valores(wb, deteccao: dict | None = None) -> dict[str, Any]:
     """Recompoe derivados de uma Coleta PRE-11 com precisao bruta (em memoria).
 
@@ -760,6 +930,9 @@ def aplicar_compatibilidade_valores(wb, deteccao: dict | None = None) -> dict[st
         return auditoria
 
     deteccao = deteccao or detectar_linhagem_coleta(wb)
+    compatibilidade_125 = _compatibilidade_125_vta_c1(wb, deteccao)
+    if compatibilidade_125 is not None:
+        return _registrar(compatibilidade_125)
     codigo = deteccao.get("codigo")
     if codigo not in (LINHAGEM_PRE_11_L1, LINHAGEM_PRE_11_L2):
         return _registrar(_auditoria_vazia("linhagem sem adaptacao de valores", deteccao))

@@ -3959,13 +3959,16 @@ def ler_masterfile_v10(
     if exigir_modelo_oficial and not deteccao_linhagem.get("suportada"):
         res["erro"] = mensagem_linhagem_nao_homologada(deteccao_linhagem)
         return res
+    if adaptar_compatibilidade:
+        # Idempotente: no caminho do upload o contexto ja aplicou; em chamada
+        # isolada e aqui que o workbook de valores e adaptado. A chamada para
+        # modelos atuais e no-op, exceto pelo hotfix estrito da Coleta 12.5.
+        # Linhagem legada expoe a auditoria mesmo sem adaptacao: blocos nao
+        # reproduziveis precisam chegar aos avisos e a formalizacao.
+        auditoria_valores = aplicar_compatibilidade_valores(wb, deteccao_linhagem)
+        if res["compatibilidade_aplicada"] or auditoria_valores.get("aplicada"):
+            res["compatibilidade_valores"] = auditoria_valores
     if res["compatibilidade_aplicada"]:
-        if adaptar_compatibilidade:
-            # Idempotente: no caminho do upload o contexto ja aplicou; em
-            # chamada isolada e aqui que o workbook de valores e adaptado.
-            res["compatibilidade_valores"] = aplicar_compatibilidade_valores(
-                wb, deteccao_linhagem
-            )
         res["compatibilidade_restricoes"] = restricoes_compatibilidade(
             wb, deteccao_linhagem
         )
