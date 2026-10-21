@@ -337,7 +337,7 @@ def test_ciclo_colunas_mais_confortaveis():
 def test_marcador_do_xls_mostra_a_coleta_123_em_a16_b17():
     ws = _gerado()["CONTROLE"]
     assert [ws[c].value for c in ("A16", "B16", "A17", "B17")] == [
-        "Modelo de Coleta", "12.6", "Gerado pelo Cl8us", "12.13"]
+        "Modelo de Coleta", "12.6", "Gerado pelo Cl8us", "12.14"]
     assert all(ws[c].value is None for c in ("A24", "B24", "A25", "B25"))
     assert not ws.row_dimensions[16].hidden and not ws.row_dimensions[17].hidden
 
