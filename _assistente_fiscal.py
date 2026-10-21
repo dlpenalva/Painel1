@@ -27,7 +27,7 @@ from typing import Any
 
 from _conducao_gcc import diagnosticar_modo_conducao_gcc
 from _dossie_decisao import montar_dossie_decisao
-from _painel_executivo import montar_painel_executivo
+from _painel_executivo import campos_vta_canonico, montar_painel_executivo
 
 # Ciclo de vida do retroativo (Regra permanente 5).
 ESTADO_EM_ANALISE = "em análise"
@@ -434,11 +434,14 @@ def montar_assistente_fiscal(
         },
         "retroativo": retro,
         "vta": {
+            # `valor` segue sendo a referencia historica do arquivo (o dossie a
+            # declara "nao e VTA"); o VTA canonico vem em campo proprio.
             "valor": (painel.get("vta") or {}).get("oficial"),
             "conferencia_sombra": (painel.get("vta") or {}).get("metodologia_sombra"),
             "diferenca": (painel.get("vta") or {}).get("diferenca_sombra"),
             "fonte": ("Resumo histórico do MasterFile; conferência pela "
                       "metodologia sombra — este valor isolado não é VTA."),
+            **campos_vta_canonico(painel),
         },
         "valor_contrato": {
             "valor": sc.get("valor_hoje"),
@@ -566,8 +569,19 @@ def render_assistente_fiscal(leitura: dict[str, Any],
                            + f" — {o['estado']}.")
         else:
             st.write("**Existe retroativo?** Não identificado nesta apuração.")
-        st.write(f"**Valor atualizado do contrato (VTA):** {_brl(ass['vta']['valor'])}.")
-        st.caption(ass["vta"]["fonte"])
+        vta_ass = ass["vta"]
+        st.write(
+            "**Valor Total Atualizado (VTA):** "
+            + (f"{_brl(vta_ass.get('valor_total_atualizado'))}."
+               if vta_ass.get("vta_disponivel") else "Indisponível.")
+        )
+        if not vta_ass.get("vta_disponivel") and vta_ass.get("motivo_vta_indisponivel"):
+            st.caption(vta_ass["motivo_vta_indisponivel"])
+        if vta_ass.get("valor") is not None:
+            st.caption(
+                f"Valor histórico do arquivo (não é VTA): {_brl(vta_ass['valor'])} — "
+                f"{vta_ass['fonte']}"
+            )
         st.write(f"**Saldo remanescente:** {_brl(ass['saldo']['valor'])}.")
         st.caption(ass["saldo"]["fonte"])
 
