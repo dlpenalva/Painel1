@@ -1028,11 +1028,17 @@ def _montar_memoria_por_ciclo(
     falha_consumidos_geral = (
         consumidos_falha_completude or remanescente_consumidos == "FALHA"
     )
+    # Competencia paga sem EFEITO_FINANCEIRO valido nao comprova retroativo
+    # zero: o metodo Financeiro fecha inteiro (fail-closed), como no XLS (B44).
+    falha_financeiro_efeito = bool(leitura.get("financeiro_efeito_pendente"))
     conferencias = []
     for metodo in ("financeiro", "pc", "consumidos"):
         executado = round(sum(c["retroativo"][metodo]["valor_atualizado"] for c in ciclos.values()), 2)
         evidencias = sum(c["retroativo"][metodo]["evidencias"] for c in ciclos.values())
-        bloqueado_metodo = metodo == "consumidos" and falha_consumidos_geral
+        bloqueado_metodo = (
+            (metodo == "consumidos" and falha_consumidos_geral)
+            or (metodo == "financeiro" and falha_financeiro_efeito)
+        )
         if metodo == "consumidos" and isinstance(remanescente_consumidos, tuple):
             potencial_metodo = remanescente_consumidos[1]
             potencial_disponivel_metodo = True
@@ -1083,6 +1089,10 @@ def _montar_memoria_por_ciclo(
         c["metodo"] == "consumidos" and c["disponivel"] for c in conferencias
     ):
         metodo_escolhido = "consumidos"
+    elif _metodo_configurado == "financeiro" and falha_financeiro_efeito:
+        # Sem fallback para PC/Consumidos: a pendencia do Financeiro configurado
+        # nao pode ser contornada por outro metodo.
+        metodo_escolhido = "financeiro"
     else:
         metodo_escolhido = next(
             (metodo for metodo in ("financeiro", "pc", "consumidos")
@@ -1169,6 +1179,10 @@ def _montar_memoria_por_ciclo(
                 "mesmo corte); sem essa base o VTA nao e fabricado a "
                 "partir de PCs pagos (fail-closed)."
                 if vta_pc_fail_closed else
+                "Competencia paga sem EFEITO_FINANCEIRO valido (Sim com DELTA "
+                "ou Nao): retroativo nao comprovado; VTA Financeiro "
+                "indisponivel (fail-closed)."
+                if metodo_escolhido == "financeiro" and falha_financeiro_efeito else
                 "Potencial restante nao informado; ha apenas execucao atualizada."
                 if metodo_escolhido else "Metodologia sem evidencias suficientes."
             )

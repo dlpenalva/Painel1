@@ -288,6 +288,10 @@ def montar_resultado_consolidado(
         # rotulacao de "retroativo reconhecido". Fica indisponivel, nunca
         # fabricado a partir dessa decomposicao.
         retroativo_reconhecido = None
+    elif resultado.get("pendencia_efeito_financeiro"):
+        # Competencia paga sem EFEITO_FINANCEIRO valido: o cache do XLS pode
+        # trazer um retroativo que nao esta comprovado — fica indisponivel.
+        retroativo_reconhecido = None
     else:
         retroativo_reconhecido = _primeiro_informado(
             resultado.get("valor_represado_a_pagar"),

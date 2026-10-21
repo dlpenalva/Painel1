@@ -1097,6 +1097,139 @@ def _garantir_gate_vta_alertas_aditivos(wb) -> None:
         ws[celula].value = _formula_com_gate_vta(celula, ws[celula].value)
 
 
+# Coleta 12.6 — zero financeiro comprovado e referencias temporais completas.
+# A existencia da EXECUCAO e provada por VALOR_PAGO (C); EFEITO_FINANCEIRO (G)
+# governa somente a parcela de retroativo (F). Assim, ciclo executado sem
+# parcela elegivel produz zero numerico, enquanto ciclo sem execucao permanece
+# vazio. A mesma entrega fecha as referencias auxiliares W48/W50 pela data real
+# das fotografias: no metodo Financeiro, a execucao do ciclo da fotografia e
+# lida de financeiro!E ate a data correspondente, sem inferir consumo fisico.
+# Linha paga so comprova o retroativo com EFEITO_FINANCEIRO valido: "Sim" com
+# DELTA numerico (diferenca aplicavel) ou "Nao" (zero legitimo). Vazio,
+# invalido ou "Sim" sem DELTA nao comprovam zero: o ciclo fica sem valor e
+# MEMORIA_RESULTADOS!B44 sinaliza a linha, fechando B15 -> B16/B21/B26.
+_EFEITO_COMPROVADO_126 = (
+    '((financeiro!$G$2:$G$73="Sim")*ISNUMBER(financeiro!$F$2:$F$73)'
+    '+(financeiro!$G$2:$G$73="Nao")+(financeiro!$G$2:$G$73="Não"))'
+)
+_PAGA_126 = 'ISNUMBER(financeiro!$C$2:$C$73)*(financeiro!$C$2:$C$73>0)'
+_FORMULAS_RETRO_FINANCEIRO_126 = {
+    f"B{10 + ciclo}": (
+        '=IF(COUNTIFS(financeiro!$B$2:$B$73,"c'
+        f'{ciclo}",financeiro!$C$2:$C$73,">0")=0,"",'
+        f'IF(SUMPRODUCT((financeiro!$B$2:$B$73="c{ciclo}")*{_PAGA_126}'
+        f'*(1-{_EFEITO_COMPROVADO_126}))>0,"",'
+        'ROUND(SUMIFS(financeiro!$F$2:$F$73,financeiro!$B$2:$B$73,"c'
+        f'{ciclo}",financeiro!$G$2:$G$73,"Sim"),2)))'
+    )
+    for ciclo in range(5)
+}
+# Primeira redacao da 12.6 (sem a prova do efeito), aceita so para migrar.
+_FORMULAS_RETRO_FINANCEIRO_126_V1 = {
+    f"B{10 + ciclo}": (
+        '=IF(COUNTIFS(financeiro!$B$2:$B$73,"c'
+        f'{ciclo}",financeiro!$C$2:$C$73,">0")=0,"",'
+        'ROUND(SUMIFS(financeiro!$F$2:$F$73,financeiro!$B$2:$B$73,"c'
+        f'{ciclo}",financeiro!$G$2:$G$73,"Sim"),2))'
+    )
+    for ciclo in range(5)
+}
+_FORMULA_B15_126_ANTERIOR = '=IF(COUNT(B10:B14)=0,"",ROUND(SUM(B10:B14),2))'
+_FORMULA_B15_126 = '=IF(COUNT(B10:B14)=0,"",IF($B$44>0,"",ROUND(SUM(B10:B14),2)))'
+_FORMULA_B44_126_ANTERIOR = (
+    '=SUMPRODUCT(--(financeiro!$C$2:$C$73<>""),--(((financeiro!$B$2:$B$73="")'
+    '+(financeiro!$G$2:$G$73=""))>0))'
+)
+_FORMULA_B44_126 = (
+    '=SUMPRODUCT(--(financeiro!$C$2:$C$73<>""),--(((financeiro!$B$2:$B$73="")'
+    f'+(financeiro!$G$2:$G$73="")+{_PAGA_126}*(1-{_EFEITO_COMPROVADO_126}))>0))'
+)
+_FORMULA_W50_126 = (
+    '=IF(OR($W$49=0,$W$66=""),"",ROUND($W$66+'
+    'IF($B$4="Financeiro",IFERROR(SUMIFS(financeiro!$E$2:$E$73,'
+    'financeiro!$B$2:$B$73,"c"&$T$20,financeiro!$A$2:$A$73,"<="&'
+    'INDIRECT("CICLO_EM_EXECUCAO!$D$5")),0),IF($T$49=1,$T$50,'
+    'IFERROR(SUM(INDIRECT("CICLO_EM_EXECUCAO!F13:F211")),0)))+'
+    'IFERROR(SUM(INDIRECT("CICLO_EM_EXECUCAO!G13:G211")),0),2))'
+)
+_FORMULA_W67_126 = (
+    '=IF($W$46="","",IF($B$4="Financeiro",'
+    'IF(NOT(ISNUMBER(INDEX(parametros!$I$2:$I$6,$W$46+1))),"",'
+    'ROUND(SUMPRODUCT((ROW($W$61:$W$65)-ROW($W$61)<$W$46)*$W$61:$W$65)+'
+    'SUMIFS(financeiro!$E$2:$E$73,financeiro!$B$2:$B$73,"c"&$W$46,'
+    'financeiro!$A$2:$A$73,"<="&INDEX(parametros!$I$2:$I$6,$W$46+1)),2)),'
+    'IF(NOT(ISNUMBER($T$21)),"",ROUND($T$21+SUMPRODUCT('
+    '(ROW(itens_PC!$O$3:$O$7)-3>=1)*(ROW(itens_PC!$O$3:$O$7)-3<$W$46)*'
+    '(itens_PC!$O$3:$O$7+itens_PC!$Q$3:$Q$7)),2))))'
+)
+_ROTULO_COBERTURA_B6_126 = "DATA DA FOTOGRAFIA FÍSICA DO CICLO ATUAL — AUTO"
+
+
+def _garantir_retro_zero_e_referencias_temporais(wb) -> None:
+    """Aplica a Coleta 12.6 de forma idempotente e fail-closed."""
+    if "MEMORIA_RESULTADOS" not in wb.sheetnames:
+        return
+    mem = wb["MEMORIA_RESULTADOS"]
+    for celula, nova in _FORMULAS_RETRO_FINANCEIRO_126.items():
+        atual = str(mem[celula].value or "")
+        if atual == nova:
+            continue
+        v1 = _FORMULAS_RETRO_FINANCEIRO_126_V1[celula]
+        antiga = v1.replace(
+            'financeiro!$C$2:$C$73,">0")=0',
+            'financeiro!$C$2:$C$73,">0",financeiro!$G$2:$G$73,"Sim")=0',
+            1,
+        )
+        if atual not in (v1, antiga):
+            raise ValueError(f"MEMORIA_RESULTADOS!{celula} fora do formato esperado")
+        mem[celula].value = nova
+    for celula, anterior, nova in (
+        ("B15", _FORMULA_B15_126_ANTERIOR, _FORMULA_B15_126),
+        ("B44", _FORMULA_B44_126_ANTERIOR, _FORMULA_B44_126),
+    ):
+        atual = str(mem[celula].value or "")
+        if atual == nova:
+            continue
+        if atual != anterior:
+            raise ValueError(f"MEMORIA_RESULTADOS!{celula} fora do formato esperado")
+        mem[celula].value = nova
+
+    w50_atual = str(mem["W50"].value or "")
+    if w50_atual != _FORMULA_W50_126:
+        prefixo = '=IF(OR($W$49=0,$W$66=""),"",ROUND($W$66+'
+        if not w50_atual.startswith(prefixo):
+            raise ValueError("MEMORIA_RESULTADOS!W50 fora do formato esperado")
+        mem["W50"].value = _FORMULA_W50_126
+
+    w67_atual = str(mem["W67"].value or "")
+    if w67_atual != _FORMULA_W67_126:
+        prefixo = '=IF($W$46="","",IF($B$4="Financeiro",ROUND(SUMPRODUCT('
+        if not w67_atual.startswith(prefixo):
+            raise ValueError("MEMORIA_RESULTADOS!W67 fora do formato esperado")
+        mem["W67"].value = _FORMULA_W67_126
+
+    if "cobertura_temporal" in wb.sheetnames:
+        cobertura = wb["cobertura_temporal"]
+        if cobertura["A6"].value in (
+            "Inicio do ciclo atual",
+            _ROTULO_COBERTURA_B6_126,
+        ):
+            cobertura["A6"].value = _ROTULO_COBERTURA_B6_126
+
+
+def _garantir_visibilidade_abas_resultados(wb) -> None:
+    """Mantem a executiva visivel e as duas camadas tecnicas em hidden."""
+    estados = {
+        "MEMORIA_RESULTADOS": "hidden",
+        "RESULTADOS_DETALHE": "hidden",
+        "RESULTADOS": "visible",
+    }
+    if not all(nome in wb.sheetnames for nome in estados):
+        return
+    for nome, estado in estados.items():
+        wb[nome].sheet_state = estado
+
+
 # Coleta 11.8 — ajustes da Coleta em uso. Fonte unica das formulas gravadas no
 # template por tools/aplicar_coleta_118_ajustes_em_uso.py (Excel COM) e
 # conferidas pelos testes. Cada formula nova nasce da forma 11.7 por troca
@@ -1879,12 +2012,14 @@ def obter_coleta_oficial_bytes() -> bytes:
     _garantir_base_economica_vu_aditivos(wb)
     _garantir_historico_vu_base_economica(wb)
     _garantir_gate_vta_alertas_aditivos(wb)
+    _garantir_retro_zero_e_referencias_temporais(wb)
     _garantir_destaque_novos_itens(wb)
     from _apresentacao_pc_xls import garantir_apresentacao_pc
     garantir_apresentacao_pc(wb)
     _garantir_colunas_tecnicas_itens_pc_ocultas(wb)
     _garantir_protecao_formulas_itens_pc(wb)
     _validar_validacoes_aditivos_criticas(wb)
+    _garantir_visibilidade_abas_resultados(wb)
     registrar_versoes_coleta(wb)
 
     wb.calculation.calcMode = "auto"

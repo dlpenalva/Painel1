@@ -996,8 +996,12 @@ def ler_coleta_reajuste(conteudo: bytes, *, contexto=None) -> dict[str, Any]:
         wb_valores = (
             contexto.workbook_valores
             if contexto is not None
-            else load_workbook(BytesIO(conteudo), data_only=True, read_only=True)
+            else load_workbook(BytesIO(conteudo), data_only=True, read_only=False)
         )
+        if contexto is None:
+            from _compatibilidade_valores import aplicar_compatibilidade_valores
+
+            aplicar_compatibilidade_valores(wb_valores)
         erros = []
         for ws in wb_valores.worksheets:
             for row in ws.iter_rows():

@@ -2116,9 +2116,21 @@ def _ler_parcelas_sombra_financeiro(wb) -> list[dict[str, Any]]:
             continue
 
         efeito = str(ws.cell(r, col_efeito).value or "").strip()
-        delta = _to_float_sombra(ws.cell(r, col_delta).value)
+        delta_bruto = ws.cell(r, col_delta).value
+        delta = _to_float_sombra(delta_bruto)
 
         base = _to_float_sombra(ws.cell(r, col_pago).value)
+        # Coleta mensal: linha paga so comprova o retroativo com "Sim" e DELTA
+        # numerico, ou "Nao". Vazio/invalido nao e zero confirmado.
+        efeito_norm = efeito.lower()
+        efeito_comprovado = (
+            efeito_norm in ("nao", "não")
+            or (
+                efeito_norm == "sim"
+                and isinstance(delta_bruto, (int, float))
+                and not isinstance(delta_bruto, bool)
+            )
+        )
         if base:
             # Novo layout mensal: valor atualizado REAL da competencia
             # (base + delta com EFEITO_FINANCEIRO=Sim; sem efeito, base pura)
@@ -2141,6 +2153,8 @@ def _ler_parcelas_sombra_financeiro(wb) -> list[dict[str, Any]]:
                 "valor": base,
                 "valor_atualizado": atualizado,
                 "justificativa_vta": "Base executada do financeiro; G nao exclui base.",
+                "efeito_financeiro": efeito,
+                "efeito_comprovado": efeito_comprovado if novo_mensal else None,
             })
         if delta and efeito == "Sim":
             parcelas.append({
@@ -3959,13 +3973,16 @@ def ler_masterfile_v10(
     if exigir_modelo_oficial and not deteccao_linhagem.get("suportada"):
         res["erro"] = mensagem_linhagem_nao_homologada(deteccao_linhagem)
         return res
+    if adaptar_compatibilidade:
+        # Idempotente: no caminho do upload o contexto ja aplicou; em chamada
+        # isolada e aqui que o workbook de valores e adaptado. A chamada para
+        # modelos atuais e no-op, exceto pelo hotfix estrito da Coleta 12.5.
+        # Linhagem legada expoe a auditoria mesmo sem adaptacao: blocos nao
+        # reproduziveis precisam chegar aos avisos e a formalizacao.
+        auditoria_valores = aplicar_compatibilidade_valores(wb, deteccao_linhagem)
+        if res["compatibilidade_aplicada"] or auditoria_valores.get("aplicada"):
+            res["compatibilidade_valores"] = auditoria_valores
     if res["compatibilidade_aplicada"]:
-        if adaptar_compatibilidade:
-            # Idempotente: no caminho do upload o contexto ja aplicou; em
-            # chamada isolada e aqui que o workbook de valores e adaptado.
-            res["compatibilidade_valores"] = aplicar_compatibilidade_valores(
-                wb, deteccao_linhagem
-            )
         res["compatibilidade_restricoes"] = restricoes_compatibilidade(
             wb, deteccao_linhagem
         )
@@ -4262,7 +4279,20 @@ def ler_masterfile_v10(
             res["avisos"].append(alerta)
 
     parcelas_sombra = []
-    parcelas_sombra.extend(_ler_parcelas_sombra_financeiro(wb))
+    parcelas_financeiro = _ler_parcelas_sombra_financeiro(wb)
+    parcelas_sombra.extend(parcelas_financeiro)
+    res["financeiro_efeito_pendente"] = [
+        {"linha": p["linha"], "ciclo": p["ciclo"], "efeito": p.get("efeito_financeiro")}
+        for p in parcelas_financeiro
+        if p.get("efeito_comprovado") is False
+    ]
+    if res["financeiro_efeito_pendente"]:
+        res["avisos"].append(
+            "financeiro: competencia paga sem EFEITO_FINANCEIRO valido (Sim com "
+            "DELTA ou Nao) nas linhas "
+            + ", ".join(str(p["linha"]) for p in res["financeiro_efeito_pendente"])
+            + "; retroativo e VTA do metodo Financeiro ficam indisponiveis."
+        )
     if layout_fiscal_definitivo:
         parcelas_fiscal, alertas_fiscal_fin = _normalizar_fiscal_financeiro(
             wb, res["parametros_v10"]

@@ -36,6 +36,9 @@ from datetime import datetime
 from pathlib import Path
 
 
+# 12.13: Coleta 12.6 — Financeiro reconhece retroativo zero quando ha execucao
+# sem parcela com efeito; referencias temporais incluem a execucao ate a data
+# real da fotografia; abas tecnicas permanecem ocultas por padrao.
 # 12.12: Coleta 12.5 — RESULTADOS: a tabela SALDO REMANESCENTE — EVOLUCAO sobe
 # para B65:G72, logo apos a observacao final; o bloco DETALHES DO METODO — PCs
 # desce para B74:G83. So posicao: calculos, valores e estilos inalterados.
@@ -103,8 +106,8 @@ from pathlib import Path
 # (Financeiro, PCs e Itens) — mudanca estrutural do XLS: COLETA_VERSION 11.1.
 # 11.3: modelos em branco do Despacho Saneador e do Termo de Apostila com a mesma
 # estrutura dos documentos gerados. 11.2: memoria de calculo da garantia em XLSX.
-CL8US_VERSION = "12.12"
-COLETA_VERSION = "12.5"
+CL8US_VERSION = "12.13"
+COLETA_VERSION = "12.6"
 # Modelos de Coleta da familia 11.x aceitos SEM adaptacao: o 11.1 so acrescentou
 # um quadro informativo na RESULTADOS/MEMORIA_RESULTADOS (formulas); a Coleta 11.0
 # nao o possui e continua valida. A 11.2 so separa a apresentacao (RESULTADOS
@@ -130,10 +133,12 @@ COLETA_VERSION = "12.5"
 # A 12.4 so fecha agregacoes monetarias em 2 casas (ROUND) e acrescenta
 # RESULTADOS!B76:G83 e MEMORIA_RESULTADOS!V68:W70/AF81:AG83, fora das
 # coordenadas de leitura. A 12.5 so troca a posicao de dois blocos da
-# RESULTADOS executiva (B65:G83), que nenhum leitor consulta.
+# RESULTADOS executiva (B65:G83), que nenhum leitor consulta. A 12.6 corrige
+# formulas da memoria financeira e das referencias temporais, sem mudar as
+# coordenadas ou a metodologia dos demais modos.
 COLETA_VERSOES_ACEITAS = (
     "11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8", "11.9",
-    "12.0", "12.1", "12.2", "12.3", "12.4", "12.5",
+    "12.0", "12.1", "12.2", "12.3", "12.4", "12.5", "12.6",
 )
 # Marcadores publicos ANTERIORES a camada tecnica RESULTADOS_DETALHE: so neles
 # a RESULTADOS ainda e a aba tecnica. Qualquer outro marcador (11.2 ou
@@ -148,7 +153,7 @@ COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
 # Fallback conservador da ultima publicacao confirmada antes deste hotfix.
 # Quando o Git esta disponivel, este valor nunca prevalece sobre o commit real.
-ATUALIZADO_EM_FALLBACK = "17/10/2026 09:00"
+ATUALIZADO_EM_FALLBACK = "20/10/2026 14:32"
 
 
 def _data_ultimo_commit() -> str | None:

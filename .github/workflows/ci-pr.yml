@@ -81,4 +81,6 @@ jobs:
             tests/test_resultados_retro_reconhecido_potencial.py \
             tests/test_coleta_121_orientacao_abas_metodo.py \
             tests/test_coleta_121_aditivos_reorganizacao.py \
-            tests/test_coleta_122_acabamento_visual.py
+            tests/test_coleta_122_acabamento_visual.py \
+            tests/test_compatibilidade_coleta_125_vta_c1.py \
+            tests/test_efeito_financeiro_comprovado.py
