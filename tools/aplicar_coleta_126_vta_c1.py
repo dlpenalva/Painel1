@@ -20,6 +20,8 @@ if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
 from _coleta_oficial import (  # noqa: E402
+    _FORMULA_B15_126,
+    _FORMULA_B44_126,
     _FORMULA_W50_126,
     _FORMULA_W67_126,
     _FORMULAS_RETRO_FINANCEIRO_126,
@@ -51,13 +53,17 @@ def main() -> None:
             memoria = _trocar_formula(memoria, celula, formula)
         memoria = _trocar_formula(memoria, "W50", _FORMULA_W50_126)
         memoria = _trocar_formula(memoria, "W67", _FORMULA_W67_126)
+        memoria = _trocar_formula(memoria, "B15", _FORMULA_B15_126)
+        memoria = _trocar_formula(memoria, "B44", _FORMULA_B44_126)
 
+        # Idempotente: o rotulo pode ja ter sido aplicado por execucao anterior.
         strings = origem.read(STRINGS_XML)
         antigo = "Inicio do ciclo atual".encode("utf-8")
-        novo = _ROTULO_COBERTURA_B6_126.encode("utf-8")
-        if strings.count(antigo) != 1:
+        novo = html.escape(_ROTULO_COBERTURA_B6_126, quote=False).encode("utf-8")
+        if strings.count(antigo) == 1:
+            strings = strings.replace(antigo, novo, 1)
+        elif strings.count(novo) != 1:
             raise RuntimeError("rotulo cobertura_temporal!A6 fora do formato esperado")
-        strings = strings.replace(antigo, novo, 1)
 
         fd, temporario = tempfile.mkstemp(
             suffix=".xlsx", prefix="coleta126_", dir=TEMPLATE.parent

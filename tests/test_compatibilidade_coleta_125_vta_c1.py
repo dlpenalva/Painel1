@@ -57,7 +57,7 @@ def _workbook_125_minimo() -> Workbook:
     for celula, valor in {
         "D4": 0.005, "B20": 600_000.0, "B22": 20_123.45,
         "D20": 120_000.0, "D35": 500_123.45, "T25": VTA_SINTETICO,
-        "N263": 0.0, "T48": 0.0, "T58": 0.0, "W46": 1.0,
+        "N263": 0.0, "T48": 0.0, "T58": 0.0, "W46": 1.0, "B44": 0.0,
         "W53": 500_123.45, "W54": 0.0, "W61": 100_000.0,
         "W66": 100_000.0, "W67": 100_000.0, "W48": 600_123.45,
         "W50": 600_123.45, "W51": 0.0, "W52": "RECONCILIADO",
@@ -106,6 +106,55 @@ def test_compatibilidade_125_falha_fechado_se_t25_nao_confirma_vta():
     assert auditoria["aplicada"] is False
     assert "T25 divergente" in auditoria["motivo"]
     assert wb["MEMORIA_RESULTADOS"]["B26"].value is None
+
+
+@pytest.mark.parametrize("efeito", [None, "", "Talvez", "S"])
+def test_compatibilidade_125_falha_fechado_com_efeito_ausente_ou_invalido(efeito):
+    # C1 em execucao: competencia paga sem EFEITO_FINANCEIRO valido nao
+    # comprova retroativo zero; o hotfix nao e aplicado.
+    wb = _workbook_125_minimo()
+    wb["financeiro"]["G4"] = efeito
+    auditoria = _compatibilidade_125_vta_c1(
+        wb, {"marcador_publico": "12.5", "codigo": "COLETA_11"}
+    )
+    assert auditoria["aplicada"] is False
+    assert "EFEITO_FINANCEIRO ausente ou invalido em C1" in auditoria["motivo"]
+    assert wb["MEMORIA_RESULTADOS"]["B11"].value is None
+    assert wb["MEMORIA_RESULTADOS"]["B26"].value is None
+    assert aviso_compatibilidade_coleta_125(auditoria) is None
+
+
+def test_compatibilidade_125_falha_fechado_com_linha_incompleta_no_b44():
+    wb = _workbook_125_minimo()
+    wb["MEMORIA_RESULTADOS"]["B44"] = 1
+    auditoria = _compatibilidade_125_vta_c1(
+        wb, {"marcador_publico": "12.5", "codigo": "COLETA_11"}
+    )
+    assert auditoria["aplicada"] is False
+    assert "linhas financeiras incompletas" in auditoria["motivo"]
+    assert wb["RESULTADOS_DETALHE"]["H14"].value == "REVISE"
+
+
+def test_compatibilidade_125_aceita_nao_com_acento_e_sim_com_delta():
+    wb = _workbook_125_minimo()
+    wb["financeiro"]["G3"] = "Não"
+    wb["financeiro"]["G2"] = "Sim"  # C0: delta 0,00 numerico (fator 1)
+    auditoria = _compatibilidade_125_vta_c1(
+        wb, {"marcador_publico": "12.5", "codigo": "COLETA_11"}
+    )
+    assert auditoria["aplicada"] is True
+    assert wb["MEMORIA_RESULTADOS"]["B11"].value == 0.0
+
+
+def test_compatibilidade_125_falha_fechado_com_sim_sem_delta():
+    wb = _workbook_125_minimo()
+    wb["financeiro"]["G3"] = "Sim"
+    wb["financeiro"]["F3"] = None
+    auditoria = _compatibilidade_125_vta_c1(
+        wb, {"marcador_publico": "12.5", "codigo": "COLETA_11"}
+    )
+    assert auditoria["aplicada"] is False
+    assert "sem delta financeiro calculado em C1" in auditoria["motivo"]
 
 
 def test_aviso_125_so_quando_hotfix_efetivamente_aplicado():

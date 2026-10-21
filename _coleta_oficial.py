@@ -1104,7 +1104,28 @@ def _garantir_gate_vta_alertas_aditivos(wb) -> None:
 # vazio. A mesma entrega fecha as referencias auxiliares W48/W50 pela data real
 # das fotografias: no metodo Financeiro, a execucao do ciclo da fotografia e
 # lida de financeiro!E ate a data correspondente, sem inferir consumo fisico.
+# Linha paga so comprova o retroativo com EFEITO_FINANCEIRO valido: "Sim" com
+# DELTA numerico (diferenca aplicavel) ou "Nao" (zero legitimo). Vazio,
+# invalido ou "Sim" sem DELTA nao comprovam zero: o ciclo fica sem valor e
+# MEMORIA_RESULTADOS!B44 sinaliza a linha, fechando B15 -> B16/B21/B26.
+_EFEITO_COMPROVADO_126 = (
+    '((financeiro!$G$2:$G$73="Sim")*ISNUMBER(financeiro!$F$2:$F$73)'
+    '+(financeiro!$G$2:$G$73="Nao")+(financeiro!$G$2:$G$73="Não"))'
+)
+_PAGA_126 = 'ISNUMBER(financeiro!$C$2:$C$73)*(financeiro!$C$2:$C$73>0)'
 _FORMULAS_RETRO_FINANCEIRO_126 = {
+    f"B{10 + ciclo}": (
+        '=IF(COUNTIFS(financeiro!$B$2:$B$73,"c'
+        f'{ciclo}",financeiro!$C$2:$C$73,">0")=0,"",'
+        f'IF(SUMPRODUCT((financeiro!$B$2:$B$73="c{ciclo}")*{_PAGA_126}'
+        f'*(1-{_EFEITO_COMPROVADO_126}))>0,"",'
+        'ROUND(SUMIFS(financeiro!$F$2:$F$73,financeiro!$B$2:$B$73,"c'
+        f'{ciclo}",financeiro!$G$2:$G$73,"Sim"),2)))'
+    )
+    for ciclo in range(5)
+}
+# Primeira redacao da 12.6 (sem a prova do efeito), aceita so para migrar.
+_FORMULAS_RETRO_FINANCEIRO_126_V1 = {
     f"B{10 + ciclo}": (
         '=IF(COUNTIFS(financeiro!$B$2:$B$73,"c'
         f'{ciclo}",financeiro!$C$2:$C$73,">0")=0,"",'
@@ -1113,6 +1134,16 @@ _FORMULAS_RETRO_FINANCEIRO_126 = {
     )
     for ciclo in range(5)
 }
+_FORMULA_B15_126_ANTERIOR = '=IF(COUNT(B10:B14)=0,"",ROUND(SUM(B10:B14),2))'
+_FORMULA_B15_126 = '=IF(COUNT(B10:B14)=0,"",IF($B$44>0,"",ROUND(SUM(B10:B14),2)))'
+_FORMULA_B44_126_ANTERIOR = (
+    '=SUMPRODUCT(--(financeiro!$C$2:$C$73<>""),--(((financeiro!$B$2:$B$73="")'
+    '+(financeiro!$G$2:$G$73=""))>0))'
+)
+_FORMULA_B44_126 = (
+    '=SUMPRODUCT(--(financeiro!$C$2:$C$73<>""),--(((financeiro!$B$2:$B$73="")'
+    f'+(financeiro!$G$2:$G$73="")+{_PAGA_126}*(1-{_EFEITO_COMPROVADO_126}))>0))'
+)
 _FORMULA_W50_126 = (
     '=IF(OR($W$49=0,$W$66=""),"",ROUND($W$66+'
     'IF($B$4="Financeiro",IFERROR(SUMIFS(financeiro!$E$2:$E$73,'
@@ -1143,12 +1174,23 @@ def _garantir_retro_zero_e_referencias_temporais(wb) -> None:
         atual = str(mem[celula].value or "")
         if atual == nova:
             continue
-        antiga = nova.replace(
+        v1 = _FORMULAS_RETRO_FINANCEIRO_126_V1[celula]
+        antiga = v1.replace(
             'financeiro!$C$2:$C$73,">0")=0',
             'financeiro!$C$2:$C$73,">0",financeiro!$G$2:$G$73,"Sim")=0',
             1,
         )
-        if atual != antiga:
+        if atual not in (v1, antiga):
+            raise ValueError(f"MEMORIA_RESULTADOS!{celula} fora do formato esperado")
+        mem[celula].value = nova
+    for celula, anterior, nova in (
+        ("B15", _FORMULA_B15_126_ANTERIOR, _FORMULA_B15_126),
+        ("B44", _FORMULA_B44_126_ANTERIOR, _FORMULA_B44_126),
+    ):
+        atual = str(mem[celula].value or "")
+        if atual == nova:
+            continue
+        if atual != anterior:
             raise ValueError(f"MEMORIA_RESULTADOS!{celula} fora do formato esperado")
         mem[celula].value = nova
 

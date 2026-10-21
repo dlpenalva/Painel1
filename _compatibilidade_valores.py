@@ -780,6 +780,10 @@ def _compatibilidade_125_vta_c1(wb, deteccao: dict[str, Any]) -> dict[str, Any] 
         return _auditoria_vazia("Coleta 12.5 com entrada manual; mantida fail-closed", deteccao)
     if _num(mem["T48"].value) != 0.0 or _num(mem["T58"].value) != 0.0:
         return _auditoria_vazia("Coleta 12.5 com gate de VTA ativo", deteccao)
+    # O hotfix declara F16/H14 validados: so e seguro sem linha financeira
+    # incompleta sinalizada pelo proprio arquivo (B44).
+    if _num(mem["B44"].value) != 0.0:
+        return _auditoria_vazia("Coleta 12.5 com linhas financeiras incompletas", deteccao)
 
     retroativos: list[float | None] = []
     for indice, ciclo in enumerate(_CICLOS):
@@ -793,10 +797,17 @@ def _compatibilidade_125_vta_c1(wb, deteccao: dict[str, Any]) -> dict[str, Any] 
             continue
         total = 0.0
         for linha in linhas:
-            if str(fin.cell(linha, 7).value or "").strip().lower() != "sim":
+            efeito = str(fin.cell(linha, 7).value or "").strip().lower()
+            pago = _num(fin.cell(linha, 3).value)
+            # Linha paga so comprova zero com "Nao"; vazio/invalido nao.
+            if pago is not None and pago > 0 and efeito not in ("sim", "nao", "não"):
+                return _auditoria_vazia(
+                    f"Coleta 12.5 com EFEITO_FINANCEIRO ausente ou invalido em {ciclo}",
+                    deteccao,
+                )
+            if efeito != "sim":
                 continue
             valor = _num(fin.cell(linha, 6).value)
-            pago = _num(fin.cell(linha, 3).value)
             if pago is not None and pago > 0 and valor is None:
                 return _auditoria_vazia(
                     f"Coleta 12.5 sem delta financeiro calculado em {ciclo}", deteccao

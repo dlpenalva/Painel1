@@ -20,6 +20,14 @@ MENSAGEM_COLETA_PRECISAO_ANTERIOR = (
     "novo upload antes da formalização."
 )
 
+# Competencia paga sem EFEITO_FINANCEIRO valido nao comprova retroativo zero.
+MENSAGEM_EFEITO_FINANCEIRO_PENDENTE = (
+    "Há competência paga na aba financeiro sem EFEITO FINANCEIRO válido "
+    "(\"Sim\" com diferença calculada ou \"Não\"). Sem essa informação o "
+    "retroativo e o VTA não estão comprovados. Preencha a coluna, salve no Excel "
+    "e reenvie antes da formalização."
+)
+
 # STATUS-CANON-1.1: CONTROLE!B1 -> metodo da apuracao. A fonte de execucao a
 # consultar depende dele; nao existe fonte universal.
 _MODO_PARA_METODO = {
@@ -128,6 +136,8 @@ def mensagens_bloqueio_documental_duro(leitura: dict[str, Any]) -> list[str]:
         and not mensagens
     ):
         mensagens.append(MENSAGEM_COLETA_PRECISAO_ANTERIOR)
+    if _metodo_da_apuracao(leitura) == "financeiro" and leitura.get("financeiro_efeito_pendente"):
+        mensagens.append(MENSAGEM_EFEITO_FINANCEIRO_PENDENTE)
     return mensagens
 
 

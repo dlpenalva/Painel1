@@ -359,6 +359,11 @@ def adaptar_coleta_reajuste_para_documentos(
     modo_python = str(((leitura or {}).get("controle") or {}).get("modo") or "")
     metodo_python = {"principal": "financeiro", "pc": "pc", "d": "consumidos"}.get(modo_python)
     retroativo_python = _retroativo_python(memoria, metodo_python) if metodo_python else None
+    # Financeiro com competencia paga sem EFEITO_FINANCEIRO valido: retroativo
+    # e VTA ficam ausentes, sem recorrer ao cache do XLS (zero nao comprovado).
+    pendencia_efeito_financeiro = metodo_python == "financeiro" and bool(
+        (leitura or {}).get("financeiro_efeito_pendente")
+    )
     ciclo_vigente = str(((leitura or {}).get("controle") or {}).get("ciclo_vigente") or controle["B2"].value or "").upper()
     residual_vigente = next(
         (c.get("residuais") or {} for c in memoria.get("ciclos") or [] if str(c.get("ciclo") or "").upper() == ciclo_vigente),
@@ -373,7 +378,7 @@ def adaptar_coleta_reajuste_para_documentos(
     # "a pagar". Nao propagar para valor_represado_a_pagar/delta_total (que
     # alimentam resultado_consolidado.retroativo_reconhecido). O valor
     # continua auditavel em memoria_por_ciclo.ciclos[].retroativo.consumidos.
-    if metodo_python == "consumidos":
+    if metodo_python == "consumidos" or pendencia_efeito_financeiro:
         retroativo = None
     else:
         # P0-ROBUSTEZ-VALORES-1: sem retroativo canonico e sem valor apurado nas
@@ -405,7 +410,7 @@ def adaptar_coleta_reajuste_para_documentos(
     # MEMORIA_RESULTADOS!B26 como se fosse um calculo Python independente —
     # isso mascarava divergencias reais (Python=XLS so porque Python copiou
     # o XLS). Os demais metodos preservam o fallback existente.
-    if metodo_python == "consumidos" and vta_python is None:
+    if (metodo_python == "consumidos" and vta_python is None) or pendencia_efeito_financeiro:
         valor_total = None
     else:
         # P0-ROBUSTEZ-VALORES-1: idem para o VTA — ausencia de calculo canonico
@@ -507,6 +512,7 @@ def adaptar_coleta_reajuste_para_documentos(
         "valor_executado_atualizado": execucao_atualizada,
         "valor_calculado_sem_aditivos": valor_total,
         "valor_atualizado_contrato": valor_total,
+        "pendencia_efeito_financeiro": pendencia_efeito_financeiro,
         "valor_global_financeiro": valor_total,
         "total_aditivos_atualizados": total_aditivos,
         "total_aditivos_informativos": 0.0,
