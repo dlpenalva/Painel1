@@ -110,7 +110,7 @@ CF_SQREFS = sorted(CF_SQREFS + ["H17:H20"])
 # vazia: nenhuma linha, merge ou altura foi criada.
 # XLS-PC-VTA-ALIGN-1: +8 (150 -> 158) — A4, A6, A8, C8, D8, E8, A81 e a
 # 13a medida do bloco 6. Todas de APRESENTACAO e todas method-aware.
-TOTAL_FORMULAS = 158
+TOTAL_FORMULAS = 191  # quantidade da base atual; conferencia nao adiciona formulas nesta aba
 
 PRINT_AREA = "'RESULTADOS_DETALHE'!$A$1:$H$50"
 MARGEM_LATERAL = 0.511811024
@@ -119,7 +119,7 @@ MARGEM_CABECALHO = 0.31496062
 
 # Pinos do motor tecnico (item E do gate).
 PINOS = {
-    "B3": '=IF(OR($H$8="REVISE",$H$14="REVISE",$H$24="REVISE",$H$33="REVISE",'
+    "B3": '=IF(OR(MEMORIA_RESULTADOS!$T$58=1,$H$8="REVISE",$H$14="REVISE",$H$24="REVISE",$H$33="REVISE",'
           'COUNTIF($H$43:$H$50,"REVISE")>0),"REVISE",'
           'IF($H$33="ESTIMADO","ESTIMADO",'
           'IF(OR(LEFT(MEMORIA_RESULTADOS!$W$52,6)="REVISE",'
@@ -128,13 +128,16 @@ PINOS = {
           'COUNTIF($E$73:$E$77,"COMPARAÇÃO NÃO APLICÁVEL")>0),'
           '"BASE INSUFICIENTE","VALIDADO"))))',
     "B22": '=IF(COUNT(B16:B20)=0,"",ROUND(SUM(B16:B20),2))',
-    "B37": '=IFERROR(INDEX($C$26:$C$30,MATCH(UPPER(CONTROLE!$B$2),$A$26:$A$30,0)),"")',
-    "B38": '=IF(OR(B36="",B37=""),"",ROUND(B37-B36,2))',
+    "B37": ('=IF(MEMORIA_RESULTADOS!$T$49=1,IF(MEMORIA_RESULTADOS!$T$51="","",'
+            'ROUND($B$36+MEMORIA_RESULTADOS!$T$51,2)),'
+            'IFERROR(INDEX($C$26:$C$30,MATCH(UPPER(CONTROLE!$B$2),$A$26:$A$30,0)),""))'),
+    "B38": ('=IF(MEMORIA_RESULTADOS!$T$49=1,MEMORIA_RESULTADOS!$T$51,'
+            'IF(OR(B36="",B37=""),"",ROUND(B37-B36,2)))'),
     "B87": '=IF(OR($B$83="",$B$85="",$B$86=""),"",'
            'ROUND($B$86-($B$83+N($B$84)+$B$85),2))',
     "C5": '=IF(VTA_FINAL="","",VTA_FINAL)',
     "D5": "=$D$22",
-    "D22": '=IFERROR(RETRO_OFICIAL,"")',
+    "D22": '=IF(MEMORIA_RESULTADOS!$T$58=1,"",IFERROR(RETRO_OFICIAL,""))',
     "B86": '=IF(VTA_FINAL="","",VTA_FINAL)',
 }
 

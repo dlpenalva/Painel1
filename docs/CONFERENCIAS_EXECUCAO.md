@@ -137,3 +137,14 @@ O comando compara o cache recebido com o recálculo original e o recálculo da
 cópia corrigida, salva/reabre somente cópias temporárias e verifica o hash da
 entrada. Emite JSON com os valores e falha se o VTA mudar. Sem Excel/pywin32,
 encerra com mensagem clara; essa homologação não foi executada no Linux.
+
+Na revisão local de continuação, a execução conjunta aprovou 93 testes e pulou
+1 teste de Excel. Duas falhas eram pinos históricos do teste de rollback,
+desatualizados em relação à base atual (T58, posição vigente e contagem de
+fórmulas). As expectativas foram alinhadas à base e ao novo status, sem mudar
+essas fórmulas econômicas no template; a execução focal do rollback aprovou
+os 15 testes. A guarda de versionamento passou contra origin/main. Nova
+comparação XML confirmou 42 células permitidas e apenas três partes alteradas,
+com todos os estilos, dimensões, validações e fórmulas oficiais preservados.
+O inventário legado de `test_integridade_template_xlsx.py` continua registrado
+como desatualizado na base; não foi usado para substituir a comparação XML.
