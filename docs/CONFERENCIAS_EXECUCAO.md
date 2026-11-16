@@ -148,3 +148,8 @@ comparação XML confirmou 42 células permitidas e apenas três partes alterada
 com todos os estilos, dimensões, validações e fórmulas oficiais preservados.
 O inventário legado de `test_integridade_template_xlsx.py` continua registrado
 como desatualizado na base; não foi usado para substituir a comparação XML.
+
+A comparação da tolerância em Python usa a diferença arredondada em centavos,
+assim como D73:D77 no XLS, evitando alerta por resíduo binário no limite exato
+de cinco centavos. A matriz focal ampliada passou em 22 casos (sem depender do
+Excel ou da geração completa do template).

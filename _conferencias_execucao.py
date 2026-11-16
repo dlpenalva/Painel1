@@ -12,7 +12,9 @@ def classificar_conferencia(financeiro, fisico, periodo_financeiro=None,
         return 'BASE INSUFICIENTE'
     if periodo_financeiro != periodo_fisico:
         return 'COMPARAÇÃO NÃO APLICÁVEL'
-    if abs(financeiro - fisico) <= tolerancia:
+    # O XLS compara D73:D77 ja arredondado em centavos. Evita que
+    # residuos binarios (0.20 - 0.15 > 0.05) gerem alerta fiscal indevido.
+    if round(abs(financeiro - fisico), 2) <= tolerancia:
         return 'VALIDADO'
     return 'JUSTIFICADO' if str(justificativa or '').strip() else 'CONFERIR'
 

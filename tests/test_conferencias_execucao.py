@@ -13,6 +13,8 @@ P = (date(2025, 9, 1), date(2026, 9, 1))
 @pytest.mark.parametrize('financeiro,fisico,completo,pf,pp,just,expected', [
     (100,100,True,P,P,None,'VALIDADO'),
     (0,0,True,P,P,None,'VALIDADO'),
+    (.15,.20,True,P,P,None,'VALIDADO'),
+    (.15,.21,True,P,P,None,'CONFERIR'),
     (100,120,True,P,P,'Glosa documentada','JUSTIFICADO'),
     (100,120,True,P,P,None,'CONFERIR'),
     (None,0,True,P,P,None,'BASE INSUFICIENTE'),
