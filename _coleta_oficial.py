@@ -2020,6 +2020,8 @@ def obter_coleta_oficial_bytes() -> bytes:
     _garantir_protecao_formulas_itens_pc(wb)
     _validar_validacoes_aditivos_criticas(wb)
     _garantir_visibilidade_abas_resultados(wb)
+    from _conferencias_execucao import aplicar_conferencias
+    aplicar_conferencias(wb)
     registrar_versoes_coleta(wb)
 
     wb.calculation.calcMode = "auto"

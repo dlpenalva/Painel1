@@ -95,7 +95,7 @@ def test_f_bloco_conferencia_nao_mostra_financeiro_para_outro_metodo(wb):
         for coluna in ("B", "C", "D", "E"):
             formula = str(res[f"{coluna}{linha}"].value)
             assert formula.startswith("=IF(MEMORIA_RESULTADOS!$B$4<>\"Financeiro\",")
-            rotulo = "NAO APLICAVEL" if coluna == "E" else "Nao aplicavel ao metodo selecionado"
+            rotulo = "NÃO APLICÁVEL" if coluna == "E" else "Nao aplicavel ao metodo selecionado"
             assert rotulo in formula
 
 
@@ -170,8 +170,8 @@ def test_e_status_so_gera_alerta_quando_ambas_comparaveis(wb):
         indice_guard = formula.index(f"NOT(ISNUMBER(C{linha}))")
         # PC-UX-1 substitui conscientemente apenas os textos de status; o gate
         # quantitativo e a ordem do guard herdados do checkpoint permanecem.
-        indice_alerta = formula.index("VERIFICAR DIFERENÇA")
-        assert "SEM DIFERENÇA" in formula
+        indice_alerta = formula.index("CONFERIR")
+        assert "VALIDADO" in formula
         assert indice_guard < indice_alerta
 
 
