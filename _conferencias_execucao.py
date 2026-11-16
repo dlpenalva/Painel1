@@ -2,6 +2,21 @@
 from __future__ import annotations
 
 
+FORMULAS_MENSAGENS_RESULTADOS = {
+    'D27': (
+        '=IF(AND(ISNUMBER(VTA_FINAL),ISNUMBER(MEMORIA_RESULTADOS!B20),'
+        'VTA_FINAL<MEMORIA_RESULTADOS!B20),'
+        '"VTA inferior ao contrato original. A composição pode resultar em redução; '
+        'confira execução passada, saldo remanescente, datas e justificativas. '
+        'Diferenças de conferência não alteram o VTA. Status: "&STATUS_RESULTADOS,'
+        '"VTA oficial calculado pelo método selecionado; confira as ressalvas abaixo.")'),
+    'D32': (
+        '=MEMORIA_RESULTADOS!W52&"; C0: "&RESULTADOS_DETALHE!E73&'
+        '"; C1: "&RESULTADOS_DETALHE!E74&"; C2: "&RESULTADOS_DETALHE!E75&'
+        '"; C3: "&RESULTADOS_DETALHE!E76&"; C4: "&RESULTADOS_DETALHE!E77&'
+        '". Conferência informativa; não altera o VTA."'),
+}
+
 def classificar_conferencia(financeiro, fisico, periodo_financeiro=None,
                             periodo_fisico=None, completo=False,
                             aplicavel=True, justificativa=None, tolerancia=.05):
@@ -73,18 +88,8 @@ def aplicar_conferencias(wb):
             'COUNTIF($E$73:$E$77,"COMPARAÇÃO NÃO APLICÁVEL")>0),'
             '"BASE INSUFICIENTE","VALIDADO"))))')
         det['B3'] = old
-    wb['RESULTADOS']['D27'] = (
-        '=IF(AND(ISNUMBER(VTA_FINAL),ISNUMBER(MEMORIA_RESULTADOS!B20),'
-        'VTA_FINAL<MEMORIA_RESULTADOS!B20),'
-        '"VTA inferior ao contrato original. A composição pode resultar em redução; '
-        'confira execução passada, saldo remanescente, datas e justificativas. '
-        'Diferenças de conferência não alteram o VTA. Status: "&STATUS_RESULTADOS,'
-        '"VTA oficial calculado pelo método selecionado; confira as ressalvas abaixo.")')
-    wb['RESULTADOS']['D32'] = (
-        '=MEMORIA_RESULTADOS!W52&"; C0: "&RESULTADOS_DETALHE!E73&'
-        '"; C1: "&RESULTADOS_DETALHE!E74&"; C2: "&RESULTADOS_DETALHE!E75&'
-        '"; C3: "&RESULTADOS_DETALHE!E76&"; C4: "&RESULTADOS_DETALHE!E77&'
-        '". Conferência informativa; não altera o VTA."')
+    for endereco, formula in FORMULAS_MENSAGENS_RESULTADOS.items():
+        wb['RESULTADOS'][endereco] = formula
 
 
 def conferir_workbook(wb, justificativas=None):

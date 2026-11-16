@@ -172,7 +172,10 @@ def test_descritor_bate_com_template_e_coleta_gerada():
     # Coleta 12.4: + tabela SALDO REMANESCENTE — EVOLUCAO (so espelhos).
     # Coleta 12.5: saldo em B65:G72 e o bloco PCs desce para B74:G83.
     import aplicar_coleta_125_saldo_posicao as c125
-    esperado = {**c125.formulas_executivo(), **c125.formulas_saldo()}
+    from _conferencias_execucao import FORMULAS_MENSAGENS_RESULTADOS
+    legado = {**c125.formulas_executivo(), **c125.formulas_saldo()}
+    # Coleta 12.7: mensagens condicionais nas mesmas celulas, sem mudar abas.
+    esperado = {**legado, **FORMULAS_MENSAGENS_RESULTADOS}
     for wb in (_template(), _gerado()):
         ws = wb[ABA_RESULTADOS]
         formulas = {
@@ -180,7 +183,12 @@ def test_descritor_bate_com_template_e_coleta_gerada():
             if isinstance(c.value, str) and c.value.startswith("=")
         }
         assert formulas == esperado
-    novo.validar_ascii_e_parenteses(esperado)
+    novo.validar_ascii_e_parenteses(legado)
+    # Texto em portugues pode conter acentos; sintaxe e referencias continuam ASCII.
+    novo.validar_ascii_e_parenteses({
+        k: re.sub(r'"(?:[^" ]| |"")*"', '""', v)
+        for k, v in FORMULAS_MENSAGENS_RESULTADOS.items()
+    })
     novo.validar_ascii_e_parenteses(
         {k: v for k, v in novo.FORMULAS_MEMORIA.items() if v.startswith("=")})
 
