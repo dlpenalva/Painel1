@@ -42,12 +42,17 @@ def aplicar_conferencias(wb):
         mem[f'U{h}'] = f'=parametros!D{p}+1'
         mem[f'V{h}'] = f'=parametros!I{p}'
         mem[f'W{h}'] = f'=parametros!I{p+1}' if n < 4 else '=""'
+        # Uma competencia por mes, todas numericas; 12 linhas duplicadas nao
+        # comprovam cobertura anual. Nao inferir fechamento por contagem apenas.
+        checks = [f'COUNTIFS(financeiro!$B$2:$B$73,"c{n}",'
+                  f'financeiro!$A$2:$A$73,DATE(YEAR(T{h}),MONTH(T{h})+{k},1))=1'
+                  for k in range(12)]
         mem[f'X{h}'] = (f'=IF(OR(NOT(ISNUMBER(T{h})),NOT(ISNUMBER(U{h})),U{h}<=T{h}),0,'
-            f'IF(AND(COUNTIFS(financeiro!$B$2:$B$73,"c{n}",financeiro!$A$2:$A$73,">="&T{h},'
-            f'financeiro!$A$2:$A$73,"<"&U{h})=12,'
+            f'IF(AND(DAY(T{h})=1,U{h}=DATE(YEAR(T{h})+1,MONTH(T{h}),1),'
+            f'COUNTIF(financeiro!$B$2:$B$73,"c{n}")=12,'
+            + ','.join(checks) + ','
             f'SUMPRODUCT(--(financeiro!$B$2:$B$73="c{n}"),'
-            f'--ISNUMBER(financeiro!$C$2:$C$73),--(financeiro!$A$2:$A$73>=T{h}),'
-            f'--(financeiro!$A$2:$A$73<U{h}))=12),1,0))')
+            f'--ISNUMBER(financeiro!$C$2:$C$73))=12),1,0))')
         m = 'MEMORIA_RESULTADOS!'
         det[f'E{r}'] = (f'=IF({m}$B$4<>"Financeiro","NÃO APLICÁVEL",'
             f'IF({n}>IFERROR(VALUE(RIGHT(CONTROLE!$B$2,1)),4),"NÃO APLICÁVEL",'
@@ -101,8 +106,12 @@ def conferir_workbook(wb, justificativas=None):
                 if str(row[1].value or '').upper()==ciclo]
         pagos = [row[2].value for row in rows if number(row[2].value)]
         datas = [data(row[0].value) for row in rows if number(row[2].value)]
-        completo = bool(pf and len(datas)==12 and len(set(datas))==12
-                        and all(d and inicio<=d<=fim for d in datas))
+        completo = bool(pf and len(rows)==12 and len(datas)==12
+                        and len({(d.year,d.month) for d in datas if d})==12
+                        and inicio.day==1
+                        and pf[1].year==inicio.year+1 and pf[1].month==inicio.month
+                        and pf[1].day==1
+                        and all(d and d.day==1 and inicio<=d<=fim for d in datas))
         itens = [r for r in range(2,202) if wb['itens_Remanesc'][f'A{r}'].value not in (None,'')]
         fisicos = [wb['itens_Remanesc'][f'{col}{r}'].value for r in itens]
         financeiro = round(sum(pagos),2) if pagos else None

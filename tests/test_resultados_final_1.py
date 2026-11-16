@@ -28,7 +28,12 @@ FORMULAS_PRESERVADAS = {
     # Coleta 12.0: o bloqueio de coerencia metodo x fonte (T58 = 1) tambem revisa.
     "B3": '=IF(OR(MEMORIA_RESULTADOS!$T$58=1,$H$8="REVISE",$H$14="REVISE",$H$24="REVISE",$H$33="REVISE",'
           'COUNTIF($H$43:$H$50,"REVISE")>0),"REVISE",'
-          'IF($H$33="ESTIMADO","ESTIMADO","VALIDADO"))',
+          'IF($H$33="ESTIMADO","ESTIMADO",'
+          'IF(OR(LEFT(MEMORIA_RESULTADOS!$W$52,6)="REVISE",'
+          'COUNTIF($E$73:$E$77,"CONFERIR")>0),"CONFERIR",'
+          'IF(OR(COUNTIF($E$73:$E$77,"BASE INSUFICIENTE")>0,'
+          'COUNTIF($E$73:$E$77,"COMPARAÇÃO NÃO APLICÁVEL")>0),'
+          '"BASE INSUFICIENTE","VALIDADO"))))',
     "B22": '=IF(COUNT(B16:B20)=0,"",ROUND(SUM(B16:B20),2))',
     # Coleta 11.8: sem fotografia do ciclo vigente o saldo e a posicao atual.
     "B38": (

@@ -6,6 +6,7 @@ from pathlib import Path
 from io import BytesIO
 import sys
 import zipfile
+import tempfile
 
 from lxml import etree as ET
 from openpyxl import load_workbook
@@ -59,7 +60,15 @@ def aplicar(path):
         out = BytesIO()
         with zipfile.ZipFile(out,'w',zipfile.ZIP_DEFLATED) as dest:
             for entry in z.infolist(): dest.writestr(entry,patches.get(entry.filename,z.read(entry.filename)))
-    path.write_bytes(out.getvalue())
+    # Publica o pacote completo atomicamente: leitores nunca veem um ZIP
+    # parcialmente reescrito durante a manutencao do template.
+    with tempfile.NamedTemporaryFile(dir=path.parent, suffix='.tmp', delete=False) as tmp:
+        temporary = Path(tmp.name)
+        tmp.write(out.getvalue())
+    try:
+        temporary.replace(path)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 if __name__ == '__main__':
     aplicar(Path(sys.argv[1]))

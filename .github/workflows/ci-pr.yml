@@ -53,6 +53,7 @@ jobs:
       - name: Executar testes sentinela
         run: |
           python -m pytest -q \
+            tests/test_conferencias_execucao.py \
             tests/test_data_exata_adiantado.py \
             tests/test_timeline_ciclos_visual.py \
             tests/test_26j_aditivos_vta_documentos.py \

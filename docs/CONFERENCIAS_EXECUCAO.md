@@ -113,3 +113,27 @@ Não há autorização inferida para alterar produção ou fazer merge.
 Entrega para revisão como PR em rascunho: sem merge ou implantação. Homologação
 Excel, atribuição documental da execução física ao financeiro e eventual interface
 para justificativas permanecem explicitamente pendentes.
+
+## Continuação da revisão
+
+A versão proposta passa a Cl8us 12.15 / Coleta 12.7, mantendo a aceitação das
+versões anteriores. Os marcadores são gravados na geração oficial, no espaço
+reservado de CONTROLE; o template base mantém esse espaço vazio como previsto.
+A cobertura anual exige uma competência distinta por mês e valores numéricos em
+todos os meses; zero explícito é aceito e campo vazio continua insuficiente.
+Os testes de conferência passam a integrar o CI rápido. A ferramenta de manutenção
+do template grava o ZIP por substituição atômica, evitando leitura parcial.
+
+Para homologar com Microsoft Excel instalado em Windows:
+
+```powershell
+python -m pip install -r requirements.txt pywin32 lxml pytest
+python tools/homologar_conferencias_excel.py "C:\caminho\1-luc.xlsx"
+$env:RUN_EXCEL_INTEGRATION="1"
+python -m pytest -q tests/test_conferencias_execucao.py
+```
+
+O comando compara o cache recebido com o recálculo original e o recálculo da
+cópia corrigida, salva/reabre somente cópias temporárias e verifica o hash da
+entrada. Emite JSON com os valores e falha se o VTA mudar. Sem Excel/pywin32,
+encerra com mensagem clara; essa homologação não foi executada no Linux.

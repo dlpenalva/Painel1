@@ -98,3 +98,80 @@ def test_c73_excel_real_ignora_totais_e_itens_vazios(tmp_path):
         if book is not None: book.Close(False)
         excel.Quit()
         pythoncom.CoUninitialize()
+
+
+@pytest.fixture
+def caso_sintetico():
+    from openpyxl import Workbook
+    from datetime import timedelta
+    wb = Workbook()
+    wb.remove(wb.active)
+    for name in ('CONTROLE', 'parametros', 'financeiro', 'itens_Remanesc', 'MEMORIA_RESULTADOS'):
+        wb.create_sheet(name)
+    wb['CONTROLE']['B2'] = 'C4'
+    wb['MEMORIA_RESULTADOS']['B4'] = 'Financeiro'
+    for n in range(5):
+        p = n+2
+        wb['parametros'][f'C{p}'] = date(2020+n, 1, 1)
+        wb['parametros'][f'D{p}'] = date(2021+n, 1, 1)-timedelta(days=1)
+        wb['parametros'][f'I{p}'] = date(2020+n, 1, 1)
+    wb['itens_Remanesc']['A2'] = '1'
+    wb['itens_Remanesc']['A3'] = '2'
+    return wb
+
+
+def preencher_ciclo(wb,n,valor=10):
+    for k in range(12):
+        wb['financeiro'].cell(k+2,1,date(2020+n,k+1,1))
+        wb['financeiro'].cell(k+2,2,f'c{n}')
+        wb['financeiro'].cell(k+2,3,valor)
+    col = ('AC','N','P','R','T')[n]
+    wb['itens_Remanesc'][f'{col}2'] = valor*2
+    wb['itens_Remanesc'][f'{col}3'] = valor*10
+    wb['itens_Remanesc'][f'{col}4'] = 9999  # total sem identificador
+
+
+@pytest.mark.parametrize('n',range(4))
+def test_leitura_ciclos_completos_e_diferencas(caso_sintetico,n):
+    from _conferencias_execucao import conferir_workbook
+    wb = caso_sintetico
+    preencher_ciclo(wb,n)
+    antes = conferir_workbook(wb)[n]
+    assert antes['status']=='VALIDADO'
+    assert antes['financeiro']==antes['fisico']==120
+    col = ('AC','N','P','R')[n]
+    wb['itens_Remanesc'][f'{col}2'] = 30
+    depois = conferir_workbook(wb)[n]
+    assert depois['status']=='CONFERIR'
+    assert depois['diferenca']==10
+    justificado = conferir_workbook(wb,{f'C{n}':'Glosa documentada'})[n]
+    assert justificado['status']=='JUSTIFICADO'
+    assert not justificado['bloqueia_formalizacao']
+    assert justificado['financeiro']==120
+
+
+def test_zero_e_vazio_nao_sao_equivalentes(caso_sintetico):
+    from _conferencias_execucao import conferir_workbook
+    wb = caso_sintetico
+    preencher_ciclo(wb,0,0)
+    assert conferir_workbook(wb)[0]['status']=='VALIDADO'
+    wb['financeiro']['C2'] = None
+    assert conferir_workbook(wb)[0]['status']=='BASE INSUFICIENTE'
+
+
+def test_mes_duplicado_nao_comprova_cobertura(caso_sintetico):
+    from _conferencias_execucao import conferir_workbook
+    wb = caso_sintetico
+    preencher_ciclo(wb,0)
+    wb['financeiro']['A3'] = wb['financeiro']['A2'].value
+    assert conferir_workbook(wb)[0]['status']=='BASE INSUFICIENTE'
+
+
+def test_periodos_distintos_e_ciclo_sem_fechamento(caso_sintetico):
+    from _conferencias_execucao import conferir_workbook
+    wb = caso_sintetico
+    preencher_ciclo(wb,0)
+    wb['parametros']['I3'] = date(2021,1,15)
+    assert conferir_workbook(wb)[0]['status']=='COMPARAÇÃO NÃO APLICÁVEL'
+    preencher_ciclo(wb,4)
+    assert conferir_workbook(wb)[4]['status']=='BASE INSUFICIENTE'
