@@ -304,3 +304,52 @@ retroativo, não pago com potencial, pago sem diferença, pago com glosa,
 pagamento não confirmado, formalmente reconhecido, diferença já paga, soma sem
 duplicação/omissão, Financeiro e Itens; o caso real roda com
 `CL8US_EXEMPLO_RETRO_PC=<xlsx>`.
+
+### Ajustes finais antes do merge (mesma versão 12.16 / 12.8)
+
+Restauração: tag `restore/pre-ajustes-finais-pr200-20261117` (= `c4224d9`).
+
+1. Recomendação. Retroativo reconhecido no cálculo não comprova aprovação
+   administrativa. Sem reconhecimento formal declarado para todo o valor, o
+   assistente recomenda "Submeter à análise e ao reconhecimento administrativo
+   competente" e o dossiê "Submeter a analise e ao reconhecimento administrativo
+   competente antes de formalizar". "Gerar/Preparar apostilamento" fica restrito
+   ao caso em que `reconhecido_formalmente` cobre todo o reconhecido. O status
+   (`apto_para_confirmacao`, com confirmação humana) e todos os valores não
+   mudam. Vale para todos os métodos (no 1-luc Financeiro também).
+2. `RESULTADOS!C10` (= `MEMORIA_RESULTADOS!AG9`): "Diferença reconhecida a pagar
+   à contratada." passa a "Reconhecido no cálculo (execução paga); o pagamento
+   depende de reconhecimento administrativo." Só texto (constante
+   `TEXTOS_MEMORIA_RESULTADOS`, aplicada na geração oficial); C9 e fórmulas
+   intactos. No template, a única célula alterada é AG9.
+
+### Registros fora do escopo deste PR (sem alteração)
+
+**VTA interno (R$ 49,4 mi) × VTA oficial (R$ 87,56 mi), caso `telt`.** São
+grandezas diferentes; não há defeito de valor comprovado.
+
+- R$ 49.402.097,45 = `itens_PC!P9`: total de TODOS os 2.529 PCs cadastrados com
+  o fator do ciclo (inclui PCs não pagos e não inclui remanescente).
+  `_leitor_masterfile_v10._promover_resumo_pc` o grava em
+  `resumo.valor_total_atualizado`; o Motor Temporal (Q12, `calcular_vta_sombra`)
+  o expõe como `vta.oficial`. Consumidores: `painel.vta.oficial`,
+  `assistente.vta.valor`, `objeto.resultados.vta_oficial` (todos rotulados no
+  código como "referência histórica — não é VTA"), `dossie.garantias.
+  vta_oficial_preservado` e o campo `vta` das alternativas do motor de
+  metodologias. Não é usado no Sumário, no Painel Executivo (VTA canônico,
+  #198) nem nos documentos.
+- R$ 49.144.801,89 = `motor_metodologias` PC `valor_recomendado` = soma do
+  `valor_devido` de todos os PCs pelo Motor Temporal ("execução estrutural por
+  PCs"). Aparece no texto da decisão ("Valor recomendado pela metodologia"),
+  onde pode ser lido como VTA — risco de interpretação, não de cálculo.
+- R$ 87.560.174,12 = `RESULTADOS!B9` / `MEMORIA_RESULTADOS!B26` = composição do
+  VTA: executado C0–C4 + quantitativo restante C4 (R$ 38,3 mi) + potencial
+  (R$ 119,20). O motor de composição Python reproduz o mesmo valor.
+
+**Base de cálculo quando o pagamento do PC já inclui reajuste.** No Q9 do Motor
+Temporal, `retroativo = valor_pago × (fator − 1)`. Se `valor_pago` já for o
+valor atualizado (natureza `ja_pago`: pago = devido), a base já contém o
+reajuste: ex. PC 100, fator 1,10, pago 110 → retroativo 11,00, quando a
+diferença efetiva seria 10,00 (e já paga). Coberto como comportamento atual em
+`tests/test_retro_pc_classificacao.py` (cenário `diferenca_ja_paga`); correção
+depende de decisão de negócio e fica fora deste PR.

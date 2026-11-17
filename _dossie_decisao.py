@@ -16,6 +16,11 @@ STATUS_BLOQUEADO = "bloqueado"
 STATUS_INSUFICIENTE = "evidencia_insuficiente"
 
 ATO_APOSTILAMENTO = "Preparar apostilamento"
+# PR #200: retroativo reconhecido no calculo sem reconhecimento administrativo
+# declarado — a formalizacao fica condicionada a analise e ato competente.
+ATO_ANALISE_RECONHECIMENTO = (
+    "Submeter a analise e ao reconhecimento administrativo competente antes de formalizar"
+)
 ATO_RECONHECIMENTO = "Reconhecer retroativo antes de formalizar"
 ATO_AGUARDAR_PAGAMENTO = "Aguardar pagamento ou comprovacao de execucao"
 ATO_CORRIGIR_EVIDENCIA = "Corrigir ou complementar evidencias no MasterFile"
@@ -211,11 +216,21 @@ def _decidir_status(assistente: dict[str, Any]) -> tuple[str, str, str]:
             ATO_AGUARDAR_PAGAMENTO,
             "Ha retroativo em analise; reconhecimento depende de evidencia ou ato administrativo.",
         )
-    if _f(por_estado.get("reconhecido")) > 0.0:
+    reconhecido = _f(por_estado.get("reconhecido"))
+    if reconhecido > 0.0:
+        if _f(retro.get("reconhecido_formalmente")) >= reconhecido - 0.005:
+            return (
+                STATUS_APTO,
+                ATO_APOSTILAMENTO,
+                "Ha retroativo com reconhecimento administrativo declarado e "
+                "evidencias suficientes para preparar a formalizacao.",
+            )
         return (
             STATUS_APTO,
-            ATO_APOSTILAMENTO,
-            "Ha retroativo reconhecido e evidencias suficientes para preparar a formalizacao.",
+            ATO_ANALISE_RECONHECIMENTO,
+            "Ha retroativo reconhecido no calculo (execucao paga); o calculo nao "
+            "comprova aprovacao administrativa. A formalizacao depende de analise "
+            "e de reconhecimento pela autoridade competente.",
         )
     if retro.get("existe"):
         return (

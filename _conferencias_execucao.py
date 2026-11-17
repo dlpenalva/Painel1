@@ -34,6 +34,16 @@ FORMULAS_MENSAGENS_RESULTADOS = {
         'MEMORIA_RESULTADOS!$T$67)'),
 }
 
+# Coleta 12.8: legenda do card RETROATIVO RECONHECIDO (RESULTADOS!C10 =
+# MEMORIA_RESULTADOS!$AG$9). Antes: "Diferença reconhecida a pagar à
+# contratada." — sugeria aprovacao administrativa; o valor e o reconhecido NO
+# CALCULO (execucao paga). Somente texto: C9, formulas e valores intactos.
+TEXTOS_MEMORIA_RESULTADOS = {
+    'AG9': ('Reconhecido no cálculo (execução paga); o pagamento depende de '
+            'reconhecimento administrativo.'),
+}
+
+
 def classificar_conferencia(financeiro, fisico, periodo_financeiro=None,
                             periodo_fisico=None, completo=False,
                             aplicavel=True, justificativa=None, tolerancia=.05):
@@ -113,6 +123,8 @@ def aplicar_conferencias(wb):
         det['B3'] = old
     for endereco, formula in FORMULAS_MENSAGENS_RESULTADOS.items():
         wb['RESULTADOS'][endereco] = formula
+    for endereco, texto in TEXTOS_MEMORIA_RESULTADOS.items():
+        mem[endereco] = texto
 
 
 def conferir_workbook(wb, justificativas=None):

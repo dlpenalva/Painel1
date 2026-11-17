@@ -233,3 +233,76 @@ def test_exemplo_real_coerente_com_resultados():
     assert fin["retroativo_potencial_pc"] == pytest.approx(xls["D9"].value)
     assert fin["retroativo_por_estado"]["em análise"] == 0.0
     assert dados["sintese"]["vta"] == pytest.approx(xls["B9"].value)
+
+
+# =========================================================================== #
+# Ajustes finais do PR #200
+# (1) recomendacao: calculo nao comprova aprovacao administrativa;
+# (2) RESULTADOS!C10 (= MEMORIA_RESULTADOS!AG9) distingue os dois conceitos.
+# =========================================================================== #
+from _assistente_fiscal import (  # noqa: E402
+    ACAO_GERAR_APOSTILAMENTO,
+    ACAO_SUBMETER_RECONHECIMENTO,
+    _proxima_acao,
+)
+from _dossie_decisao import (  # noqa: E402
+    ATO_ANALISE_RECONHECIMENTO,
+    ATO_APOSTILAMENTO,
+    STATUS_APTO,
+    _decidir_status,
+)
+
+
+def _retro(reconhecido, formal=0.0, em_analise=0.0):
+    return {
+        "existe": reconhecido + em_analise > 0,
+        "valor": reconhecido + em_analise,
+        "por_estado": {"em análise": em_analise, "reconhecido": reconhecido, "pago": 0.0},
+        "reconhecido_formalmente": formal,
+    }
+
+
+@pytest.mark.parametrize("formal,acao", [
+    (0.0, ACAO_SUBMETER_RECONHECIMENTO),     # so calculo
+    (5.0, ACAO_SUBMETER_RECONHECIMENTO),     # formal parcial
+    (36397.14, ACAO_GERAR_APOSTILAMENTO),    # formal declarado para todo o valor
+])
+def test_recomendacao_condiciona_formalizacao_ao_reconhecimento(formal, acao):
+    r = _proxima_acao({"escolhida": "Pedidos de Compra (PC)"}, _retro(36397.14, formal), [])
+    assert r["acao"] == acao
+    if acao == ACAO_SUBMETER_RECONHECIMENTO:
+        assert "não comprova a aprovação" in r["motivo"]
+        assert "Gerar apostilamento" not in r["acao"]
+
+
+def _assistente(retro):
+    return {"evidencia": {"suficiente": True},
+            "resultado_recomendado": {"valor_recomendado": 1.0},
+            "retroativo": retro, "inconsistencias": []}
+
+
+@pytest.mark.parametrize("formal,ato", [
+    (0.0, ATO_ANALISE_RECONHECIMENTO),
+    (36397.14, ATO_APOSTILAMENTO),
+])
+def test_dossie_preserva_status_e_troca_apenas_o_ato(formal, ato):
+    status, ato_obtido, motivo = _decidir_status(_assistente(_retro(36397.14, formal)))
+    assert status == STATUS_APTO          # status e confirmacao humana preservados
+    assert ato_obtido == ato
+    if ato == ATO_ANALISE_RECONHECIMENTO:
+        assert "nao comprova aprovacao administrativa" in motivo
+
+
+def test_legenda_c10_distingue_calculo_de_aprovacao():
+    import io
+    from openpyxl import load_workbook
+    from _coleta_oficial import TEMPLATE_COLETA_OFICIAL, obter_coleta_oficial_bytes
+    from _conferencias_execucao import TEXTOS_MEMORIA_RESULTADOS
+    texto = TEXTOS_MEMORIA_RESULTADOS["AG9"]
+    assert "no cálculo" in texto and "reconhecimento administrativo" in texto
+    assert "a pagar à contratada" not in texto
+    for wb in (load_workbook(TEMPLATE_COLETA_OFICIAL),
+               load_workbook(io.BytesIO(obter_coleta_oficial_bytes()))):
+        assert wb["MEMORIA_RESULTADOS"]["AG9"].value == texto
+        assert wb["RESULTADOS"]["C10"].value == "=MEMORIA_RESULTADOS!$AG$9"
+        assert wb["RESULTADOS"]["C8"].value == "RETROATIVO RECONHECIDO"

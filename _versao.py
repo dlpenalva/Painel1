@@ -45,6 +45,8 @@ from pathlib import Path
 # R$ 0,00 (MEMORIA_RESULTADOS!X280:X284 e conferir_workbook).
 # Mesma versao: metodo PC classifica retroativo de PC pago como reconhecido no
 # calculo (nao "em analise"); reconhecimento administrativo so declarado no XLS.
+# Mesma versao: recomendacao condiciona a formalizacao ao reconhecimento
+# administrativo competente; RESULTADOS!C10 (AG9) distingue calculo de aprovacao.
 # 12.15 / Coleta 12.7: conferencias por periodo e ressalvas sem alterar o VTA.
 # 12.14: Painel Executivo e Assistente Fiscal exibem o VTA canonico (o mesmo da
 # pagina Valor Global) em vez da referencia historica do resumo, que no formato
