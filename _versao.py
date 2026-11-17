@@ -41,6 +41,8 @@ from pathlib import Path
 # "Nenhuma pendencia" quando o status pede conferencia. VTA e retroativo intactos.
 # Mesma versao: faixa RESULTADOS!B12:G13 em ambar (nao verde) com esses status e
 # Sumario Executivo com "Em analise: Nao aplicavel" fora do metodo PCs.
+# Mesma versao: conferencia financeira trata competencia sem lancamento como
+# R$ 0,00 (MEMORIA_RESULTADOS!X280:X284 e conferir_workbook).
 # 12.15 / Coleta 12.7: conferencias por periodo e ressalvas sem alterar o VTA.
 # 12.14: Painel Executivo e Assistente Fiscal exibem o VTA canonico (o mesmo da
 # pagina Valor Global) em vez da referencia historica do resumo, que no formato

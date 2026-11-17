@@ -54,7 +54,9 @@ def classificar_conferencia(financeiro, fisico, periodo_financeiro=None,
 def aplicar_conferencias(wb):
     """Reutiliza C73:E77; periodos/completude ficam na memoria oculta.
 
-    Fotografias delimitam o periodo fisico. Competencia vazia nao e zero.
+    Fotografias delimitam o periodo fisico. Competencia listada sem lancamento
+    de valor equivale a R$ 0,00 na conferencia (Coleta 12.8); competencia
+    ausente, duplicada ou valor nao numerico continuam base insuficiente.
     Sem fotografia seguinte nao se infere encerramento do ciclo vigente.
     """
     det = wb['RESULTADOS_DETALHE']
@@ -76,8 +78,11 @@ def aplicar_conferencias(wb):
         mem[f'U{h}'] = f'=parametros!D{p}+1'
         mem[f'V{h}'] = f'=parametros!I{p}'
         mem[f'W{h}'] = f'=parametros!I{p+1}' if n < 4 else '=""'
-        # Uma competencia por mes, todas numericas; 12 linhas duplicadas nao
-        # comprovam cobertura anual. Nao inferir fechamento por contagem apenas.
+        # Uma competencia por mes; 12 linhas duplicadas nao comprovam cobertura
+        # anual. Nao inferir fechamento por contagem apenas. Coleta 12.8:
+        # competencia listada sem lancamento de valor (VALOR_PAGO vazio) equivale
+        # a R$ 0,00 para a conferencia — a soma de B73:B77 (SUMIFS) ja a trata
+        # como zero; so valor preenchido nao numerico continua insuficiente.
         checks = [f'COUNTIFS(financeiro!$B$2:$B$73,"c{n}",'
                   f'financeiro!$A$2:$A$73,DATE(YEAR(T{h}),MONTH(T{h})+{k},1))=1'
                   for k in range(12)]
@@ -86,7 +91,8 @@ def aplicar_conferencias(wb):
             f'COUNTIF(financeiro!$B$2:$B$73,"c{n}")=12,'
             + ','.join(checks) + ','
             f'SUMPRODUCT(--(financeiro!$B$2:$B$73="c{n}"),'
-            f'--ISNUMBER(financeiro!$C$2:$C$73))=12),1,0))')
+            f'--(financeiro!$C$2:$C$73<>""),'
+            f'--NOT(ISNUMBER(financeiro!$C$2:$C$73)))=0),1,0))')
         m = 'MEMORIA_RESULTADOS!'
         det[f'E{r}'] = (f'=IF({m}$B$4<>"Financeiro","NÃO APLICÁVEL",'
             f'IF({n}>IFERROR(VALUE(RIGHT(CONTROLE!$B$2,1)),4),"NÃO APLICÁVEL",'
@@ -128,9 +134,13 @@ def conferir_workbook(wb, justificativas=None):
         pp = (a,b) if a and b else None
         rows = [row for row in wb['financeiro'].iter_rows(min_row=2,max_row=73)
                 if str(row[1].value or '').upper()==ciclo]
+        # Coleta 12.8: VALOR_PAGO vazio = sem lancamento = R$ 0,00 (mesma regra
+        # de X280:X284: C<>"" e nao numerico e o unico valor invalido).
         pagos = [row[2].value for row in rows if number(row[2].value)]
-        datas = [data(row[0].value) for row in rows if number(row[2].value)]
-        completo = bool(pf and len(rows)==12 and len(datas)==12
+        invalidos = [row for row in rows
+                     if row[2].value not in (None, '') and not number(row[2].value)]
+        datas = [data(row[0].value) for row in rows]
+        completo = bool(pf and len(rows)==12 and len(datas)==12 and not invalidos
                         and len({(d.year,d.month) for d in datas if d})==12
                         and inicio.day==1
                         and pf[1].year==inicio.year+1 and pf[1].month==inicio.month

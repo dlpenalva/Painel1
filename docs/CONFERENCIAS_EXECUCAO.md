@@ -36,8 +36,11 @@ expõe CONFERIR ou BASE INSUFICIENTE. Uma diferença isolada não bloqueia forma
 ## Períodos e resultado do caso
 
 Financeiro C0: 01/09/2025 até 31/08/2026. Físico: abertura de 01/09/2025 até
-fotografia de 15/10/2026. Há competências financeiras vazias; não equivalem a zero.
-C0 e C1: BASE INSUFICIENTE. C2–C4 futuros: NÃO APLICÁVEL. Não classificar os
+fotografia de 15/10/2026. Há competências financeiras vazias (5 de 12 no C0).
+Até a Coleta 12.7 elas não equivaliam a zero e C0/C1 ficavam BASE INSUFICIENTE;
+a partir da Coleta 12.8 equivalem a R$ 0,00 na conferência (ver a seção final),
+e C0 passa a COMPARAÇÃO NÃO APLICÁVEL porque os períodos diferem. C1 continua
+BASE INSUFICIENTE (sem fotografia seguinte). C2–C4 futuros: NÃO APLICÁVEL. Não classificar os
 140.805,61 como erro de pagamento. Quando as duas bases estão completas e seus
 períodos diferem, usar COMPARAÇÃO NÃO APLICÁVEL.
 
@@ -121,6 +124,7 @@ versões anteriores. Os marcadores são gravados na geração oficial, no espaç
 reservado de CONTROLE; o template base mantém esse espaço vazio como previsto.
 A cobertura anual exige uma competência distinta por mês e valores numéricos em
 todos os meses; zero explícito é aceito e campo vazio continua insuficiente.
+(Regra substituída na Coleta 12.8: campo vazio equivale a R$ 0,00; ver a seção final.)
 Os testes de conferência passam a integrar o CI rápido. A ferramenta de manutenção
 do template grava o ZIP por substituição atômica, evitando leitura parcial.
 
@@ -220,3 +224,33 @@ Itens; status forçados BASE INSUFICIENTE, VALIDADO e ESTIMADO): VTA
 R$ 1.249.462,09 e retroativo R$ 3.958,54 preservados, nenhum valor de célula
 diferente antes × depois, nenhum alerta de reparo. Regressão em
 `tests/test_status_conferir_base_insuficiente.py`.
+
+### Competências sem lançamento equivalem a R$ 0,00 (mesma versão 12.16 / 12.8)
+
+Restauração: tag `restore/pre-competencias-vazias-20261117` (= `f51cf5a`).
+
+Regra de negócio: na aba `financeiro`, competência listada no período do ciclo
+sem lançamento de valor (VALOR_PAGO vazio) equivale a R$ 0,00 para fins de
+conferência. Nenhuma célula é preenchida e nenhum cálculo oficial muda: a soma
+de `RESULTADOS_DETALHE!B73:B77` (SUMIFS) já tratava o vazio como zero; o que
+mudou foi apenas a regra de cobertura.
+
+- Excel, `MEMORIA_RESULTADOS!X280:X284`: a exigência "12 valores numéricos"
+  passou a "nenhum valor preenchido não numérico"
+  (`SUMPRODUCT(--(B="cN"),--(C<>""),--NOT(ISNUMBER(C)))=0`).
+- Python, `_conferencias_execucao.conferir_workbook`: mesma regra no campo
+  `completo` (vazio = `None` ou `""`; qualquer outro valor não numérico invalida).
+
+Preservado: 12 linhas por ciclo com exatamente uma competência por mês (duplicada
+ou ausente = BASE INSUFICIENTE), datas válidas no dia 1 dentro do período, texto
+no valor = BASE INSUFICIENTE, períodos diferentes = COMPARAÇÃO NÃO APLICÁVEL,
+ciclo futuro = NÃO APLICÁVEL, ciclo vigente sem fotografia seguinte = BASE
+INSUFICIENTE. Ciclo sem nenhum lançamento continua BASE INSUFICIENTE (B73 vazio):
+sem qualquer valor não há base para a conferência.
+
+Homologação no Excel real (cópias do 1-luc): "7 pagos + 5 vazios" e "7 pagos +
+5 zeros explícitos" produzem leituras idênticas (X280:X284, B73:E77, status,
+VTA, retroativo) no Excel e no Python; antes da mudança, vazio dava BASE
+INSUFICIENTE e zeros, COMPARAÇÃO NÃO APLICÁVEL. Texto em C2 volta X280 a 0.
+VTA R$ 1.249.462,09 e retroativo R$ 3.958,54 inalterados. Testes em
+`tests/test_conferencias_execucao.py`.
