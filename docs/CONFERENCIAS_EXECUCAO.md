@@ -254,3 +254,53 @@ VTA, retroativo) no Excel e no Python; antes da mudança, vazio dava BASE
 INSUFICIENTE e zeros, COMPARAÇÃO NÃO APLICÁVEL. Texto em C2 volta X280 a 0.
 VTA R$ 1.249.462,09 e retroativo R$ 3.958,54 inalterados. Testes em
 `tests/test_conferencias_execucao.py`.
+
+### Classificação do retroativo no método Pedidos de Compra (mesma versão 12.16 / 12.8)
+
+Restauração: tag `restore/pre-retro-pc-classificacao-20261117` (= `9fc065b`).
+
+Caso real (`telt_exempl_coleta.xlsx`, método PC): `RESULTADOS!C9` = R$ 36.397,14
+(retroativo reconhecido, `itens_PC!H`, 160 PCs pagos) e `D9` = R$ 119,20
+(potencial, `itens_PC!J`, 4 PCs não pagos). O Sumário Executivo dizia "Em análise
+R$ 36.397,14 / Reconhecido R$ 0,00", e a decisão recomendava "Aguardar pagamento —
+PCs sem pagamento confirmado".
+
+Causa: `_motor_temporal._classificar_pc` (Q8) só tirava um PC pago de "potencial"
+quando `TIPO_FINANCEIRO` continha "reconhec". O padrão do leitor e do XLS é
+"Impacto Potencial" em todas as linhas, inclusive nas pagas. O assistente traduzia
+"potencial" para "em análise".
+
+Conceitos adotados:
+
+1. Reconhecido no cálculo: retroativo sobre pagamento definitivo comprovado
+   (PC pago elegível, igual a `itens_PC!H` e `RESULTADOS!C9`; no Financeiro, o
+   delta com efeito). Natureza `reconhecido`.
+2. Potencial: PCs não pagos (`itens_PC!J`, `RESULTADOS!D9`). Natureza `potencial`,
+   sem retroativo no assistente; no PDF vem do motor de composição do VTA.
+3. Reconhecimento administrativo: só quando declarado no XLS
+   (`TIPO_FINANCEIRO` = "Retroativo Reconhecido") — campo
+   `ClassificacaoPC.reconhecimento_formal` e `retroativo.reconhecido_formalmente`
+   (subconjunto informativo, nunca somado de novo). Um cálculo nunca o declara.
+4. Diferença já paga: só com evidência de que o valor pago já é o valor
+   atualizado (natureza `ja_pago`). O pagamento do PC original não prova o
+   pagamento do retroativo.
+
+Mudança: Q8 classifica como `reconhecido` o PC com pagamento definitivo elegível
+e valor pago > 0 (antes do teste de texto); `ja_pago` e `potencial` inalterados.
+PDF: quadro "Situação do retroativo" com quatro linhas (Reconhecido no cálculo;
+Em análise (potencial); Diferença de reajuste já paga; Reconhecimento
+administrativo) e título da tabela PC sem "em análise".
+
+Efeitos medidos antes da mudança (simulação) e confirmados depois, no caso real:
+valores idênticos (VTA, composição, total R$ 36.397,14, potencial R$ 119,20);
+estado do objeto/Sumário "em análise" → "reconhecido"; natureza dos 160 PCs
+pagos no painel "potencial" → "reconhecido"; decisão "Aguardar pagamento" →
+"Gerar apostilamento — retroativo reconhecido pendente de formalização"
+(confirmação exigida; mesmo comportamento do método Financeiro). Cópias do
+1-luc (Financeiro, PC, Itens): valores, estados e decisão inalterados.
+
+Regressão: `tests/test_retro_pc_classificacao.py` (no CI rápido): PC pago com
+retroativo, não pago com potencial, pago sem diferença, pago com glosa,
+pagamento não confirmado, formalmente reconhecido, diferença já paga, soma sem
+duplicação/omissão, Financeiro e Itens; o caso real roda com
+`CL8US_EXEMPLO_RETRO_PC=<xlsx>`.

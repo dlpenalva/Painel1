@@ -105,9 +105,11 @@ def montar_dados_sumario_executivo(
     )
     financeiro_sec = _montar_secao_financeira(resultados, memoria_ciclo)
     _mascarar_financeiro_por_divergencia(financeiro_sec, campos_nc)
+    metodo_xls = _metodo_retroativo_xls(leitura)
     financeiro_sec["em_analise_nao_aplicavel"] = _em_analise_nao_aplicavel(
-        financeiro_sec, _metodo_retroativo_xls(leitura)
+        financeiro_sec, metodo_xls
     )
+    financeiro_sec["metodo_retroativo"] = metodo_xls
     sintese = _montar_sintese(
         objeto, resultados, memoria_ciclo, metodologia, financeiro_sec
     )
@@ -236,6 +238,28 @@ def _mascarar_sintese_por_divergencia(sintese: dict[str, Any], campos_nc: set[st
 # nos demais a planilha mostra "—" (MEMORIA_RESULTADOS!AG2). Valores possiveis
 # de METODO_RETROATIVO: "Financeiro", "PCs", "Itens" ou "SELECIONE O METODO...".
 _METODOS_SEM_RETRO_EM_ANALISE = frozenset({"Financeiro", "Itens"})
+
+
+ROTULO_RECONHECIDO_CALCULO = "Reconhecido no cálculo (execução paga)"
+ROTULO_EM_ANALISE = "Em análise (potencial)"
+ROTULO_DIFERENCA_PAGA = "Diferença de reajuste já paga"
+ROTULO_RECONHECIMENTO_ADM = "Reconhecimento administrativo"
+SEM_RECONHECIMENTO_ADM = "Não comprovado nesta apuração"
+
+
+def _texto_em_analise(fin: dict[str, Any], por_estado: dict[str, Any]) -> str:
+    """Linha "Em analise (potencial)" do quadro de situacao do retroativo.
+
+    Fora do metodo PCs segue a regra de RESULTADOS!D9 ("Nao aplicavel").
+    No metodo PCs exibe o retroativo potencial dos PCs nao pagos (mesmo valor
+    de RESULTADOS!D9); sem ele, o valor em analise do assistente.
+    """
+    if fin.get("em_analise_nao_aplicavel"):
+        return NAO_APLICAVEL
+    potencial_pc = fin.get("retroativo_potencial_pc")
+    if fin.get("metodo_retroativo") == "PCs" and isinstance(potencial_pc, (int, float)):
+        return formatar_moeda(potencial_pc)
+    return formatar_moeda(por_estado.get("em análise", fin.get("retroativo_em_analise")))
 
 
 def _metodo_retroativo_xls(leitura: dict[str, Any]) -> str | None:
@@ -647,6 +671,14 @@ def _montar_secao_financeira(
         ),
         "retroativo_reconhecido_pago": retro.get("com_efeitos_financeiros"),
         "retroativo_em_analise": retro.get("sem_efeitos_financeiros"),
+        # Reconhecimento administrativo declarado no XLS (subconjunto do
+        # reconhecido no calculo; nunca somado de novo).
+        "retroativo_reconhecido_formalmente": retro.get("reconhecido_formalmente"),
+        # Retroativo potencial de PCs nao pagos (RESULTADOS!D9 /
+        # RETROATIVO_POTENCIAL_VTA), do motor de composicao do VTA.
+        "retroativo_potencial_pc": (
+            (resultados.get("vta_composicao") or {}).get("retroativo_potencial")
+        ),
         "retroativo_por_estado": copy.deepcopy(retro.get("por_estado") or {}),
         "retroativo_total": retro.get("total"),
         "retroativo_estado": retro.get("estado"),
@@ -1455,7 +1487,7 @@ def _bloco_financeiro(historia, dados, estilos) -> None:
         fin.get("delta_total_financeiro"),
     )
     _tabela_metodo(
-        "Método Pedido de Compras — retroativo em análise, por ciclo",
+        "Método Pedido de Compras — valor pago, valor atualizado e retroativo por ciclo",
         fin.get("pc_por_ciclo") or [],
         fin.get("delta_total_pc"),
     )
@@ -1474,17 +1506,25 @@ def _bloco_financeiro(historia, dados, estilos) -> None:
         return
     por_estado = fin.get("retroativo_por_estado") or {}
     linhas_estado = [["Situação", "Valor"]]
+    # Quatro conceitos distintos (PR #200):
+    # 1. reconhecido no calculo = retroativo sobre pagamento comprovado
+    #    (PCs pagos / financeiro com efeito) — RESULTADOS!C9;
+    # 2. em analise (potencial) = PCs nao pagos — RESULTADOS!D9;
+    # 3. diferenca ja paga = so com evidencia de pagamento da propria diferenca;
+    # 4. reconhecimento administrativo = so quando declarado no XLS.
     linhas_estado.append([
-        "Em análise",
-        NAO_APLICAVEL if fin.get("em_analise_nao_aplicavel") else formatar_moeda(
-            por_estado.get("em análise", fin.get("retroativo_em_analise"))
-        ),
+        ROTULO_RECONHECIDO_CALCULO,
+        formatar_moeda(por_estado.get("reconhecido", 0.0)),
     ])
+    linhas_estado.append([ROTULO_EM_ANALISE, _texto_em_analise(fin, por_estado)])
     linhas_estado.append([
-        "Reconhecido", formatar_moeda(por_estado.get("reconhecido", 0.0)),
+        ROTULO_DIFERENCA_PAGA, formatar_moeda(por_estado.get("pago", 0.0)),
     ])
+    formal = _f(fin.get("retroativo_reconhecido_formalmente"))
     linhas_estado.append([
-        "Pago", formatar_moeda(por_estado.get("pago", 0.0)),
+        ROTULO_RECONHECIMENTO_ADM,
+        f"{formatar_moeda(formal)} declarado no XLS" if formal > 0.0
+        else SEM_RECONHECIMENTO_ADM,
     ])
     historia.append(_tabela(
         linhas_estado, [largura * 0.62, largura * 0.38], estilos,

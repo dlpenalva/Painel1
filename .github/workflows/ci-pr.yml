@@ -86,4 +86,5 @@ jobs:
             tests/test_compatibilidade_coleta_125_vta_c1.py \
             tests/test_efeito_financeiro_comprovado.py \
             tests/test_painel_executivo_vta_canonico_195.py \
-            tests/test_status_conferir_base_insuficiente.py
+            tests/test_status_conferir_base_insuficiente.py \
+            tests/test_retro_pc_classificacao.py

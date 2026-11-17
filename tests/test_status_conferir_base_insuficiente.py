@@ -264,6 +264,15 @@ def test_em_analise_nao_aplicavel_so_fora_de_pcs_sem_valor(metodo, fin, esperado
     assert _em_analise_nao_aplicavel(fin, metodo) is esperado
 
 
+# Rotulos do quadro "Situacao do retroativo" (PR #200: quatro conceitos).
+_ROTULOS_QUADRO = {
+    "Em análise (potencial)": "Em análise",
+    "Reconhecido no cálculo (execução paga)": "Reconhecido",
+    "Diferença de reajuste já paga": "Pago",
+    "Reconhecimento administrativo": "Administrativo",
+}
+
+
 def _quadro_retroativo(pdf: bytes) -> dict:
     fitz = pytest.importorskip("fitz")
     quadro = {}
@@ -277,8 +286,8 @@ def _quadro_retroativo(pdf: bytes) -> dict:
                     linhas.setdefault(y, []).append((linha["bbox"][0], texto))
         for y in sorted(linhas):
             partes = [t for _, t in sorted(linhas[y])]
-            if partes[0] in ("Em análise", "Reconhecido", "Pago") and len(partes) == 2:
-                quadro[partes[0]] = partes[1]
+            if partes[0] in _ROTULOS_QUADRO and len(partes) == 2:
+                quadro[_ROTULOS_QUADRO[partes[0]]] = partes[1]
     return quadro
 
 
@@ -288,10 +297,11 @@ def test_pdf_financeiro_mostra_nao_aplicavel_e_preserva_valores():
         _com_metodo(leitura_simples_financeiro(), "Financeiro"))
     assert com["financeiro"]["em_analise_nao_aplicavel"] is True
     # Somente apresentacao: valores, estados e sintese identicos.
+    _apresentacao = {"em_analise_nao_aplicavel", "metodo_retroativo"}
     fin_sem = {k: v for k, v in sem["financeiro"].items()
-               if k != "em_analise_nao_aplicavel"}
+               if k not in _apresentacao}
     fin_com = {k: v for k, v in com["financeiro"].items()
-               if k != "em_analise_nao_aplicavel"}
+               if k not in _apresentacao}
     assert fin_com == fin_sem
     assert com["sintese"] == sem["sintese"]
     q_sem = _quadro_retroativo(gerar_sumario_executivo(leitura_simples_financeiro()))

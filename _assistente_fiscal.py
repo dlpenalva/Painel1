@@ -167,15 +167,23 @@ def _escolher_metodologia(ev: dict[str, Any]) -> dict[str, Any]:
 def _classificar_retroativo(painel: dict[str, Any], ev: dict[str, Any]) -> dict[str, Any]:
     por_estado = {ESTADO_EM_ANALISE: 0.0, ESTADO_RECONHECIDO: 0.0, ESTADO_PAGO: 0.0}
     origens: list[dict[str, Any]] = []
+    # Reconhecimento ADMINISTRATIVO declarado no XLS (subconjunto informativo,
+    # nunca somado de novo): "reconhecido" em por_estado e o reconhecido no
+    # calculo (pagamento definitivo comprovado), que nao prova ato formal.
+    reconhecido_formalmente = 0.0
     for pc in (painel.get("situacao_pcs") or {}).get("pcs") or []:
         valor = _f(pc.get("retroativo"))
         if valor <= 0.0:
             continue
         estado = _NATUREZA_PARA_ESTADO.get(str(pc.get("natureza_delta")), ESTADO_EM_ANALISE)
         por_estado[estado] = round(por_estado[estado] + valor, 2)
+        formal = bool(pc.get("reconhecimento_formal"))
+        if formal and estado == ESTADO_RECONHECIDO:
+            reconhecido_formalmente = round(reconhecido_formalmente + valor, 2)
         origens.append({"origem": f"PC {pc.get('numero_pc')}",
                         "ciclo": pc.get("ciclo_temporal"),
-                        "valor": valor, "estado": estado})
+                        "valor": valor, "estado": estado,
+                        "reconhecimento_formal": formal})
 
     reconhecido_fin = ev.get("retro_reconhecido_financeiro") or 0.0
     if reconhecido_fin > 0.0 and not origens:
@@ -193,6 +201,7 @@ def _classificar_retroativo(painel: dict[str, Any], ev: dict[str, Any]) -> dict[
         "valor": total,
         "estado": estado,
         "por_estado": por_estado,
+        "reconhecido_formalmente": reconhecido_formalmente,
         "origens": origens,
         "oficial_resumo": (painel.get("retroativo") or {}).get("oficial_resumo"),
         "fonte": ("Motor Temporal (Q9, natureza do delta por PC) e parcelas "
