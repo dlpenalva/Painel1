@@ -25,6 +25,7 @@ sys.path.insert(0, str(RAIZ / "tools"))
 
 import aplicar_coleta_122_acabamento_visual as av  # noqa: E402
 from _coleta_oficial import COLUNAS_ITENS_PC_OFICIAL  # noqa: E402
+from _versao import CL8US_VERSION, COLETA_VERSION  # noqa: E402
 
 TEMPLATE = RAIZ / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
 ABA_CICLO = "CICLO_EM_EXECUCAO"
@@ -80,6 +81,8 @@ def assinatura(ws) -> str:
 # e a RESULTADOS ganha SALDO REMANESCENTE — EVOLUCAO (aplicar_coleta_124_precisao_saldo).
 # Coleta 12.5: saldo sobe para B65:G72 e o bloco PCs desce para B74:G83; o rotulo
 # MEMORIA_RESULTADOS!V68 acompanha (aplicar_coleta_125_saldo_posicao).
+# 12.7: somente conferencias em MEMORIA_RESULTADOS/RESULTADOS_DETALHE
+# e mensagens condicionais em RESULTADOS; demais assinaturas preservadas.
 ASSINATURAS_TEMPLATE_121: dict[str, str] = {
     "comparativo_VTA": "2a4be709d887f1c136d00c3e918eead47f921d4290070414f67bb78645a06a67",
     "CONTROLE": "8f0c95e47e79daeb831c587957a06a979c3012ac085eb93e2e42b2d822014452",
@@ -95,9 +98,9 @@ ASSINATURAS_TEMPLATE_121: dict[str, str] = {
     "historico_VU": "de7563cfcbda1421db08cb47e4130f5b865c57c2640c0794e8739d54b0aade42",
     "cobertura_temporal": "b073ae3439ee845443e506347cc84777b4470a9c1d910e9bde1485c47e5fdb1d",  # 12.6
     # 12.6: B10:B14/B15/B44 exigem EFEITO_FINANCEIRO comprovado na linha paga.
-    "MEMORIA_RESULTADOS": "d0e25ff6745349d34c13bfac4a6d189e05dafef259076137774a78106ff8aa5e",  # 12.6
-    "RESULTADOS_DETALHE": "028ce6c370008be3e7802b1d69f7e3262973e8cd256fed00410312959bedae93",  # 12.4
-    "RESULTADOS": "29e39099892cd2cd898ff770b3b66cf4ccd6d9dcf4930ac1e8c99d00388a46d8",  # 12.5
+    "MEMORIA_RESULTADOS": "dc73c9ffa1604fb2755f7629a1e837d3a0e3b54882df911918b5ff6164661e15",  # 12.7
+    "RESULTADOS_DETALHE": "fbdf9b7b9382d5704b50bd227d95d6d984c8a1f34b20bf7d7be33aa0a9c08013",  # 12.7
+    "RESULTADOS": "3e410d476ab124493f76cdd5b423c16c643e56d6cd244d3854b79443ff06836c",  # 12.7
 }
 ASSINATURA_CICLO_121 = "44775bfa3c587759ab8d0f1fc177119355cdef65a06c74bfd032a31721ded638"
 
@@ -337,7 +340,7 @@ def test_ciclo_colunas_mais_confortaveis():
 def test_marcador_do_xls_mostra_a_coleta_123_em_a16_b17():
     ws = _gerado()["CONTROLE"]
     assert [ws[c].value for c in ("A16", "B16", "A17", "B17")] == [
-        "Modelo de Coleta", "12.6", "Gerado pelo Cl8us", "12.14"]
+        "Modelo de Coleta", COLETA_VERSION, "Gerado pelo Cl8us", CL8US_VERSION]
     assert all(ws[c].value is None for c in ("A24", "B24", "A25", "B25"))
     assert not ws.row_dimensions[16].hidden and not ws.row_dimensions[17].hidden
 
@@ -345,7 +348,7 @@ def test_marcador_do_xls_mostra_a_coleta_123_em_a16_b17():
 def test_leitura_do_marcador_por_rotulo_vale_para_a_nova_e_as_anteriores():
     from _compatibilidade_coleta import detectar_linhagem_coleta
 
-    assert detectar_linhagem_coleta(_gerado())["marcador_publico"] == "12.6"
+    assert detectar_linhagem_coleta(_gerado())["marcador_publico"] == COLETA_VERSION
     anterior = RAIZ / "tests" / "fixtures" / "coletas_compat" / "coleta_11_pc.xlsx"
     wb = load_workbook(anterior, data_only=False)
     assert wb["CONTROLE"]["B24"].value == "11.0"                 # marcador antigo

@@ -36,6 +36,7 @@ from datetime import datetime
 from pathlib import Path
 
 
+# 12.15 / Coleta 12.7: conferencias por periodo e ressalvas sem alterar o VTA.
 # 12.14: Painel Executivo e Assistente Fiscal exibem o VTA canonico (o mesmo da
 # pagina Valor Global) em vez da referencia historica do resumo, que no formato
 # Coleta virava R$ 0,00; ausencia de VTA aparece como "Indisponivel" (#195).
@@ -109,8 +110,8 @@ from pathlib import Path
 # (Financeiro, PCs e Itens) — mudanca estrutural do XLS: COLETA_VERSION 11.1.
 # 11.3: modelos em branco do Despacho Saneador e do Termo de Apostila com a mesma
 # estrutura dos documentos gerados. 11.2: memoria de calculo da garantia em XLSX.
-CL8US_VERSION = "12.14"
-COLETA_VERSION = "12.6"
+CL8US_VERSION = "12.15"
+COLETA_VERSION = "12.7"
 # Modelos de Coleta da familia 11.x aceitos SEM adaptacao: o 11.1 so acrescentou
 # um quadro informativo na RESULTADOS/MEMORIA_RESULTADOS (formulas); a Coleta 11.0
 # nao o possui e continua valida. A 11.2 so separa a apresentacao (RESULTADOS
@@ -141,7 +142,7 @@ COLETA_VERSION = "12.6"
 # coordenadas ou a metodologia dos demais modos.
 COLETA_VERSOES_ACEITAS = (
     "11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8", "11.9",
-    "12.0", "12.1", "12.2", "12.3", "12.4", "12.5", "12.6",
+    "12.0", "12.1", "12.2", "12.3", "12.4", "12.5", "12.6", "12.7",
 )
 # Marcadores publicos ANTERIORES a camada tecnica RESULTADOS_DETALHE: so neles
 # a RESULTADOS ainda e a aba tecnica. Qualquer outro marcador (11.2 ou
@@ -156,7 +157,7 @@ COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
 # Fallback conservador da ultima publicacao confirmada antes deste hotfix.
 # Quando o Git esta disponivel, este valor nunca prevalece sobre o commit real.
-ATUALIZADO_EM_FALLBACK = "20/10/2026 18:00"
+ATUALIZADO_EM_FALLBACK = "16/11/2026 17:00"
 
 
 def _data_ultimo_commit() -> str | None:

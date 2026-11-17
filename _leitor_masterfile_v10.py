@@ -4348,6 +4348,10 @@ def ler_masterfile_v10(
     res["estado_contratual_sombra"] = estado_contratual_para_dict(estado)
     res["posicao_contratual_sombra"] = montar_posicao_contratual_sombra(res)
 
+    from _conferencias_execucao import conferir_workbook
+    if all(a in wb.sheetnames for a in ("RESULTADOS_DETALHE", "MEMORIA_RESULTADOS", "itens_Remanesc", "parametros", "financeiro", "CONTROLE")):
+        res["conferencias_execucao"] = conferir_workbook(wb)
+
     # RFC Motor de Reconciliacao: camada paralela por ciclo, com decisoes
     # manuais vigentes carregadas do log apartado (JSONL por hash da entrada).
     _hash_arquivo = hash_entrada(origem if isinstance(origem, (bytes, bytearray)) else None)

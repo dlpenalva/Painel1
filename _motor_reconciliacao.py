@@ -3,7 +3,7 @@
 Implementa a RFC docs/RFC_MOTOR_RECONCILIACAO.md:
 - hierarquia de prevalencia Financeiro > PC > Consumo;
 - grao ciclo (bases agregadas; fator do ciclo e unico);
-- soft-block com escalonamento por faixa de divergencia;
+- classificacao por faixa somente com cobertura temporal comprovada;
 - evidencia nao aditiva rotulada CORROBORANTE ("Evidencia corroborante").
 
 Nao altera vta_sombra, historico!B51 nem parsing existente.
@@ -69,7 +69,7 @@ def _totais_por_fonte_e_ciclo(leitura: dict[str, Any]) -> tuple[dict[str, dict[s
         campos = item.get("campos_vta") or {}
         ciclo = str(item.get("ciclo") or item.get("ciclo_pc") or "").strip().upper()
         valor = _tofl(item.get("valor_pc"))
-        if not ciclo or not valor:
+        if not ciclo or item.get("valor_pc") in (None, ""):
             continue
         refletido = str(campos.get("ja_refletido_em") or "Nao").strip()
         if refletido not in ("", "Nao"):
@@ -85,7 +85,7 @@ def _totais_por_fonte_e_ciclo(leitura: dict[str, Any]) -> tuple[dict[str, dict[s
     for item in (leitura.get("itens_consumidos_v10") or {}).get("itens") or []:
         ciclo = str(item.get("ciclo_inferido") or "").strip().upper()
         valor = _tofl(item.get("valor_total"))
-        if not ciclo or not valor:
+        if not ciclo or item.get("valor_total") in (None, ""):
             continue
         totais["consumo"][ciclo] = round(totais["consumo"].get(ciclo, 0.0) + valor, 2)
 
@@ -112,7 +112,8 @@ def reconciliar_execucoes(
     """Monta os registros de reconciliacao por ciclo (RFC §6).
 
     ``decisoes`` mapeia registro_id -> decisao do log apartado; quando
-    presente, o registro DIVERGENTE vira RESOLVIDO_GCC e o soft-block cai.
+    presente, o registro DIVERGENTE vira RESOLVIDO_GCC. Diferencas isoladas
+    nao bloqueiam formalizacao.
     """
     decisoes = decisoes or {}
     totais, vinculos = _totais_por_fonte_e_ciclo(leitura)
@@ -164,6 +165,20 @@ def reconciliar_execucoes(
             status = _classificar(maior_diferenca, valor_principal, tolerancia)
             metodo = f"PREVALENCIA_{fonte_principal.upper()}"
 
+        # Totais por ciclo nao comprovam que as fontes cobrem o mesmo periodo.
+        # Sem metadados de cobertura a diferenca e apenas informativa.
+        contexto = (leitura.get("periodos_reconciliacao") or {}).get(ciclo, {})
+        from _conferencias_execucao import classificar_conferencia
+        conferencias = [classificar_conferencia(
+            valor_principal, fonte["valor"],
+            contexto.get(fonte_principal), contexto.get(fonte["fonte"]),
+            completo=contexto.get("completo") is True,
+            justificativa=(decisoes.get(f"reconciliacao:{ciclo}") or {}).get("justificativa"),
+            tolerancia=tolerancia,
+        ) for fonte in secundarias]
+        if not conferencias or any(c in {"BASE INSUFICIENTE", "COMPARAÇÃO NÃO APLICÁVEL"}
+                                   for c in conferencias):
+            status = "INCONCLUSIVO"
         registro_id = f"reconciliacao:{ciclo}"
         valor_em_analise = (
             round(maior_diferenca, 2) if status == "DIVERGENTE" else 0.0
@@ -189,7 +204,9 @@ def reconciliar_execucoes(
             "tolerancia_aplicada": tolerancia,
             "valor_computado": valor_principal,
             "valor_em_analise": valor_em_analise,
-            "bloqueia_formalizacao": status == "DIVERGENTE",
+            "bloqueia_formalizacao": False,
+            "conferencias_periodos": conferencias or ["BASE INSUFICIENTE"],
+            "periodos_referencia": contexto,
             "decisao_gcc": decisao,
         }
         registros.append(registro)
@@ -208,7 +225,7 @@ def reconciliar_execucoes(
                 f"Reconciliacao {ciclo}: DIVERGENTE — diferenca de "
                 f"R$ {maior_diferenca:,.2f} acima de {LIMIAR_SOFT_BLOCK:.0%}; "
                 "valor prevalente computado e diferenca em analise "
-                "(soft-block ate decisao da GCC)."
+                "(conferencia fiscal; sem bloqueio automatico)."
             )
 
     for vinculo in vinculos:
