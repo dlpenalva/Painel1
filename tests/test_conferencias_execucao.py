@@ -41,6 +41,44 @@ def test_motor_sem_cobertura_nao_bloqueia(ciclo):
     assert not r['bloqueia_formalizacao']
 
 
+def test_c0_financeiro_permanece_fonte_prevalente():
+    leitura = {
+        'vta_sombra': {'parcelas_computadas': [
+            {'fonte_parcela': 'Financeiro', 'ciclo': 'C0', 'valor': 783824},
+        ]},
+        'itens_consumidos_v10': {'itens': [
+            {'ciclo_inferido': 'C0', 'valor_total': 790000},
+        ]},
+        'periodos_reconciliacao': {
+            'C0': {'financeiro': P, 'consumo': P, 'completo': True},
+        },
+    }
+
+    resultado = reconciliar_execucoes(leitura)
+    registro = resultado['registros'][0]
+    assert registro['fonte_principal'] == 'financeiro'
+    assert registro['valor_computado'] == 783824
+    assert resultado['total_computado_prevalencia'] == 783824
+    assert registro['status_reconciliacao'] == 'RECONCILIADO_COM_ALERTA'
+    assert not resultado['bloqueia_formalizacao']
+
+
+def test_conferencia_informativa_preserva_bloqueios_economicos_oficiais():
+    before = load_workbook(TEMPLATE_COLETA_OFICIAL, data_only=False)
+    after = load_workbook(BytesIO(obter_coleta_oficial_bytes()), data_only=False)
+    formula_vta = before['MEMORIA_RESULTADOS']['B26'].value
+    formula_alertas = before['MEMORIA_RESULTADOS']['T48'].value
+
+    assert '$T$48>0,""' in formula_vta
+    assert 'COUNTIF(aditivos!$O$2:$O$200,"ALERTA:*")' in formula_alertas
+    assert after['MEMORIA_RESULTADOS']['B26'].value == formula_vta
+    assert after['MEMORIA_RESULTADOS']['T48'].value == formula_alertas
+
+    aplicar_conferencias(after)
+    assert after['MEMORIA_RESULTADOS']['B26'].value == formula_vta
+    assert after['MEMORIA_RESULTADOS']['T48'].value == formula_alertas
+
+
 def test_template_runtime_e_layout():
     before = load_workbook(TEMPLATE_COLETA_OFICIAL)
     after = load_workbook(BytesIO(obter_coleta_oficial_bytes()))
@@ -80,10 +118,10 @@ def test_c73_excel_real_ignora_totais_e_itens_vazios(tmp_path):
     for r in range(2,202):
         wb['itens_Remanesc'][f'A{r}'] = None
         wb['itens_Remanesc'][f'AC{r}'] = None
-    for r,v in enumerate((600,118,22),2):
+    for r,v in enumerate((600000,118000,65824),2):
         wb['itens_Remanesc'][f'A{r}'] = str(r)
         wb['itens_Remanesc'][f'AC{r}'] = v
-    wb['itens_Remanesc']['AC5'] = 740  # linha de total, sem ITEM
+    wb['itens_Remanesc']['AC5'] = 783824  # linha de total, sem ITEM
     wb['itens_Remanesc']['AC20'] = 999 # linha vazia com residuo
     wb['MEMORIA_RESULTADOS']['B4'] = 'Financeiro'
     wb.save(path)
@@ -95,7 +133,7 @@ def test_c73_excel_real_ignora_totais_e_itens_vazios(tmp_path):
     try:
         book = excel.Workbooks.Open(str(path))
         excel.CalculateFullRebuild()
-        assert book.Worksheets('RESULTADOS_DETALHE').Range('C73').Value == 740
+        assert book.Worksheets('RESULTADOS_DETALHE').Range('C73').Value == 783824
     finally:
         if book is not None: book.Close(False)
         excel.Quit()
