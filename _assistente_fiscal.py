@@ -51,6 +51,11 @@ ACAO_SOLICITAR_FINANCEIRO = "Solicitar evidência financeira oficial"
 ACAO_REVISAR_DUPLA = "Revisar possível dupla contagem"
 ACAO_REVISAR_DIVERGENCIA = "Revisar divergência de ciclo"
 ACAO_GERAR_APOSTILAMENTO = "Gerar apostilamento"
+# PR #200: retroativo reconhecido NO CALCULO nao comprova aprovacao
+# administrativa; a formalizacao depende de analise e reconhecimento competente.
+ACAO_SUBMETER_RECONHECIMENTO = (
+    "Submeter à análise e ao reconhecimento administrativo competente"
+)
 ACAO_AGUARDAR_PAGAMENTO = "Aguardar pagamento / confirmar execução dos PCs"
 ACAO_NENHUMA = "Nenhuma pendência"
 
@@ -319,9 +324,15 @@ def _proxima_acao(
         return {"acao": ACAO_REVISAR_DIVERGENCIA,
                 "motivo": "Há PC com ciclo informado diferente do enquadramento temporal; "
                           "confirme a correção antes de formalizar."}
-    if retro["por_estado"][ESTADO_RECONHECIDO] > 0.0:
-        return {"acao": ACAO_GERAR_APOSTILAMENTO,
-                "motivo": "Há retroativo reconhecido pendente de formalização."}
+    reconhecido = retro["por_estado"][ESTADO_RECONHECIDO]
+    if reconhecido > 0.0:
+        # Nao ha evidencia de aprovacao administrativa na apuracao (o
+        # TIPO_FINANCEIRO e tecnico e o pagamento do PC original nao a prova).
+        return {"acao": ACAO_SUBMETER_RECONHECIMENTO,
+                "motivo": "Há retroativo reconhecido no cálculo (execução paga). "
+                          "O cálculo, sozinho, não comprova a aprovação: a "
+                          "formalização depende de análise e de reconhecimento "
+                          "administrativo pela autoridade competente."}
     if retro["por_estado"][ESTADO_EM_ANALISE] > 0.0:
         return {"acao": ACAO_AGUARDAR_PAGAMENTO,
                 "motivo": "O retroativo apurado é potencial (PCs sem pagamento "

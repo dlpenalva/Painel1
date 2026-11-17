@@ -98,9 +98,12 @@ ASSINATURAS_TEMPLATE_121: dict[str, str] = {
     "historico_VU": "de7563cfcbda1421db08cb47e4130f5b865c57c2640c0794e8739d54b0aade42",
     "cobertura_temporal": "b073ae3439ee845443e506347cc84777b4470a9c1d910e9bde1485c47e5fdb1d",  # 12.6
     # 12.6: B10:B14/B15/B44 exigem EFEITO_FINANCEIRO comprovado na linha paga.
-    "MEMORIA_RESULTADOS": "dc73c9ffa1604fb2755f7629a1e837d3a0e3b54882df911918b5ff6164661e15",  # 12.7
+    # 12.8: X280:X284 (competencia sem lancamento = R$ 0,00 na conferencia) e
+    # AG9 (legenda de C10: reconhecido no calculo x aprovacao administrativa).
+    "MEMORIA_RESULTADOS": "5c1552167ccbb30e2c028b8c3a4ac7ec201b52d44165e45d19326116ce82411c",  # 12.8
     "RESULTADOS_DETALHE": "fbdf9b7b9382d5704b50bd227d95d6d984c8a1f34b20bf7d7be33aa0a9c08013",  # 12.7
-    "RESULTADOS": "3e410d476ab124493f76cdd5b423c16c643e56d6cd244d3854b79443ff06836c",  # 12.7
+    # 12.8: somente RESULTADOS!C13 (texto da situacao com status CONFERIR/BASE INSUFICIENTE).
+    "RESULTADOS": "2044846d467562bb4ea6e6c44d39cfee8c1c0748b16b45be434be5aff500ddbd",  # 12.8
 }
 ASSINATURA_CICLO_121 = "44775bfa3c587759ab8d0f1fc177119355cdef65a06c74bfd032a31721ded638"
 

@@ -515,10 +515,17 @@ def _classificar_pc(
         delta = round(valor_devido - valor_pc, 2)
 
     # --- Q8: natureza do delta ---
-    tipo_fin = str(campos.get("tipo_financeiro") or "").strip().lower()
+    # "reconhecido" = reconhecido NO CALCULO (itens_PC!H, RESULTADOS!C9): o
+    # retroativo sobre pagamento definitivo comprovado. Antes, um PC pago so
+    # saia de "potencial" se TIPO_FINANCEIRO contivesse "reconhec" — e o
+    # default do leitor/XLS e "Impacto Potencial" em todas as linhas, o que
+    # jogava o retroativo de PCs pagos em "em analise". PC nao pago continua
+    # potencial (itens_PC!J). TIPO_FINANCEIRO e campo tecnico derivado e
+    # sobrescrito pelo leitor: nao decide a natureza nem comprova
+    # reconhecimento administrativo, que nunca e inferido do calculo.
     if valor_pago and delta is not None and abs(delta) < 0.005:
         natureza = DELTA_JA_PAGO
-    elif "reconhec" in tipo_fin:
+    elif elegivel_retroativo_pc and valor_pago is not None and valor_pago > 0.0:
         natureza = DELTA_RECONHECIDO
     else:
         natureza = DELTA_POTENCIAL

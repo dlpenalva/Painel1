@@ -19,6 +19,13 @@ STATUS_CONFIAVEL = "VALIDADO"
 STATUS_RESSALVAS = "VALIDADO COM RESSALVAS"
 STATUS_ESTIMADO = "ESTIMADO"
 STATUS_PENDENTE = "PENDENTE DE CONFIRMAÇÃO"
+# Coleta 12.7 (PR #199): conclusoes de RESULTADOS!B3 abaixo de REVISE/ESTIMADO.
+# O VTA foi calculado; o que resta sao conferencias INFORMATIVAS (decomposicoes
+# do VTA ou execucao por periodo) a revisar ou sem base comparavel. Nao sao
+# VALIDADO, nao sao REVISE e nao sao indisponibilidade; por si so nao bloqueiam
+# a formalizacao (decisao de 16/11/2026).
+STATUS_CONFERIR = "CONFERIR"
+STATUS_BASE_INSUFICIENTE = "BASE INSUFICIENTE"
 # Compatibilidade: BLOQUEADO deixou de ser status DA APURACAO. Bloqueio e um
 # estado da FORMALIZACAO (formalizacao["bloqueada"]/["status"]), separado da
 # conclusao do calculo. A constante permanece exportada porque integra o
@@ -41,10 +48,29 @@ _STATUS_OFICIAL_PARA_PAINEL = {
     "VALIDADO COM RESSALVAS": STATUS_RESSALVAS,
     "ESTIMADO": STATUS_ESTIMADO,
     "REVISE": STATUS_PENDENTE,
+    "CONFERIR": STATUS_CONFERIR,
+    "BASE INSUFICIENTE": STATUS_BASE_INSUFICIENTE,
 }
 # Conclusoes de RESULTADOS que encerram a apuracao. "REVISE" e o proprio XLS
-# pedindo revisao — nao e conclusao.
-_STATUS_OFICIAL_CONCLUSIVOS = {"VALIDADO", "VALIDADO COM RESSALVAS", "ESTIMADO"}
+# pedindo revisao — nao e conclusao. CONFERIR e BASE INSUFICIENTE encerram o
+# calculo e carregam ressalva propria.
+_STATUS_OFICIAL_CONCLUSIVOS = {
+    "VALIDADO", "VALIDADO COM RESSALVAS", "ESTIMADO",
+    "CONFERIR", "BASE INSUFICIENTE",
+}
+# Ressalva publicada junto de cada conclusao com conferencia informativa.
+_RESSALVA_STATUS_CONFERENCIA = {
+    STATUS_CONFERIR: (
+        "A aba RESULTADOS indica conferência informativa a revisar "
+        "(decomposições do VTA ou execução por período). Por si só, ela não "
+        "altera o VTA nem bloqueia a formalização."
+    ),
+    STATUS_BASE_INSUFICIENTE: (
+        "Parte das conferências informativas da aba RESULTADOS não pôde ser "
+        "feita por falta de base comparável. Por si só, isso não altera o VTA "
+        "nem bloqueia a formalização."
+    ),
+}
 
 ORIGEM_STATUS_RESULTADOS = "resultados_xls"
 ORIGEM_STATUS_MOTOR_PYTHON = "motor_canonico_python"
@@ -494,6 +520,17 @@ def montar_resultado_consolidado(
                 "A aba RESULTADOS concluiu ESTIMADO: o remanescente foi tratado "
                 "por estimativa."
             )
+        elif status == STATUS_CONFERIR:
+            mensagem_status = (
+                "A aba RESULTADOS concluiu CONFERIR: o VTA foi calculado e há "
+                "conferência informativa a revisar."
+            )
+        elif status == STATUS_BASE_INSUFICIENTE:
+            mensagem_status = (
+                "A aba RESULTADOS concluiu BASE INSUFICIENTE: o VTA foi "
+                "calculado, mas parte das conferências informativas não teve "
+                "base comparável."
+            )
         elif status_oficial["origem"] == ORIGEM_STATUS_MOTOR_PYTHON:
             mensagem_status = (
                 "Conclusão produzida pelo motor canônico da apuração; a fórmula "
@@ -503,6 +540,8 @@ def montar_resultado_consolidado(
             mensagem_status = "Conclusão reproduzida da aba RESULTADOS do XLS."
 
     status_conclusivo = status not in (STATUS_PENDENTE,)
+    if status in _RESSALVA_STATUS_CONFERENCIA:
+        ressalvas = _unicos(ressalvas + [_RESSALVA_STATUS_CONFERENCIA[status]])
 
     # ------------------------------------------------------------------
     # STATUS-CANON-1.1 — INFORMACOES (execucao zero conhecida)

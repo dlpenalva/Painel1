@@ -135,7 +135,11 @@ def test_faixa_da_situacao_tem_tres_estados():
         '=IF(LEFT(RESULTADOS_DETALHE!$A$7,4)="APUR",RESULTADOS_DETALHE!$A$7,'
         "MEMORIA_RESULTADOS!$AG$67)"
     )
-    assert ws["C13"].value == "=MEMORIA_RESULTADOS!$T$67"
+    # Coleta 12.8: C13 so troca o texto com status CONFERIR/BASE INSUFICIENTE;
+    # fora disso continua sendo T67 (test_status_conferir_base_insuficiente).
+    from _conferencias_execucao import FORMULAS_MENSAGENS_RESULTADOS
+    assert ws["C13"].value == FORMULAS_MENSAGENS_RESULTADOS["C13"]
+    assert ws["C13"].value.endswith(",MEMORIA_RESULTADOS!$T$67)")
     mem = _template()["MEMORIA_RESULTADOS"]
     assert mem["AG67"].value == "REVISE A APURAÇÃO"
     assert mem["AG68"].value == (
@@ -162,6 +166,9 @@ def test_cores_da_situacao_so_leem_a_propria_aba():
         }
         assert regras == {
             'LEFT($C$12,4)="REVI"': "FFFFC7CE",
+            # Coleta 12.8: CONFERIR/BASE INSUFICIENTE em ambar, nao no verde.
+            'AND(LEFT($C$12,4)="APUR",OR(STATUS_RESULTADOS="CONFERIR",'
+            'STATUS_RESULTADOS="BASE INSUFICIENTE"))': "FFFFEB9C",
             'AND(LEFT($C$12,4)="APUR",N($D$9)>0)': "FFEEF3CF",
             'AND(LEFT($C$12,4)="APUR",N($D$9)<=0)': "FFC6EFCE",
         }

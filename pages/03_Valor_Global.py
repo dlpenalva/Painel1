@@ -5172,6 +5172,9 @@ def render_resultado_consolidado(resultado, diagnostico):
         "VALIDADO": "confiavel",
         "VALIDADO COM RESSALVAS": "ressalvas",
         "ESTIMADO": "ressalvas",
+        # Coleta 12.7: conclusoes com conferencia informativa (nao bloqueiam).
+        "CONFERIR": "ressalvas",
+        "BASE INSUFICIENTE": "ressalvas",
         "PENDENTE DE CONFIRMAÇÃO": "pendente",
         "BLOQUEADO": "bloqueado",
     }.get(status, "pendente")

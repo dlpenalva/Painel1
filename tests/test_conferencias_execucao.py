@@ -190,13 +190,115 @@ def test_leitura_ciclos_completos_e_diferencas(caso_sintetico,n):
     assert justificado['financeiro']==120
 
 
-def test_zero_e_vazio_nao_sao_equivalentes(caso_sintetico):
+# Coleta 12.8: competencia listada sem lancamento de valor = R$ 0,00 na
+# conferencia (caso real 1-luc C0: 7 meses pagos e 5 vazios).
+VAZIOS = (0, 1, 2, 3, 5)  # meses sem lancamento (indices 0..11)
+
+
+def _sete_mais_cinco(wb, n, vazio):
+    preencher_ciclo(wb, n, 10)
+    for k in VAZIOS:
+        wb['financeiro'].cell(k+2, 3).value = None if vazio else 0
+    col = ('AC','N','P','R','T')[n]
+    wb['itens_Remanesc'][f'{col}2'] = 20   # fisico = 70 = 7 x 10
+    wb['itens_Remanesc'][f'{col}3'] = 50
+
+
+@pytest.mark.parametrize('n', range(4))
+def test_sete_pagos_e_cinco_vazios_equivalem_a_cinco_zeros(caso_sintetico, n):
+    from _conferencias_execucao import conferir_workbook
+    _sete_mais_cinco(caso_sintetico, n, vazio=True)
+    com_vazios = conferir_workbook(caso_sintetico)
+    _sete_mais_cinco(caso_sintetico, n, vazio=False)
+    com_zeros = conferir_workbook(caso_sintetico)
+    assert com_vazios == com_zeros
+    assert com_vazios[n]['completo'] is True
+    assert com_vazios[n]['financeiro'] == 70
+    assert com_vazios[n]['status'] == 'VALIDADO'
+    # Diferenca real continua sendo apontada nas duas formas.
+    col = ('AC','N','P','R')[n]
+    caso_sintetico['itens_Remanesc'][f'{col}2'] = 35
+    assert conferir_workbook(caso_sintetico)[n]['status'] == 'CONFERIR'
+    for k in VAZIOS:
+        caso_sintetico['financeiro'].cell(k+2, 3).value = None
+    assert conferir_workbook(caso_sintetico)[n]['status'] == 'CONFERIR'
+
+
+def test_zero_explicito_continua_valido(caso_sintetico):
+    from _conferencias_execucao import conferir_workbook
+    preencher_ciclo(caso_sintetico, 0, 0)
+    assert conferir_workbook(caso_sintetico)[0]['status'] == 'VALIDADO'
+
+
+def test_ciclo_sem_nenhum_lancamento_continua_insuficiente(caso_sintetico):
+    from _conferencias_execucao import conferir_workbook
+    preencher_ciclo(caso_sintetico, 0, 10)
+    for k in range(12):
+        caso_sintetico['financeiro'].cell(k+2, 3).value = None
+    registro = conferir_workbook(caso_sintetico)[0]
+    assert registro['financeiro'] is None
+    assert registro['status'] == 'BASE INSUFICIENTE'
+
+
+@pytest.mark.parametrize('defeito', [
+    'texto_no_valor', 'competencia_duplicada', 'competencia_ausente',
+    'data_invalida', 'data_fora_do_primeiro_dia',
+])
+def test_verificacoes_de_cobertura_preservadas(caso_sintetico, defeito):
     from _conferencias_execucao import conferir_workbook
     wb = caso_sintetico
-    preencher_ciclo(wb,0,0)
-    assert conferir_workbook(wb)[0]['status']=='VALIDADO'
-    wb['financeiro']['C2'] = None
-    assert conferir_workbook(wb)[0]['status']=='BASE INSUFICIENTE'
+    _sete_mais_cinco(wb, 0, vazio=True)
+    fin = wb['financeiro']
+    if defeito == 'texto_no_valor':
+        fin['C3'] = 'pendente'
+    elif defeito == 'competencia_duplicada':
+        fin['A3'] = fin['A2'].value
+    elif defeito == 'competencia_ausente':
+        for c in range(1, 4):
+            fin.cell(13, c).value = None   # ultimo mes some (11 linhas)
+    elif defeito == 'data_invalida':
+        fin['A3'] = 'fev/2020'
+    elif defeito == 'data_fora_do_primeiro_dia':
+        fin['A3'] = date(2020, 2, 15)
+    registro = conferir_workbook(wb)[0]
+    assert registro['completo'] is False
+    assert registro['status'] == 'BASE INSUFICIENTE'
+
+
+def test_periodos_diferentes_continuam_nao_comparaveis(caso_sintetico):
+    from _conferencias_execucao import conferir_workbook
+    _sete_mais_cinco(caso_sintetico, 0, vazio=True)
+    caso_sintetico['parametros']['I3'] = date(2021, 2, 15)  # fotografia tardia
+    registro = conferir_workbook(caso_sintetico)[0]
+    assert registro['completo'] is True
+    assert registro['status'] == 'COMPARAÇÃO NÃO APLICÁVEL'
+
+
+def test_ciclo_futuro_e_vigente_sem_fotografia_preservados(caso_sintetico):
+    from _conferencias_execucao import conferir_workbook
+    _sete_mais_cinco(caso_sintetico, 1, vazio=True)
+    caso_sintetico['CONTROLE']['B2'] = 'C0'            # C1 passa a futuro
+    assert conferir_workbook(caso_sintetico)[1]['status'] == 'NÃO APLICÁVEL'
+    caso_sintetico['CONTROLE']['B2'] = 'C1'            # C1 vigente
+    caso_sintetico['parametros']['I4'] = None          # sem fotografia seguinte
+    assert conferir_workbook(caso_sintetico)[1]['status'] == 'BASE INSUFICIENTE'
+
+
+def test_formula_de_cobertura_aceita_vazio_e_recusa_texto():
+    template = load_workbook(TEMPLATE_COLETA_OFICIAL)
+    gerado = load_workbook(BytesIO(obter_coleta_oficial_bytes()))
+    for wb in (template, gerado):
+        for n in range(5):
+            f = wb['MEMORIA_RESULTADOS'][f'X{280+n}'].value
+            assert (f'SUMPRODUCT(--(financeiro!$B$2:$B$73="c{n}"),'
+                    '--(financeiro!$C$2:$C$73<>""),'
+                    '--NOT(ISNUMBER(financeiro!$C$2:$C$73)))=0') in f
+            assert '--ISNUMBER(financeiro!$C$2:$C$73))=12' not in f
+            assert f'COUNTIF(financeiro!$B$2:$B$73,"c{n}")=12' in f
+            assert f.count('COUNTIFS(financeiro!$B$2:$B$73') == 12
+    for n in range(5):
+        assert (template['MEMORIA_RESULTADOS'][f'X{280+n}'].value
+                == gerado['MEMORIA_RESULTADOS'][f'X{280+n}'].value)
 
 
 def test_mes_duplicado_nao_comprova_cobertura(caso_sintetico):

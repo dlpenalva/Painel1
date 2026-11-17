@@ -36,8 +36,11 @@ expõe CONFERIR ou BASE INSUFICIENTE. Uma diferença isolada não bloqueia forma
 ## Períodos e resultado do caso
 
 Financeiro C0: 01/09/2025 até 31/08/2026. Físico: abertura de 01/09/2025 até
-fotografia de 15/10/2026. Há competências financeiras vazias; não equivalem a zero.
-C0 e C1: BASE INSUFICIENTE. C2–C4 futuros: NÃO APLICÁVEL. Não classificar os
+fotografia de 15/10/2026. Há competências financeiras vazias (5 de 12 no C0).
+Até a Coleta 12.7 elas não equivaliam a zero e C0/C1 ficavam BASE INSUFICIENTE;
+a partir da Coleta 12.8 equivalem a R$ 0,00 na conferência (ver a seção final),
+e C0 passa a COMPARAÇÃO NÃO APLICÁVEL porque os períodos diferem. C1 continua
+BASE INSUFICIENTE (sem fotografia seguinte). C2–C4 futuros: NÃO APLICÁVEL. Não classificar os
 140.805,61 como erro de pagamento. Quando as duas bases estão completas e seus
 períodos diferem, usar COMPARAÇÃO NÃO APLICÁVEL.
 
@@ -121,6 +124,7 @@ versões anteriores. Os marcadores são gravados na geração oficial, no espaç
 reservado de CONTROLE; o template base mantém esse espaço vazio como previsto.
 A cobertura anual exige uma competência distinta por mês e valores numéricos em
 todos os meses; zero explícito é aceito e campo vazio continua insuficiente.
+(Regra substituída na Coleta 12.8: campo vazio equivale a R$ 0,00; ver a seção final.)
 Os testes de conferência passam a integrar o CI rápido. A ferramenta de manutenção
 do template grava o ZIP por substituição atômica, evitando leitura parcial.
 
@@ -153,3 +157,218 @@ A comparação da tolerância em Python usa a diferença arredondada em centavos
 assim como D73:D77 no XLS, evitando alerta por resíduo binário no limite exato
 de cinco centavos. A matriz focal ampliada passou em 22 casos (sem depender do
 Excel ou da geração completa do template).
+
+## Cl8us 12.16 / Coleta 12.8 — status reconhecido e texto de RESULTADOS!C13
+
+Base: cf0b9d3 (main após o merge do #199). Restauração: tag
+`restore/pre-sumario-retro-status-20261116`.
+
+Defeito 1 (Python). `RESULTADOS_DETALHE!B3` passou a emitir CONFERIR e
+BASE INSUFICIENTE, mas `_resultado_consolidado._STATUS_OFICIAL_PARA_PAINEL`
+só conhecia VALIDADO, VALIDADO COM RESSALVAS, ESTIMADO e REVISE. No 1-luc.xlsx
+recalculado no Excel, a web mostrava "status oficial indisponível… recalcule,
+salve e reenvie" e a formalização ficava AGUARDA CONFIRMAÇÃO. Agora os dois
+códigos são conclusões próprias (não viram VALIDADO, REVISE nem indisponível),
+publicam uma ressalva e não bloqueiam a formalização por si sós. Bloqueios
+econômicos (`bloqueios_formalizacao`) continuam bloqueando; sem VTA ou sem
+método o status continua PENDENTE. O painel usa a classe visual de ressalva.
+
+Defeito 2 (apresentação do XLS). `RESULTADOS!C12/C13` seguem a regra de
+pendência de preenchimento (`RESULTADOS_DETALHE!A7`, `$J$5=0`), que não enxerga
+as conferências; com G6=CONFERIR, C13 dizia "Nenhuma pendência registrada pelas
+validações desta apuração". Só C13 mudou: com A7 = APURAÇÃO CONCLUÍDA e status
+CONFERIR/BASE INSUFICIENTE, explica a conferência informativa e anexa o texto
+de potencial quando houver; nos demais casos continua igual a
+`MEMORIA_RESULTADOS!T67`. C12, T67, B7 e fórmulas econômicas intactos (a cor
+da faixa foi tratada depois; ver a seção seguinte).
+
+Retroativo. A divergência alegada do Sumário Executivo não foi reproduzida.
+Retroativo total, reconhecido, pago, em análise e potencial conferem com
+RESULTADOS!C9:E9 e MEMORIA_RESULTADOS!B16 (R$ 3.958,54; pago e em análise
+R$ 0,00; potencial não se aplica ao Financeiro). Origem no PDF: delta mensal de
+`financeiro` com EFEITO_FINANCEIRO=Sim → evento "Retroativo Reconhecido" →
+`_assistente_fiscal._classificar_retroativo` → `objeto.resultados.retroativo`
+→ `_sumario_executivo`. Nenhuma alteração foi feita nessa cadeia.
+
+Regressão: `tests/test_status_conferir_base_insuficiente.py` (três métodos,
+ausência, zero legítimo, bloqueio econômico, texto desconhecido e fórmula C13).
+
+### Pendências finais do PR #200 (mesma versão 12.16 / 12.8)
+
+Restauração: tag `restore/pre-pendencias-pr200-20261117` (= `76a23c6`).
+
+Sumário Executivo — "Em análise". O valor vem só de PCs
+(`_assistente_fiscal._classificar_retroativo`: natureza "potencial"); sem PCs
+ele é 0,0 por construção. A planilha mostra "—" em `RESULTADOS!D9` sempre que
+`METODO_RETROATIVO` ≠ "PCs". O PDF passa a exibir "Não aplicável" somente
+quando as três condições valem: método conhecido "Financeiro" ou "Itens",
+nenhum PC com evidência e valor em análise nulo
+(`_sumario_executivo._em_analise_nao_aplicavel`). Método PCs, método
+desconhecido ou qualquer valor diferente de zero mantêm o número (zero apurado
+continua R$ 0,00). Cálculo, estados e valores não mudam.
+
+RESULTADOS — faixa B12:G13. O verde C6EFCE/006100 é reservado em RESULTADOS a
+VALIDADO/RECONCILIADO (G6, C27:C34), mas a faixa ficava verde com CONFERIR e
+BASE INSUFICIENTE porque só olhava C12 ("APUR…") e D9. Uma regra nova, logo
+após REVISE (sem `stopIfTrue`, como as demais da aba: a prioridade decide),
+pinta a faixa com o âmbar de ressalva
+(FFEB9C/9C5700, o mesmo dxf de ESTIMADO em G6) quando C12 = APURAÇÃO CONCLUÍDA
+e o status é CONFERIR/BASE INSUFICIENTE. Aplicada por
+`tools/aplicar_cor_status_resultados.py` (patch XML, idempotente, localiza as
+regras pela fórmula porque o Excel as reordena e renumera dxfId). Só
+`sheet16.xml` do template muda; styles.xml intacto. Demais estados iguais:
+VALIDADO verde, REVISE vermelho, potencial PC oliva, ESTIMADO como antes.
+
+Homologação em cópias do 1-luc.xlsx recalculadas no Excel (Financeiro, PC,
+Itens; status forçados BASE INSUFICIENTE, VALIDADO e ESTIMADO): VTA
+R$ 1.249.462,09 e retroativo R$ 3.958,54 preservados, nenhum valor de célula
+diferente antes × depois, nenhum alerta de reparo. Regressão em
+`tests/test_status_conferir_base_insuficiente.py`.
+
+### Competências sem lançamento equivalem a R$ 0,00 (mesma versão 12.16 / 12.8)
+
+Restauração: tag `restore/pre-competencias-vazias-20261117` (= `f51cf5a`).
+
+Regra de negócio: na aba `financeiro`, competência listada no período do ciclo
+sem lançamento de valor (VALOR_PAGO vazio) equivale a R$ 0,00 para fins de
+conferência. Nenhuma célula é preenchida e nenhum cálculo oficial muda: a soma
+de `RESULTADOS_DETALHE!B73:B77` (SUMIFS) já tratava o vazio como zero; o que
+mudou foi apenas a regra de cobertura.
+
+- Excel, `MEMORIA_RESULTADOS!X280:X284`: a exigência "12 valores numéricos"
+  passou a "nenhum valor preenchido não numérico"
+  (`SUMPRODUCT(--(B="cN"),--(C<>""),--NOT(ISNUMBER(C)))=0`).
+- Python, `_conferencias_execucao.conferir_workbook`: mesma regra no campo
+  `completo` (vazio = `None` ou `""`; qualquer outro valor não numérico invalida).
+
+Preservado: 12 linhas por ciclo com exatamente uma competência por mês (duplicada
+ou ausente = BASE INSUFICIENTE), datas válidas no dia 1 dentro do período, texto
+no valor = BASE INSUFICIENTE, períodos diferentes = COMPARAÇÃO NÃO APLICÁVEL,
+ciclo futuro = NÃO APLICÁVEL, ciclo vigente sem fotografia seguinte = BASE
+INSUFICIENTE. Ciclo sem nenhum lançamento continua BASE INSUFICIENTE (B73 vazio):
+sem qualquer valor não há base para a conferência.
+
+Homologação no Excel real (cópias do 1-luc): "7 pagos + 5 vazios" e "7 pagos +
+5 zeros explícitos" produzem leituras idênticas (X280:X284, B73:E77, status,
+VTA, retroativo) no Excel e no Python; antes da mudança, vazio dava BASE
+INSUFICIENTE e zeros, COMPARAÇÃO NÃO APLICÁVEL. Texto em C2 volta X280 a 0.
+VTA R$ 1.249.462,09 e retroativo R$ 3.958,54 inalterados. Testes em
+`tests/test_conferencias_execucao.py`.
+
+### Classificação do retroativo no método Pedidos de Compra (mesma versão 12.16 / 12.8)
+
+Restauração: tag `restore/pre-retro-pc-classificacao-20261117` (= `9fc065b`).
+
+Caso real (`telt_exempl_coleta.xlsx`, método PC): `RESULTADOS!C9` = R$ 36.397,14
+(retroativo reconhecido, `itens_PC!H`, 160 PCs pagos) e `D9` = R$ 119,20
+(potencial, `itens_PC!J`, 4 PCs não pagos). O Sumário Executivo dizia "Em análise
+R$ 36.397,14 / Reconhecido R$ 0,00", e a decisão recomendava "Aguardar pagamento —
+PCs sem pagamento confirmado".
+
+Causa: `_motor_temporal._classificar_pc` (Q8) só tirava um PC pago de "potencial"
+quando `TIPO_FINANCEIRO` continha "reconhec". O padrão do leitor e do XLS é
+"Impacto Potencial" em todas as linhas, inclusive nas pagas. O assistente traduzia
+"potencial" para "em análise".
+
+Conceitos adotados:
+
+1. Reconhecido no cálculo: retroativo sobre pagamento definitivo comprovado
+   (PC pago elegível, igual a `itens_PC!H` e `RESULTADOS!C9`; no Financeiro, o
+   delta com efeito). Natureza `reconhecido`.
+2. Potencial: PCs não pagos (`itens_PC!J`, `RESULTADOS!D9`). Natureza `potencial`,
+   sem retroativo no assistente; no PDF vem do motor de composição do VTA.
+3. Reconhecimento administrativo: não é inferido nesta apuração. Ver a seção
+   "TIPO_FINANCEIRO não comprova reconhecimento administrativo" abaixo.
+4. Diferença já paga: só com evidência de que o valor pago já é o valor
+   atualizado (natureza `ja_pago`). O pagamento do PC original não prova o
+   pagamento do retroativo.
+
+Mudança: Q8 classifica como `reconhecido` o PC com pagamento definitivo elegível
+e valor pago > 0 (antes do teste de texto); `ja_pago` e `potencial` inalterados.
+PDF: quadro "Situação do retroativo" com quatro linhas (Reconhecido no cálculo;
+Em análise (potencial); Diferença de reajuste já paga; Reconhecimento
+administrativo) e título da tabela PC sem "em análise".
+
+Efeitos medidos antes da mudança (simulação) e confirmados depois, no caso real:
+valores idênticos (VTA, composição, total R$ 36.397,14, potencial R$ 119,20);
+estado do objeto/Sumário "em análise" → "reconhecido"; natureza dos 160 PCs
+pagos no painel "potencial" → "reconhecido"; decisão "Aguardar pagamento" →
+"Gerar apostilamento — retroativo reconhecido pendente de formalização"
+(confirmação exigida; mesmo comportamento do método Financeiro). Cópias do
+1-luc (Financeiro, PC, Itens): valores, estados e decisão inalterados.
+
+Regressão: `tests/test_retro_pc_classificacao.py` (no CI rápido): PC pago com
+retroativo, não pago com potencial, pago sem diferença, pago com glosa,
+pagamento não confirmado, formalmente reconhecido, diferença já paga, soma sem
+duplicação/omissão, Financeiro e Itens; o caso real roda com
+`CL8US_EXEMPLO_RETRO_PC=<xlsx>`.
+
+### Ajustes finais antes do merge (mesma versão 12.16 / 12.8)
+
+Restauração: tag `restore/pre-ajustes-finais-pr200-20261117` (= `c4224d9`).
+
+1. Recomendação. Retroativo reconhecido no cálculo não comprova aprovação
+   administrativa. Havendo retroativo reconhecido no cálculo, o assistente
+   recomenda "Submeter à análise e ao reconhecimento administrativo
+   competente" e o dossiê "Submeter a analise e ao reconhecimento administrativo
+   competente antes de formalizar" (ver também a seção sobre TIPO_FINANCEIRO). O status
+   (`apto_para_confirmacao`, com confirmação humana) e todos os valores não
+   mudam. Vale para todos os métodos (no 1-luc Financeiro também).
+2. `RESULTADOS!C10` (= `MEMORIA_RESULTADOS!AG9`): "Diferença reconhecida a pagar
+   à contratada." passa a "Reconhecido no cálculo (execução paga); o pagamento
+   depende de reconhecimento administrativo." Só texto (constante
+   `TEXTOS_MEMORIA_RESULTADOS`, aplicada na geração oficial); C9 e fórmulas
+   intactos. No template, a única célula alterada é AG9.
+
+### Registros fora do escopo deste PR (sem alteração)
+
+**VTA interno (R$ 49,4 mi) × VTA oficial (R$ 87,56 mi), caso `telt`.** São
+grandezas diferentes; não há defeito de valor comprovado.
+
+- R$ 49.402.097,45 = `itens_PC!P9`: total de TODOS os 2.529 PCs cadastrados com
+  o fator do ciclo (inclui PCs não pagos e não inclui remanescente).
+  `_leitor_masterfile_v10._promover_resumo_pc` o grava em
+  `resumo.valor_total_atualizado`; o Motor Temporal (Q12, `calcular_vta_sombra`)
+  o expõe como `vta.oficial`. Consumidores: `painel.vta.oficial`,
+  `assistente.vta.valor`, `objeto.resultados.vta_oficial` (todos rotulados no
+  código como "referência histórica — não é VTA"), `dossie.garantias.
+  vta_oficial_preservado` e o campo `vta` das alternativas do motor de
+  metodologias. Não é usado no Sumário, no Painel Executivo (VTA canônico,
+  #198) nem nos documentos.
+- R$ 49.144.801,89 = `motor_metodologias` PC `valor_recomendado` = soma do
+  `valor_devido` de todos os PCs pelo Motor Temporal ("execução estrutural por
+  PCs"). Aparece no texto da decisão ("Valor recomendado pela metodologia"),
+  onde pode ser lido como VTA — risco de interpretação, não de cálculo.
+- R$ 87.560.174,12 = `RESULTADOS!B9` / `MEMORIA_RESULTADOS!B26` = composição do
+  VTA: executado C0–C4 + quantitativo restante C4 (R$ 38,3 mi) + potencial
+  (R$ 119,20). O motor de composição Python reproduz o mesmo valor.
+
+**Base de cálculo quando o pagamento do PC já inclui reajuste.** No Q9 do Motor
+Temporal, `retroativo = valor_pago × (fator − 1)`. Se `valor_pago` já for o
+valor atualizado (natureza `ja_pago`: pago = devido), a base já contém o
+reajuste: ex. PC 100, fator 1,10, pago 110 → retroativo 11,00, quando a
+diferença efetiva seria 10,00 (e já paga). Coberto como comportamento atual em
+`tests/test_retro_pc_classificacao.py` (cenário `diferenca_ja_paga`); correção
+depende de decisão de negócio e fica fora deste PR.
+
+### TIPO_FINANCEIRO não comprova reconhecimento administrativo (mesma versão 12.16 / 12.8)
+
+Restauração: tag `restore/pre-tipo-financeiro-20261117` (= `132ab3a`).
+
+Defeito (apontado pelo Codex): `TIPO_FINANCEIRO` é campo técnico derivado e
+sobrescrito por `_leitor_masterfile_v10` ("Execucao Atualizada", "Execucao Sem
+Reajuste", "Impacto Potencial"), mas o `_motor_temporal` (Q8) o lia
+(`"reconhec" in tipo_financeiro`) para marcar `reconhecimento_formal` e para dar
+natureza "reconhecido" a PC não pago. Com o texto "Retroativo Reconhecido", o
+assistente recomendava "Gerar apostilamento" e o dossiê "Preparar apostilamento".
+
+Correção: a natureza do delta depende só do pagamento (`ja_pago` / `reconhecido`
+no cálculo para PC pago elegível / `potencial`); `reconhecimento_formal` e
+`reconhecido_formalmente` foram removidos (não havia fonte válida); havendo
+reconhecido no cálculo, a recomendação é sempre a análise e o reconhecimento
+administrativo competente; o PDF informa "Reconhecimento administrativo: Não
+comprovado nesta apuração". Valores, classificações econômicas e o exemplo
+`telt` (retroativo 36.397,14; potencial 119,20; VTA 87.560.174,12) inalterados.
+
+Regressão: `tests/test_retro_pc_classificacao.py`, incluindo o teste integrado
+leitor oficial → Motor Temporal → assistente → dossiê → Sumário.

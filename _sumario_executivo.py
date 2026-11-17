@@ -105,6 +105,11 @@ def montar_dados_sumario_executivo(
     )
     financeiro_sec = _montar_secao_financeira(resultados, memoria_ciclo)
     _mascarar_financeiro_por_divergencia(financeiro_sec, campos_nc)
+    metodo_xls = _metodo_retroativo_xls(leitura)
+    financeiro_sec["em_analise_nao_aplicavel"] = _em_analise_nao_aplicavel(
+        financeiro_sec, metodo_xls
+    )
+    financeiro_sec["metodo_retroativo"] = metodo_xls
     sintese = _montar_sintese(
         objeto, resultados, memoria_ciclo, metodologia, financeiro_sec
     )
@@ -227,6 +232,61 @@ def _mascarar_sintese_por_divergencia(sintese: dict[str, Any], campos_nc: set[st
     if "RETRO_OFICIAL" in campos_nc:
         sintese["retroativo_total"] = None
         sintese["retroativo_estado"] = MOTIVO_DIVERGENCIA_XLS_PYTHON
+
+
+# RESULTADOS!D9 (retroativo potencial = "em analise") so existe no metodo PCs;
+# nos demais a planilha mostra "—" (MEMORIA_RESULTADOS!AG2). Valores possiveis
+# de METODO_RETROATIVO: "Financeiro", "PCs", "Itens" ou "SELECIONE O METODO...".
+_METODOS_SEM_RETRO_EM_ANALISE = frozenset({"Financeiro", "Itens"})
+
+
+ROTULO_RECONHECIDO_CALCULO = "Reconhecido no cálculo (execução paga)"
+ROTULO_EM_ANALISE = "Em análise (potencial)"
+ROTULO_DIFERENCA_PAGA = "Diferença de reajuste já paga"
+ROTULO_RECONHECIMENTO_ADM = "Reconhecimento administrativo"
+SEM_RECONHECIMENTO_ADM = "Não comprovado nesta apuração"
+
+
+def _texto_em_analise(fin: dict[str, Any], por_estado: dict[str, Any]) -> str:
+    """Linha "Em analise (potencial)" do quadro de situacao do retroativo.
+
+    Fora do metodo PCs segue a regra de RESULTADOS!D9 ("Nao aplicavel").
+    No metodo PCs exibe o retroativo potencial dos PCs nao pagos (mesmo valor
+    de RESULTADOS!D9); sem ele, o valor em analise do assistente.
+    """
+    if fin.get("em_analise_nao_aplicavel"):
+        return NAO_APLICAVEL
+    potencial_pc = fin.get("retroativo_potencial_pc")
+    if fin.get("metodo_retroativo") == "PCs" and isinstance(potencial_pc, (int, float)):
+        return formatar_moeda(potencial_pc)
+    return formatar_moeda(por_estado.get("em análise", fin.get("retroativo_em_analise")))
+
+
+def _metodo_retroativo_xls(leitura: dict[str, Any]) -> str | None:
+    """METODO_RETROATIVO lido do cache do Excel pelo leitor (None se ausente)."""
+    valores = ((leitura or {}).get("resultados_xls") or {}).get("valores") or {}
+    metodo = valores.get("METODO_RETROATIVO")
+    return metodo.strip() if isinstance(metodo, str) and metodo.strip() else None
+
+
+def _em_analise_nao_aplicavel(
+    financeiro: dict[str, Any], metodo: str | None
+) -> bool:
+    """True so quando a linha "Em analise" do PDF nao se aplica.
+
+    Somente apresentacao: o valor em analise vem apenas de PCs (assistente
+    fiscal), e a planilha o exibe como "—" fora do metodo PCs. Exige as tres
+    condicoes: metodo conhecido e diferente de PCs, nenhum PC com evidencia e
+    valor em analise nulo. Metodo PCs, metodo desconhecido ou qualquer valor
+    diferente de zero mantem o numero (um zero apurado continua R$ 0,00).
+    """
+    if metodo not in _METODOS_SEM_RETRO_EM_ANALISE:
+        return False
+    if financeiro.get("pc_por_ciclo"):
+        return False
+    por_estado = financeiro.get("retroativo_por_estado") or {}
+    valor = por_estado.get("em análise", financeiro.get("retroativo_em_analise"))
+    return _f(valor) == 0.0
 
 
 def _mascarar_financeiro_por_divergencia(financeiro: dict[str, Any], campos_nc: set[str]) -> None:
@@ -611,6 +671,11 @@ def _montar_secao_financeira(
         ),
         "retroativo_reconhecido_pago": retro.get("com_efeitos_financeiros"),
         "retroativo_em_analise": retro.get("sem_efeitos_financeiros"),
+        # Retroativo potencial de PCs nao pagos (RESULTADOS!D9 /
+        # RETROATIVO_POTENCIAL_VTA), do motor de composicao do VTA.
+        "retroativo_potencial_pc": (
+            (resultados.get("vta_composicao") or {}).get("retroativo_potencial")
+        ),
         "retroativo_por_estado": copy.deepcopy(retro.get("por_estado") or {}),
         "retroativo_total": retro.get("total"),
         "retroativo_estado": retro.get("estado"),
@@ -1419,7 +1484,7 @@ def _bloco_financeiro(historia, dados, estilos) -> None:
         fin.get("delta_total_financeiro"),
     )
     _tabela_metodo(
-        "Método Pedido de Compras — retroativo em análise, por ciclo",
+        "Método Pedido de Compras — valor pago, valor atualizado e retroativo por ciclo",
         fin.get("pc_por_ciclo") or [],
         fin.get("delta_total_pc"),
     )
@@ -1438,18 +1503,23 @@ def _bloco_financeiro(historia, dados, estilos) -> None:
         return
     por_estado = fin.get("retroativo_por_estado") or {}
     linhas_estado = [["Situação", "Valor"]]
+    # Quatro conceitos distintos (PR #200):
+    # 1. reconhecido no calculo = retroativo sobre pagamento comprovado
+    #    (PCs pagos / financeiro com efeito) — RESULTADOS!C9;
+    # 2. em analise (potencial) = PCs nao pagos — RESULTADOS!D9;
+    # 3. diferenca ja paga = so com evidencia de pagamento da propria diferenca;
+    # 4. reconhecimento administrativo = nao comprovado nesta apuracao.
     linhas_estado.append([
-        "Em análise",
-        formatar_moeda(
-            por_estado.get("em análise", fin.get("retroativo_em_analise"))
-        ),
+        ROTULO_RECONHECIDO_CALCULO,
+        formatar_moeda(por_estado.get("reconhecido", 0.0)),
     ])
+    linhas_estado.append([ROTULO_EM_ANALISE, _texto_em_analise(fin, por_estado)])
     linhas_estado.append([
-        "Reconhecido", formatar_moeda(por_estado.get("reconhecido", 0.0)),
+        ROTULO_DIFERENCA_PAGA, formatar_moeda(por_estado.get("pago", 0.0)),
     ])
-    linhas_estado.append([
-        "Pago", formatar_moeda(por_estado.get("pago", 0.0)),
-    ])
+    # Nenhuma evidencia de aprovacao administrativa e lida na apuracao:
+    # TIPO_FINANCEIRO e tecnico e o pagamento do PC original nao a comprova.
+    linhas_estado.append([ROTULO_RECONHECIMENTO_ADM, SEM_RECONHECIMENTO_ADM])
     historia.append(_tabela(
         linhas_estado, [largura * 0.62, largura * 0.38], estilos,
         alinhamentos_direita={1},
