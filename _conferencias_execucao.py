@@ -15,6 +15,23 @@ FORMULAS_MENSAGENS_RESULTADOS = {
         '"; C1: "&RESULTADOS_DETALHE!E74&"; C2: "&RESULTADOS_DETALHE!E75&'
         '"; C3: "&RESULTADOS_DETALHE!E76&"; C4: "&RESULTADOS_DETALHE!E77&'
         '". Conferência informativa; não altera o VTA."'),
+    # Coleta 12.8: a regra de pendencia (A7, $J$5=0) nao ve as conferencias;
+    # com STATUS_RESULTADOS = CONFERIR/BASE INSUFICIENTE, C13 dizia "Nenhuma
+    # pendencia registrada". So o texto muda: C12, T67 e as cores ficam iguais
+    # e o texto de potencial (T67 <> B7) continua anexado.
+    'C13': (
+        '=IF(AND(LEFT(RESULTADOS_DETALHE!$A$7,4)="APUR",'
+        'OR(STATUS_RESULTADOS="CONFERIR",STATUS_RESULTADOS="BASE INSUFICIENTE")),'
+        'IF(STATUS_RESULTADOS="CONFERIR",'
+        '"Nenhuma pendência de preenchimento. Status CONFERIR: há conferência '
+        'informativa a revisar em VERIFICAÇÕES; por si só, ela não altera o VTA '
+        'nem bloqueia a formalização.",'
+        '"Nenhuma pendência de preenchimento. Status BASE INSUFICIENTE: parte das '
+        'conferências informativas não teve base comparável (ver VERIFICAÇÕES); '
+        'por si só, isso não altera o VTA nem bloqueia a formalização.")'
+        '&IF(MEMORIA_RESULTADOS!$T$67=RESULTADOS_DETALHE!$B$7,"",'
+        '" "&MEMORIA_RESULTADOS!$T$67),'
+        'MEMORIA_RESULTADOS!$T$67)'),
 }
 
 def classificar_conferencia(financeiro, fisico, periodo_financeiro=None,

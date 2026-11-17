@@ -153,3 +153,37 @@ A comparação da tolerância em Python usa a diferença arredondada em centavos
 assim como D73:D77 no XLS, evitando alerta por resíduo binário no limite exato
 de cinco centavos. A matriz focal ampliada passou em 22 casos (sem depender do
 Excel ou da geração completa do template).
+
+## Cl8us 12.16 / Coleta 12.8 — status reconhecido e texto de RESULTADOS!C13
+
+Base: cf0b9d3 (main após o merge do #199). Restauração: tag
+`restore/pre-sumario-retro-status-20261116`.
+
+Defeito 1 (Python). `RESULTADOS_DETALHE!B3` passou a emitir CONFERIR e
+BASE INSUFICIENTE, mas `_resultado_consolidado._STATUS_OFICIAL_PARA_PAINEL`
+só conhecia VALIDADO, VALIDADO COM RESSALVAS, ESTIMADO e REVISE. No 1-luc.xlsx
+recalculado no Excel, a web mostrava "status oficial indisponível… recalcule,
+salve e reenvie" e a formalização ficava AGUARDA CONFIRMAÇÃO. Agora os dois
+códigos são conclusões próprias (não viram VALIDADO, REVISE nem indisponível),
+publicam uma ressalva e não bloqueiam a formalização por si sós. Bloqueios
+econômicos (`bloqueios_formalizacao`) continuam bloqueando; sem VTA ou sem
+método o status continua PENDENTE. O painel usa a classe visual de ressalva.
+
+Defeito 2 (apresentação do XLS). `RESULTADOS!C12/C13` seguem a regra de
+pendência de preenchimento (`RESULTADOS_DETALHE!A7`, `$J$5=0`), que não enxerga
+as conferências; com G6=CONFERIR, C13 dizia "Nenhuma pendência registrada pelas
+validações desta apuração". Só C13 mudou: com A7 = APURAÇÃO CONCLUÍDA e status
+CONFERIR/BASE INSUFICIENTE, explica a conferência informativa e anexa o texto
+de potencial quando houver; nos demais casos continua igual a
+`MEMORIA_RESULTADOS!T67`. C12, T67, B7, cores e fórmulas econômicas intactos.
+
+Retroativo. A divergência alegada do Sumário Executivo não foi reproduzida.
+Retroativo total, reconhecido, pago, em análise e potencial conferem com
+RESULTADOS!C9:E9 e MEMORIA_RESULTADOS!B16 (R$ 3.958,54; pago e em análise
+R$ 0,00; potencial não se aplica ao Financeiro). Origem no PDF: delta mensal de
+`financeiro` com EFEITO_FINANCEIRO=Sim → evento "Retroativo Reconhecido" →
+`_assistente_fiscal._classificar_retroativo` → `objeto.resultados.retroativo`
+→ `_sumario_executivo`. Nenhuma alteração foi feita nessa cadeia.
+
+Regressão: `tests/test_status_conferir_base_insuficiente.py` (três métodos,
+ausência, zero legítimo, bloqueio econômico, texto desconhecido e fórmula C13).
