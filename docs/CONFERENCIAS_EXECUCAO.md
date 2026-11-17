@@ -277,10 +277,8 @@ Conceitos adotados:
    delta com efeito). Natureza `reconhecido`.
 2. Potencial: PCs não pagos (`itens_PC!J`, `RESULTADOS!D9`). Natureza `potencial`,
    sem retroativo no assistente; no PDF vem do motor de composição do VTA.
-3. Reconhecimento administrativo: só quando declarado no XLS
-   (`TIPO_FINANCEIRO` = "Retroativo Reconhecido") — campo
-   `ClassificacaoPC.reconhecimento_formal` e `retroativo.reconhecido_formalmente`
-   (subconjunto informativo, nunca somado de novo). Um cálculo nunca o declara.
+3. Reconhecimento administrativo: não é inferido nesta apuração. Ver a seção
+   "TIPO_FINANCEIRO não comprova reconhecimento administrativo" abaixo.
 4. Diferença já paga: só com evidência de que o valor pago já é o valor
    atualizado (natureza `ja_pago`). O pagamento do PC original não prova o
    pagamento do retroativo.
@@ -310,11 +308,10 @@ duplicação/omissão, Financeiro e Itens; o caso real roda com
 Restauração: tag `restore/pre-ajustes-finais-pr200-20261117` (= `c4224d9`).
 
 1. Recomendação. Retroativo reconhecido no cálculo não comprova aprovação
-   administrativa. Sem reconhecimento formal declarado para todo o valor, o
-   assistente recomenda "Submeter à análise e ao reconhecimento administrativo
+   administrativa. Havendo retroativo reconhecido no cálculo, o assistente
+   recomenda "Submeter à análise e ao reconhecimento administrativo
    competente" e o dossiê "Submeter a analise e ao reconhecimento administrativo
-   competente antes de formalizar". "Gerar/Preparar apostilamento" fica restrito
-   ao caso em que `reconhecido_formalmente` cobre todo o reconhecido. O status
+   competente antes de formalizar" (ver também a seção sobre TIPO_FINANCEIRO). O status
    (`apto_para_confirmacao`, com confirmação humana) e todos os valores não
    mudam. Vale para todos os métodos (no 1-luc Financeiro também).
 2. `RESULTADOS!C10` (= `MEMORIA_RESULTADOS!AG9`): "Diferença reconhecida a pagar
@@ -353,3 +350,25 @@ reajuste: ex. PC 100, fator 1,10, pago 110 → retroativo 11,00, quando a
 diferença efetiva seria 10,00 (e já paga). Coberto como comportamento atual em
 `tests/test_retro_pc_classificacao.py` (cenário `diferenca_ja_paga`); correção
 depende de decisão de negócio e fica fora deste PR.
+
+### TIPO_FINANCEIRO não comprova reconhecimento administrativo (mesma versão 12.16 / 12.8)
+
+Restauração: tag `restore/pre-tipo-financeiro-20261117` (= `132ab3a`).
+
+Defeito (apontado pelo Codex): `TIPO_FINANCEIRO` é campo técnico derivado e
+sobrescrito por `_leitor_masterfile_v10` ("Execucao Atualizada", "Execucao Sem
+Reajuste", "Impacto Potencial"), mas o `_motor_temporal` (Q8) o lia
+(`"reconhec" in tipo_financeiro`) para marcar `reconhecimento_formal` e para dar
+natureza "reconhecido" a PC não pago. Com o texto "Retroativo Reconhecido", o
+assistente recomendava "Gerar apostilamento" e o dossiê "Preparar apostilamento".
+
+Correção: a natureza do delta depende só do pagamento (`ja_pago` / `reconhecido`
+no cálculo para PC pago elegível / `potencial`); `reconhecimento_formal` e
+`reconhecido_formalmente` foram removidos (não havia fonte válida); havendo
+reconhecido no cálculo, a recomendação é sempre a análise e o reconhecimento
+administrativo competente; o PDF informa "Reconhecimento administrativo: Não
+comprovado nesta apuração". Valores, classificações econômicas e o exemplo
+`telt` (retroativo 36.397,14; potencial 119,20; VTA 87.560.174,12) inalterados.
+
+Regressão: `tests/test_retro_pc_classificacao.py`, incluindo o teste integrado
+leitor oficial → Motor Temporal → assistente → dossiê → Sumário.

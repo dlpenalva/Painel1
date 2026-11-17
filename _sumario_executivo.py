@@ -671,9 +671,6 @@ def _montar_secao_financeira(
         ),
         "retroativo_reconhecido_pago": retro.get("com_efeitos_financeiros"),
         "retroativo_em_analise": retro.get("sem_efeitos_financeiros"),
-        # Reconhecimento administrativo declarado no XLS (subconjunto do
-        # reconhecido no calculo; nunca somado de novo).
-        "retroativo_reconhecido_formalmente": retro.get("reconhecido_formalmente"),
         # Retroativo potencial de PCs nao pagos (RESULTADOS!D9 /
         # RETROATIVO_POTENCIAL_VTA), do motor de composicao do VTA.
         "retroativo_potencial_pc": (
@@ -1511,7 +1508,7 @@ def _bloco_financeiro(historia, dados, estilos) -> None:
     #    (PCs pagos / financeiro com efeito) — RESULTADOS!C9;
     # 2. em analise (potencial) = PCs nao pagos — RESULTADOS!D9;
     # 3. diferenca ja paga = so com evidencia de pagamento da propria diferenca;
-    # 4. reconhecimento administrativo = so quando declarado no XLS.
+    # 4. reconhecimento administrativo = nao comprovado nesta apuracao.
     linhas_estado.append([
         ROTULO_RECONHECIDO_CALCULO,
         formatar_moeda(por_estado.get("reconhecido", 0.0)),
@@ -1520,12 +1517,9 @@ def _bloco_financeiro(historia, dados, estilos) -> None:
     linhas_estado.append([
         ROTULO_DIFERENCA_PAGA, formatar_moeda(por_estado.get("pago", 0.0)),
     ])
-    formal = _f(fin.get("retroativo_reconhecido_formalmente"))
-    linhas_estado.append([
-        ROTULO_RECONHECIMENTO_ADM,
-        f"{formatar_moeda(formal)} declarado no XLS" if formal > 0.0
-        else SEM_RECONHECIMENTO_ADM,
-    ])
+    # Nenhuma evidencia de aprovacao administrativa e lida na apuracao:
+    # TIPO_FINANCEIRO e tecnico e o pagamento do PC original nao a comprova.
+    linhas_estado.append([ROTULO_RECONHECIMENTO_ADM, SEM_RECONHECIMENTO_ADM])
     historia.append(_tabela(
         linhas_estado, [largura * 0.62, largura * 0.38], estilos,
         alinhamentos_direita={1},

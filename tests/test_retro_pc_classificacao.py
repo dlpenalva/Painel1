@@ -10,7 +10,8 @@ e o default e "Impacto Potencial" em todas as linhas.
 Conceitos separados:
 1. reconhecido no calculo = retroativo sobre pagamento definitivo comprovado;
 2. potencial = PCs nao pagos (nao entra no retroativo do assistente);
-3. reconhecimento administrativo = so quando declarado no XLS;
+3. reconhecimento administrativo = nao comprovado nesta apuracao (nunca
+   inferido de TIPO_FINANCEIRO, campo tecnico do leitor, nem do pagamento);
 4. diferenca ja paga = so com evidencia (valor pago = valor atualizado).
 """
 from __future__ import annotations
@@ -87,15 +88,18 @@ def _pc(numero, pago="Sim", data_pc=DATA_COM_EFEITO, valor_pago=None,
 
 
 CENARIOS = {
-    # nome: (item, natureza, retroativo, reconhecimento_formal)
-    "pago_com_retroativo": (_pc("P1"), DELTA_RECONHECIDO, 10.0, False),
-    "nao_pago_potencial": (_pc("P2", pago="Nao"), DELTA_POTENCIAL, 0.0, False),
-    "pago_sem_diferenca": (_pc("P3", data_pc=DATA_SEM_EFEITO), DELTA_JA_PAGO, 0.0, False),
-    "pago_com_glosa": (_pc("P4", valor_pago=80.0), DELTA_RECONHECIDO, 8.0, False),
-    "pagamento_nao_confirmado": (_pc("P5", pago=None), DELTA_POTENCIAL, 0.0, False),
-    "formalmente_reconhecido": (
-        _pc("P6", tipo="Retroativo Reconhecido"), DELTA_RECONHECIDO, 10.0, True),
-    "diferenca_ja_paga": (_pc("P7", valor_pago=110.0), DELTA_JA_PAGO, 11.0, False),
+    # nome: (item, natureza, retroativo)
+    "pago_com_retroativo": (_pc("P1"), DELTA_RECONHECIDO, 10.0),
+    "nao_pago_potencial": (_pc("P2", pago="Nao"), DELTA_POTENCIAL, 0.0),
+    "pago_sem_diferenca": (_pc("P3", data_pc=DATA_SEM_EFEITO), DELTA_JA_PAGO, 0.0),
+    "pago_com_glosa": (_pc("P4", valor_pago=80.0), DELTA_RECONHECIDO, 8.0),
+    "pagamento_nao_confirmado": (_pc("P5", pago=None), DELTA_POTENCIAL, 0.0),
+    # TIPO_FINANCEIRO e tecnico: "Retroativo Reconhecido" nao muda nada.
+    "tipo_reconhecido_pago": (
+        _pc("P6", tipo="Retroativo Reconhecido"), DELTA_RECONHECIDO, 10.0),
+    "tipo_reconhecido_nao_pago": (
+        _pc("P8", pago="Nao", tipo="Retroativo Reconhecido"), DELTA_POTENCIAL, 0.0),
+    "diferenca_ja_paga": (_pc("P7", valor_pago=110.0), DELTA_JA_PAGO, 11.0),
 }
 
 
@@ -109,20 +113,20 @@ def _motor(itens):
 
 @pytest.mark.parametrize("nome", list(CENARIOS))
 def test_motor_classifica_cada_cenario(nome):
-    item, natureza, retroativo, formal = CENARIOS[nome]
+    item, natureza, retroativo = CENARIOS[nome]
     pc = _motor([item]).pcs[0]
     assert pc.natureza_delta == natureza, nome
     assert pc.retroativo == pytest.approx(retroativo), nome
-    assert pc.reconhecimento_formal is formal, nome
-    assert pc.to_dict()["reconhecimento_formal"] is formal
+    # Nenhum campo de reconhecimento administrativo e inferido pelo motor.
+    assert not hasattr(pc, "reconhecimento_formal")
+    assert "reconhecimento_formal" not in pc.to_dict()
 
 
 def test_pc_pago_nao_e_mais_potencial_pelo_texto_padrao():
     # O texto "Impacto Potencial" (default do leitor e do XLS) nao decide mais
     # a natureza de um PC com pagamento definitivo.
     pc = _motor([_pc("P1", tipo="Impacto Potencial")]).pcs[0]
-    assert pc.natureza_delta == DELTA_RECONHECIDO
-    assert pc.reconhecimento_formal is False   # calculo nao prova ato formal
+    assert pc.natureza_delta == DELTA_RECONHECIDO   # reconhecido NO CALCULO
 
 
 def test_pagamento_nao_confirmado_nao_gera_retroativo_nem_reconhecimento():
@@ -138,7 +142,7 @@ def test_assistente_separa_categorias_sem_duplicar_nem_omitir():
         {"situacao_pcs": {"pcs": pcs}}, {"retro_reconhecido_financeiro": 0.0}
     )
     por_estado = retro["por_estado"]
-    # reconhecido no calculo: P1 (10) + P4 glosa (8) + P6 formal (10)
+    # reconhecido no calculo: P1 (10) + P4 glosa (8) + P6 (10, pago)
     assert por_estado["reconhecido"] == pytest.approx(28.0)
     # diferenca ja paga: so P7, com evidencia (pago = valor atualizado)
     assert por_estado["pago"] == pytest.approx(11.0)
@@ -148,9 +152,9 @@ def test_assistente_separa_categorias_sem_duplicar_nem_omitir():
     soma_pcs = sum(p["retroativo"] or 0.0 for p in pcs if (p["retroativo"] or 0.0) > 0)
     assert retro["valor"] == pytest.approx(soma_pcs) == pytest.approx(39.0)
     assert len(retro["origens"]) == 4
-    # reconhecimento administrativo: subconjunto declarado, nao somado de novo
-    assert retro["reconhecido_formalmente"] == pytest.approx(10.0)
-    assert retro["reconhecido_formalmente"] <= por_estado["reconhecido"]
+    # nenhum reconhecimento administrativo inferido de TIPO_FINANCEIRO
+    assert "reconhecido_formalmente" not in retro
+    assert all("reconhecimento_formal" not in o for o in retro["origens"])
 
 
 def _com_metodo(leitura, metodo):
@@ -253,26 +257,22 @@ from _dossie_decisao import (  # noqa: E402
 )
 
 
-def _retro(reconhecido, formal=0.0, em_analise=0.0):
+def _retro(reconhecido, em_analise=0.0, **extra):
     return {
         "existe": reconhecido + em_analise > 0,
         "valor": reconhecido + em_analise,
         "por_estado": {"em análise": em_analise, "reconhecido": reconhecido, "pago": 0.0},
-        "reconhecido_formalmente": formal,
+        **extra,
     }
 
 
-@pytest.mark.parametrize("formal,acao", [
-    (0.0, ACAO_SUBMETER_RECONHECIMENTO),     # so calculo
-    (5.0, ACAO_SUBMETER_RECONHECIMENTO),     # formal parcial
-    (36397.14, ACAO_GERAR_APOSTILAMENTO),    # formal declarado para todo o valor
-])
-def test_recomendacao_condiciona_formalizacao_ao_reconhecimento(formal, acao):
-    r = _proxima_acao({"escolhida": "Pedidos de Compra (PC)"}, _retro(36397.14, formal), [])
-    assert r["acao"] == acao
-    if acao == ACAO_SUBMETER_RECONHECIMENTO:
-        assert "não comprova a aprovação" in r["motivo"]
-        assert "Gerar apostilamento" not in r["acao"]
+@pytest.mark.parametrize("extra", [{}, {"reconhecido_formalmente": 36397.14}])
+def test_recomendacao_sempre_condiciona_formalizacao_a_analise(extra):
+    # Nem um campo legado de "reconhecimento" promove a apostilamento.
+    r = _proxima_acao({"escolhida": "Pedidos de Compra (PC)"}, _retro(36397.14, **extra), [])
+    assert r["acao"] == ACAO_SUBMETER_RECONHECIMENTO
+    assert r["acao"] != ACAO_GERAR_APOSTILAMENTO
+    assert "não comprova a aprovação" in r["motivo"]
 
 
 def _assistente(retro):
@@ -281,16 +281,13 @@ def _assistente(retro):
             "retroativo": retro, "inconsistencias": []}
 
 
-@pytest.mark.parametrize("formal,ato", [
-    (0.0, ATO_ANALISE_RECONHECIMENTO),
-    (36397.14, ATO_APOSTILAMENTO),
-])
-def test_dossie_preserva_status_e_troca_apenas_o_ato(formal, ato):
-    status, ato_obtido, motivo = _decidir_status(_assistente(_retro(36397.14, formal)))
+@pytest.mark.parametrize("extra", [{}, {"reconhecido_formalmente": 36397.14}])
+def test_dossie_preserva_status_e_condiciona_a_analise(extra):
+    status, ato, motivo = _decidir_status(_assistente(_retro(36397.14, **extra)))
     assert status == STATUS_APTO          # status e confirmacao humana preservados
-    assert ato_obtido == ato
-    if ato == ATO_ANALISE_RECONHECIMENTO:
-        assert "nao comprova aprovacao administrativa" in motivo
+    assert ato == ATO_ANALISE_RECONHECIMENTO
+    assert ato != ATO_APOSTILAMENTO
+    assert "nao comprova aprovacao administrativa" in motivo
 
 
 def test_legenda_c10_distingue_calculo_de_aprovacao():
@@ -306,3 +303,72 @@ def test_legenda_c10_distingue_calculo_de_aprovacao():
         assert wb["MEMORIA_RESULTADOS"]["AG9"].value == texto
         assert wb["RESULTADOS"]["C10"].value == "=MEMORIA_RESULTADOS!$AG$9"
         assert wb["RESULTADOS"]["C8"].value == "RETROATIVO RECONHECIDO"
+
+
+# =========================================================================== #
+# Integracao: leitor oficial -> Motor Temporal -> assistente -> dossie.
+# TIPO_FINANCEIRO (itens_PC!Y) e tecnico e sobrescrito pelo leitor; mesmo
+# preenchido com "Retroativo Reconhecido", nao pode gerar reconhecimento
+# administrativo nem recomendar apostilamento.
+# =========================================================================== #
+def _coleta_pcs_tipo_reconhecido() -> bytes:
+    import io as _io
+    from openpyxl import load_workbook
+    from _coleta_oficial import gerar_coleta_oficial_preenchida
+    from test_vta_pc_independente_27b import _dados_corte_c2
+    wb = load_workbook(_io.BytesIO(gerar_coleta_oficial_preenchida(_dados_corte_c2())))
+    wb["CONTROLE"]["B1"] = "Pedidos de Compras"
+    # Sem recalculo do Excel a formula do fator nao tem valor em cache:
+    # fixa o fator acumulado do C1 (10%) como literal no fixture.
+    wb["parametros"]["F3"] = 1.10
+    ws = wb["itens_PC"]
+    for linha, (numero, pago) in enumerate((("PC-PAGO", "Sim"), ("PC-ABERTO", "Nao")), 2):
+        ws[f"A{linha}"] = numero
+        ws[f"B{linha}"] = date(2024, 1, 15)     # C1, com efeito (fator 1,10)
+        ws[f"D{linha}"] = 600.0
+        ws[f"G{linha}"] = pago
+        ws[f"Y{linha}"] = "Retroativo Reconhecido"
+    rem = wb["itens_Remanesc"]
+    rem["A2"], rem["B2"], rem["C2"], rem["E2"], rem["G2"] = "ITEM-1", 10.0, 100.0, 4.0, 4.0
+    buf = _io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+def test_integrado_tipo_financeiro_nao_gera_reconhecimento_administrativo():
+    from _assistente_fiscal import montar_assistente_fiscal
+    from _dossie_decisao import montar_dossie_decisao
+    from _leitor_masterfile_v10 import ler_masterfile_v10
+    from _painel_executivo import montar_painel_executivo
+
+    leitura = ler_masterfile_v10(_coleta_pcs_tipo_reconhecido())
+    itens = {i["numero_pc"]: i for i in (leitura.get("itens_pc_v10") or {}).get("itens") or []}
+    assert set(itens) == {"PC-PAGO", "PC-ABERTO"}
+    # O leitor sobrescreve o campo tecnico: o texto digitado nao sobrevive.
+    for item in itens.values():
+        assert (item.get("campos_vta") or {}).get("tipo_financeiro") != "Retroativo Reconhecido"
+
+    painel = montar_painel_executivo(leitura)
+    pcs = {p["numero_pc"]: p for p in painel["situacao_pcs"]["pcs"]}
+    assert pcs["PC-PAGO"]["natureza_delta"] == DELTA_RECONHECIDO      # no calculo
+    assert pcs["PC-PAGO"]["retroativo"] == pytest.approx(60.0)
+    assert pcs["PC-ABERTO"]["natureza_delta"] == DELTA_POTENCIAL
+    assert pcs["PC-ABERTO"]["retroativo"] == 0.0
+    assert all("reconhecimento_formal" not in p for p in pcs.values())
+
+    assistente = montar_assistente_fiscal(leitura, painel)
+    retro = assistente["retroativo"]
+    assert retro["por_estado"]["reconhecido"] == pytest.approx(60.0)
+    assert "reconhecido_formalmente" not in retro
+    assert assistente["proxima_acao"]["acao"] == ACAO_SUBMETER_RECONHECIMENTO
+    assert assistente["proxima_acao"]["acao"] != ACAO_GERAR_APOSTILAMENTO
+
+    dossie = montar_dossie_decisao(assistente, painel)
+    assert dossie["ato_ou_providencia"] != ATO_APOSTILAMENTO
+    if dossie["status"] == STATUS_APTO:
+        assert dossie["ato_ou_providencia"] == ATO_ANALISE_RECONHECIMENTO
+
+    dados = montar_dados_sumario_executivo(leitura)
+    quadro = _quadro(gerar_sumario_executivo(leitura))
+    assert quadro[ROTULO_RECONHECIMENTO_ADM] == SEM_RECONHECIMENTO_ADM
+    assert dados["financeiro"]["retroativo_por_estado"]["reconhecido"] == pytest.approx(60.0)

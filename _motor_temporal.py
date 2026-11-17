@@ -100,10 +100,6 @@ class ClassificacaoPC:
     # Q10 — memoria temporal (rastro legivel).
     memoria_temporal: tuple[str, ...] = ()
     alertas: tuple[dict[str, Any], ...] = ()
-    # Reconhecimento administrativo declarado no XLS (TIPO_FINANCEIRO =
-    # "Retroativo Reconhecido"). Nunca deduzido do calculo: um PC pago tem
-    # natureza "reconhecido" (reconhecido no calculo) com este campo False.
-    reconhecimento_formal: bool = False
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -128,7 +124,6 @@ class ClassificacaoPC:
             "retroativo": self.retroativo,
             "memoria_temporal": list(self.memoria_temporal),
             "alertas": [dict(a) for a in self.alertas],
-            "reconhecimento_formal": self.reconhecimento_formal,
         }
 
 
@@ -525,15 +520,12 @@ def _classificar_pc(
     # saia de "potencial" se TIPO_FINANCEIRO contivesse "reconhec" — e o
     # default do leitor/XLS e "Impacto Potencial" em todas as linhas, o que
     # jogava o retroativo de PCs pagos em "em analise". PC nao pago continua
-    # potencial (itens_PC!J). O reconhecimento ADMINISTRATIVO e outro conceito:
-    # so o registro explicito no XLS o declara (reconhecimento_formal).
-    tipo_fin = str(campos.get("tipo_financeiro") or "").strip().lower()
-    reconhecimento_formal = "reconhec" in tipo_fin
+    # potencial (itens_PC!J). TIPO_FINANCEIRO e campo tecnico derivado e
+    # sobrescrito pelo leitor: nao decide a natureza nem comprova
+    # reconhecimento administrativo, que nunca e inferido do calculo.
     if valor_pago and delta is not None and abs(delta) < 0.005:
         natureza = DELTA_JA_PAGO
     elif elegivel_retroativo_pc and valor_pago is not None and valor_pago > 0.0:
-        natureza = DELTA_RECONHECIDO
-    elif reconhecimento_formal:
         natureza = DELTA_RECONHECIDO
     else:
         natureza = DELTA_POTENCIAL
@@ -593,7 +585,6 @@ def _classificar_pc(
         retroativo=retroativo,
         memoria_temporal=tuple(memoria),
         alertas=tuple(alertas),
-        reconhecimento_formal=reconhecimento_formal,
     )
 
 

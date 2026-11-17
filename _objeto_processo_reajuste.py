@@ -586,9 +586,6 @@ def _montar_resultados(
             "com_efeitos_financeiros": round(reconhecido + pago, 2),
             "sem_efeitos_financeiros": round(em_analise, 2),
             "por_estado": copy.deepcopy(por_estado),
-            # Subconjunto de "reconhecido" com reconhecimento administrativo
-            # declarado no XLS; nunca somado de novo ao total.
-            "reconhecido_formalmente": _f(retro.get("reconhecido_formalmente")),
             "origens": copy.deepcopy(retro.get("origens") or []),
             "origem": retro.get("fonte"),
         },

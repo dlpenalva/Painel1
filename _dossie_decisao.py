@@ -218,13 +218,6 @@ def _decidir_status(assistente: dict[str, Any]) -> tuple[str, str, str]:
         )
     reconhecido = _f(por_estado.get("reconhecido"))
     if reconhecido > 0.0:
-        if _f(retro.get("reconhecido_formalmente")) >= reconhecido - 0.005:
-            return (
-                STATUS_APTO,
-                ATO_APOSTILAMENTO,
-                "Ha retroativo com reconhecimento administrativo declarado e "
-                "evidencias suficientes para preparar a formalizacao.",
-            )
         return (
             STATUS_APTO,
             ATO_ANALISE_RECONHECIMENTO,
