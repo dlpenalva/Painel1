@@ -175,7 +175,8 @@ as conferências; com G6=CONFERIR, C13 dizia "Nenhuma pendência registrada pela
 validações desta apuração". Só C13 mudou: com A7 = APURAÇÃO CONCLUÍDA e status
 CONFERIR/BASE INSUFICIENTE, explica a conferência informativa e anexa o texto
 de potencial quando houver; nos demais casos continua igual a
-`MEMORIA_RESULTADOS!T67`. C12, T67, B7, cores e fórmulas econômicas intactos.
+`MEMORIA_RESULTADOS!T67`. C12, T67, B7 e fórmulas econômicas intactos (a cor
+da faixa foi tratada depois; ver a seção seguinte).
 
 Retroativo. A divergência alegada do Sumário Executivo não foi reproduzida.
 Retroativo total, reconhecido, pago, em análise e potencial conferem com
@@ -187,3 +188,35 @@ R$ 0,00; potencial não se aplica ao Financeiro). Origem no PDF: delta mensal de
 
 Regressão: `tests/test_status_conferir_base_insuficiente.py` (três métodos,
 ausência, zero legítimo, bloqueio econômico, texto desconhecido e fórmula C13).
+
+### Pendências finais do PR #200 (mesma versão 12.16 / 12.8)
+
+Restauração: tag `restore/pre-pendencias-pr200-20261117` (= `76a23c6`).
+
+Sumário Executivo — "Em análise". O valor vem só de PCs
+(`_assistente_fiscal._classificar_retroativo`: natureza "potencial"); sem PCs
+ele é 0,0 por construção. A planilha mostra "—" em `RESULTADOS!D9` sempre que
+`METODO_RETROATIVO` ≠ "PCs". O PDF passa a exibir "Não aplicável" somente
+quando as três condições valem: método conhecido "Financeiro" ou "Itens",
+nenhum PC com evidência e valor em análise nulo
+(`_sumario_executivo._em_analise_nao_aplicavel`). Método PCs, método
+desconhecido ou qualquer valor diferente de zero mantêm o número (zero apurado
+continua R$ 0,00). Cálculo, estados e valores não mudam.
+
+RESULTADOS — faixa B12:G13. O verde C6EFCE/006100 é reservado em RESULTADOS a
+VALIDADO/RECONCILIADO (G6, C27:C34), mas a faixa ficava verde com CONFERIR e
+BASE INSUFICIENTE porque só olhava C12 ("APUR…") e D9. Uma regra nova, logo
+após REVISE (sem `stopIfTrue`, como as demais da aba: a prioridade decide),
+pinta a faixa com o âmbar de ressalva
+(FFEB9C/9C5700, o mesmo dxf de ESTIMADO em G6) quando C12 = APURAÇÃO CONCLUÍDA
+e o status é CONFERIR/BASE INSUFICIENTE. Aplicada por
+`tools/aplicar_cor_status_resultados.py` (patch XML, idempotente, localiza as
+regras pela fórmula porque o Excel as reordena e renumera dxfId). Só
+`sheet16.xml` do template muda; styles.xml intacto. Demais estados iguais:
+VALIDADO verde, REVISE vermelho, potencial PC oliva, ESTIMADO como antes.
+
+Homologação em cópias do 1-luc.xlsx recalculadas no Excel (Financeiro, PC,
+Itens; status forçados BASE INSUFICIENTE, VALIDADO e ESTIMADO): VTA
+R$ 1.249.462,09 e retroativo R$ 3.958,54 preservados, nenhum valor de célula
+diferente antes × depois, nenhum alerta de reparo. Regressão em
+`tests/test_status_conferir_base_insuficiente.py`.

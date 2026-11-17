@@ -39,6 +39,8 @@ from pathlib import Path
 # 12.16 / Coleta 12.8: status CONFERIR e BASE INSUFICIENTE reconhecidos na web
 # (antes caiam em "status indisponivel") e RESULTADOS!C13 deixa de dizer
 # "Nenhuma pendencia" quando o status pede conferencia. VTA e retroativo intactos.
+# Mesma versao: faixa RESULTADOS!B12:G13 em ambar (nao verde) com esses status e
+# Sumario Executivo com "Em analise: Nao aplicavel" fora do metodo PCs.
 # 12.15 / Coleta 12.7: conferencias por periodo e ressalvas sem alterar o VTA.
 # 12.14: Painel Executivo e Assistente Fiscal exibem o VTA canonico (o mesmo da
 # pagina Valor Global) em vez da referencia historica do resumo, que no formato

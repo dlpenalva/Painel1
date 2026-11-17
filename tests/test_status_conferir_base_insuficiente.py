@@ -202,3 +202,197 @@ def test_c13_so_troca_o_texto_quando_o_status_pede_conferencia():
     sem_literais = re.sub(r'"(?:[^"]|"")*"', '""', formula)
     assert sem_literais.isascii()
     assert sem_literais.count("(") == sem_literais.count(")")
+
+
+# =========================================================================== #
+# Pendencias finais do PR #200
+# (1) Sumario Executivo: "Em analise" fora do metodo PCs -> "Nao aplicavel".
+# (2) RESULTADOS!B12:G13: CONFERIR/BASE INSUFICIENTE fora do verde de VALIDADO.
+# =========================================================================== #
+import copy  # noqa: E402
+import io  # noqa: E402
+import shutil  # noqa: E402
+
+from openpyxl import load_workbook  # noqa: E402
+
+from _sumario_executivo import (  # noqa: E402
+    NAO_APLICAVEL,
+    _em_analise_nao_aplicavel,
+    gerar_sumario_executivo,
+    montar_dados_sumario_executivo,
+)
+from test_sumario_executivo import (  # noqa: E402
+    leitura_multiciclo_pc,
+    leitura_simples_financeiro,
+)
+
+TEMPLATE = RAIZ / "templates" / "COLETA_REAJUSTE_OFICIAL.xlsx"
+REGRA_RESSALVA = (
+    'AND(LEFT($C$12,4)="APUR",'
+    'OR(STATUS_RESULTADOS="CONFERIR",STATUS_RESULTADOS="BASE INSUFICIENTE"))'
+)
+
+
+def _com_metodo(leitura: dict, metodo) -> dict:
+    leitura = copy.deepcopy(leitura)
+    leitura["resultados_xls"] = {
+        "disponivel": True, "valores": {"METODO_RETROATIVO": metodo},
+    }
+    return leitura
+
+
+def _fin(em_analise=0.0, pcs=()):
+    return {
+        "pc_por_ciclo": list(pcs),
+        "retroativo_em_analise": em_analise,
+        "retroativo_por_estado": {
+            "em análise": em_analise, "reconhecido": 3958.54, "pago": 0.0,
+        },
+    }
+
+
+@pytest.mark.parametrize("metodo,fin,esperado", [
+    ("Financeiro", _fin(), True),
+    ("Itens", _fin(), True),
+    ("PCs", _fin(), False),                      # zero apurado: R$ 0,00
+    (None, _fin(), False),                       # metodo desconhecido
+    ("SELECIONE O METODO EM CONTROLE!B1", _fin(), False),
+    ("Financeiro", _fin(em_analise=12.34), False),  # valor nunca e ocultado
+    ("Financeiro", _fin(pcs=[{"ciclo": "C1"}]), False),
+])
+def test_em_analise_nao_aplicavel_so_fora_de_pcs_sem_valor(metodo, fin, esperado):
+    assert _em_analise_nao_aplicavel(fin, metodo) is esperado
+
+
+def _quadro_retroativo(pdf: bytes) -> dict:
+    fitz = pytest.importorskip("fitz")
+    quadro = {}
+    for page in fitz.open(stream=pdf, filetype="pdf"):
+        linhas: dict = {}
+        for bloco in page.get_text("dict")["blocks"]:
+            for linha in bloco.get("lines", []):
+                y = round((linha["bbox"][1] + linha["bbox"][3]) / 2)
+                texto = "".join(s["text"] for s in linha["spans"]).strip()
+                if texto:
+                    linhas.setdefault(y, []).append((linha["bbox"][0], texto))
+        for y in sorted(linhas):
+            partes = [t for _, t in sorted(linhas[y])]
+            if partes[0] in ("Em análise", "Reconhecido", "Pago") and len(partes) == 2:
+                quadro[partes[0]] = partes[1]
+    return quadro
+
+
+def test_pdf_financeiro_mostra_nao_aplicavel_e_preserva_valores():
+    sem = montar_dados_sumario_executivo(leitura_simples_financeiro())
+    com = montar_dados_sumario_executivo(
+        _com_metodo(leitura_simples_financeiro(), "Financeiro"))
+    assert com["financeiro"]["em_analise_nao_aplicavel"] is True
+    # Somente apresentacao: valores, estados e sintese identicos.
+    fin_sem = {k: v for k, v in sem["financeiro"].items()
+               if k != "em_analise_nao_aplicavel"}
+    fin_com = {k: v for k, v in com["financeiro"].items()
+               if k != "em_analise_nao_aplicavel"}
+    assert fin_com == fin_sem
+    assert com["sintese"] == sem["sintese"]
+    q_sem = _quadro_retroativo(gerar_sumario_executivo(leitura_simples_financeiro()))
+    q_com = _quadro_retroativo(gerar_sumario_executivo(
+        _com_metodo(leitura_simples_financeiro(), "Financeiro")))
+    assert q_com["Em análise"] == NAO_APLICAVEL
+    assert q_sem["Em análise"].startswith("R$")  # sem metodo: comportamento anterior
+    assert q_com["Reconhecido"] == q_sem["Reconhecido"]
+    assert q_com["Pago"] == q_sem["Pago"]
+
+
+def test_pdf_metodo_pc_preserva_valor_em_analise():
+    sem = _quadro_retroativo(gerar_sumario_executivo(leitura_multiciclo_pc()))
+    com = _quadro_retroativo(gerar_sumario_executivo(
+        _com_metodo(leitura_multiciclo_pc(), "PCs")))
+    dados = montar_dados_sumario_executivo(_com_metodo(leitura_multiciclo_pc(), "PCs"))
+    assert dados["financeiro"]["em_analise_nao_aplicavel"] is False
+    assert com == sem
+    assert com["Em análise"].startswith("R$")
+
+
+def test_pdf_pcs_com_metodo_financeiro_nao_oculta_valor():
+    # Evidencia de PC presente: mesmo com metodo != PCs, o valor e exibido.
+    dados = montar_dados_sumario_executivo(
+        _com_metodo(leitura_multiciclo_pc(), "Financeiro"))
+    assert dados["financeiro"]["pc_por_ciclo"]
+    assert dados["financeiro"]["em_analise_nao_aplicavel"] is False
+
+
+def _regras_faixa(wb):
+    ws = wb["RESULTADOS"]
+    faixa = next(f for f in ws.conditional_formatting if str(f.sqref) == "B12:G13")
+    return sorted(faixa.rules, key=lambda r: r.priority)
+
+
+def _gerada():
+    from _coleta_oficial import obter_coleta_oficial_bytes
+    return load_workbook(io.BytesIO(obter_coleta_oficial_bytes()))
+
+
+@pytest.mark.parametrize("origem", ["template", "coleta_gerada"])
+def test_faixa_situacao_conferir_em_ambar_antes_do_verde(origem):
+    wb = load_workbook(TEMPLATE) if origem == "template" else _gerada()
+    regras = _regras_faixa(wb)
+    assert [r.formula[0] for r in regras] == [
+        'LEFT($C$12,4)="REVI"',
+        REGRA_RESSALVA,
+        'AND(LEFT($C$12,4)="APUR",N($D$9)>0)',
+        'AND(LEFT($C$12,4)="APUR",N($D$9)<=0)',
+    ]
+    ressalva = regras[1]
+    assert not ressalva.stopIfTrue  # convencao da aba executiva
+    assert ressalva.dxf.fill.bgColor.rgb == "FFFFEB9C"
+    assert ressalva.dxf.font.color.rgb == "FF9C5700"
+    # Verde de VALIDADO e demais estados preservados.
+    assert regras[0].dxf.fill.bgColor.rgb == "FFFFC7CE"
+    assert regras[2].dxf.fill.bgColor.rgb == "FFEEF3CF"
+    assert regras[3].dxf.fill.bgColor.rgb == "FFC6EFCE"
+    # Prioridades unicas na aba (nenhuma colisao apos a renumeracao).
+    prioridades = [r.priority for f in wb["RESULTADOS"].conditional_formatting
+                   for r in f.rules]
+    assert len(prioridades) == len(set(prioridades))
+
+
+def test_ferramenta_da_cor_e_idempotente(tmp_path):
+    from tools.aplicar_cor_status_resultados import aplicar
+    copia = tmp_path / "coleta.xlsx"
+    shutil.copyfile(TEMPLATE, copia)
+    antes = copia.read_bytes()
+    assert aplicar(copia) is False
+    assert copia.read_bytes() == antes
+
+
+def test_ferramenta_da_cor_aceita_ordem_e_dxf_do_excel():
+    # Arquivo salvo pelo Excel (caso real 1-luc, Coleta 12.6): <cfRule> fora de
+    # ordem e dxfId renumerados. Precedencia = priority; dxf pela formula.
+    from tools.aplicar_cor_status_resultados import NS, patch_planilha
+    xml = (
+        f'<worksheet xmlns="{NS}"><sheetData/>'
+        '<conditionalFormatting sqref="G6">'
+        '<cfRule type="expression" dxfId="2" priority="2"><formula>'
+        'ISNUMBER(SEARCH("ESTIMAD",$G$6))</formula></cfRule>'
+        '<cfRule type="expression" dxfId="0" priority="1"><formula>'
+        'OR($G$6="VALIDADO",$G$6="RECONCILIADO")</formula></cfRule>'
+        '</conditionalFormatting>'
+        '<conditionalFormatting sqref="B12:G13">'
+        '<cfRule type="expression" dxfId="32" priority="38"><formula>'
+        'AND(LEFT($C$12,4)="APUR",N($D$9)&lt;=0)</formula></cfRule>'
+        '<cfRule type="expression" dxfId="31" priority="36"><formula>'
+        'LEFT($C$12,4)="REVI"</formula></cfRule>'
+        '<cfRule type="expression" dxfId="30" priority="37"><formula>'
+        'AND(LEFT($C$12,4)="APUR",N($D$9)&gt;0)</formula></cfRule>'
+        '</conditionalFormatting></worksheet>'
+    ).encode()
+    novo = patch_planilha(xml)
+    texto = novo.decode()
+    regras = re.findall(r'dxfId="(\d+)" priority="(\d+)">'
+                        r'<formula>([^<]+)</formula>', texto)
+    por_formula = {f: (d, int(p)) for d, p, f in regras}
+    assert por_formula[REGRA_RESSALVA] == ("2", 37)          # dxf do ESTIMADO
+    assert por_formula['LEFT($C$12,4)="REVI"'] == ("31", 36)
+    assert por_formula['AND(LEFT($C$12,4)="APUR",N($D$9)&gt;0)'] == ("30", 38)
+    assert por_formula['AND(LEFT($C$12,4)="APUR",N($D$9)&lt;=0)'] == ("32", 39)
+    assert patch_planilha(novo) is None                      # idempotente

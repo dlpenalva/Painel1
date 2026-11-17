@@ -105,6 +105,9 @@ def montar_dados_sumario_executivo(
     )
     financeiro_sec = _montar_secao_financeira(resultados, memoria_ciclo)
     _mascarar_financeiro_por_divergencia(financeiro_sec, campos_nc)
+    financeiro_sec["em_analise_nao_aplicavel"] = _em_analise_nao_aplicavel(
+        financeiro_sec, _metodo_retroativo_xls(leitura)
+    )
     sintese = _montar_sintese(
         objeto, resultados, memoria_ciclo, metodologia, financeiro_sec
     )
@@ -227,6 +230,39 @@ def _mascarar_sintese_por_divergencia(sintese: dict[str, Any], campos_nc: set[st
     if "RETRO_OFICIAL" in campos_nc:
         sintese["retroativo_total"] = None
         sintese["retroativo_estado"] = MOTIVO_DIVERGENCIA_XLS_PYTHON
+
+
+# RESULTADOS!D9 (retroativo potencial = "em analise") so existe no metodo PCs;
+# nos demais a planilha mostra "—" (MEMORIA_RESULTADOS!AG2). Valores possiveis
+# de METODO_RETROATIVO: "Financeiro", "PCs", "Itens" ou "SELECIONE O METODO...".
+_METODOS_SEM_RETRO_EM_ANALISE = frozenset({"Financeiro", "Itens"})
+
+
+def _metodo_retroativo_xls(leitura: dict[str, Any]) -> str | None:
+    """METODO_RETROATIVO lido do cache do Excel pelo leitor (None se ausente)."""
+    valores = ((leitura or {}).get("resultados_xls") or {}).get("valores") or {}
+    metodo = valores.get("METODO_RETROATIVO")
+    return metodo.strip() if isinstance(metodo, str) and metodo.strip() else None
+
+
+def _em_analise_nao_aplicavel(
+    financeiro: dict[str, Any], metodo: str | None
+) -> bool:
+    """True so quando a linha "Em analise" do PDF nao se aplica.
+
+    Somente apresentacao: o valor em analise vem apenas de PCs (assistente
+    fiscal), e a planilha o exibe como "—" fora do metodo PCs. Exige as tres
+    condicoes: metodo conhecido e diferente de PCs, nenhum PC com evidencia e
+    valor em analise nulo. Metodo PCs, metodo desconhecido ou qualquer valor
+    diferente de zero mantem o numero (um zero apurado continua R$ 0,00).
+    """
+    if metodo not in _METODOS_SEM_RETRO_EM_ANALISE:
+        return False
+    if financeiro.get("pc_por_ciclo"):
+        return False
+    por_estado = financeiro.get("retroativo_por_estado") or {}
+    valor = por_estado.get("em análise", financeiro.get("retroativo_em_analise"))
+    return _f(valor) == 0.0
 
 
 def _mascarar_financeiro_por_divergencia(financeiro: dict[str, Any], campos_nc: set[str]) -> None:
@@ -1440,7 +1476,7 @@ def _bloco_financeiro(historia, dados, estilos) -> None:
     linhas_estado = [["Situação", "Valor"]]
     linhas_estado.append([
         "Em análise",
-        formatar_moeda(
+        NAO_APLICAVEL if fin.get("em_analise_nao_aplicavel") else formatar_moeda(
             por_estado.get("em análise", fin.get("retroativo_em_analise"))
         ),
     ])
