@@ -417,9 +417,11 @@ def _aplicar_controle(ws) -> None:
     try:
         val = ws.Range("B3").Validation
         val.InputTitle = "DATA DE CORTE DA APURACAO"
+        # Coleta 12.9: texto atual do template oficial.
         val.InputMessage = (
-            "Ultima data considerada nos calculos, PCs, competencias e "
-            "resultados da apuracao."
+            "Informe a data até a qual os dados foram considerados nesta "
+            "apuração. Exemplo: se os valores e quantidades foram apurados até "
+            "27/10/2026, informe 27/10/2026."
         )
         val.ErrorMessage = "Informe uma data valida no formato dd/mm/aaaa."
     except Exception:

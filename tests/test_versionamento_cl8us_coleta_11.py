@@ -100,12 +100,12 @@ def test_versoes_publicas_e_politica_preparada() -> None:
     # Cl8us 12.12 / Coleta 12.5: saldo remanescente logo apos a observacao final.
     # Cl8us 12.13 / Coleta 12.6: retroativo zero e referencias temporais do C1.
     # Cl8us 12.14: Painel Executivo com o VTA canonico (so aplicativo, #195).
-    # Cl8us 12.16 / Coleta 12.8: status CONFERIR/BASE INSUFICIENTE e texto de C13.
-    assert CL8US_VERSION == "12.16"
-    assert COLETA_VERSION == "12.8"
+    # Cl8us 12.17 / Coleta 12.9: texto das mensagens de CONTROLE!B3 e CICLO_EM_EXECUCAO!D5.
+    assert CL8US_VERSION == "12.17"
+    assert COLETA_VERSION == "12.9"
     assert COLETA_VERSOES_ACEITAS == (
         "11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8", "11.9",
-        "12.0", "12.1", "12.2", "12.3", "12.4", "12.5", "12.6", "12.7", "12.8",
+        "12.0", "12.1", "12.2", "12.3", "12.4", "12.5", "12.6", "12.7", "12.8", "12.9",
     )
     assert CL8US_VERSION != COLETA_VERSION
     assert COLETA_COMPATIBILIDADE_ANTERIORES == 2
@@ -129,8 +129,8 @@ def test_sidebar_exibe_as_duas_versoes_da_fonte_unica(monkeypatch) -> None:
 
     assert legendas == [
         "Última atualização publicada em 30/09/2026 12:00",
-        "Cl8us 12.16",
-        "Modelo de Coleta 12.8",
+        "Cl8us 12.17",
+        "Modelo de Coleta 12.9",
     ]
     assert containers == ["cl8us_version_sidebar"]
 
