@@ -959,9 +959,12 @@ def _criar_aba_itemizada(wb):
     dv_data.errorTitle = "Data fora do ciclo"
     dv_data.error = "Informe uma data válida dentro do ciclo em execução."
     dv_data.promptTitle = "Data da posição física"
+    # Coleta 12.9: orientacao textual (limite do Excel: 255 caracteres).
     dv_data.prompt = (
-        "Data em que o fiscal confirmou as quantidades remanescentes. "
-        "Deve ser igual ou anterior à data de corte da apuração (CONTROLE!B3)."
+        "Informe a data a que correspondem as quantidades de cada item. "
+        "Se representam a situação de 27/10/2026, use essa data, mesmo que a "
+        "planilha seja enviada em novembro. Se as quantidades foram atualizadas "
+        "depois, informe a data real dessa nova posição."
     )
     dv_data.showErrorMessage = True
     dv_data.showInputMessage = True
