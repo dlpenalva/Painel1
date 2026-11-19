@@ -452,10 +452,28 @@ def gerar_periodos_projecao(ultima_competencia, data_final_vigencia):
     return list(pd.period_range(inicio, fim, freq="M"))
 
 
-def montar_base_editor(periodos, media_mensal, base_por_competencia=None, rotulo_base=None):
+def montar_base_editor(periodos, media_mensal, base_por_competencia=None, rotulo_base=None,
+                       preencher_valor_a_usar=False):
     """Editor da projecao. Sem `base_por_competencia` (legado): a media e a
     base sugerida de todos os meses. Com o mapa (cadencia/manual): cada mes
-    exibe a SUA base (0 = sem ocorrencia prevista)."""
+    exibe a SUA base (0 = sem ocorrencia prevista).
+
+    `preencher_valor_a_usar` (somente media de historico irregular): a coluna
+    "Valor a usar" ja nasce com o valor sugerido; o usuario edita livremente.
+    """
+    if preencher_valor_a_usar:
+        mapa = _mapa_base_por_periodo(base_por_competencia)
+        linhas = []
+        for p in periodos:
+            sugerido = moeda(mapa.get((int(p.year), int(p.month)), 0.0), com_prefixo=False)
+            linhas.append({
+                "Competência": periodo_para_label(p),
+                "Base automática pela média": sugerido,
+                "Valor informado pelo fiscal": sugerido,
+                "Premissa do valor informado": "Valor sem reajuste",
+                "Observação": "",
+            })
+        return pd.DataFrame(linhas)
     if base_por_competencia is None:
         return pd.DataFrame([{
             "Competência": periodo_para_label(p),
@@ -476,7 +494,8 @@ def montar_base_editor(periodos, media_mensal, base_por_competencia=None, rotulo
 
 
 def calcular_projecao(df_editor, media_mensal, fator_reajuste,
-                      base_por_competencia=None, origem_automatica=None):
+                      base_por_competencia=None, origem_automatica=None,
+                      vazio_igual_zero=False):
     """Projecao mes a mes.
 
     Caminho legado (sem `base_por_competencia`): base automatica = media em
@@ -485,6 +504,11 @@ def calcular_projecao(df_editor, media_mensal, fator_reajuste,
     do mapa {competencia -> valor}; meses sem ocorrencia prevista tem base 0
     — a projecao deixa de presumir mensalidade (Etapa 51B). Overrides do
     fiscal (ZERO != VAZIO) prevalecem em ambos os caminhos.
+
+    `vazio_igual_zero` (somente media de historico irregular, em que "Valor a
+    usar" ja vem preenchido com a sugestao): campo vazio = R$ 0,00, sem
+    recuperar a media; valor igual a sugestao segue como projecao automatica;
+    qualquer outro valor informado prevalece.
     """
     linhas = []
     if not isinstance(df_editor, pd.DataFrame) or df_editor.empty:
@@ -500,7 +524,28 @@ def calcular_projecao(df_editor, media_mensal, fator_reajuste,
         # seguem o golden; o arredondamento e o do motor (_round2, paridade Excel).
         # ZERO != VAZIO: existencia do override e decidida pelo valor ORIGINAL
         # (0 informado significa execucao zero; vazio => projecao automatica).
-        if valor_original_foi_informado(informado_raw):
+        if vazio_igual_zero and mapa is not None:
+            periodo = normalizar_competencia(competencia)
+            chave = (int(periodo.year), int(periodo.month)) if periodo is not None else None
+            sugerido = mapa.get(chave, 0.0)
+            if not valor_original_foi_informado(informado_raw):
+                base_considerada = 0.0
+                origem = "Valor a usar vazio"
+                premissa_usada = "Campo vazio = R$ 0,00"
+            elif (premissa != "Valor já reajustado"
+                  and abs(informado - _round2(sugerido)) < 0.005):
+                base_considerada = sugerido
+                origem = origem_automatica or "Projeção automática por média histórica"
+                premissa_usada = "Média histórica (baixa confiabilidade)"
+            elif premissa == "Valor já reajustado":
+                base_considerada = informado / fator_reajuste if fator_reajuste else informado
+                origem = "Valor informado pelo fiscal"
+                premissa_usada = "Valor já reajustado"
+            else:
+                base_considerada = informado
+                origem = "Valor informado pelo fiscal"
+                premissa_usada = "Valor sem reajuste"
+        elif valor_original_foi_informado(informado_raw):
             origem = "Valor informado pelo fiscal"
             if premissa == "Valor já reajustado":
                 base_considerada = informado / fator_reajuste if fator_reajuste else informado
@@ -555,7 +600,19 @@ def cronograma_por_exercicio(df_projecao, retroativo):
 
 # ---------------------------------------------------------------- XLSX
 
-def gerar_xlsx_projecao(df_ultimos, df_projecao, resumo):
+ROTULO_MEDIA_IRREGULAR = "Projeção automática por média histórica — baixa confiabilidade"
+NOTA_RESUMO_CONFIRMADA = (
+    "Complementação confirmada = retroativo reconhecido considerado + "
+    "diferença futura projetada. O retroativo potencial, quando existente, "
+    "é informado à parte e não integra a complementação.")
+NOTA_RESUMO_ESTIMADA = (
+    "Complementação orçamentária estimada = retroativo calculado + diferença futura "
+    "projetada por média histórica (baixa confiabilidade). Estimativa orçamentária, "
+    "não obrigação de pagamento comprovada. O retroativo potencial, quando existente, "
+    "é informado à parte e não integra a complementação.")
+
+
+def gerar_xlsx_projecao(df_ultimos, df_projecao, resumo, nota_resumo=None):
     output = BytesIO()
     with pd.ExcelWriter(
         output,
@@ -572,9 +629,7 @@ def gerar_xlsx_projecao(df_ultimos, df_projecao, resumo):
         ws = workbook.add_worksheet("RESUMO")
         writer.sheets["RESUMO"] = ws
         ws.write(0, 0, "Adequação Orçamentária — Delta do Reajuste", fmt_title)
-        ws.write(1, 0, "Complementação confirmada = retroativo reconhecido considerado + "
-                       "diferença futura projetada. O retroativo potencial, quando existente, "
-                       "é informado à parte e não integra a complementação.", fmt_note)
+        ws.write(1, 0, nota_resumo or NOTA_RESUMO_CONFIRMADA, fmt_note)
         ws.write(3, 0, "Indicador", fmt_header)
         ws.write(3, 1, "Valor", fmt_header)
         for r, (label, valor) in enumerate(resumo, start=4):

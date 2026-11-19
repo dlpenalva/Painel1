@@ -50,6 +50,13 @@ CORTE = date(2026, 8, 19)
 VIGENCIA = "29/02/2028"
 RECONHECIDO = 57701.49
 POTENCIAL = 12000.0
+# Fixture PC irregular na premissa Automatica: a aba 4 apresenta a
+# complementacao ESTIMADA (media historica, Cl8us 12.18).
+CARD_COMPLEMENTACAO = "COMPLEMENTAÇÃO ORÇAMENTÁRIA ESTIMADA"
+# Mesmo cenario na aba SIGA: total identificado como estimado.
+TOTAL_SIGA = "TOTAL ESTIMADO A READEQUAR:"
+FRASE_ESTIMATIVA = ("A diferença futura foi estimada pela média histórica, com baixa "
+                    "confiabilidade, e depende de validação fiscal.")
 
 _ITENS_PC = [
     {"numero_pc": "PC-1", "data_pc": date(2025, 3, 14), "valor_pc": 12000.0},
@@ -148,12 +155,12 @@ def test_bloco_de_campos_manuais_removido_sem_espaco_vazio():
 def test_total_a_readequar_e_exatamente_a_complementacao_confirmada_da_aba4():
     at = _run_pc()
     blob = _blob(at)
-    complementacao = _valor_do_card(blob, "COMPLEMENTAÇÃO CONFIRMADA")
+    complementacao = _valor_do_card(blob, CARD_COMPLEMENTACAO)
 
     texto = _texto_siga(at)
-    total_texto = parse_moeda_br(_linha(texto, "TOTAL A READEQUAR:").split(":", 1)[1])
+    total_texto = parse_moeda_br(_linha(texto, TOTAL_SIGA).split(":", 1)[1])
     assert total_texto == pytest.approx(complementacao)
-    assert moeda(complementacao) in _linha(texto, "TOTAL A READEQUAR:")
+    assert moeda(complementacao) in _linha(texto, TOTAL_SIGA)
 
 
 # --------------------------------------------------- 3. potencial fora do total
@@ -161,10 +168,10 @@ def test_total_a_readequar_e_exatamente_a_complementacao_confirmada_da_aba4():
 def test_retroativo_potencial_nao_integra_o_total_a_readequar():
     at = _run_pc(_sessao_pc(com_potencial=True))
     blob = _blob(at)
-    complementacao = _valor_do_card(blob, "COMPLEMENTAÇÃO CONFIRMADA")
+    complementacao = _valor_do_card(blob, CARD_COMPLEMENTACAO)
 
     texto = _texto_siga(at)
-    total_texto = parse_moeda_br(_linha(texto, "TOTAL A READEQUAR:").split(":", 1)[1])
+    total_texto = parse_moeda_br(_linha(texto, TOTAL_SIGA).split(":", 1)[1])
     # o total bate com a complementacao confirmada (que ja exclui o
     # potencial) e jamais com complementacao + potencial.
     assert total_texto == pytest.approx(complementacao)
@@ -265,7 +272,7 @@ def test_aba_resultado_mantem_os_mesmos_resultados_de_antes():
     at = _run_pc()
     assert not at.exception, at.exception
     blob = _blob(at)
-    assert "COMPLEMENTAÇÃO CONFIRMADA" in blob
+    assert CARD_COMPLEMENTACAO in blob
     assert "Retroativo reconhecido considerado" in blob
     assert "Programação por exercício" in blob
     assert _valor_do_card(blob, "Retroativo reconhecido considerado") == pytest.approx(RECONHECIDO)
@@ -354,7 +361,7 @@ def test_programacao_por_exercicio_usa_a_mesma_fonte_da_aba4():
     mesmos anos, mesmos valores, mesmo TOTAL. Nada e recalculado aqui."""
     at = _run_pc(_sessao_pc(com_potencial=True))
     blob = _blob(at)
-    complementacao = _valor_do_card(blob, "COMPLEMENTAÇÃO CONFIRMADA")
+    complementacao = _valor_do_card(blob, CARD_COMPLEMENTACAO)
 
     df_cron = next(d.value for d in at.dataframe if "Exercício" in d.value.columns)
     texto = _texto_siga(at)
@@ -384,3 +391,26 @@ def test_txt_baixado_usa_a_mesma_variavel_do_texto_exibido_sem_duplicar():
     # o valor que alimentaria o download (texto_siga daquele run) e
     # exatamente o que ficou sincronizado em session_state[key].
     assert at.session_state["adequacao_v3_siga_texto_area"] == _texto_siga(at)
+
+
+# ------------------------------------------- media historica de baixa confiabilidade
+
+def test_media_irregular_identifica_total_estimado_e_frase_de_validacao():
+    at = _run_pc()
+    assert not at.exception, at.exception
+    texto = _texto_siga(at)
+    assert "TOTAL ESTIMADO A READEQUAR:" in texto
+    assert "TOTAL A READEQUAR:" not in texto
+    assert texto.count(FRASE_ESTIMATIVA) == 1
+
+
+@pytest.mark.parametrize("premissa", ["Mensal (média)", "Por ciclo", "Manual"])
+def test_demais_modalidades_preservam_o_texto_integral(premissa):
+    at = _run_pc()
+    at.radio(key="adequacao_v3_premissa").set_value(premissa)
+    at.run()
+    assert not at.exception, at.exception
+    texto = _texto_siga(at)
+    assert "TOTAL A READEQUAR:" in texto
+    assert "TOTAL ESTIMADO" not in texto
+    assert FRASE_ESTIMATIVA not in texto
