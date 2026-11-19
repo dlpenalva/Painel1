@@ -36,6 +36,8 @@ CORTE = date(2026, 8, 19)
 VIGENCIA = "29/02/2028"
 RECONHECIDO = 57701.49
 POTENCIAL = 12000.0
+# Historico irregular na Automatica => complementacao ESTIMADA (media historica).
+ESTIMADA = "COMPLEMENTAÇÃO ORÇAMENTÁRIA ESTIMADA"
 
 # Historico real do cenario que revelou o defeito: nada em 2024.
 _ITENS_PC = [
@@ -186,12 +188,15 @@ def test_caso_a_diferenca_futura_nao_fica_zerada():
     assert confirmada > RECONHECIDO
 
 
-def test_caso_i_cadencia_esparsa_nao_vira_mensalidade_presumida():
+def test_caso_i_cadencia_esparsa_usa_media_historica_de_baixa_confiabilidade():
+    """Historico valido porem irregular: a Automatica deixa de zerar a projecao
+    e usa a media mensal historica (meses sem PC no divisor) como estimativa."""
     at = _run(_sessao_pc())
     assert not at.exception, at.exception
     blob = _blob(at)
     assert "Histórico sem periodicidade suficiente" in blob
-    assert _valor_do_card(blob, "Diferença futura projetada") == 0
+    assert "Projeção automática por média histórica — baixa confiabilidade" in blob
+    assert _valor_do_card(blob, "Diferença futura projetada") > 0
 
 
 def test_caso_a_competencia_final_nao_e_redigitada():
@@ -210,7 +215,7 @@ def test_caso_b_potencial_positivo_fica_separado_do_confirmado():
     blob = _blob(at)
     assert "Retroativo reconhecido" in blob
     assert "Retroativo potencial" in blob
-    assert "COMPLEMENTAÇÃO CONFIRMADA" in blob
+    assert ESTIMADA in blob
     assert "Cenário com potencial" in blob
     assert "57.701,49" in blob
     assert "12.000,00" in blob
@@ -220,7 +225,7 @@ def test_caso_b_confirmada_e_cenario_diferem_exatamente_pelo_potencial():
     at = _run(_sessao_pc(potencial=POTENCIAL))
     assert not at.exception, at.exception
     blob = _blob(at)
-    confirmada = _valor_do_card(blob, "COMPLEMENTAÇÃO CONFIRMADA")
+    confirmada = _valor_do_card(blob, ESTIMADA)
     cenario = _valor_do_card(blob, "Cenário com potencial")
     reconhecido = _valor_do_card(blob, "Retroativo reconhecido considerado")
     assert reconhecido == pytest.approx(RECONHECIDO)
@@ -232,7 +237,7 @@ def test_caso_c_potencial_zero_nao_gera_alarde():
     assert not at.exception, at.exception
     blob = _blob(at)
     assert "Retroativo potencial" in blob
-    confirmada = _valor_do_card(blob, "COMPLEMENTAÇÃO CONFIRMADA")
+    confirmada = _valor_do_card(blob, ESTIMADA)
     cenario = _valor_do_card(blob, "Cenário com potencial")
     assert cenario == pytest.approx(confirmada)
 

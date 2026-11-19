@@ -50,6 +50,9 @@ CORTE = date(2026, 8, 19)
 VIGENCIA = "29/02/2028"
 RECONHECIDO = 57701.49
 POTENCIAL = 12000.0
+# Fixture PC irregular na premissa Automatica: a aba 4 apresenta a
+# complementacao ESTIMADA (media historica, Cl8us 12.18).
+CARD_COMPLEMENTACAO = "COMPLEMENTAÇÃO ORÇAMENTÁRIA ESTIMADA"
 
 _ITENS_PC = [
     {"numero_pc": "PC-1", "data_pc": date(2025, 3, 14), "valor_pc": 12000.0},
@@ -148,7 +151,7 @@ def test_bloco_de_campos_manuais_removido_sem_espaco_vazio():
 def test_total_a_readequar_e_exatamente_a_complementacao_confirmada_da_aba4():
     at = _run_pc()
     blob = _blob(at)
-    complementacao = _valor_do_card(blob, "COMPLEMENTAÇÃO CONFIRMADA")
+    complementacao = _valor_do_card(blob, CARD_COMPLEMENTACAO)
 
     texto = _texto_siga(at)
     total_texto = parse_moeda_br(_linha(texto, "TOTAL A READEQUAR:").split(":", 1)[1])
@@ -161,7 +164,7 @@ def test_total_a_readequar_e_exatamente_a_complementacao_confirmada_da_aba4():
 def test_retroativo_potencial_nao_integra_o_total_a_readequar():
     at = _run_pc(_sessao_pc(com_potencial=True))
     blob = _blob(at)
-    complementacao = _valor_do_card(blob, "COMPLEMENTAÇÃO CONFIRMADA")
+    complementacao = _valor_do_card(blob, CARD_COMPLEMENTACAO)
 
     texto = _texto_siga(at)
     total_texto = parse_moeda_br(_linha(texto, "TOTAL A READEQUAR:").split(":", 1)[1])
@@ -265,7 +268,7 @@ def test_aba_resultado_mantem_os_mesmos_resultados_de_antes():
     at = _run_pc()
     assert not at.exception, at.exception
     blob = _blob(at)
-    assert "COMPLEMENTAÇÃO CONFIRMADA" in blob
+    assert CARD_COMPLEMENTACAO in blob
     assert "Retroativo reconhecido considerado" in blob
     assert "Programação por exercício" in blob
     assert _valor_do_card(blob, "Retroativo reconhecido considerado") == pytest.approx(RECONHECIDO)
@@ -354,7 +357,7 @@ def test_programacao_por_exercicio_usa_a_mesma_fonte_da_aba4():
     mesmos anos, mesmos valores, mesmo TOTAL. Nada e recalculado aqui."""
     at = _run_pc(_sessao_pc(com_potencial=True))
     blob = _blob(at)
-    complementacao = _valor_do_card(blob, "COMPLEMENTAÇÃO CONFIRMADA")
+    complementacao = _valor_do_card(blob, CARD_COMPLEMENTACAO)
 
     df_cron = next(d.value for d in at.dataframe if "Exercício" in d.value.columns)
     texto = _texto_siga(at)
