@@ -997,6 +997,14 @@ with tab_siga:
             "Não disponível (depende de projeção futura calculada)."
         )
 
+    # Somente na projecao por media historica de baixa confiabilidade o total
+    # e identificado como estimado; demais modalidades mantem o texto integral.
+    rotulo_total_siga = ("TOTAL ESTIMADO A READEQUAR" if media_irregular
+                         else "TOTAL A READEQUAR")
+    nota_estimativa_siga = (
+        "A diferença futura foi estimada pela média histórica, com baixa "
+        "confiabilidade, e depende de validação fiscal.\n\n" if media_irregular else "")
+
     texto_siga = (
         "Solicitação de adequação orçamentária\n\n"
         f"1. Solicita-se adequação orçamentária para o Contrato {contrato_txt}, firmado com a "
@@ -1007,7 +1015,8 @@ with tab_siga:
         "Composição da adequação orçamentária\n\n"
         f"Retroativo reconhecido considerado: {retroativo_txt}\n"
         f"Diferença futura projetada – {qtd_meses} meses: {diferenca_txt}\n\n"
-        f"TOTAL A READEQUAR: {complementacao_txt}\n\n"
+        f"{rotulo_total_siga}: {complementacao_txt}\n\n"
+        f"{nota_estimativa_siga}"
         f"{programacao_txt}\n\n"
         "4. Informações complementares:\n\n"
         f"Retroativo reconhecido considerado: {retroativo_txt}\n\n"
@@ -1037,7 +1046,7 @@ with tab_siga:
     assinatura_siga = (
         contrato_txt, contratada_txt, clausula_txt, vigencia_txt,
         retroativo_txt, qtd_meses, diferenca_txt, complementacao_txt,
-        potencial_txt, cenario_txt, programacao_txt,
+        potencial_txt, cenario_txt, programacao_txt, media_irregular,
     )
     if st.session_state.get("adequacao_v3_siga_assinatura") != assinatura_siga:
         st.session_state["adequacao_v3_siga_texto_area"] = texto_siga
