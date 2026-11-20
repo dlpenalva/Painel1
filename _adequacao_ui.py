@@ -877,7 +877,10 @@ def gerar_xlsx_projecao(df_ultimos, df_projecao, resumo, nota_resumo=None,
                        "Saldo elegível após a competência"]:
                 ws_p.set_column(c, c, max(18, min(32, len(str(col)) + 4)), fmt_money)
                 for r_idx, valor in enumerate(df_proj[col], start=1):
-                    ws_p.write_number(r_idx, c, parse_moeda_br(valor), fmt_money)
+                    if valor is None or pd.isna(valor):
+                        ws_p.write(r_idx, c, NAO_DETERMINADA, fmt_text)
+                    else:
+                        ws_p.write_number(r_idx, c, parse_moeda_br(valor), fmt_money)
             else:
                 ws_p.set_column(c, c, max(16, min(32, len(str(col)) + 4)))
         # PROGRAMACAO por exercicio (12.20): mesmo DataFrame da WEB, com o
