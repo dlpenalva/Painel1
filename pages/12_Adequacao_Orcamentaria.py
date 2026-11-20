@@ -39,6 +39,7 @@ from _adequacao_orcamentaria import (
     projetar_por_cadencia,
     projetar_por_ciclo_proporcional,
     cadencia_por_ciclo_forcada,
+    base_prudencial_irregular,
     CADENCIA_MENSAL,
     CADENCIA_IRREGULAR,
     CADENCIA_POR_CICLO,
@@ -69,6 +70,11 @@ from _adequacao_ui import (
     pares_de_pedidos,
     ROTULO_MEDIA_IRREGULAR,
     NOTA_RESUMO_ESTIMADA,
+    NOTA_RESUMO_SALDO,
+    NAO_DETERMINADA,
+    saldo_elegivel_da_apuracao,
+    consolidar_resultado_adequacao,
+    linhas_resumo_resultado,
 )
 
 st.set_page_config(page_icon="assets/cl8us_favicon_512.png", page_title="TLB · cl8us - Adequação Orçamentária", layout="wide")
@@ -214,6 +220,10 @@ medidas_pc = bool(consolidado_ad.get("medidas_pc_aplicaveis"))
 data_corte_canonica = _as_date((consolidado_ad.get("fora_do_corte") or {}).get("data_corte"))
 retroativo_potencial = consolidado_ad.get("retroativo_potencial") if medidas_pc else None
 valor_em_analise_pc = consolidado_ad.get("valor_atualizado_em_analise") if medidas_pc else None
+# Saldo contratual elegivel (Cl8us 12.20): limita a projecao futura, na mesma
+# base economica dela (sem o reajuste). Nunca derivado do VTA; ausencia != zero.
+saldo_info = saldo_elegivel_da_apuracao(resultado)
+saldo_elegivel = saldo_info["valor"]
 
 # Base financeira por competencia (ZERO x VAZIO preservados) e janela de 6
 # competencias-calendario terminando na ultima competencia INFORMADA.
@@ -289,8 +299,14 @@ with tab_base:
     linhas_base.extend([
         ("Última competência do histórico financeiro", ultima_comp_fin_txt),
         ("Fontes encontradas", fontes_txt),
+        ("Saldo contratual elegível para a projeção",
+         moeda(saldo_elegivel) if saldo_elegivel is not None else "Não disponível"),
     ])
     render_leitura(linhas_base)
+    st.caption(f"Saldo elegível: {saldo_info['origem']}. Limita apenas a projeção futura "
+               "(base sem reajuste); o retroativo reconhecido não é limitado pelo saldo."
+               + (f" Saldo remanescente atualizado (conciliação): {moeda(saldo_info['atualizado'])}."
+                  if saldo_info.get("atualizado") is not None else ""))
     if medidas_pc:
         # VTA-POT-1: a adequação NÃO parte do VTA — ela soma retroativo
         # reconhecido + diferença futura projetada. Por isso o potencial, que
@@ -651,7 +667,10 @@ with tab_proj:
     usar_media = False
     # Historico valido porem irregular: a Automatica usa a media mensal ja
     # calculada no Historico (meses sem PC no divisor), so como estimativa.
+    # Cl8us 12.20: somente com saldo elegivel confiavel e limitada a ele
+    # (projecao prudencial); sem saldo, o futuro fica nao determinado.
     media_irregular = False
+    irregular_sem_projecao = False
     base_cadencia = None
     cadencia_aplicada = cadencia
     if premissa_proj == "Mensal (média)":
@@ -680,29 +699,35 @@ with tab_proj:
             usar_media = True
             premissa_rotulo = f"Automática — {cadencia['rotulo']}"
         elif (cadencia["padrao"] == CADENCIA_IRREGULAR and cadencia.get("eventos")
-              and float(media_ref or 0) > 0):
+              and float(media_ref or 0) > 0 and saldo_elegivel is not None):
             media_irregular = True
-            base_cadencia = {p.to_timestamp().date(): media_ref for p in periodos}
+            # Prudencial: total = menor entre media x meses e o saldo elegivel,
+            # distribuido igualmente (distribuicao apenas para planejamento).
+            _base_prudencial = base_prudencial_irregular(media_ref, len(periodos), saldo_elegivel) or 0.0
+            base_cadencia = {p.to_timestamp().date(): _base_prudencial for p in periodos}
             premissa_rotulo = ROTULO_MEDIA_IRREGULAR
             st.warning("HISTÓRICO SEM PERIODICIDADE SUFICIENTE. "
-                       f"{cadencia['explicacao']} Para fins exclusivamente orçamentários, a média "
-                       "mensal histórica foi distribuída pelos meses restantes da vigência "
-                       f"({ROTULO_MEDIA_IRREGULAR.lower()}).")
+                       f"{cadencia['explicacao']} Para fins exclusivamente orçamentários, a "
+                       "projeção é prudencial: o menor valor entre a média mensal histórica × "
+                       "meses restantes e o saldo contratual elegível, distribuído igualmente "
+                       f"pelos meses restantes da vigência ({ROTULO_MEDIA_IRREGULAR.lower()}).")
         elif cadencia["padrao"] == CADENCIA_IRREGULAR:
             base_cadencia = {}
+            irregular_sem_projecao = bool(cadencia.get("eventos"))
             premissa_rotulo = "Automática — histórico sem periodicidade suficiente"
             st.warning("HISTÓRICO SEM PERIODICIDADE SUFICIENTE PARA PROJEÇÃO AUTOMÁTICA. "
-                       f"{cadencia['explicacao']} Nenhuma mensalidade foi presumida: selecione "
-                       "a premissa Mensal, Por ciclo ou Manual, ou informe os valores na tabela.")
+                       f"{cadencia['explicacao']} Nenhuma mensalidade foi presumida"
+                       + (" e não há saldo contratual elegível confiável para limitar uma "
+                          "projeção prudencial: a diferença futura não foi determinada"
+                          if irregular_sem_projecao and saldo_elegivel is None else "")
+                       + ". Selecione a premissa Mensal, Por ciclo ou Manual, ou informe os "
+                       "valores na tabela.")
         elif cadencia["padrao"] == CADENCIA_POR_CICLO:
             base_cadencia = projetar_por_ciclo_proporcional(cadencia, _inicio_proj, _fim_proj)
             premissa_rotulo = f"Automática — {cadencia['rotulo']}"
         else:
             base_cadencia = projetar_por_cadencia(cadencia, ciclos_cad, _inicio_proj, _fim_proj)
             premissa_rotulo = f"Automática — {cadencia['rotulo']}"
-
-    ROTULO_COMPLEMENTACAO = ("Complementação orçamentária estimada" if media_irregular
-                             else "Complementação confirmada")
 
     proporcional_ciclo = (not usar_media and base_cadencia is not None and bool(base_cadencia)
                           and (cadencia_aplicada or {}).get("padrao") == CADENCIA_POR_CICLO
@@ -748,6 +773,7 @@ with tab_proj:
                                          preencher_valor_a_usar=media_irregular)
     editor_key = (f"adequacao_v3_editor_{origem_hist}_{premissa_proj}_{ultima_comp_txt}_"
                   f"{data_final_vigencia}_{round(media_ref, 2)}_{round(fator_reajuste, 6)}"
+                  f"_{saldo_elegivel}"
                   + ("_media_irregular" if media_irregular else ""))
 
     col_premissa = (st.column_config.SelectboxColumn(
@@ -764,8 +790,11 @@ with tab_proj:
         },
     )
 
+    # Todas as premissas respeitam o saldo elegivel (automatico limitado;
+    # valor informado pelo fiscal nunca reduzido — excesso exige correcao).
     if usar_media:
-        df_projecao = calcular_projecao(df_editor, media_ref, fator_reajuste)
+        df_projecao = calcular_projecao(df_editor, media_ref, fator_reajuste,
+                                        saldo_elegivel=saldo_elegivel)
     else:
         df_projecao = calcular_projecao(
             df_editor, media_ref, fator_reajuste,
@@ -773,7 +802,8 @@ with tab_proj:
             origem_automatica=("Premissa manual" if premissa_proj == "Manual"
                                else ROTULO_MEDIA_IRREGULAR if media_irregular
                                else f"Cadência: {cadencia_aplicada['rotulo']}"),
-            vazio_igual_zero=media_irregular)
+            vazio_igual_zero=media_irregular,
+            saldo_elegivel=saldo_elegivel)
     if modo_reduzido_estoque and ultimos_6.empty:
         rem_original = parse_moeda_br(resultado.get("remanescente_original", 0)) if isinstance(resultado, dict) else 0.0
         rem_atualizado = parse_moeda_br(resultado.get("remanescente_reajustado", 0)) if isinstance(resultado, dict) else 0.0
@@ -788,6 +818,56 @@ with tab_proj:
 
     diferenca_futura = float(df_projecao["Diferença futura a adequar"].sum()) if not df_projecao.empty else 0.0
     qtd_meses = 0 if modo_reduzido_estoque and ultimos_6.empty else len(df_projecao)
+
+    # Insuficiencia de dados (Cl8us 12.20): ausencia de projecao nunca vira
+    # diferenca futura de R$ 0,00. Valor informado pelo fiscal determina o
+    # futuro; zero informado continua sendo zero.
+    informou_valor = (not df_projecao.empty and "Origem" in df_projecao.columns
+                      and bool((df_projecao["Origem"] == "Valor informado pelo fiscal").any()))
+    motivo_futuro = ""
+    if modo_reduzido_estoque and ultimos_6.empty:
+        motivo_futuro = ""
+    elif not str(data_final_vigencia).strip():
+        motivo_futuro = "data final da vigência não informada (aba 1)"
+    elif periodos and not informou_valor:
+        if premissa_proj == "Manual":
+            motivo_futuro = "nenhum valor informado na premissa Manual"
+        elif not pares_hist:
+            motivo_futuro = "não há histórico de execução para estimar o futuro"
+        elif premissa_proj.startswith("Automática") and irregular_sem_projecao:
+            motivo_futuro = ("histórico irregular sem saldo contratual elegível confiável"
+                             if saldo_elegivel is None
+                             else "histórico irregular sem média histórica utilizável")
+    # Sem saldo elegivel, nenhuma premissa automatizada pode atestar a
+    # diferenca futura como valor conciliado ao limite contratual.
+    # Valores expressamente informados na premissa Manual seguem auditaveis
+    # e recebem a ressalva de saldo indisponivel da consolidacao.
+    if (not motivo_futuro and periodos and saldo_elegivel is None
+            and premissa_proj != "Manual"):
+        motivo_futuro = ("saldo contratual elegível indisponível para validar "
+                         "a projeção futura automática")
+    # Uma diferenca futura nao determinada tambem nao pode aparecer como
+    # montante calculado nas competencias da tela ou do XLSX.
+    if motivo_futuro and not df_projecao.empty:
+        for col in ("Valor base considerado", "Valor reajustado estimado",
+                    "Diferença futura a adequar"):
+            df_projecao[col] = None
+    resultado_adequacao = consolidar_resultado_adequacao(
+        retroativo=retroativo, df_projecao=df_projecao, meses_restantes=qtd_meses,
+        saldo_info=saldo_info,
+        retroativo_potencial=(retroativo_potencial if medidas_pc else None),
+        motivo_indeterminado=motivo_futuro, baixa_confiabilidade=media_irregular,
+        limitado_por_saldo=(media_irregular and saldo_elegivel is not None
+                            and float(media_ref or 0) * len(periodos) > saldo_elegivel + 0.005))
+    ROTULO_COMPLEMENTACAO = resultado_adequacao["rotulo_complementacao"]
+    if resultado_adequacao["excesso_saldo"] > 0.004:
+        st.error("OS VALORES INFORMADOS EXCEDEM O SALDO CONTRATUAL ELEGÍVEL em "
+                 f"{moeda(resultado_adequacao['excesso_saldo'])} (saldo: {moeda(saldo_elegivel)}). "
+                 "Os valores do fiscal não foram reduzidos: corrija a projeção. Enquanto isso, "
+                 "a diferença futura fica não determinada.")
+    elif resultado_adequacao["limitado_saldo"]:
+        st.info(f"A projeção automática foi limitada ao saldo contratual elegível "
+                f"({moeda(saldo_elegivel)}).")
 
     # Feedback dinamico compacto (nao antecipa o Resultado final).
     ocorrencias_previstas = 0
@@ -804,31 +884,41 @@ with tab_proj:
         else:
             render_card_valor("Ocorrências previstas no horizonte", ocorrencias_previstas,
                               nota=f"{qtd_meses} meses no horizonte", formato="inteiro")
+    # A media historica segue na aba Historico (auditoria); aqui vale a
+    # diferenca media mensal, informacao relevante para a adequacao.
+    _futuro_ok = resultado_adequacao["futuro_determinado"]
     with fb2:
-        if usar_media:
-            render_card_valor("Base média utilizada", media_ref)
-        elif media_irregular:
-            render_card_valor("Média mensal histórica sugerida", media_ref,
-                              nota="Baixa confiabilidade")
+        if _futuro_ok:
+            render_card_valor("Diferença média mensal projetada",
+                              resultado_adequacao["diferenca_media_mensal"],
+                              nota=("Baixa confiabilidade" if media_irregular
+                                    else "Média equivalente para planejamento"))
         else:
-            render_card_valor("Valor de referência por ocorrência",
-                              (cadencia_aplicada or {}).get("valor_referencia", 0.0))
+            render_card_valor("Diferença média mensal projetada", NAO_DETERMINADA, formato="texto")
     with fb3:
-        render_card_valor("Diferença futura projetada", diferenca_futura)
+        if _futuro_ok:
+            render_card_valor("Diferença futura projetada", resultado_adequacao["diferenca_futura"])
+        else:
+            render_card_valor("Diferença futura projetada", NAO_DETERMINADA, formato="texto",
+                              nota=resultado_adequacao["motivo_indeterminado"])
 
     if not (modo_reduzido_estoque and ultimos_6.empty) and not df_projecao.empty:
         with st.expander(f"Ver projeção mês a mês ({qtd_meses} meses · {periodo_projecao_txt})", expanded=False):
             df_proj_vis = df_projecao.copy()
-            for col in ["Valor base considerado", "Valor reajustado estimado", "Diferença futura a adequar"]:
+            for col in ["Valor base considerado", "Valor reajustado estimado", "Diferença futura a adequar",
+                        "Saldo elegível após a competência"]:
                 if col in df_proj_vis.columns:
-                    df_proj_vis[col] = df_proj_vis[col].apply(moeda)
+                    df_proj_vis[col] = df_proj_vis[col].apply(
+                        lambda v: NAO_DETERMINADA if v is None or pd.isna(v) else moeda(v))
             st.dataframe(df_proj_vis, use_container_width=True, hide_index=True)
 
 
 # ================================================================ TAB 4 — RESULTADO
 with tab_result:
     st.subheader("4. Resultado")
-    complementacao = _round2(float(retroativo or 0) + diferenca_futura)
+    # Fonte unica (WEB = XLSX): consolidar_resultado_adequacao, na aba 3.
+    complementacao = resultado_adequacao["complementacao"]
+    futuro_determinado = resultado_adequacao["futuro_determinado"]
     referencia_reajustada = _round2(media_ref * fator_reajuste)
     # Com premissa por cadencia/manual, a referencia apresentada e o valor por
     # OCORRENCIA (nao uma "media mensal" que o contrato nao tem).
@@ -836,32 +926,58 @@ with tab_result:
     valor_ref_hist = media_ref if usa_media_ref else (cadencia_aplicada or {}).get("valor_referencia", 0.0)
     if not usa_media_ref:
         referencia_reajustada = _round2(valor_ref_hist * fator_reajuste)
-    cronograma = cronograma_por_exercicio(df_projecao, retroativo)
+    cronograma = cronograma_por_exercicio(df_projecao, retroativo,
+                                          futuro_determinado=futuro_determinado)
 
-    col_a1, col_a2, col_a3 = st.columns(3)
-    with col_a1:
-        render_card_valor("Retroativo reconhecido considerado" if medidas_pc
-                          else "Retroativo já apurado", retroativo)
-    with col_a2:
-        render_card_valor("Diferença futura projetada", diferenca_futura, nota=f"{qtd_meses} meses")
-    with col_a3:
-        render_card_valor("COMPLEMENTAÇÃO ORÇAMENTÁRIA ESTIMADA" if media_irregular
-                          else "COMPLEMENTAÇÃO CONFIRMADA", complementacao, destaque=True)
+    def _card_ou_nd(coluna, rotulo, valor, nota=""):
+        with coluna:
+            if valor is None:
+                render_card_valor(rotulo, NAO_DETERMINADA, formato="texto", nota=nota)
+            else:
+                render_card_valor(rotulo, valor, nota=nota)
+
+    # PASSADO — retroativo reconhecido em destaque (nunca limitado pelo saldo).
+    st.markdown("**PASSADO**")
+    render_card_valor("Retroativo reconhecido considerado" if medidas_pc
+                      else "Retroativo já apurado", resultado_adequacao["retroativo"],
+                      destaque=True, nota="Apurado na apuração original; não é limitado pelo saldo futuro.")
+
+    # FUTURO — meses restantes, diferenca media mensal e diferenca total.
+    st.markdown("**FUTURO**")
+    _fatura = resultado_adequacao["fatura_media_reajustada"]
+    _cols_fut = st.columns(4 if _fatura is not None else 3)
+    with _cols_fut[0]:
+        render_card_valor("Meses restantes da vigência", resultado_adequacao["meses_restantes"],
+                          formato="inteiro", nota=periodo_projecao_txt if periodos else "")
+    _card_ou_nd(_cols_fut[1], "Diferença média mensal projetada",
+                resultado_adequacao["diferenca_media_mensal"],
+                nota="Média equivalente para planejamento, não pagamento mensal uniforme")
+    _card_ou_nd(_cols_fut[2], "Diferença futura total projetada",
+                resultado_adequacao["diferenca_futura"],
+                nota=(f"{qtd_meses} meses" if futuro_determinado
+                      else resultado_adequacao["motivo_indeterminado"]))
+    if _fatura is not None:
+        with _cols_fut[3]:
+            render_card_valor("Fatura média reajustada", _fatura,
+                              nota="Base média mensal futura + diferença média mensal")
+
+    # TOTAL — complementacao = retroativo reconhecido + diferenca futura.
+    st.markdown("**TOTAL**")
+    render_card_valor(ROTULO_COMPLEMENTACAO.upper(), complementacao, destaque=True)
+    st.caption("Complementação orçamentária estimada = retroativo reconhecido + diferença "
+               "futura projetada." + ("" if futuro_determinado else
+                                      " A diferença futura não foi determinada: o total é parcial."))
+    for _ressalva in resultado_adequacao["ressalvas"]:
+        st.warning(_ressalva)
     if media_irregular:
-        st.caption("Complementação orçamentária estimada = retroativo calculado + "
-                   "diferença futura projetada por média histórica.")
         st.warning(f"{ROTULO_MEDIA_IRREGULAR}. Estimativa exclusivamente orçamentária: "
                    "a diferença futura não representa obrigação de pagamento comprovada.")
-    else:
-        st.caption("Complementação confirmada = retroativo reconhecido considerado + "
-                   "diferença futura projetada.")
 
-    # Cenario de planejamento. O potencial NAO integra o reconhecido, nem a
-    # complementacao confirmada, nem a programacao por exercicio: enquanto nao
-    # reconhecido, e apenas exposicao.
+    # POTENCIAL — cenario de planejamento. O potencial NAO integra o
+    # reconhecido, nem a complementacao, nem a programacao por exercicio.
+    cenario_potencial = resultado_adequacao["cenario_potencial"]
     if medidas_pc and retroativo_potencial is not None:
-        cenario_potencial = _round2(complementacao + float(retroativo_potencial or 0))
-        st.markdown("**Cenário de planejamento com retroativo potencial**")
+        st.markdown("**POTENCIAL — cenário de planejamento com retroativo potencial**")
         col_p1, col_p2 = st.columns(2)
         with col_p1:
             render_card_valor("Retroativo potencial (não reconhecido)", retroativo_potencial, alerta=True)
@@ -880,10 +996,18 @@ with tab_result:
     if isinstance(cronograma, pd.DataFrame) and not cronograma.empty:
         total_cron = float(pd.to_numeric(cronograma["Valor"], errors="coerce").sum())
         df_cron = cronograma.copy()
-        df_cron["Valor"] = df_cron["Valor"].apply(moeda)
-        df_cron = pd.concat(
-            [df_cron, pd.DataFrame([{"Exercício": "TOTAL", "Valor": moeda(total_cron)}])],
-            ignore_index=True)
+        _linha_total = {"Exercício": "TOTAL", "Valor": moeda(total_cron),
+                        "Retroativo reconhecido": moeda(pd.to_numeric(
+                            cronograma["Retroativo reconhecido"], errors="coerce").sum()),
+                        "Diferença futura projetada": (moeda(pd.to_numeric(
+                            cronograma["Diferença futura projetada"], errors="coerce").sum())
+                            if futuro_determinado else NAO_DETERMINADA)}
+        for _col in ("Retroativo reconhecido", "Diferença futura projetada", "Valor"):
+            df_cron[_col] = df_cron[_col].apply(
+                lambda v: NAO_DETERMINADA if v is None or pd.isna(v) else moeda(v))
+        df_cron = pd.concat([df_cron, pd.DataFrame([_linha_total])], ignore_index=True)
+        st.caption("Retroativo reconhecido e diferença futura aparecem separados; "
+                   "“Valor” é o total do exercício.")
         st.dataframe(df_cron, use_container_width=True, hide_index=True)
         if abs(total_cron - complementacao) < 0.01:
             st.caption("A soma dos exercícios confere com a complementação necessária.")
@@ -899,28 +1023,16 @@ with tab_result:
         ("Origem histórica", origem_hist_rotulo),
         ("Padrão histórico identificado", cadencia["rotulo"]),
         ("Premissa de projeção", premissa_rotulo),
-        ("Retroativo apurado", retroativo),
         ("Média mensal histórica" if usa_media_ref else "Valor de referência por ocorrência",
          media_ref if usa_media_ref else valor_ref_hist),
         ("Percentual de reajuste", pct(percentual_reajuste)),
         ("Fator de reajuste (exato)", f"{fator_reajuste:.9f}".replace(".", ",")),
         ("Referência mensal reajustada" if usa_media_ref else "Referência reajustada por ocorrência",
          referencia_reajustada),
-        ("Quantidade de meses projetados", str(qtd_meses)),
         ("Ocorrências previstas no horizonte", str(ocorrencias_previstas)),
-        ("Diferença futura projetada", diferenca_futura),
-        (ROTULO_COMPLEMENTACAO, complementacao),
     ]
-    if medidas_pc:
-        resumo_xlsx.append((
-            "Retroativo potencial (não reconhecido)",
-            retroativo_potencial if retroativo_potencial is not None else "Não localizado",
-        ))
-        if retroativo_potencial is not None:
-            resumo_xlsx.append((
-                "Cenário de planejamento com potencial",
-                _round2(complementacao + float(retroativo_potencial or 0)),
-            ))
+    # Mesmos valores do Resultado na WEB (fonte unica: resultado_adequacao).
+    resumo_xlsx += linhas_resumo_resultado(resultado_adequacao, mostrar_potencial=medidas_pc)
     if origem_pc and janela_meses_pc is not None:
         _base_pc_exp = media_pedidos_compra(
             pedidos_de_itens_pc(carregar_itens_pc_da_sessao(resultado, diagnostico),
@@ -936,7 +1048,10 @@ with tab_result:
             ("Total histórico dos PCs", _base_pc_exp["total_historico"]),
         ]
     xlsx_bytes = gerar_xlsx_projecao(ultimos_6, df_projecao, resumo_xlsx,
-                                     nota_resumo=(NOTA_RESUMO_ESTIMADA if media_irregular else None))
+                                     nota_resumo=(NOTA_RESUMO_ESTIMADA if media_irregular
+                                                  else NOTA_RESUMO_SALDO),
+                                     programacao=cronograma,
+                                     ressalvas=resultado_adequacao["ressalvas"])
     st.download_button("Baixar XLSX", data=xlsx_bytes,
         file_name="adequacao_orcamentaria.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -973,7 +1088,8 @@ with tab_siga:
     # localizado. cenario_potencial e a variavel ja calculada la em cima.
     tem_potencial = medidas_pc and retroativo_potencial is not None
     retroativo_txt = moeda(retroativo)
-    diferenca_txt = moeda(diferenca_futura)
+    diferenca_txt = (moeda(resultado_adequacao["diferenca_futura"]) if futuro_determinado
+                     else "não determinada")
     complementacao_txt = moeda(complementacao)
     potencial_txt = moeda(retroativo_potencial) if tem_potencial else "Não localizado nesta apuração"
     cenario_txt = (moeda(cenario_potencial) if tem_potencial
@@ -999,10 +1115,13 @@ with tab_siga:
 
     # Somente na projecao por media historica de baixa confiabilidade o total
     # e identificado como estimado; demais modalidades mantem o texto integral.
-    rotulo_total_siga = ("TOTAL ESTIMADO A READEQUAR" if media_irregular
+    rotulo_total_siga = ("TOTAL PARCIAL A READEQUAR (somente retroativo)" if not futuro_determinado
+                         else "TOTAL ESTIMADO A READEQUAR" if media_irregular
                          else "TOTAL A READEQUAR")
     nota_estimativa_siga = (
-        "A diferença futura foi estimada pela média histórica, com baixa "
+        f"A diferença futura não foi determinada ({resultado_adequacao['motivo_indeterminado']}) "
+        "e deverá ser complementada após a definição da projeção.\n\n" if not futuro_determinado
+        else "A diferença futura foi estimada pela média histórica, com baixa "
         "confiabilidade, e depende de validação fiscal.\n\n" if media_irregular else "")
 
     texto_siga = (

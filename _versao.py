@@ -128,7 +128,11 @@ from pathlib import Path
 # irregular usa a media mensal historica (baixa confiabilidade); Coleta inalterada.
 # 12.19: RESULTADOS (Valor Global) sem o expander redundante "Ver fundamentos do
 # status"; ressalva amarela, status e calculos inalterados (so aplicativo).
-CL8US_VERSION = "12.19"
+# 12.20: Adequacao Orcamentaria — projecao futura limitada ao saldo contratual
+# elegivel nas quatro premissas, historico irregular prudencial (sem saldo =
+# futuro nao determinado), quadro PASSADO/FUTURO/TOTAL/POTENCIAL e XLSX com os
+# mesmos valores da web (12.19 reservada ao PR #203). Coleta inalterada.
+CL8US_VERSION = "12.20"
 COLETA_VERSION = "12.9"
 # Modelos de Coleta da familia 11.x aceitos SEM adaptacao: o 11.1 so acrescentou
 # um quadro informativo na RESULTADOS/MEMORIA_RESULTADOS (formulas); a Coleta 11.0
@@ -176,7 +180,7 @@ COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
 # Fallback conservador da ultima publicacao confirmada antes deste hotfix.
 # Quando o Git esta disponivel, este valor nunca prevalece sobre o commit real.
-ATUALIZADO_EM_FALLBACK = "20/11/2026 12:00"
+ATUALIZADO_EM_FALLBACK = "20/11/2026 18:45"
 
 
 def _data_ultimo_commit() -> str | None:

@@ -47,7 +47,11 @@ _ITENS_PC = [
 ]
 
 
-def _sessao_pc(*, potencial=POTENCIAL, com_potencial=True, data_corte=CORTE):
+SALDO_ORIGINAL = 900000.0  # saldo fisico elevado: nao limita a projecao (12.20)
+
+
+def _sessao_pc(*, potencial=POTENCIAL, com_potencial=True, data_corte=CORTE,
+               saldo=SALDO_ORIGINAL):
     consolidado = {
         "medidas_pc_aplicaveis": True,
         "retroativo_reconhecido": RECONHECIDO,
@@ -56,13 +60,21 @@ def _sessao_pc(*, potencial=POTENCIAL, com_potencial=True, data_corte=CORTE):
     }
     if com_potencial:
         consolidado["retroativo_potencial"] = potencial
-    return {
+    sessao = {
         "itens_pc_v10": {"itens": [dict(i) for i in _ITENS_PC]},
         "valor_represado_a_pagar": RECONHECIDO,
         "variacao_acumulada": 0.0289,
         "modo_apuracao": "Completo",
         "resultado_consolidado": consolidado,
     }
+    if saldo is not None:
+        # Posicao remanescente da apuracao (saldo elegivel, base sem reajuste).
+        sessao["df_remanescentes"] = pd.DataFrame([{
+            "Ciclo": "C2", "Remanescente original": saldo, "Fator aplicado": 1.0289,
+            "Remanescente atualizado": round(saldo * 1.0289, 2)}])
+        sessao["remanescente_original"] = saldo
+        sessao["remanescente_reajustado"] = round(saldo * 1.0289, 2)
+    return sessao
 
 
 def _run(sessao, *, origem="Pedidos de Compra", vigencia=VIGENCIA):
@@ -184,8 +196,8 @@ def test_caso_a_diferenca_futura_nao_fica_zerada():
     blob = _blob(at)
     assert "18 meses" in blob
     assert _valor_do_card(blob, "Diferença futura projetada") > 0
-    confirmada = _valor_do_card(blob, "COMPLEMENTAÇÃO CONFIRMADA")
-    assert confirmada > RECONHECIDO
+    estimada = _valor_do_card(blob, ESTIMADA)
+    assert estimada > RECONHECIDO
 
 
 def test_caso_i_cadencia_esparsa_usa_media_historica_de_baixa_confiabilidade():
