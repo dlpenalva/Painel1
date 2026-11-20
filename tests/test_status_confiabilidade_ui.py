@@ -70,13 +70,11 @@ def test_estado_bloqueado_usa_ambar_e_nao_vermelho():
         assert vermelho not in css
 
 
-def test_detalhe_tecnico_permanece_recolhido_no_expander():
-    # Bloqueios, ressalvas e informacoes somam no expander: nenhum fundamento e
-    # descartado por causa da separacao dos eixos.
-    assert 'list(consolidado.get("bloqueios") or [])' in PAGINA
-    assert "+ list(ressalvas)" in PAGINA
-    assert "+ list(informacoes)" in PAGINA
-    assert 'with st.expander("Ver fundamentos do status")' in PAGINA
+def test_expander_redundante_de_fundamentos_foi_removido():
+    # 12.19 (#203): o expander repetia a ressalva amarela; foi removido sem
+    # alterar a ressalva nem a lista de informacoes da apuracao.
+    assert "Ver fundamentos do status" not in PAGINA
+    assert 'informacoes = consolidado.get("informacoes") or []' in PAGINA
 
 
 def test_informacao_tem_linha_neutra_propria():
