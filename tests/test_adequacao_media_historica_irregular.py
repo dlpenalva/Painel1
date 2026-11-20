@@ -1,15 +1,12 @@
-"""Adequacao Orcamentaria — projecao Automatica com historico irregular.
+"""Adequacao Orcamentaria — historico irregular e premissas explicitas.
 
-Protege esta entrega (Cl8us 12.18):
-  * historico valido porem irregular: a Automatica usa a media mensal
-    historica ja calculada (meses sem PC no divisor) em todos os meses
-    restantes da vigencia, como estimativa de baixa confiabilidade;
-  * "Valor a usar" nasce preenchido com a sugestao; campo vazio = R$ 0,00
-    (sem recuperar a media); valor informado prevalece;
-  * resultado identificado como estimado ("Complementacao orcamentaria
-    estimada"), inclusive no XLSX;
-  * sem historico valido nada e inventado;
-  * as demais premissas (Mensal, Por ciclo, Manual) seguem inalteradas.
+Os testes de motor do legado Cl8us 12.18 preservam o comportamento das
+funcoes puras de media e override. A pagina Cl8us 12.21 NAO os usa
+automaticamente para historico irregular:
+  * Automatica sem cadencia confiavel: futuro nao determinado;
+  * Mensal (media) selecionada expressamente: conserva o cenario de media;
+  * Manual e Por ciclo seguem separados;
+  * retroativo reconhecido e potencial nunca se confundem.
 """
 from __future__ import annotations
 
@@ -28,6 +25,7 @@ sys.path.insert(0, str(ROOT / "tests"))
 from _adequacao_ui import (  # noqa: E402
     NOTA_RESUMO_CONFIRMADA,
     NOTA_RESUMO_ESTIMADA,
+    NAO_DETERMINADA,
     ROTULO_MEDIA_IRREGULAR,
     calcular_projecao,
     gerar_xlsx_projecao,
@@ -140,34 +138,38 @@ def test_xlsx_padrao_preserva_a_nota_confirmada():
 
 # --------------------------------------------------------- pagina (AppTest)
 
-def test_pagina_automatica_irregular_usa_a_media_e_rotula_estimativa():
+def test_pagina_automatica_irregular_nao_presume_mensalidade():
     at = _run(_sessao_pc())
     assert not at.exception, at.exception
     blob = _blob(at)
-    assert ROTULO_MEDIA_IRREGULAR in blob
-    assert ESTIMADA in blob and CONFIRMADA not in blob
-    dif = _valor_do_card(blob, "Diferença futura projetada")
+    assert "Automática — histórico irregular; futuro não determinado" in blob
+    assert ROTULO_MEDIA_IRREGULAR not in blob
+    assert PARCIAL in blob and ESTIMADA not in blob
+    idx = blob.index("Diferença futura projetada</div>")
+    assert NAO_DETERMINADA in blob[idx:idx + 350]
     retro = _valor_do_card(blob, "Retroativo reconhecido considerado")
-    assert dif == pytest.approx(1126.98)
-    assert _valor_do_card(blob, ESTIMADA) == pytest.approx(retro + dif, abs=0.01)
+    assert _valor_do_card(blob, PARCIAL) == pytest.approx(retro, abs=0.01)
     avisos = " ".join(w.value for w in at.warning)
-    assert "não representa obrigação de pagamento comprovada" in avisos
-    # retroativo potencial continua separado (nao integra a estimada)
-    assert _valor_do_card(blob, "Cenário com potencial") - _valor_do_card(blob, ESTIMADA) \
+    assert "não presumirá uma mensalidade" in avisos
+    assert "A projeção automática foi limitada ao saldo" not in avisos
+    assert _valor_do_card(blob, "Cenário com potencial") - _valor_do_card(blob, PARCIAL) \
         == pytest.approx(12000.0, abs=0.01)
 
 
-def test_pagina_campo_vazio_zera_a_competencia():
+def test_pagina_automatica_irregular_ignora_override_de_sessao_antiga():
     at = _run(_sessao_pc())
     chave = next(k for k in at.session_state.filtered_state
                  if str(k).startswith("adequacao_v3_editor"))
-    assert chave.endswith("_media_irregular")
-    at.session_state[chave] = {"edited_rows": {0: {"Valor informado pelo fiscal": ""}},
+    assert not chave.endswith("_media_irregular")
+    at.session_state[chave] = {"edited_rows": {0: {"Valor informado pelo fiscal": "5.000,00"}},
                                "added_rows": [], "deleted_rows": []}
     at.run()
     assert not at.exception, at.exception
-    dif = _valor_do_card(_blob(at), "Diferença futura projetada")
-    assert dif == pytest.approx(1126.98 - 62.61, abs=0.01)
+    blob = _blob(at)
+    assert NAO_DETERMINADA in blob[blob.index("Diferença futura projetada</div>") :
+                                  blob.index("Diferença futura projetada</div>") + 350]
+    assert _valor_do_card(blob, PARCIAL) == pytest.approx(
+        _valor_do_card(blob, "Retroativo reconhecido considerado"))
 
 
 def test_pagina_mensal_nao_usa_o_rotulo_de_media_irregular():
