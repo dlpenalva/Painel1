@@ -80,6 +80,10 @@ def _sessao_pc(*, com_potencial=True):
         "variacao_acumulada": 0.0289,
         "modo_apuracao": "Completo",
         "resultado_consolidado": consolidado,
+        # 12.20: saldo elegivel elevado (a projecao irregular exige saldo).
+        "df_remanescentes": pd.DataFrame([{"Ciclo": "C2", "Remanescente original": 900000.0}]),
+        "remanescente_original": 900000.0,
+        "remanescente_reajustado": 926010.0,
     }
 
 
@@ -411,6 +415,11 @@ def test_demais_modalidades_preservam_o_texto_integral(premissa):
     at.run()
     assert not at.exception, at.exception
     texto = _texto_siga(at)
-    assert "TOTAL A READEQUAR:" in texto
+    if premissa == "Manual":
+        # 12.20: Manual sem valor informado = futuro nao determinado (parcial).
+        assert "TOTAL PARCIAL A READEQUAR (somente retroativo):" in texto
+        assert "Diferença futura projetada – 18 meses: não determinada" in texto
+    else:
+        assert "TOTAL A READEQUAR:" in texto
     assert "TOTAL ESTIMADO" not in texto
     assert FRASE_ESTIMATIVA not in texto

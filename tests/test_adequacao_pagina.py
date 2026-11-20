@@ -94,15 +94,15 @@ def test_reset_limpa_somente_v3():  # Secao 26
 
 def test_resultado_e_complemento():  # Secao 23, N
     assert "referencia_reajustada = _round2(media_ref * fator_reajuste)" in PAGINA
-    assert "complementacao = _round2(float(retroativo or 0) + diferenca_futura)" in PAGINA
-    # Rotulo passou a distinguir o CONFIRMADO do cenario com retroativo
-    # potencial, que nao integra a complementacao.
-    assert "COMPLEMENTAÇÃO CONFIRMADA" in PAGINA
+    # 12.20: complementacao vem da fonte unica WEB = XLSX
+    # (consolidar_resultado_adequacao: retroativo + diferenca futura).
+    assert 'complementacao = resultado_adequacao["complementacao"]' in PAGINA
+    assert "consolidar_resultado_adequacao(" in PAGINA
 
 
 def test_projecao_usa_referencia_da_origem():  # Secao 17/18 — media_ref comum as origens
     assert "montar_base_editor(periodos, media_ref)" in PAGINA
-    assert "calcular_projecao(df_editor, media_ref, fator_reajuste)" in PAGINA
+    assert "calcular_projecao(df_editor, media_ref, fator_reajuste," in PAGINA
     # instrucao direta acima da tabela (Secao 19)
     assert "Deixe vazio para usar a média." in PAGINA
 

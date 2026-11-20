@@ -470,4 +470,4 @@ def test_pagina_export_identifica_origem():  # Q
 
 def test_pagina_projecao_usa_referencia_da_origem():  # G/O — media_ref comum as origens
     assert "montar_base_editor(periodos, media_ref)" in PAGINA
-    assert "calcular_projecao(df_editor, media_ref, fator_reajuste)" in PAGINA
+    assert "calcular_projecao(df_editor, media_ref, fator_reajuste," in PAGINA  # 12.20: + saldo

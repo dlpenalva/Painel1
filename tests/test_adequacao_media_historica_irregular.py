@@ -45,7 +45,10 @@ FATOR = 1.0289
 PERIODOS = list(pd.period_range("2026-09", "2026-11", freq="M"))
 MAPA = {p.to_timestamp().date(): MEDIA for p in PERIODOS}
 ESTIMADA = "COMPLEMENTAÇÃO ORÇAMENTÁRIA ESTIMADA"
+# 12.20: o rotulo "COMPLEMENTACAO CONFIRMADA" deixou de existir (todas as
+# premissas apresentam a complementacao ESTIMADA ou PARCIAL).
 CONFIRMADA = "COMPLEMENTAÇÃO CONFIRMADA"
+PARCIAL = "COMPLEMENTAÇÃO ORÇAMENTÁRIA PARCIAL"
 
 
 def _editor_irregular():
@@ -167,13 +170,13 @@ def test_pagina_campo_vazio_zera_a_competencia():
     assert dif == pytest.approx(1126.98 - 62.61, abs=0.01)
 
 
-def test_pagina_mensal_permanece_confirmada():
+def test_pagina_mensal_nao_usa_o_rotulo_de_media_irregular():
     at = _run(_sessao_pc())
     at.radio(key="adequacao_v3_premissa").set_value("Mensal (média)")
     at.run()
     assert not at.exception, at.exception
     blob = _blob(at)
-    assert CONFIRMADA in blob and ESTIMADA not in blob
+    assert ESTIMADA in blob and CONFIRMADA not in blob
     assert ROTULO_MEDIA_IRREGULAR not in blob
     assert _valor_do_card(blob, "Diferença futura projetada") == pytest.approx(1126.98)
 
@@ -185,7 +188,9 @@ def test_pagina_demais_premissas_sem_media_irregular(premissa):
     at.run()
     assert not at.exception, at.exception
     blob = _blob(at)
-    assert CONFIRMADA in blob and ESTIMADA not in blob
+    assert CONFIRMADA not in blob
+    # Manual sem valor informado: futuro nao determinado (total parcial).
+    assert (PARCIAL if premissa == "Manual" else ESTIMADA) in blob
     assert ROTULO_MEDIA_IRREGULAR not in blob
 
 
@@ -196,4 +201,7 @@ def test_pagina_sem_historico_valido_nao_inventa_valores():
     assert not at.exception, at.exception
     blob = _blob(at)
     assert ROTULO_MEDIA_IRREGULAR not in blob
-    assert _valor_do_card(blob, "Diferença futura projetada") == 0
+    # 12.20: ausencia de historico nao vira diferenca futura de R$ 0,00.
+    idx = blob.index("Diferença futura projetada</div>")
+    assert "Não determinada" in blob[idx:idx + 300]
+    assert PARCIAL in blob
