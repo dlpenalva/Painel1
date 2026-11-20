@@ -29,7 +29,9 @@ from _adequacao_orcamentaria import (
     media_financeiro,
     valor_original_foi_informado,
     janela_financeira_competencias,
+    limitar_projecao_ao_saldo,
     CicloCadencia,
+    SITUACAO_LIMITADO_SALDO,
 )
 
 
@@ -229,6 +231,46 @@ def carregar_itens_pc_da_sessao(resultado, diagnostico=None):
         if isinstance(fonte.get("itens_pc"), list) and fonte["itens_pc"]:
             return fonte["itens_pc"]
     return []
+
+
+def _numero_ou_none(valor):
+    if not valor_original_foi_informado(valor):
+        return None
+    return parse_moeda_br(valor)
+
+
+def saldo_elegivel_da_apuracao(res):
+    """Saldo contratual elegivel para limitar a projecao futura (Cl8us 12.20).
+
+    Mesma base economica da projecao (valor SEM o reajuste em analise):
+      1. saldo FISICO remanescente valorizado pelos precos originais
+         (``remanescente_original``), confiavel somente quando a apuracao traz
+         a posicao remanescente (df_remanescentes ou saldo informado no corte)
+         e o saldo atualizado e coerente (nao menor que o original);
+      2. na falta dele, saldo FINANCEIRO reconciliado na mesma base:
+         valor original do contrato - execucao original;
+      3. caso contrario, indisponivel (None). O VTA nunca e usado como saldo:
+         ele so aparece como referencia de conciliacao.
+    Ausencia de dado nunca vira saldo zero.
+    """
+    res = res if isinstance(res, dict) else {}
+    df_rem = res.get("df_remanescentes")
+    tem_posicao = ((isinstance(df_rem, pd.DataFrame) and not df_rem.empty)
+                   or bool(res.get("remanescente_recalculado_por_corte_operacional")))
+    original = _numero_ou_none(res.get("remanescente_original"))
+    atualizado = _numero_ou_none(res.get("remanescente_reajustado"))
+    vta = _numero_ou_none(res.get("valor_atualizado_contrato"))
+    if (tem_posicao and original is not None and original >= 0
+            and (atualizado is None or atualizado >= original - 0.01)):
+        return {"valor": _round2(original), "atualizado": atualizado, "vta": vta,
+                "origem": "Saldo físico remanescente valorizado sem o reajuste (apuração)"}
+    contrato = _numero_ou_none(res.get("valor_original_contrato"))
+    executado = _numero_ou_none(res.get("valor_executado_original"))
+    if contrato is not None and contrato > 0 and executado is not None and executado >= 0:
+        return {"valor": _round2(max(0.0, contrato - executado)), "atualizado": None, "vta": vta,
+                "origem": "Saldo financeiro reconciliado (valor original do contrato − execução original)"}
+    return {"valor": None, "atualizado": None, "vta": vta,
+            "origem": "Não disponível na apuração"}
 
 
 # ---------------------------------------------------------------- base financeira
@@ -495,7 +537,7 @@ def montar_base_editor(periodos, media_mensal, base_por_competencia=None, rotulo
 
 def calcular_projecao(df_editor, media_mensal, fator_reajuste,
                       base_por_competencia=None, origem_automatica=None,
-                      vazio_igual_zero=False):
+                      vazio_igual_zero=False, saldo_elegivel=None):
     """Projecao mes a mes.
 
     Caminho legado (sem `base_por_competencia`): base automatica = media em
@@ -509,8 +551,14 @@ def calcular_projecao(df_editor, media_mensal, fator_reajuste,
     usar" ja vem preenchido com a sugestao): campo vazio = R$ 0,00, sem
     recuperar a media; valor igual a sugestao segue como projecao automatica;
     qualquer outro valor informado prevalece.
+
+    `saldo_elegivel` (base sem reajuste; None = indisponivel): a projecao nao
+    supera o saldo. Valores automaticos sao limitados cumulativamente; valores
+    informados pelo fiscal nunca sao reduzidos — o excesso fica sinalizado na
+    coluna "Limite do saldo" para correcao (motor: limitar_projecao_ao_saldo).
     """
     linhas = []
+    bases_brutas = []
     if not isinstance(df_editor, pd.DataFrame) or df_editor.empty:
         return pd.DataFrame(columns=["Competência", "Origem", "Premissa usada", "Valor base considerado", "Valor reajustado estimado", "Diferença futura a adequar", "Observação"])
     mapa = None if base_por_competencia is None else _mapa_base_por_periodo(base_por_competencia)
@@ -564,6 +612,7 @@ def calcular_projecao(df_editor, media_mensal, fator_reajuste,
             origem = origem_automatica or "Projeção pela cadência histórica"
             premissa_usada = ("Ocorrência prevista pela cadência"
                              if base_considerada > 0 else "Sem ocorrência prevista")
+        bases_brutas.append(base_considerada)
         valor_reajustado = _round2(base_considerada * fator_reajuste)
         diferenca = _round2(valor_reajustado - base_considerada)
         linhas.append({
@@ -573,12 +622,27 @@ def calcular_projecao(df_editor, media_mensal, fator_reajuste,
             "Diferença futura a adequar": diferenca,
             "Observação": observacao,
         })
+    if saldo_elegivel is not None and linhas:
+        limite = limitar_projecao_ao_saldo(
+            [(b, l["Origem"] == "Valor informado pelo fiscal")
+             for b, l in zip(bases_brutas, linhas)], saldo_elegivel)
+        for linha, g, situacao, saldo_apos in zip(
+                linhas, limite["bases"], limite["situacoes"], limite["saldo_apos"]):
+            if situacao == SITUACAO_LIMITADO_SALDO:
+                linha["Valor reajustado estimado"] = _round2(g * fator_reajuste)
+                linha["Diferença futura a adequar"] = _round2(linha["Valor reajustado estimado"] - g)
+                linha["Valor base considerado"] = _round2(g)
+            linha["Limite do saldo"] = situacao
+            linha["Saldo elegível após a competência"] = _round2(saldo_apos)
     return pd.DataFrame(linhas)
 
 
-def cronograma_por_exercicio(df_projecao, retroativo):
+def cronograma_por_exercicio(df_projecao, retroativo, futuro_determinado=True):
     # Programacao por exercicio (golden): diferencas futuras de cada ano + o
     # retroativo somente no PRIMEIRO exercicio da projecao (nao no ano corrente).
+    # Cl8us 12.20: retroativo e diferenca futura em colunas proprias ("Valor"
+    # segue sendo o total do exercicio). Futuro nao determinado: a coluna da
+    # diferenca fica vazia (nunca R$ 0,00) e o total traz so o retroativo.
     linhas = {}
     anos = []
     if isinstance(df_projecao, pd.DataFrame) and not df_projecao.empty:
@@ -589,13 +653,143 @@ def cronograma_por_exercicio(df_projecao, retroativo):
             ano = int(periodo.year)
             anos.append(ano)
             linhas[ano] = linhas.get(ano, 0.0) + parse_moeda_br(row.get("Diferença futura a adequar", 0))
+    saida = []
     if anos:
         primeiro_exercicio = min(anos)
-        linhas[primeiro_exercicio] = linhas.get(primeiro_exercicio, 0.0) + float(retroativo or 0)
-    return pd.DataFrame([
-        {"Exercício": str(ano), "Valor": _round2(valor)}
-        for ano, valor in sorted(linhas.items()) if abs(valor) > 0.004
-    ])
+        for ano in sorted(linhas):
+            retro_ano = float(retroativo or 0) if ano == primeiro_exercicio else 0.0
+            dif_ano = linhas[ano] if futuro_determinado else 0.0
+            valor = dif_ano + retro_ano
+            if abs(valor) <= 0.004:
+                continue
+            saida.append({
+                "Exercício": str(ano),
+                "Retroativo reconhecido": _round2(retro_ano),
+                "Diferença futura projetada": (_round2(dif_ano) if futuro_determinado else None),
+                "Valor": _round2(valor),
+            })
+    return pd.DataFrame(saida)
+
+
+# ------------------------------------------- resultado consolidado (12.20)
+
+ROTULO_COMPLEMENTACAO_ESTIMADA = "Complementação orçamentária estimada"
+ROTULO_COMPLEMENTACAO_PARCIAL = ("Complementação orçamentária parcial "
+                                 "(somente retroativo — diferença futura não determinada)")
+NAO_DETERMINADA = "Não determinada"
+
+
+def consolidar_resultado_adequacao(*, retroativo, df_projecao, meses_restantes,
+                                   saldo_info=None, retroativo_potencial=None,
+                                   motivo_indeterminado="", baixa_confiabilidade=False,
+                                   limitado_por_saldo=False):
+    """Fonte UNICA dos indicadores do Resultado: a WEB e o XLSX leem daqui.
+
+    `limitado_por_saldo`: a base ja nasceu reduzida pelo saldo (projecao
+    prudencial do historico irregular), sem passar pelo cap mes a mes.
+
+    PASSADO  = retroativo reconhecido (nunca limitado pelo saldo).
+    FUTURO   = meses restantes, diferenca media mensal (= total / meses, media
+               equivalente para planejamento) e diferenca futura total.
+    TOTAL    = complementacao estimada = retroativo + diferenca futura.
+    POTENCIAL= retroativo potencial e cenario com potencial, a parte.
+    Futuro nao determinado (motivo informado ou excesso de valores informados
+    sobre o saldo): diferencas ficam None — nunca R$ 0,00 — e a
+    complementacao e PARCIAL (somente o retroativo).
+    """
+    saldo_info = saldo_info or {}
+    saldo = saldo_info.get("valor")
+    retro = _round2(float(retroativo or 0))
+    meses = int(meses_restantes or 0)
+    tem_proj = isinstance(df_projecao, pd.DataFrame) and not df_projecao.empty
+    dif_calc = base_total = 0.0
+    limitado = bool(limitado_por_saldo) and saldo is not None
+    excesso = 0.0
+    if tem_proj:
+        dif_calc = float(pd.to_numeric(df_projecao["Diferença futura a adequar"], errors="coerce").fillna(0).sum())
+        base_total = float(pd.to_numeric(df_projecao["Valor base considerado"], errors="coerce").fillna(0).sum())
+        if saldo is not None and "Limite do saldo" in df_projecao.columns:
+            limitado = limitado or bool((df_projecao["Limite do saldo"] == SITUACAO_LIMITADO_SALDO).any())
+            informados = df_projecao["Origem"] == "Valor informado pelo fiscal"
+            total_inf = float(pd.to_numeric(df_projecao.loc[informados, "Valor base considerado"],
+                                            errors="coerce").fillna(0).sum())
+            excesso = _round2(max(0.0, total_inf - float(saldo)))
+    motivo = str(motivo_indeterminado or "")
+    if not motivo and excesso > 0.004:
+        motivo = (f"os valores informados excedem o saldo contratual elegível em {moeda(excesso)}; "
+                  "corrija a projeção na aba 3")
+    determinado = not motivo
+    dif_total = _round2(dif_calc) if determinado else None
+    dif_media = (_round2(dif_total / meses) if meses else 0.0) if determinado else None
+    fatura_media = None
+    if (determinado and meses and saldo is not None and not limitado
+            and not baixa_confiabilidade and base_total > 0):
+        fatura_media = _round2(_round2(base_total / meses) + dif_media)
+    complementacao = _round2(retro + (dif_total or 0.0))
+    potencial = None if retroativo_potencial is None else _round2(float(retroativo_potencial or 0))
+    cenario = None if potencial is None else _round2(complementacao + potencial)
+    ressalvas = []
+    if not determinado:
+        ressalvas.append(f"Diferença futura não determinada: {motivo}. A complementação "
+                         "apresentada é parcial e contém somente o retroativo reconhecido.")
+    if determinado and baixa_confiabilidade:
+        ressalvas.append("Histórico irregular: projeção prudencial limitada ao saldo contratual "
+                         "elegível, de baixa confiabilidade; a distribuição mensal serve apenas "
+                         "para planejamento.")
+    if limitado:
+        ressalvas.append(f"A projeção automática foi limitada ao saldo contratual elegível "
+                         f"({moeda(saldo)}).")
+    if determinado and saldo is None and meses:
+        ressalvas.append("Saldo contratual elegível não disponível na apuração: a projeção "
+                         "não pôde ser confrontada com o saldo.")
+    return {
+        "retroativo": retro,
+        "retroativo_potencial": potencial,
+        "cenario_potencial": cenario,
+        "meses_restantes": meses,
+        "saldo_elegivel": saldo,
+        "saldo_origem": saldo_info.get("origem", "Não disponível na apuração"),
+        "saldo_atualizado": saldo_info.get("atualizado"),
+        "futuro_determinado": determinado,
+        "motivo_indeterminado": motivo,
+        "diferenca_futura": dif_total,
+        "diferenca_media_mensal": dif_media,
+        "fatura_media_reajustada": fatura_media,
+        "complementacao": complementacao,
+        "rotulo_complementacao": (ROTULO_COMPLEMENTACAO_ESTIMADA if determinado
+                                  else ROTULO_COMPLEMENTACAO_PARCIAL),
+        "limitado_saldo": limitado,
+        "excesso_saldo": excesso,
+        "baixa_confiabilidade": bool(baixa_confiabilidade),
+        "ressalvas": ressalvas,
+    }
+
+
+def linhas_resumo_resultado(cons, mostrar_potencial=False):
+    """Linhas do RESUMO do XLSX com os MESMOS valores do Resultado na WEB."""
+    def _v(valor, vazio=NAO_DETERMINADA):
+        return vazio if valor is None else valor
+    linhas = [("Retroativo reconhecido", cons["retroativo"])]
+    if mostrar_potencial:
+        linhas.append(("Retroativo potencial (não reconhecido)",
+                       _v(cons["retroativo_potencial"], "Não localizado")))
+    linhas += [
+        ("Meses restantes da vigência", str(cons["meses_restantes"])),
+        ("Saldo contratual elegível (sem reajuste)", _v(cons["saldo_elegivel"], "Não disponível")),
+        ("Origem do saldo elegível", cons["saldo_origem"]),
+    ]
+    if cons.get("saldo_atualizado") is not None:
+        linhas.append(("Saldo remanescente atualizado (conciliação)", cons["saldo_atualizado"]))
+    linhas.append(("Diferença média mensal projetada", _v(cons["diferenca_media_mensal"])))
+    if cons["fatura_media_reajustada"] is not None:
+        linhas.append(("Fatura média reajustada", cons["fatura_media_reajustada"]))
+    linhas += [
+        ("Diferença futura total projetada", _v(cons["diferenca_futura"])),
+        (cons["rotulo_complementacao"], cons["complementacao"]),
+    ]
+    if mostrar_potencial and cons["cenario_potencial"] is not None:
+        linhas.append(("Cenário de planejamento com potencial", cons["cenario_potencial"]))
+    return linhas
 
 
 # ---------------------------------------------------------------- XLSX
@@ -605,6 +799,11 @@ NOTA_RESUMO_CONFIRMADA = (
     "Complementação confirmada = retroativo reconhecido considerado + "
     "diferença futura projetada. O retroativo potencial, quando existente, "
     "é informado à parte e não integra a complementação.")
+NOTA_RESUMO_SALDO = (
+    "Complementação orçamentária estimada = retroativo reconhecido + diferença futura "
+    "projetada, limitada ao saldo contratual elegível. Estimativa orçamentária, não "
+    "obrigação de pagamento. O retroativo potencial é informado à parte e não integra "
+    "a complementação.")
 NOTA_RESUMO_ESTIMADA = (
     "Complementação orçamentária estimada = retroativo calculado + diferença futura "
     "projetada por média histórica (baixa confiabilidade). Estimativa orçamentária, "
@@ -612,7 +811,8 @@ NOTA_RESUMO_ESTIMADA = (
     "é informado à parte e não integra a complementação.")
 
 
-def gerar_xlsx_projecao(df_ultimos, df_projecao, resumo, nota_resumo=None):
+def gerar_xlsx_projecao(df_ultimos, df_projecao, resumo, nota_resumo=None,
+                        programacao=None, ressalvas=None):
     output = BytesIO()
     with pd.ExcelWriter(
         output,
@@ -639,6 +839,11 @@ def gerar_xlsx_projecao(df_ultimos, df_projecao, resumo, nota_resumo=None):
                 ws.write_number(r, 1, float(valor), fmt)
             else:
                 ws.write(r, 1, valor, fmt_text)
+        if ressalvas:
+            r_ress = 4 + len(resumo) + 1
+            ws.write(r_ress, 0, "Ressalvas", fmt_header)
+            for i, texto in enumerate(ressalvas, start=1):
+                ws.write(r_ress + i, 0, str(texto), fmt_note)
         ws.set_column("A:A", 42)
         ws.set_column("B:B", 26)
         # MEDIA: as competencias de referencia com a mesma transparencia da WEB
@@ -663,12 +868,43 @@ def gerar_xlsx_projecao(df_ultimos, df_projecao, resumo, nota_resumo=None):
         for c, col in enumerate(df_proj.columns):
             ws_p.write(0, c, col, fmt_header)
         for c, col in enumerate(df_proj.columns):
-            if col in ["Valor base considerado", "Valor reajustado estimado", "Diferença futura a adequar"]:
+            if col in ["Valor base considerado", "Valor reajustado estimado", "Diferença futura a adequar",
+                       "Saldo elegível após a competência"]:
                 ws_p.set_column(c, c, max(18, min(32, len(str(col)) + 4)), fmt_money)
                 for r_idx, valor in enumerate(df_proj[col], start=1):
                     ws_p.write_number(r_idx, c, parse_moeda_br(valor), fmt_money)
             else:
                 ws_p.set_column(c, c, max(16, min(32, len(str(col)) + 4)))
+        # PROGRAMACAO por exercicio (12.20): mesmo DataFrame da WEB, com o
+        # retroativo separado da diferenca futura; vazio = "Não determinada".
+        if isinstance(programacao, pd.DataFrame):
+            ws_g = workbook.add_worksheet("PROGRAMACAO")
+            writer.sheets["PROGRAMACAO"] = ws_g
+            cols_g = ["Exercício", "Retroativo reconhecido", "Diferença futura projetada", "Valor"]
+            for c, col in enumerate(cols_g):
+                ws_g.write(0, c, "Total do exercício" if col == "Valor" else col, fmt_header)
+            totais = {"Retroativo reconhecido": 0.0, "Diferença futura projetada": 0.0, "Valor": 0.0}
+            futuro_vazio = False
+            r_g = 0
+            for r_g, (_, row) in enumerate(programacao.iterrows(), start=1):
+                ws_g.write(r_g, 0, str(row.get("Exercício", "")), fmt_text)
+                for c, col in enumerate(cols_g[1:], start=1):
+                    valor = row.get(col)
+                    if valor is None or (isinstance(valor, float) and pd.isna(valor)):
+                        futuro_vazio = True
+                        ws_g.write(r_g, c, NAO_DETERMINADA, fmt_text)
+                    else:
+                        ws_g.write_number(r_g, c, float(valor), fmt_money)
+                        totais[col] += float(valor)
+            if r_g:
+                ws_g.write(r_g + 1, 0, "TOTAL", fmt_text)
+                for c, col in enumerate(cols_g[1:], start=1):
+                    if col == "Diferença futura projetada" and futuro_vazio:
+                        ws_g.write(r_g + 1, c, NAO_DETERMINADA, fmt_text)
+                    else:
+                        ws_g.write_number(r_g + 1, c, _round2(totais[col]), fmt_total)
+            ws_g.set_column("A:A", 14)
+            ws_g.set_column("B:D", 26)
     output.seek(0)
     return output.getvalue()
 

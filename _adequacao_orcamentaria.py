@@ -733,6 +733,81 @@ def projetar_por_ciclo_proporcional(
     return {_mes_de_ordinal(m): base_mensal for m in range(ini_ord, fim_ord + 1)}
 
 
+# ------------------------------------------- limite do saldo (Cl8us 12.20)
+#
+# A execucao futura projetada nao pode superar o saldo contratual elegivel. O
+# saldo e expresso na MESMA base economica da projecao (valor sem o reajuste
+# em analise); o retroativo reconhecido nunca e limitado por ele.
+
+SITUACAO_DENTRO_SALDO = "Dentro do saldo"
+SITUACAO_LIMITADO_SALDO = "Limitado ao saldo"
+SITUACAO_EXCEDE_SALDO = "Valor informado excede o saldo"
+
+
+def limitar_projecao_ao_saldo(linhas: Iterable[tuple], saldo: float | None) -> dict:
+    """Aplica o saldo elegivel a projecao mensal, em ordem cronologica.
+
+    linhas: (base, informado_pelo_fiscal) por competencia.
+    Regras:
+      * valor informado pelo fiscal NUNCA e reduzido: se a soma informada
+        supera o saldo, o excesso e devolvido para exigir correcao;
+      * valor automatico e limitado cumulativamente ao saldo que resta depois
+        de reservados os valores informados (mesmo cap cumulativo do golden);
+      * saldo None => sem limite (nada e alterado).
+    """
+    itens = [(max(0.0, float(b or 0.0)), bool(inf)) for b, inf in (linhas or [])]
+    if saldo is None:
+        return {"bases": [b for b, _ in itens],
+                "situacoes": [""] * len(itens),
+                "saldo_apos": [None] * len(itens),
+                "total_informado": sum(b for b, inf in itens if inf),
+                "excesso": 0.0, "limitado": False}
+    saldo = max(0.0, float(saldo))
+    total_informado = sum(b for b, inf in itens if inf)
+    excesso = max(0.0, total_informado - saldo)
+    disponivel_auto = max(0.0, saldo - total_informado)
+    bases, situacoes, saldo_apos = [], [], []
+    usado_auto = 0.0
+    usado_total = 0.0
+    acumulado_informado = 0.0
+    limitado = False
+    for base, informado in itens:
+        if informado:
+            g = base
+            acumulado_informado += base
+            situacao = (SITUACAO_EXCEDE_SALDO if acumulado_informado > saldo + 0.005
+                        else SITUACAO_DENTRO_SALDO)
+        else:
+            g = max(0.0, min(base, disponivel_auto - usado_auto))
+            usado_auto += g
+            if g < base - 0.005:
+                limitado = True
+                situacao = SITUACAO_LIMITADO_SALDO
+            else:
+                situacao = SITUACAO_DENTRO_SALDO
+        usado_total += g
+        bases.append(g)
+        situacoes.append(situacao)
+        saldo_apos.append(saldo - usado_total)
+    return {"bases": bases, "situacoes": situacoes, "saldo_apos": saldo_apos,
+            "total_informado": total_informado, "excesso": excesso,
+            "limitado": limitado}
+
+
+def base_prudencial_irregular(media_mensal: Any, meses: int, saldo: Any) -> float | None:
+    """Historico irregular: base mensal PRUDENCIAL apenas para planejamento.
+
+    Nao multiplica a media indiscriminadamente: o total projetado e
+    min(media x meses, saldo elegivel), distribuido igualmente pelos meses.
+    Sem saldo confiavel (None) nao ha projecao — devolve None.
+    """
+    media = _num(media_mensal)
+    s = _num(saldo)
+    if s is None or media is None or media <= 0 or not meses or meses < 1:
+        return None
+    return min(media * meses, max(0.0, s)) / meses
+
+
 def calcular_adequacao_orcamentaria(
     *,
     origem: str,
