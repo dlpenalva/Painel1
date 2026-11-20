@@ -665,10 +665,11 @@ with tab_proj:
     _inicio_proj = periodos[0].to_timestamp().date() if periodos else None
     _fim_proj = periodos[-1].to_timestamp().date() if periodos else None
     usar_media = False
-    # Historico valido porem irregular: a Automatica usa a media mensal ja
-    # calculada no Historico (meses sem PC no divisor), so como estimativa.
-    # Cl8us 12.20: somente com saldo elegivel confiavel e limitada a ele
-    # (projecao prudencial); sem saldo, o futuro fica nao determinado.
+    # Cl8us 12.21: historico irregular sem cadencia confiavel NAO autoriza
+    # extrapolacao mensal automatica, mesmo com saldo contratual elevado.
+    # A media historica permanece para consulta e para a premissa Mensal
+    # explicitamente escolhida. A flag anterior e mantida apenas para
+    # compatibilidade das saidas legadas (sem projeção automatica irregular).
     media_irregular = False
     irregular_sem_projecao = False
     base_cadencia = None
@@ -698,30 +699,17 @@ with tab_proj:
         if cadencia["padrao"] == CADENCIA_MENSAL:
             usar_media = True
             premissa_rotulo = f"Automática — {cadencia['rotulo']}"
-        elif (cadencia["padrao"] == CADENCIA_IRREGULAR and cadencia.get("eventos")
-              and float(media_ref or 0) > 0 and saldo_elegivel is not None):
-            media_irregular = True
-            # Prudencial: total = menor entre media x meses e o saldo elegivel,
-            # distribuido igualmente (distribuicao apenas para planejamento).
-            _base_prudencial = base_prudencial_irregular(media_ref, len(periodos), saldo_elegivel) or 0.0
-            base_cadencia = {p.to_timestamp().date(): _base_prudencial for p in periodos}
-            premissa_rotulo = ROTULO_MEDIA_IRREGULAR
-            st.warning("HISTÓRICO SEM PERIODICIDADE SUFICIENTE. "
-                       f"{cadencia['explicacao']} Para fins exclusivamente orçamentários, a "
-                       "projeção é prudencial: o menor valor entre a média mensal histórica × "
-                       "meses restantes e o saldo contratual elegível, distribuído igualmente "
-                       f"pelos meses restantes da vigência ({ROTULO_MEDIA_IRREGULAR.lower()}).")
         elif cadencia["padrao"] == CADENCIA_IRREGULAR:
             base_cadencia = {}
-            irregular_sem_projecao = bool(cadencia.get("eventos"))
-            premissa_rotulo = "Automática — histórico sem periodicidade suficiente"
+            irregular_sem_projecao = True
+            premissa_rotulo = "Automática — histórico irregular; futuro não determinado"
             st.warning("HISTÓRICO SEM PERIODICIDADE SUFICIENTE PARA PROJEÇÃO AUTOMÁTICA. "
-                       f"{cadencia['explicacao']} Nenhuma mensalidade foi presumida"
-                       + (" e não há saldo contratual elegível confiável para limitar uma "
-                          "projeção prudencial: a diferença futura não foi determinada"
-                          if irregular_sem_projecao and saldo_elegivel is None else "")
-                       + ". Selecione a premissa Mensal, Por ciclo ou Manual, ou informe os "
-                       "valores na tabela.")
+                       f"{cadencia['explicacao']} O saldo contratual disponível limita "
+                       "despesas, mas não demonstra periodicidade dos Pedidos de Compra. "
+                       "A opção Automática não presumirá uma mensalidade nem calculará "
+                       "a diferença futura. Para um cenário baseado na média histórica, "
+                       "selecione expressamente Mensal (média); para programação "
+                       "fundamentada pelo fiscal, selecione Manual.")
         elif cadencia["padrao"] == CADENCIA_POR_CICLO:
             base_cadencia = projetar_por_ciclo_proporcional(cadencia, _inicio_proj, _fim_proj)
             premissa_rotulo = f"Automática — {cadencia['rotulo']}"
@@ -750,9 +738,10 @@ with tab_proj:
     if usar_media:
         st.caption("Deixe vazio para usar a média. Digite 0 se não haverá execução. "
                    "Digite outro valor para substituir a média naquele mês.")
-    elif media_irregular:
-        st.caption("A coluna Valor a usar já traz o valor sugerido pela média histórica. "
-                   "Altere qualquer valor; o valor informado prevalece. Campo vazio = R$ 0,00.")
+    elif irregular_sem_projecao and premissa_proj.startswith("Automática"):
+        st.caption("Nenhuma base mensal automática foi determinada. A média histórica "
+                   "continua disponível na aba Histórico, mas não é presumida para "
+                   "os próximos meses. Para informar valores, selecione Manual.")
     elif premissa_proj == "Manual":
         st.caption("Premissa manual: informe os valores projetados por competência. "
                    "Competências sem valor informado ficam com base 0 (sem execução prevista).")
@@ -771,6 +760,10 @@ with tab_proj:
         base_editor = montar_base_editor(periodos, media_ref,
                                          base_por_competencia=base_cadencia,
                                          preencher_valor_a_usar=media_irregular)
+    if irregular_sem_projecao and premissa_proj.startswith("Automática"):
+        # Zero aqui significaria previsao de nao executar. Sem cadencia,
+        # a base e indeterminada, nao zero.
+        base_editor["Base automática pela média"] = "—"
     editor_key = (f"adequacao_v3_editor_{origem_hist}_{premissa_proj}_{ultima_comp_txt}_"
                   f"{data_final_vigencia}_{round(media_ref, 2)}_{round(fator_reajuste, 6)}"
                   f"_{saldo_elegivel}"
@@ -784,7 +777,9 @@ with tab_proj:
         column_config={
             "Competência": st.column_config.TextColumn("Competência", disabled=True),
             "Base automática pela média": st.column_config.TextColumn("Base sugerida", disabled=True),
-            "Valor informado pelo fiscal": st.column_config.TextColumn("Valor a usar"),
+            "Valor informado pelo fiscal": st.column_config.TextColumn(
+                "Valor a usar",
+                disabled=(irregular_sem_projecao and premissa_proj.startswith("Automática"))),
             "Premissa do valor informado": col_premissa,
             "Observação": st.column_config.TextColumn("Observação"),
         },
@@ -834,10 +829,13 @@ with tab_proj:
             motivo_futuro = "nenhum valor informado na premissa Manual"
         elif not pares_hist:
             motivo_futuro = "não há histórico de execução para estimar o futuro"
-        elif premissa_proj.startswith("Automática") and irregular_sem_projecao:
-            motivo_futuro = ("histórico irregular sem saldo contratual elegível confiável"
-                             if saldo_elegivel is None
-                             else "histórico irregular sem média histórica utilizável")
+    # A escolha Automática jamais converte histórico irregular em
+    # mensalidade implícita, mesmo havendo saldo ou valores remanescentes
+    # preenchidos no editor de uma sessão anterior.
+    if periodos and premissa_proj.startswith("Automática") and irregular_sem_projecao:
+        motivo_futuro = ("histórico sem cadência confiável; escolha Mensal (média) "
+                         "para adotar explicitamente a média ou Manual para informar "
+                         "a programação futura")
     # Sem saldo elegivel, nenhuma premissa automatizada pode atestar a
     # diferenca futura como valor conciliado ao limite contratual.
     # Valores expressamente informados na premissa Manual seguem auditaveis
@@ -852,6 +850,10 @@ with tab_proj:
         for col in ("Valor base considerado", "Valor reajustado estimado",
                     "Diferença futura a adequar"):
             df_projecao[col] = None
+        if irregular_sem_projecao and premissa_proj.startswith("Automática"):
+            for col in ("Limite do saldo", "Saldo elegível após a competência"):
+                if col in df_projecao:
+                    df_projecao[col] = None
     resultado_adequacao = consolidar_resultado_adequacao(
         retroativo=retroativo, df_projecao=df_projecao, meses_restantes=qtd_meses,
         saldo_info=saldo_info,
@@ -876,7 +878,9 @@ with tab_proj:
             df_projecao["Valor base considerado"], errors="coerce").fillna(0) > 0).sum())
     fb1, fb2, fb3 = st.columns(3)
     with fb1:
-        if usar_media or media_irregular:
+        if irregular_sem_projecao and premissa_proj.startswith("Automática"):
+            render_card_valor("Meses no horizonte", qtd_meses, formato="inteiro")
+        elif usar_media or media_irregular:
             render_card_valor("Meses projetados", qtd_meses, formato="inteiro")
         elif proporcional_ciclo:
             render_card_valor("Meses com cobertura proporcional", ocorrencias_previstas,
@@ -922,7 +926,10 @@ with tab_result:
     referencia_reajustada = _round2(media_ref * fator_reajuste)
     # Com premissa por cadencia/manual, a referencia apresentada e o valor por
     # OCORRENCIA (nao uma "media mensal" que o contrato nao tem).
-    usa_media_ref = usar_media or media_irregular
+    # Em historico irregular, a media e apenas diagnostico historico;
+    # sua presenca no XLSX nao equivale a adota-la para o futuro.
+    usa_media_ref = usar_media or media_irregular or (
+        irregular_sem_projecao and premissa_proj.startswith("Automática"))
     valor_ref_hist = media_ref if usa_media_ref else (cadencia_aplicada or {}).get("valor_referencia", 0.0)
     if not usa_media_ref:
         referencia_reajustada = _round2(valor_ref_hist * fator_reajuste)
@@ -1029,8 +1036,15 @@ with tab_result:
         ("Fator de reajuste (exato)", f"{fator_reajuste:.9f}".replace(".", ",")),
         ("Referência mensal reajustada" if usa_media_ref else "Referência reajustada por ocorrência",
          referencia_reajustada),
-        ("Ocorrências previstas no horizonte", str(ocorrencias_previstas)),
+        ("Ocorrências previstas no horizonte",
+         NAO_DETERMINADA if irregular_sem_projecao and premissa_proj.startswith("Automática")
+         else str(ocorrencias_previstas)),
     ]
+    # A referencia reajustada e historica quando nao ha cadencia confiavel,
+    # nao e valor mensal previsto na modalidade Automatica.
+    if irregular_sem_projecao and premissa_proj.startswith("Automática"):
+        resumo_xlsx.append(("Uso da referência mensal reajustada",
+                            "Apenas histórico; não aplicada à projeção automática"))
     # Mesmos valores do Resultado na WEB (fonte unica: resultado_adequacao).
     resumo_xlsx += linhas_resumo_resultado(resultado_adequacao, mostrar_potencial=medidas_pc)
     if origem_pc and janela_meses_pc is not None:
