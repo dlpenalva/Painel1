@@ -267,6 +267,11 @@ def saldo_elegivel_da_apuracao(res):
     contrato = _numero_ou_none(res.get("valor_original_contrato"))
     executado = _numero_ou_none(res.get("valor_executado_original"))
     if contrato is not None and contrato > 0 and executado is not None and executado >= 0:
+        # Execucao superior ao valor contratual indica bases inconciliaveis
+        # (ex.: aditivos nao refletidos). Nao mascarar o excesso como saldo zero.
+        if executado > contrato + 0.01:
+            return {"valor": None, "atualizado": None, "vta": vta,
+                    "origem": "Saldo financeiro inconciliável: execução original superior ao valor original do contrato"}
         return {"valor": _round2(max(0.0, contrato - executado)), "atualizado": None, "vta": vta,
                 "origem": "Saldo financeiro reconciliado (valor original do contrato − execução original)"}
     return {"valor": None, "atualizado": None, "vta": vta,
