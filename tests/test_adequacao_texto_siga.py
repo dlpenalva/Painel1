@@ -5,8 +5,8 @@ pela aba 4 (retroativo, diferenca futura, complementacao confirmada,
 retroativo potencial, cenario com potencial). Estes testes protegem:
 
   1. a aba "5. Texto SIGA" existe;
-  2. o TOTAL A READEQUAR do texto e exatamente a COMPLEMENTACAO CONFIRMADA
-     da aba 4 (mesmo numero, mesma fonte);
+  2. o TOTAL PARCIAL A READEQUAR, no historico irregular automatico,
+     reproduz a complementacao da aba 4 (sem criar futuro ficticio);
   3. o retroativo potencial NAO integra o total a readequar;
   4. os meses do texto vem da projecao ja calculada (qtd_meses);
   5. o cenario com potencial usa o valor canonico ja calculado na aba 4;
@@ -50,11 +50,9 @@ CORTE = date(2026, 8, 19)
 VIGENCIA = "29/02/2028"
 RECONHECIDO = 57701.49
 POTENCIAL = 12000.0
-# Fixture PC irregular na premissa Automatica: a aba 4 apresenta a
-# complementacao ESTIMADA (media historica, Cl8us 12.18).
-CARD_COMPLEMENTACAO = "COMPLEMENTAÇÃO ORÇAMENTÁRIA ESTIMADA"
-# Mesmo cenario na aba SIGA: total identificado como estimado.
-TOTAL_SIGA = "TOTAL ESTIMADO A READEQUAR:"
+# Cl8us 12.21: PC irregular nao gera projeção automatica; o total e parcial.
+CARD_COMPLEMENTACAO = "COMPLEMENTAÇÃO ORÇAMENTÁRIA PARCIAL"
+TOTAL_SIGA = "TOTAL PARCIAL A READEQUAR (somente retroativo):"
 FRASE_ESTIMATIVA = ("A diferença futura foi estimada pela média histórica, com baixa "
                     "confiabilidade, e depende de validação fiscal.")
 
@@ -80,7 +78,7 @@ def _sessao_pc(*, com_potencial=True):
         "variacao_acumulada": 0.0289,
         "modo_apuracao": "Completo",
         "resultado_consolidado": consolidado,
-        # 12.20: saldo elegivel elevado (a projecao irregular exige saldo).
+        # Saldo elevado nao substitui comprovacao de cadencia de PCs (12.21).
         "df_remanescentes": pd.DataFrame([{"Ciclo": "C2", "Remanescente original": 900000.0}]),
         "remanescente_original": 900000.0,
         "remanescente_reajustado": 926010.0,
@@ -399,13 +397,15 @@ def test_txt_baixado_usa_a_mesma_variavel_do_texto_exibido_sem_duplicar():
 
 # ------------------------------------------- media historica de baixa confiabilidade
 
-def test_media_irregular_identifica_total_estimado_e_frase_de_validacao():
+def test_media_irregular_identifica_total_parcial_e_futuro_nao_determinado():
     at = _run_pc()
     assert not at.exception, at.exception
     texto = _texto_siga(at)
-    assert "TOTAL ESTIMADO A READEQUAR:" in texto
-    assert "TOTAL A READEQUAR:" not in texto
-    assert texto.count(FRASE_ESTIMATIVA) == 1
+    assert "TOTAL PARCIAL A READEQUAR (somente retroativo):" in texto
+    assert "TOTAL ESTIMADO A READEQUAR:" not in texto
+    assert "Diferença futura projetada – 18 meses: não determinada" in texto
+    assert "histórico sem cadência confiável" in texto
+    assert FRASE_ESTIMATIVA not in texto
 
 
 @pytest.mark.parametrize("premissa", ["Mensal (média)", "Por ciclo", "Manual"])
