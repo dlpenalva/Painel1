@@ -846,6 +846,12 @@ with tab_proj:
             and premissa_proj != "Manual"):
         motivo_futuro = ("saldo contratual elegível indisponível para validar "
                          "a projeção futura automática")
+    # Uma diferenca futura nao determinada tambem nao pode aparecer como
+    # montante calculado nas competencias da tela ou do XLSX.
+    if motivo_futuro and not df_projecao.empty:
+        for col in ("Valor base considerado", "Valor reajustado estimado",
+                    "Diferença futura a adequar"):
+            df_projecao[col] = None
     resultado_adequacao = consolidar_resultado_adequacao(
         retroativo=retroativo, df_projecao=df_projecao, meses_restantes=qtd_meses,
         saldo_info=saldo_info,
@@ -902,7 +908,8 @@ with tab_proj:
             for col in ["Valor base considerado", "Valor reajustado estimado", "Diferença futura a adequar",
                         "Saldo elegível após a competência"]:
                 if col in df_proj_vis.columns:
-                    df_proj_vis[col] = df_proj_vis[col].apply(moeda)
+                    df_proj_vis[col] = df_proj_vis[col].apply(
+                        lambda v: NAO_DETERMINADA if v is None or pd.isna(v) else moeda(v))
             st.dataframe(df_proj_vis, use_container_width=True, hide_index=True)
 
 
