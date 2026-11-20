@@ -3,7 +3,7 @@
 Cenarios pontuais desta entrega:
   1. saldo elevado + historico mensal regular: projecao preservada;
   2. contrato praticamente esgotado com varios meses restantes: cap no saldo;
-  3. historico irregular com saldo: projecao prudencial limitada ao saldo;
+  3. historico irregular com saldo: futuro nao determinado (sem recorrencia);
   4. historico irregular sem saldo confiavel: futuro nao determinado;
   5. retroativo reconhecido com projecao futura indisponivel: total parcial;
   6. retroativo potencial separado (fora da complementacao e da programacao);
@@ -109,16 +109,35 @@ def test_3_irregular_com_saldo_usa_base_prudencial_limitada():
     assert base_prudencial_irregular(2000.0, 12, None) is None
 
 
-def test_3_pagina_irregular_com_saldo_baixo_distribui_o_saldo():
+def test_3_pagina_irregular_com_saldo_baixo_nao_inventa_mensalidade():
     at = _run(_sessao_pc(saldo=5000.0))
     assert not at.exception, at.exception
     blob = _blob(at)
-    total = _valor_do_card(blob, "Diferença futura total projetada")
-    assert total == pytest.approx(5000.0 * 0.0289, abs=0.10)
-    assert ESTIMADA in blob
+    assert NAO_DETERMINADA in _texto_do_card(blob, "Diferença futura total projetada")
+    assert NAO_DETERMINADA in _texto_do_card(blob, "Diferença média mensal projetada")
+    assert PARCIAL in blob and ESTIMADA not in blob
+    assert _valor_do_card(blob, PARCIAL) == pytest.approx(RECONHECIDO)
     avisos = " ".join(w.value for w in at.warning)
-    assert "baixa confiabilidade" in avisos and "limitada ao saldo" in avisos
+    assert "não presumirá uma mensalidade" in avisos
+    assert "A projeção automática foi limitada ao saldo" not in avisos
     assert "Fatura média reajustada" not in blob
+
+
+def test_3_mensal_explicita_continua_projetando_com_saldo_alto():
+    at = _run(_sessao_pc(saldo=900000.0))
+    blob = _blob(at)
+    assert PARCIAL in blob and ESTIMADA not in blob
+    at.radio(key="adequacao_v3_premissa").set_value("Mensal (média)")
+    at.run()
+    assert not at.exception, at.exception
+    mensal = _blob(at)
+    assert ESTIMADA in mensal
+    assert _valor_do_card(mensal, "Diferença futura projetada") == pytest.approx(1126.98)
+    assert _valor_do_card(mensal, ESTIMADA) == pytest.approx(RECONHECIDO + 1126.98)
+    at.radio(key="adequacao_v3_premissa").set_value("Automática (cadência histórica)")
+    at.run()
+    assert not at.exception, at.exception
+    assert PARCIAL in _blob(at)
 
 
 # ------------------------------------------------ 4. irregular sem saldo
@@ -208,13 +227,17 @@ def test_6_potencial_fica_fora_da_complementacao_e_da_programacao():
     at = _run(_sessao_pc())
     assert not at.exception, at.exception
     blob = _blob(at)
-    estimada = _valor_do_card(blob, ESTIMADA)
-    assert _valor_do_card(blob, "Cenário com potencial") - estimada == pytest.approx(POTENCIAL, abs=0.01)
+    parcial = _valor_do_card(blob, PARCIAL)
+    assert parcial == pytest.approx(RECONHECIDO)
+    assert _valor_do_card(blob, "Cenário com potencial") - parcial == pytest.approx(POTENCIAL, abs=0.01)
     wb = load_workbook(BytesIO(_xlsx_da_pagina(at)))
     ws = wb["PROGRAMACAO"]
     total = next(ws.cell(r, 4).value for r in range(2, ws.max_row + 1)
                  if ws.cell(r, 1).value == "TOTAL")
-    assert total == pytest.approx(estimada)
+    assert total == pytest.approx(parcial)
+    cab = [ws.cell(1, c).value for c in range(1, 5)]
+    assert "Diferença futura projetada" in cab
+    assert ws.cell(2, 3).value == NAO_DETERMINADA
 
 
 # ---------------------------------------------- 7. manual acima do saldo
@@ -303,28 +326,32 @@ def test_8_web_igual_xlsx(saldo):
     assert _xlsx_num("Retroativo reconhecido") == pytest.approx(
         _valor_do_card(blob, "Retroativo reconhecido considerado"), abs=0.005)
     assert resumo["Meses restantes da vigência"] == "18"
-    rot_total = ESTIMADA if saldo is not None else PARCIAL
+    rot_total = PARCIAL  # irregular: nao ha projecao automatica, mesmo com saldo
     rotulo_xlsx = next(k for k in resumo if k and k.upper().startswith(rot_total))
     assert _xlsx_num(rotulo_xlsx) == pytest.approx(_valor_do_card(blob, rot_total), abs=0.005)
+    assert _xlsx_num(rotulo_xlsx) == pytest.approx(RECONHECIDO)
     assert _xlsx_num("Retroativo potencial (não reconhecido)") == pytest.approx(POTENCIAL)
     assert _xlsx_num("Cenário de planejamento com potencial") == pytest.approx(
         _valor_do_card(blob, "Cenário com potencial"), abs=0.005)
+    assert "parcial" in str(ws["A2"].value).lower()
+    assert resumo["Ocorrências previstas no horizonte"] == NAO_DETERMINADA
+    assert "não aplicada à projeção automática" in resumo["Uso da referência mensal reajustada"]
     for rotulo in ("Diferença média mensal projetada", "Diferença futura total projetada"):
-        if saldo is None:
-            assert resumo[rotulo] == NAO_DETERMINADA
-            assert NAO_DETERMINADA in _texto_do_card(blob, rotulo)
-        else:
-            assert _xlsx_num(rotulo) == pytest.approx(_valor_do_card(blob, rotulo), abs=0.005)
+        assert resumo[rotulo] == NAO_DETERMINADA
+        assert NAO_DETERMINADA in _texto_do_card(blob, rotulo)
     if saldo is not None:
         assert resumo["Saldo contratual elegível (sem reajuste)"] == pytest.approx(saldo)
-        # memoria mensal exportada = a mesma da tela (soma das diferencas)
-        ws_p = wb["PROJECAO"]
-        cab = [c.value for c in ws_p[1]]
-        col = cab.index("Diferença futura a adequar") + 1
-        soma = sum(ws_p.cell(r, col).value for r in range(2, ws_p.max_row + 1))
-        assert round(soma, 2) == pytest.approx(_xlsx_num("Diferença futura total projetada"))
-        assert "Limite do saldo" in cab
     else:
         assert resumo["Saldo contratual elegível (sem reajuste)"] == "Não disponível"
+    ws_p = wb["PROJECAO"]
+    cab = [c.value for c in ws_p[1]]
+    col = cab.index("Diferença futura a adequar") + 1
+    assert "Limite do saldo" in cab if saldo is not None else True
+    assert all(ws_p.cell(r, col).value == NAO_DETERMINADA
+               for r in range(2, ws_p.max_row + 1))
+    ws_prog = wb["PROGRAMACAO"]
+    total = next(ws_prog.cell(r, 4).value for r in range(2, ws_prog.max_row + 1)
+                 if ws_prog.cell(r, 1).value == "TOTAL")
+    assert total == pytest.approx(RECONHECIDO)
     ressalvas = [ws.cell(r, 1).value for r in range(5, ws.max_row + 1)]
     assert "Ressalvas" in ressalvas
