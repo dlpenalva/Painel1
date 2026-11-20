@@ -126,6 +126,8 @@ from pathlib import Path
 # estrutura dos documentos gerados. 11.2: memoria de calculo da garantia em XLSX.
 # 12.18: Adequacao Orcamentaria — projecao Automatica com historico valido e
 # irregular usa a media mensal historica (baixa confiabilidade); Coleta inalterada.
+# 12.19: RESULTADOS (Valor Global) sem o expander redundante "Ver fundamentos do
+# status"; ressalva amarela, status e calculos inalterados (so aplicativo).
 # 12.20: Adequacao Orcamentaria — projecao futura limitada ao saldo contratual
 # elegivel nas quatro premissas, historico irregular prudencial (sem saldo =
 # futuro nao determinado), quadro PASSADO/FUTURO/TOTAL/POTENCIAL e XLSX com os

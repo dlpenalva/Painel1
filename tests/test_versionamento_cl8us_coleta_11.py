@@ -102,6 +102,7 @@ def test_versoes_publicas_e_politica_preparada() -> None:
     # Cl8us 12.14: Painel Executivo com o VTA canonico (so aplicativo, #195).
     # Cl8us 12.17 / Coleta 12.9: texto das mensagens de CONTROLE!B3 e CICLO_EM_EXECUCAO!D5.
     # Cl8us 12.18: Adequacao com media historica na projecao irregular (so aplicativo, #202).
+    # Cl8us 12.19: RESULTADOS sem o expander "Ver fundamentos do status" (#203).
     # Cl8us 12.20: Adequacao com projecao limitada ao saldo (so aplicativo).
     assert CL8US_VERSION == "12.20"
     assert COLETA_VERSION == "12.9"
