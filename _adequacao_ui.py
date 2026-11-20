@@ -809,6 +809,12 @@ NOTA_RESUMO_SALDO = (
     "projetada, limitada ao saldo contratual elegível. Estimativa orçamentária, não "
     "obrigação de pagamento. O retroativo potencial é informado à parte e não integra "
     "a complementação.")
+NOTA_RESUMO_PARCIAL = (
+    "Complementação orçamentária parcial = somente retroativo reconhecido. "
+    "Diferença futura não determinada: não há valor projetado para incluir no total. "
+    "A referência mensal histórica não constitui previsão automática sem "
+    "cadência confiável. O retroativo potencial é informado à parte e não "
+    "integra a complementação.")
 NOTA_RESUMO_ESTIMADA = (
     "Complementação orçamentária estimada = retroativo calculado + diferença futura "
     "projetada por média histórica (baixa confiabilidade). Estimativa orçamentária, "
