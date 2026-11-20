@@ -838,6 +838,14 @@ with tab_proj:
             motivo_futuro = ("histórico irregular sem saldo contratual elegível confiável"
                              if saldo_elegivel is None
                              else "histórico irregular sem média histórica utilizável")
+    # Sem saldo elegivel, nenhuma premissa automatizada pode atestar a
+    # diferenca futura como valor conciliado ao limite contratual.
+    # Valores expressamente informados na premissa Manual seguem auditaveis
+    # e recebem a ressalva de saldo indisponivel da consolidacao.
+    if (not motivo_futuro and periodos and saldo_elegivel is None
+            and premissa_proj != "Manual"):
+        motivo_futuro = ("saldo contratual elegível indisponível para validar "
+                         "a projeção futura automática")
     resultado_adequacao = consolidar_resultado_adequacao(
         retroativo=retroativo, df_projecao=df_projecao, meses_restantes=qtd_meses,
         saldo_info=saldo_info,
