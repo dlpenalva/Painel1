@@ -71,6 +71,7 @@ from _adequacao_ui import (
     ROTULO_MEDIA_IRREGULAR,
     NOTA_RESUMO_ESTIMADA,
     NOTA_RESUMO_SALDO,
+    NOTA_RESUMO_PARCIAL,
     NAO_DETERMINADA,
     saldo_elegivel_da_apuracao,
     consolidar_resultado_adequacao,
@@ -1062,7 +1063,8 @@ with tab_result:
             ("Total histórico dos PCs", _base_pc_exp["total_historico"]),
         ]
     xlsx_bytes = gerar_xlsx_projecao(ultimos_6, df_projecao, resumo_xlsx,
-                                     nota_resumo=(NOTA_RESUMO_ESTIMADA if media_irregular
+                                     nota_resumo=(NOTA_RESUMO_PARCIAL if not futuro_determinado
+                                                  else NOTA_RESUMO_ESTIMADA if media_irregular
                                                   else NOTA_RESUMO_SALDO),
                                      programacao=cronograma,
                                      ressalvas=resultado_adequacao["ressalvas"])
