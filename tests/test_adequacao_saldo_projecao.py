@@ -142,6 +142,36 @@ def test_4_saldo_ausente_nao_vira_zero():
     assert saldo_elegivel_da_apuracao({"valor_atualizado_contrato": 1e6})["valor"] is None
 
 
+def test_4_saldo_financeiro_inconciliavel_nao_vira_zero():
+    info = saldo_elegivel_da_apuracao({
+        "valor_original_contrato": 10_000_000.0,
+        "valor_executado_original": 10_100_000.0,
+    })
+    assert info["valor"] is None
+    assert "inconciliável" in info["origem"]
+
+
+def test_4_mensal_sem_saldo_preserva_retroativo_e_nao_projeta_no_xlsx():
+    at = _run(_sessao_pc(saldo=None))
+    at.radio(key="adequacao_v3_premissa").set_value("Mensal (média)")
+    at.run()
+    assert not at.exception, at.exception
+    blob = _blob(at)
+    assert PARCIAL in blob
+    assert _valor_do_card(blob, PARCIAL) == pytest.approx(RECONHECIDO)
+    assert NAO_DETERMINADA in _texto_do_card(blob, "Diferença futura total projetada")
+    wb = load_workbook(BytesIO(_xlsx_da_pagina(at)))
+    ws = wb["PROJECAO"]
+    cab = [c.value for c in ws[1]]
+    col = cab.index("Diferença futura a adequar") + 1
+    assert ws.max_row > 1
+    assert all(ws.cell(r, col).value == NAO_DETERMINADA
+               for r in range(2, ws.max_row + 1))
+    resumo = wb["RESUMO"]
+    assert any(resumo.cell(r, 2).value == NAO_DETERMINADA
+               for r in range(5, resumo.max_row + 1))
+
+
 # ----------------------------------- 5. retroativo com futuro indisponivel
 
 def test_5_retroativo_mantido_e_futuro_nao_determinado():
