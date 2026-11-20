@@ -5355,15 +5355,6 @@ def render_resultado_consolidado(resultado, diagnostico):
                 f'{html.escape(str(ressalvas[0]))}</div>',
                 unsafe_allow_html=True,
             )
-        detalhes = (
-            list(consolidado.get("bloqueios") or [])
-            + list(ressalvas)
-            + list(informacoes)
-        )
-        if detalhes:
-            with st.expander("Ver fundamentos do status"):
-                for detalhe in detalhes:
-                    st.markdown(f"- {detalhe}")
 
     st.markdown("### COMPOSIÇÃO DO VTA")
     composicao = consolidado.get("composicao_vta") or {}
