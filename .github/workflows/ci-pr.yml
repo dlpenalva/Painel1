@@ -88,3 +88,11 @@ jobs:
             tests/test_painel_executivo_vta_canonico_195.py \
             tests/test_status_conferir_base_insuficiente.py \
             tests/test_retro_pc_classificacao.py
+
+      - name: Testes dirigidos Adequação Orçamentária
+        run: |
+          python -m pytest -q \
+            tests/test_adequacao_media_historica_irregular.py \
+            tests/test_adequacao_pc_janela_potencial.py \
+            tests/test_adequacao_saldo_projecao.py \
+            tests/test_adequacao_texto_siga.py
