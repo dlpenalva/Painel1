@@ -189,8 +189,13 @@ def test_retroativo_potencial_nao_integra_o_total_a_readequar():
 def test_meses_do_texto_vem_da_projecao_ja_calculada():
     at = _run_pc()
     blob = _blob(at)
-    m = re.search(r"(\d+)\s*meses", blob)
-    assert m, "indicador de meses nao encontrado na aba 3/4"
+    # Usa o indicador canonico da aba Resultado: no historico irregular,
+    # o card da aba Projecao passou a exibir "Meses no horizonte" e so o numero.
+    m = re.search(
+        r"Meses restantes da vigência</div>\s*<div[^>]*>\s*(\d+)\s*</div>",
+        blob,
+    )
+    assert m, "indicador de meses restantes nao encontrado na aba Resultado"
     qtd_meses_pagina = m.group(1)
 
     texto = _texto_siga(at)
