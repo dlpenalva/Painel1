@@ -760,10 +760,11 @@ def explicar_resultado_adequacao(cons, premissa, media_historica,
             "diferença atribuída ao reajuste é somada ao retroativo."
         )
     return (
-        f"{abertura} Conforme a premissa de projeção escolhida "
-        f"({premissa}), {resultado.lower()}"
-        "Os valores futuros são estimativas para planejamento, "
-        "não obrigações de pagamento comprovadas."
+        f"{abertura} Pela premissa escolhida ({premissa}), "
+        f"estimamos {diferenca} de diferença futura. Somando esse valor "
+        f"ao retroativo de {retro}, chegamos a {total} de complementação "
+        "orçamentária estimada. Os valores futuros servem ao planejamento "
+        "e não representam obrigações de pagamento comprovadas."
     )
 
 
