@@ -110,6 +110,20 @@ def test_web_auto_irregular_apto_projeta_estimada_sem_mensalidade_comprovada():
     assert "Não existe rateio automático por dias" in " ".join(x.value for x in at.warning)
 
 
+def test_resultado_preserva_cifrao_em_todos_os_valores_da_narrativa():
+    """Regressao Streamlit: R$ repetido nao pode ser interpretado como LaTeX."""
+    at = _run(_sessao_pc_suficiente(), vigencia="16/04/2027")
+    assert not at.exception, at.exception
+    textos = [str(m.value) for m in at.markdown
+              if "Já identificamos" in str(m.value)]
+    assert len(textos) == 1
+    render = textos[0]
+    # Fonte monetaria permanece intacta no motor; somente Markdown escapa $.
+    for valor in ("36.397,14", "892.877,92", "204.111,90", "240.509,04"):
+        assert "R" + chr(92) + "$ " + valor in render
+    assert "R$ " not in render  # sem $ desprotegido no HTML/Markdown
+
+
 def test_web_vigencia_invalida_nao_gera_futuro_positivo():
     at = _run(_sessao_pc_suficiente(), vigencia="31/02/2027")
     assert not at.exception, at.exception
