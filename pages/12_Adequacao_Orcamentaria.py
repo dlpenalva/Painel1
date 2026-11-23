@@ -1069,7 +1069,7 @@ with tab_result:
     # Markdown do Streamlit interpreta o caractere $ como delimitador LaTeX.
     # Escapar apenas na APRESENTACAO preserva o texto numerico oficial e
     # mostra todas as ocorrencias de R$ sem ocultar o cifrao.
-    st.markdown(narrativa_resultado.replace("R$", r"R\\$"))
+    st.markdown(narrativa_resultado.replace("R$", r"R\$"))
     for _ressalva in resultado_adequacao["ressalvas"]:
         st.warning(_ressalva)
     if media_irregular:
