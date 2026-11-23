@@ -345,6 +345,15 @@ def _sessao_caso_real():
         "indice": "IST (Anatel)",
         "quantidade_ciclos": "1",
         "modo_apuracao": "Completo",
+        # Desde 12.20 o futuro precisa de saldo elegivel confiavel.
+        # A base projetada por 18 meses e inferior ao saldo de 2 milhoes.
+        "df_remanescentes": pd.DataFrame([{
+            "Ciclo": "C3", "Remanescente original": 2_000_000.0,
+            "Fator aplicado": FATOR_EXATO,
+            "Remanescente atualizado": round(2_000_000.0 * FATOR_EXATO, 2),
+        }]),
+        "remanescente_original": 2_000_000.0,
+        "remanescente_reajustado": round(2_000_000.0 * FATOR_EXATO, 2),
     }
 
 
