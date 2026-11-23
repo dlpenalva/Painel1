@@ -700,9 +700,10 @@ with tab_proj:
     OPCOES_PREMISSA = ["Automática (cadência histórica)", "Mensal (média)", "Por ciclo", "Manual"]
     premissa_proj = st.radio("Premissa de projeção", OPCOES_PREMISSA, horizontal=True,
                              key="adequacao_v3_premissa",
-                             help="Automática usa o padrão histórico identificado. Mensal replica a média "
-                                  "somente quando a obrigação for de fato mensal. Por ciclo projeta o perfil "
-                                  "de ocorrências por ciclo. Manual deixa a programação por sua conta.")
+                             help="Automática usa a cadência observada ou, com PCs irregulares e "
+                                  "amostra suficiente, simula consumo agregado por média histórica "
+                                  "(baixa confiabilidade). Mensal aplica a média por decisão explícita. "
+                                  "Por ciclo usa o perfil contratual. Manual usa valores do fiscal.")
 
     _inicio_proj = periodos[0].to_timestamp().date() if periodos else None
     _fim_proj = periodos[-1].to_timestamp().date() if periodos else None
@@ -1116,7 +1117,8 @@ with tab_result:
         ("Fator de reajuste (exato)", f"{fator_reajuste:.9f}".replace(".", ",")),
         ("Referência mensal reajustada" if usa_media_ref else "Referência reajustada por ocorrência",
          referencia_reajustada),
-        ("Ocorrências previstas no horizonte",
+        ("Meses com rateio ilustrativo" if media_irregular
+         else "Ocorrências previstas no horizonte",
          NAO_DETERMINADA if irregular_sem_projecao and premissa_proj.startswith("Automática")
          else str(ocorrencias_previstas)),
     ]
