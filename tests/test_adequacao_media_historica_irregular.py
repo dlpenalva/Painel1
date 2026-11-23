@@ -28,6 +28,8 @@ from _adequacao_ui import (  # noqa: E402
     NAO_DETERMINADA,
     ROTULO_MEDIA_IRREGULAR,
     calcular_projecao,
+    consolidar_resultado_adequacao,
+    explicar_resultado_adequacao,
     gerar_xlsx_projecao,
     montar_base_editor,
 )
@@ -134,6 +136,48 @@ def test_xlsx_identifica_a_complementacao_estimada():
 def test_xlsx_padrao_preserva_a_nota_confirmada():
     nota, _ = _resumo_xlsx(gerar_xlsx_projecao(pd.DataFrame(), pd.DataFrame(), []))
     assert nota == NOTA_RESUMO_CONFIRMADA
+
+
+# ------------------------------------------- narrativa com valores canonicos
+
+def test_narrativa_mensal_explicita_soma_so_diferenca_futura_ao_retroativo():
+    media = 892877.92
+    periodos = list(pd.period_range("2026-11", periods=6, freq="M"))
+    proj = calcular_projecao(
+        montar_base_editor(periodos, media), media, 1.0381,
+        saldo_elegivel=39364302.31,
+    )
+    cons = consolidar_resultado_adequacao(
+        retroativo=36397.14, df_projecao=proj, meses_restantes=6,
+        saldo_info={"valor": 39364302.31}, retroativo_potencial=119.20,
+    )
+    assert cons["diferenca_futura"] == pytest.approx(204111.90)
+    assert cons["complementacao"] == pytest.approx(240509.04)
+    narrativa = explicar_resultado_adequacao(
+        cons, "Mensal (média)", media, 926896.57, 0.0381, origem_pc=True)
+    for esperado in ("R$ 36.397,14", "6 meses", "R$ 892.877,92",
+                     "3,81%", "R$ 926.896,57", "R$ 34.018,65",
+                     "R$ 204.111,90", "R$ 240.509,04"):
+        assert esperado in narrativa
+    assert "somente a diferença atribuída ao reajuste" in narrativa
+    assert "R$ 119,20" not in narrativa  # potencial nao entra na soma
+
+
+def test_narrativa_automatica_irregular_nao_inventa_diferenca_futura():
+    cons = consolidar_resultado_adequacao(
+        retroativo=36397.14, df_projecao=pd.DataFrame(), meses_restantes=6,
+        saldo_info={"valor": 39364302.31},
+        motivo_indeterminado="histórico sem cadência confiável",
+    )
+    narrativa = explicar_resultado_adequacao(
+        cons, "Automática (cadência histórica)", 892877.92, 926896.57,
+        0.0381, origem_pc=True)
+    assert "R$ 36.397,14" in narrativa
+    assert "R$ 892.877,92" in narrativa
+    assert "total parcial" in narrativa
+    assert "não determinada" in narrativa
+    assert "Mensal (média)" in narrativa
+    assert "R$ 204.111,90" not in narrativa
 
 
 # --------------------------------------------------------- pagina (AppTest)
