@@ -1063,9 +1063,13 @@ with tab_result:
     st.markdown("**TOTAL**")
     render_card_valor(ROTULO_COMPLEMENTACAO.upper(), complementacao, destaque=True)
     st.markdown("**Entenda este resultado**")
-    st.markdown(explicar_resultado_adequacao(
+    narrativa_resultado = explicar_resultado_adequacao(
         resultado_adequacao, premissa_proj, media_ref, referencia_reajustada,
-        percentual_reajuste, origem_pc=origem_pc, houve_valor_informado=informou_valor))
+        percentual_reajuste, origem_pc=origem_pc, houve_valor_informado=informou_valor)
+    # Markdown do Streamlit interpreta o caractere $ como delimitador LaTeX.
+    # Escapar apenas na APRESENTACAO preserva o texto numerico oficial e
+    # mostra todas as ocorrencias de R$ sem ocultar o cifrao.
+    st.markdown(narrativa_resultado.replace("R$", r"R\$"))
     for _ressalva in resultado_adequacao["ressalvas"]:
         st.warning(_ressalva)
     if media_irregular:
