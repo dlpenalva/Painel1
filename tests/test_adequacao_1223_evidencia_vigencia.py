@@ -107,6 +107,7 @@ def test_web_auto_irregular_apto_projeta_estimada_sem_mensalidade_comprovada():
     assert _valor_do_card(blob, "COMPLEMENTAÇÃO ORÇAMENTÁRIA ESTIMADA") == pytest.approx(240509.04)
     assert "rateio pelos meses futuros" in " ".join(x.value for x in at.error).lower()
     assert "Vigência considerada no cálculo: 16/04/2027" in " ".join(x.value for x in at.success)
+    assert "Não existe rateio automático por dias" in " ".join(x.value for x in at.warning)
 
 
 def test_web_vigencia_invalida_nao_gera_futuro_positivo():
