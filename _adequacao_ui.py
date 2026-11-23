@@ -102,6 +102,29 @@ def normalizar_texto(valor):
     return texto.strip("_")
 
 
+def validar_vigencia_para_adequacao(valor, data_corte=None):
+    """Valida entrada HUMANA dd/mm/aaaa; impede projecao por data ambigua.
+
+    Nao substitui a data de corte canonica. O mes final da vigencia deve
+    suceder ao mes da data de corte, caso a apuracao forneca o corte.
+    Retorna (data normalizada, mensagem de erro). Vazio nao e data valida.
+    """
+    bruto = str(valor or "").strip()
+    if not bruto:
+        return "", "Informe a data final da vigência para calcular o futuro."
+    if not re.fullmatch(r"\\d{2}/\\d{2}/\\d{4}", bruto):
+        return "", "Use o formato dd/mm/aaaa, incluindo dia, mês e ano com quatro dígitos."
+    try:
+        d = datetime.strptime(bruto, "%d/%m/%Y").date()
+    except ValueError:
+        return "", "Essa data não existe no calendário. Confira o dia, mês e ano."
+    if data_corte is not None:
+        corte = data_corte.date() if isinstance(data_corte, datetime) else data_corte
+        if (d.year, d.month) <= (corte.year, corte.month):
+            return "", "A vigência deve terminar depois do mês de corte da apuração."
+    return d.strftime("%d/%m/%Y"), ""
+
+
 def localizar_coluna(df, opcoes):
     if not isinstance(df, pd.DataFrame) or df.empty:
         return None
