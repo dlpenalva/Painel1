@@ -105,7 +105,7 @@ def test_web_auto_irregular_apto_projeta_estimada_sem_mensalidade_comprovada():
     assert _valor_do_card(blob, "Retroativo reconhecido considerado") == pytest.approx(36397.14)
     assert _valor_do_card(blob, "Diferença futura projetada") == pytest.approx(204111.90)
     assert _valor_do_card(blob, "COMPLEMENTAÇÃO ORÇAMENTÁRIA ESTIMADA") == pytest.approx(240509.04)
-    assert "Rateio ilustrativo" in blob
+    assert "rateio pelos meses futuros" in " ".join(x.value for x in at.error).lower()
     assert "Vigência considerada no cálculo: 16/04/2027" in " ".join(x.value for x in at.success)
 
 
