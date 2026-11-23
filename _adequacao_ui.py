@@ -112,7 +112,7 @@ def validar_vigencia_para_adequacao(valor, data_corte=None):
     bruto = str(valor or "").strip()
     if not bruto:
         return "", "Informe a data final da vigência para calcular o futuro."
-    if not re.fullmatch(r"\\d{2}/\\d{2}/\\d{4}", bruto):
+    if not re.fullmatch(r"\d{2}/\d{2}/\d{4}", bruto):
         return "", "Use o formato dd/mm/aaaa, incluindo dia, mês e ano com quatro dígitos."
     try:
         d = datetime.strptime(bruto, "%d/%m/%Y").date()
