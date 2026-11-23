@@ -638,8 +638,12 @@ def calcular_projecao(df_editor, media_mensal, fator_reajuste,
             chave = (int(periodo.year), int(periodo.month)) if periodo is not None else None
             base_considerada = mapa.get(chave, 0.0)
             origem = origem_automatica or "Projeção pela cadência histórica"
-            premissa_usada = ("Ocorrência prevista pela cadência"
-                             if base_considerada > 0 else "Sem ocorrência prevista")
+            if origem_automatica == ROTULO_MEDIA_IRREGULAR:
+                premissa_usada = ("Rateio ilustrativo da média histórica; "
+                                  "não indica compra mensal")
+            else:
+                premissa_usada = ("Ocorrência prevista pela cadência"
+                                 if base_considerada > 0 else "Sem ocorrência prevista")
         bases_brutas.append(base_considerada)
         valor_reajustado = _round2(base_considerada * fator_reajuste)
         diferenca = _round2(valor_reajustado - base_considerada)
@@ -769,6 +773,15 @@ def explicar_resultado_adequacao(cons, premissa, media_historica,
         f"Somando essa diferença ao retroativo reconhecido de {retro}, "
         f"a complementação orçamentária estimada chega a {total}. "
     )
+    if cons["baixa_confiabilidade"] and premissa.startswith("Automática"):
+        return (
+            f"{abertura} O histórico de {origem} não mostrou compras em intervalos "
+            f"regulares. Como a amostra tem abrangência suficiente, usamos "
+            f"a média de {moeda(media_historica)} por mês apenas para simular "
+            "o consumo agregado do período, sem prever compras mensais. "
+            f"{resultado}A projeção está sujeita ao saldo elegível e "
+            "precisa de validação pelo fiscal antes de fundamentar o orçamento."
+        )
     if (premissa == "Mensal (média)" and media_historica > 0 and meses
             and not houve_valor_informado and not cons["limitado_saldo"]):
         return (
