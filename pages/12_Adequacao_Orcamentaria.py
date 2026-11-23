@@ -18,6 +18,7 @@ multiselect, metodologia longa) saiu do fluxo principal para "Opcoes avancadas".
 O estado da nova interface vive em namespace proprio (adequacao_v3_*).
 """
 from datetime import datetime
+from calendar import monthrange
 from zoneinfo import ZoneInfo
 from html import escape
 
@@ -353,6 +354,16 @@ with tab_base:
     else:
         st.success(f"Vigência considerada no cálculo: {data_final_vigencia}. "
                    "Confirme essa data no contrato.")
+        _ultimo_dia = _as_date(data_final_vigencia)
+        if _ultimo_dia and _ultimo_dia.day < monthrange(
+                _ultimo_dia.year, _ultimo_dia.month)[1]:
+            st.warning(
+                "**Atenção ao último mês da vigência:** a projeção por média "
+                "considera a competência de encerramento inteira, mesmo "
+                f"que o contrato termine em {data_final_vigencia}. "
+                "Não existe rateio automático por dias. Se a previsão de "
+                "consumo do último mês for parcial, ajuste o valor dessa "
+                "competência na aba Projeção, com fundamento do fiscal.")
 
     # Base historica para a projecao (Seção 6: o seletor de origem vive na Base).
     # Escolha orientada, com sugestao automatica pela fonte encontrada. Usamos
