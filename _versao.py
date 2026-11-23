@@ -135,7 +135,9 @@ from pathlib import Path
 # 12.21: Adequacao — historico irregular sem cadencia confiavel nao projeta
 # mensalidade automaticamente; futuro nao determinado. Mensal explicita
 # e Manual preservadas; retroativo e potencial separados; XLSX coerente.
-CL8US_VERSION = "12.21"
+# 12.22: Adequacao — diagnostico legivel dos meses por ciclo, alerta vermelho
+# e narrativa de retroativo + diferenca futura, sem alterar calculos ou XLSX.
+CL8US_VERSION = "12.22"
 COLETA_VERSION = "12.9"
 # Modelos de Coleta da familia 11.x aceitos SEM adaptacao: o 11.1 so acrescentou
 # um quadro informativo na RESULTADOS/MEMORIA_RESULTADOS (formulas); a Coleta 11.0
@@ -183,7 +185,7 @@ COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
 # Fallback conservador da ultima publicacao confirmada antes deste hotfix.
 # Quando o Git esta disponivel, este valor nunca prevalece sobre o commit real.
-ATUALIZADO_EM_FALLBACK = "20/11/2026 20:40"
+ATUALIZADO_EM_FALLBACK = "23/11/2026 10:03"
 
 
 def _data_ultimo_commit() -> str | None:
