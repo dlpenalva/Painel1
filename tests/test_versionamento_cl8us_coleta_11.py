@@ -106,7 +106,7 @@ def test_versoes_publicas_e_politica_preparada() -> None:
     # Cl8us 12.20: Adequacao com projecao limitada ao saldo (so aplicativo).
     # Cl8us 12.21: sem projecao implicita da media quando historico e irregular.
     # Cl8us 12.22: textos de ajuda com diagnostico legivel e alerta vermelho.
-    assert CL8US_VERSION == "12.22"
+    assert CL8US_VERSION == "12.23"
     assert COLETA_VERSION == "12.9"
     assert COLETA_VERSOES_ACEITAS == (
         "11.0", "11.1", "11.2", "11.3", "11.4", "11.5", "11.6", "11.7", "11.8", "11.9",
@@ -134,7 +134,7 @@ def test_sidebar_exibe_as_duas_versoes_da_fonte_unica(monkeypatch) -> None:
 
     assert legendas == [
         "Última atualização publicada em 30/09/2026 12:00",
-        "Cl8us 12.22",
+        "Cl8us 12.23",
         "Modelo de Coleta 12.9",
     ]
     assert containers == ["cl8us_version_sidebar"]
