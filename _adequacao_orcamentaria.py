@@ -589,6 +589,55 @@ def inferir_cadencia(
     return base
 
 
+# Criterios minimos de AMOSTRA para o cenario automatico por media.
+# O historico pode ser irregular: a amplitude entre ciclos nao inviabiliza
+# uma estimativa agregada, mas nunca fundamenta datas de pedidos futuros.
+MIN_PC_MESES_HISTORICO_ESTIMATIVA = 12
+MIN_PC_MESES_MOVIMENTO_ESTIMATIVA = 6
+MIN_PC_PEDIDOS_ESTIMATIVA = 12
+MIN_PC_CICLOS_COMPLETOS_ESTIMATIVA = 2
+
+
+def avaliar_evidencia_media_irregular_pc(base_pc: dict | None, cadencia: dict,
+                                         saldo_elegivel: float | None,
+                                         qtd_meses_futuros: int) -> dict:
+    """Admissibilidade CONSERVADORA da media como cenario orcamentario.
+
+    Nao infere recorrencia mensal. Requer volume, cobertura temporal,
+    diversidade de meses e ao menos 2 ciclos contratuais completos
+    observados. O saldo e so um TETO, nunca evidencia de consumo.
+    """
+    h = base_pc or {}
+    motivos = []
+    if int(h.get("pedidos_considerados") or 0) < MIN_PC_PEDIDOS_ESTIMATIVA:
+        motivos.append(f"menos de {MIN_PC_PEDIDOS_ESTIMATIVA} PCs considerados")
+    if int(h.get("meses_com_pedido") or 0) < MIN_PC_MESES_MOVIMENTO_ESTIMATIVA:
+        motivos.append(f"menos de {MIN_PC_MESES_MOVIMENTO_ESTIMATIVA} meses com compras")
+    # Janela canonica inclui MESES sem pedido e nao e deslocada por exclusao.
+    janela = int(h.get("meses_historico") or 0)
+    if janela < MIN_PC_MESES_HISTORICO_ESTIMATIVA:
+        motivos.append(f"histórico inferior a {MIN_PC_MESES_HISTORICO_ESTIMATIVA} meses")
+    ciclos = list(cadencia.get("ciclos_base") or [])
+    if len(ciclos) < MIN_PC_CICLOS_COMPLETOS_ESTIMATIVA or cadencia.get("usa_c0"):
+        motivos.append("menos de 2 ciclos contratuais completos posteriores ao C0")
+    if float(h.get("media_mensal") or 0) <= 0:
+        motivos.append("média histórica sem consumo positivo")
+    if saldo_elegivel is None:
+        motivos.append("saldo contratual elegível indisponível")
+    elif float(saldo_elegivel) < 0:
+        motivos.append("saldo contratual elegível negativo")
+    if int(qtd_meses_futuros or 0) < 1:
+        motivos.append("sem meses futuros válidos")
+    return {
+        "apta": not motivos,
+        "motivos": motivos,
+        "quantidade_pcs": int(h.get("pedidos_considerados") or 0),
+        "meses_com_pc": int(h.get("meses_com_pedido") or 0),
+        "meses_historico": janela,
+        "ciclos": ciclos,
+    }
+
+
 def cadencia_por_ciclo_forcada(pares: Iterable[tuple],
                                ciclos: Iterable[CicloCadencia] | None) -> dict:
     """Premissa POR CICLO imposta pelo usuario quando a inferencia automatica

@@ -18,6 +18,7 @@ multiselect, metodologia longa) saiu do fluxo principal para "Opcoes avancadas".
 O estado da nova interface vive em namespace proprio (adequacao_v3_*).
 """
 from datetime import datetime
+from calendar import monthrange
 from zoneinfo import ZoneInfo
 from html import escape
 
@@ -40,6 +41,7 @@ from _adequacao_orcamentaria import (
     projetar_por_ciclo_proporcional,
     cadencia_por_ciclo_forcada,
     base_prudencial_irregular,
+    avaliar_evidencia_media_irregular_pc,
     CADENCIA_MENSAL,
     CADENCIA_IRREGULAR,
     CADENCIA_POR_CICLO,
@@ -73,6 +75,7 @@ from _adequacao_ui import (
     NOTA_RESUMO_SALDO,
     NOTA_RESUMO_PARCIAL,
     NAO_DETERMINADA,
+    validar_vigencia_para_adequacao,
     explicar_meses_de_movimento_por_ciclo,
     explicar_resultado_adequacao,
     saldo_elegivel_da_apuracao,
@@ -323,13 +326,44 @@ with tab_base:
                    "nunca do VTA, de modo que ela não é contada duas vezes.")
 
     st.markdown("**Data final da vigência contratual**")
-    data_final_vigencia = st.text_input(
+    st.warning("**Confira a vigência antes de prosseguir.** Essa data define o "
+               "último mês da projeção, a complementação orçamentária e a "
+               "programação por exercício. Não é obtida automaticamente da apuração.")
+    # Escopo da cor restrito a este campo; o usuario nunca deve confundir
+    # a vigencia informada manualmente com a data de corte canonica.
+    st.markdown("""<style>
+    .st-key-adequacao_v3_data_final_vigencia {
+        border: 2px solid #B45309; border-radius: 12px;
+        background: #FFF7ED; padding: 12px 14px;
+    }
+    .st-key-adequacao_v3_data_final_vigencia input {
+        font-weight: 700; font-size: 1.05rem;
+    }
+    </style>""", unsafe_allow_html=True)
+    _vigencia_digitada = st.text_input(
         "Data final da vigência contratual (dd/mm/aaaa)",
         value=st.session_state.get("adequacao_v3_data_final_vigencia", ""),
-        placeholder="Ex.: 05/05/2027", key="adequacao_v3_data_final_vigencia",
-        help="Não há data final de vigência canônica na apuração; informe manualmente (dd/mm/aaaa).")
-    if not str(data_final_vigencia).strip():
-        st.caption("Informe a data final da vigência para gerar a projeção (aba 3).")
+        placeholder="Ex.: 16/04/2027", key="adequacao_v3_data_final_vigencia",
+        help="Informe a data contratual completa; somente dd/mm/aaaa válido é aceito.")
+    data_final_vigencia, erro_vigencia = validar_vigencia_para_adequacao(
+        _vigencia_digitada, data_corte_canonica)
+    if not _vigencia_digitada.strip():
+        st.caption("Preencha a vigência contratual para habilitar a projeção.")
+    elif erro_vigencia:
+        st.error(erro_vigencia + " A projeção futura ficará não determinada.")
+    else:
+        st.success(f"Vigência considerada no cálculo: {data_final_vigencia}. "
+                   "Confirme essa data no contrato.")
+        _ultimo_dia = _as_date(data_final_vigencia)
+        if _ultimo_dia and _ultimo_dia.day < monthrange(
+                _ultimo_dia.year, _ultimo_dia.month)[1]:
+            st.warning(
+                "**Atenção ao último mês da vigência:** a projeção por média "
+                "considera a competência de encerramento inteira, mesmo "
+                f"que o contrato termine em {data_final_vigencia}. "
+                "Não existe rateio automático por dias. Se a previsão de "
+                "consumo do último mês for parcial, ajuste o valor dessa "
+                "competência na aba Projeção, com fundamento do fiscal.")
 
     # Base historica para a projecao (Seção 6: o seletor de origem vive na Base).
     # Escolha orientada, com sugestao automatica pela fonte encontrada. Usamos
@@ -404,6 +438,7 @@ with tab_hist:
     janela_rotulo = ""
     ultima_comp = ultima_comp_fin
     ultima_comp_txt = ultima_comp_fin_txt
+    base_pc_cenario = None
 
     if not origem_pc:
         # ----- HISTORICO FINANCEIRO: a tabela e o elemento principal -----
@@ -596,6 +631,7 @@ with tab_hist:
             peds_pc = pedidos_de_itens_pc(registros_pc, exclusoes=exclusoes_manuais)
             base_pc = media_pedidos_compra(peds_pc, ultima_comp_data, janela_meses_pc)
             media_ref = base_pc["media_mensal"]
+            base_pc_cenario = {**base_pc, "meses_historico": janela_meses_pc}
 
             render_leitura([
                 ("Período utilizado",
@@ -636,13 +672,23 @@ with tab_hist:
 # ================================================================ TAB 3 — PROJECAO
 with tab_proj:
     st.subheader("3. Projeção futura")
+    # O encerramento deve suceder a ultima competencia efetivamente observada.
+    # A checagem e adicional ao bloqueio pela data de corte (aba Base).
+    if data_final_vigencia and ultima_comp is not None:
+        _vig = _as_date(data_final_vigencia)
+        if _vig is not None and (int(_vig.year), int(_vig.month)) <= (
+                int(ultima_comp.year), int(ultima_comp.month)):
+            erro_vigencia = ("A vigência deve terminar após a última "
+                             "competência do histórico selecionado.")
+            data_final_vigencia = ""
     periodos = gerar_periodos_projecao(ultima_comp, data_final_vigencia)
     periodo_inicio_txt = periodo_para_label(periodos[0]) if periodos else "[campo a preencher]"
     periodo_fim_txt = periodo_para_label(periodos[-1]) if periodos else "[campo a preencher]"
     periodo_projecao_txt = f"{periodo_inicio_txt} a {periodo_fim_txt}" if periodos else "[campo a preencher]"
 
-    if not str(data_final_vigencia).strip():
-        st.warning("Informe a data final da vigência na aba Base para gerar a projeção.")
+    if erro_vigencia:
+        st.warning(f"**Vigência pendente de validação (aba 1).** {erro_vigencia} "
+                   "Nenhuma projeção será utilizada.")
     elif not periodos:
         st.info("Não há competências futuras a projetar com os dados informados.")
 
@@ -665,18 +711,17 @@ with tab_proj:
     OPCOES_PREMISSA = ["Automática (cadência histórica)", "Mensal (média)", "Por ciclo", "Manual"]
     premissa_proj = st.radio("Premissa de projeção", OPCOES_PREMISSA, horizontal=True,
                              key="adequacao_v3_premissa",
-                             help="Automática usa o padrão histórico identificado. Mensal replica a média "
-                                  "somente quando a obrigação for de fato mensal. Por ciclo projeta o perfil "
-                                  "de ocorrências por ciclo. Manual deixa a programação por sua conta.")
+                             help="Automática usa a cadência observada ou, com PCs irregulares e "
+                                  "amostra suficiente, simula consumo agregado por média histórica "
+                                  "(baixa confiabilidade). Mensal aplica a média por decisão explícita. "
+                                  "Por ciclo usa o perfil contratual. Manual usa valores do fiscal.")
 
     _inicio_proj = periodos[0].to_timestamp().date() if periodos else None
     _fim_proj = periodos[-1].to_timestamp().date() if periodos else None
     usar_media = False
-    # Cl8us 12.21: historico irregular sem cadencia confiavel NAO autoriza
-    # extrapolacao mensal automatica, mesmo com saldo contratual elevado.
-    # A media historica permanece para consulta e para a premissa Mensal
-    # explicitamente escolhida. A flag anterior e mantida apenas para
-    # compatibilidade das saidas legadas (sem projeção automatica irregular).
+    # Cl8us 12.23: historico PC irregular permite CENARIO ORCAMENTARIO pela
+    # media, SOMENTE com amostra suficiente, saldo valido e horizonte correto.
+    # Rateio mensal ilustrativo nao atesta mensalidade nem pedidos futuros.
     media_irregular = False
     irregular_sem_projecao = False
     base_cadencia = None
@@ -707,17 +752,45 @@ with tab_proj:
             usar_media = True
             premissa_rotulo = f"Automática — {cadencia['rotulo']}"
         elif cadencia["padrao"] == CADENCIA_IRREGULAR:
-            base_cadencia = {}
-            irregular_sem_projecao = True
-            premissa_rotulo = "Automática — histórico irregular; futuro não determinado"
-            st.error("**HISTÓRICO SEM PERIODICIDADE SUFICIENTE PARA PROJEÇÃO AUTOMÁTICA.**\n\n"
-                     f"{explicar_meses_de_movimento_por_ciclo(cadencia, origem_pc)}\n\n"
-                     "Isso não significa que o contrato ficará sem consumo. O saldo "
-                     "disponível limita despesas, mas não informa quando haverá compras. "
-                     "A opção Automática não presumirá uma mensalidade nem calculará "
-                     "a diferença futura. Para estimar o consumo usando a média histórica, "
-                     "selecione Mensal (média). Para informar a previsão específica de "
-                     "compras, selecione Manual.")
+            evidencia_media = avaliar_evidencia_media_irregular_pc(
+                base_pc_cenario if origem_pc else None, cadencia,
+                saldo_elegivel, len(periodos))
+            # A via automatica sem cadencia e restrita a PCs. A avaliacao
+            # nunca presume mensalidade apenas porque ha saldo elevado.
+            if origem_pc and evidencia_media["apta"] and not erro_vigencia:
+                base_por_mes = base_prudencial_irregular(
+                    media_ref, len(periodos), saldo_elegivel)
+                if base_por_mes is not None:
+                    base_cadencia = {
+                        p.to_timestamp().date(): base_por_mes for p in periodos}
+                    media_irregular = True
+                    premissa_rotulo = (
+                        "Automática — cenário pela média de PCs; baixa confiabilidade")
+                    st.error(
+                        "**HISTÓRICO IRREGULAR: PROJEÇÃO POR MÉDIA PARA PLANEJAMENTO.**\n\n"
+                        f"{explicar_meses_de_movimento_por_ciclo(cadencia, origem_pc)}\n\n"
+                        f"A amostra reúne {evidencia_media['quantidade_pcs']} PCs em "
+                        f"{evidencia_media['meses_historico']} meses de histórico, "
+                        f"com compras em {evidencia_media['meses_com_pc']} meses. "
+                        "Como há dados suficientes para uma estimativa agregada, "
+                        "o sistema utiliza a média histórica, respeitando o saldo "
+                        "elegível. O rateio pelos meses futuros é apenas um cenário "
+                        "orçamentário, **não significa compras mensais previstas**. "
+                        "O fiscal deve validar a estimativa antes de utilizá-la.")
+            if not media_irregular:
+                base_cadencia = {}
+                irregular_sem_projecao = True
+                premissa_rotulo = "Automática — histórico irregular; futuro não determinado"
+                motivos = ("; ".join(evidencia_media["motivos"])
+                           if origem_pc else "a origem financeira não atende à regra de PCs")
+                st.error(
+                    "**HISTÓRICO SEM PERIODICIDADE SUFICIENTE PARA PROJEÇÃO AUTOMÁTICA.**\n\n"
+                    f"{explicar_meses_de_movimento_por_ciclo(cadencia, origem_pc)}\n\n"
+                    f"Não há evidência suficiente para estimativa automática: {motivos}. "
+                    "Isso não significa ausência de consumo. A opção Automática "
+                    "não presumirá uma mensalidade nem calculará a diferença futura. "
+                    "Selecione Mensal (média) para simular a média expressamente ou "
+                    "Manual para informar a programação fundamentada pelo fiscal.")
         elif cadencia["padrao"] == CADENCIA_POR_CICLO:
             base_cadencia = projetar_por_ciclo_proporcional(cadencia, _inicio_proj, _fim_proj)
             premissa_rotulo = f"Automática — {cadencia['rotulo']}"
@@ -736,7 +809,8 @@ with tab_proj:
     ])
     if cadencia["padrao"] == CADENCIA_IRREGULAR:
         # O alerta vermelho ja contem o diagnostico: nao duplicar o texto.
-        if not (irregular_sem_projecao and premissa_proj.startswith("Automática")):
+        if not ((irregular_sem_projecao or media_irregular)
+                and premissa_proj.startswith("Automática")):
             st.caption(explicar_meses_de_movimento_por_ciclo(cadencia, origem_pc))
     elif cadencia.get("explicacao"):
         st.caption(cadencia["explicacao"])
@@ -750,6 +824,12 @@ with tab_proj:
     if usar_media:
         st.caption("Deixe vazio para usar a média. Digite 0 se não haverá execução. "
                    "Digite outro valor para substituir a média naquele mês.")
+    elif media_irregular:
+        st.caption("As bases por competência representam rateio ilustrativo "
+                   "da média para fins orçamentários. Deixe Valor a usar vazio "
+                   "para manter a sugestão; informe um valor somente quando houver "
+                   "fundamento específico do fiscal. O valor informado não será "
+                   "reduzido automaticamente se ultrapassar o saldo.")
     elif irregular_sem_projecao and premissa_proj.startswith("Automática"):
         st.caption("Nenhuma base mensal automática foi determinada. A média histórica "
                    "continua disponível na aba Histórico, mas não é presumida para "
@@ -771,7 +851,7 @@ with tab_proj:
     else:
         base_editor = montar_base_editor(periodos, media_ref,
                                          base_por_competencia=base_cadencia,
-                                         preencher_valor_a_usar=media_irregular)
+                                         preencher_valor_a_usar=False)
     if irregular_sem_projecao and premissa_proj.startswith("Automática"):
         # Zero aqui significaria previsao de nao executar. Sem cadencia,
         # a base e indeterminada, nao zero.
@@ -779,7 +859,7 @@ with tab_proj:
     editor_key = (f"adequacao_v3_editor_{origem_hist}_{premissa_proj}_{ultima_comp_txt}_"
                   f"{data_final_vigencia}_{round(media_ref, 2)}_{round(fator_reajuste, 6)}"
                   f"_{saldo_elegivel}"
-                  + ("_media_irregular" if media_irregular else ""))
+                  + ("_cenario_pc_1223" if media_irregular else ""))
 
     col_premissa = (st.column_config.SelectboxColumn(
         "Premissa do valor informado", options=["Valor sem reajuste", "Valor já reajustado"], required=True)
@@ -809,7 +889,7 @@ with tab_proj:
             origem_automatica=("Premissa manual" if premissa_proj == "Manual"
                                else ROTULO_MEDIA_IRREGULAR if media_irregular
                                else f"Cadência: {cadencia_aplicada['rotulo']}"),
-            vazio_igual_zero=media_irregular,
+            vazio_igual_zero=False,
             saldo_elegivel=saldo_elegivel)
     if modo_reduzido_estoque and ultimos_6.empty:
         rem_original = parse_moeda_br(resultado.get("remanescente_original", 0)) if isinstance(resultado, dict) else 0.0
@@ -834,16 +914,15 @@ with tab_proj:
     motivo_futuro = ""
     if modo_reduzido_estoque and ultimos_6.empty:
         motivo_futuro = ""
-    elif not str(data_final_vigencia).strip():
-        motivo_futuro = "data final da vigência não informada (aba 1)"
+    elif erro_vigencia:
+        motivo_futuro = "data final da vigência inválida ou não informada (aba 1)"
     elif periodos and not informou_valor:
         if premissa_proj == "Manual":
             motivo_futuro = "nenhum valor informado na premissa Manual"
         elif not pares_hist:
             motivo_futuro = "não há histórico de execução para estimar o futuro"
-    # A escolha Automática jamais converte histórico irregular em
-    # mensalidade implícita, mesmo havendo saldo ou valores remanescentes
-    # preenchidos no editor de uma sessão anterior.
+    # Com historico irregular INSUFICIENTE, a opcao Automatica nao gera
+    # mensalidade implicita, nem aproveita valores antigos da sessao.
     if periodos and premissa_proj.startswith("Automática") and irregular_sem_projecao:
         motivo_futuro = ("histórico sem cadência confiável; escolha Mensal (média) "
                          "para adotar explicitamente a média ou Manual para informar "
@@ -1049,12 +1128,16 @@ with tab_result:
         ("Fator de reajuste (exato)", f"{fator_reajuste:.9f}".replace(".", ",")),
         ("Referência mensal reajustada" if usa_media_ref else "Referência reajustada por ocorrência",
          referencia_reajustada),
-        ("Ocorrências previstas no horizonte",
+        ("Meses com rateio ilustrativo" if media_irregular
+         else "Ocorrências previstas no horizonte",
          NAO_DETERMINADA if irregular_sem_projecao and premissa_proj.startswith("Automática")
          else str(ocorrencias_previstas)),
     ]
     # A referencia reajustada e historica quando nao ha cadencia confiavel,
     # nao e valor mensal previsto na modalidade Automatica.
+    if media_irregular:
+        resumo_xlsx.append(("Interpretação da distribuição",
+                            "Rateio ilustrativo da média histórica; não é previsão mensal de PCs"))
     if irregular_sem_projecao and premissa_proj.startswith("Automática"):
         resumo_xlsx.append(("Uso da referência mensal reajustada",
                             "Apenas histórico; não aplicada à projeção automática"))

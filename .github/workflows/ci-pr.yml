@@ -54,6 +54,7 @@ jobs:
         run: |
           python -m pytest -q \
             tests/test_adequacao_cadencia_51b.py \
+            tests/test_adequacao_1223_evidencia_vigencia.py \
             tests/test_adequacao_media_historica_irregular.py \
             tests/test_adequacao_pc_janela_potencial.py \
             tests/test_adequacao_saldo_projecao.py \
