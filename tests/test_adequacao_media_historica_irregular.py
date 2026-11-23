@@ -149,9 +149,12 @@ def test_pagina_automatica_irregular_nao_presume_mensalidade():
     assert NAO_DETERMINADA in blob[idx:idx + 350]
     retro = _valor_do_card(blob, "Retroativo reconhecido considerado")
     assert _valor_do_card(blob, PARCIAL) == pytest.approx(retro, abs=0.01)
-    avisos = " ".join(w.value for w in at.warning)
-    assert "não presumirá uma mensalidade" in avisos
-    assert "A projeção automática foi limitada ao saldo" not in avisos
+    alertas = " ".join(e.value for e in at.error)
+    assert "HISTÓRICO SEM PERIODICIDADE SUFICIENTE" in alertas
+    assert "não presumirá uma mensalidade" in alertas
+    assert "meses diferentes com movimentação" in alertas
+    assert "quantidade de Pedidos de Compra" in alertas
+    assert "A projeção automática foi limitada ao saldo" not in alertas
     assert _valor_do_card(blob, "Cenário com potencial") - _valor_do_card(blob, PARCIAL) \
         == pytest.approx(12000.0, abs=0.01)
 
@@ -181,6 +184,11 @@ def test_pagina_mensal_nao_usa_o_rotulo_de_media_irregular():
     assert ESTIMADA in blob and CONFIRMADA not in blob
     assert ROTULO_MEDIA_IRREGULAR not in blob
     assert _valor_do_card(blob, "Diferença futura projetada") == pytest.approx(1126.98)
+    assert "Entenda este resultado" in blob
+    assert "Você escolheu projetar o consumo pela média histórica" in blob
+    assert "somente a diferença atribuída ao reajuste" in blob
+    assert not any("HISTÓRICO SEM PERIODICIDADE SUFICIENTE" in e.value
+                   for e in at.error)
 
 
 @pytest.mark.parametrize("premissa", ["Por ciclo", "Manual"])
