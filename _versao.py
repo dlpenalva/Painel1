@@ -188,7 +188,7 @@ COLETA_COMPATIBILIDADE_ANTERIORES = 2
 
 # Fallback conservador da ultima publicacao confirmada antes deste hotfix.
 # Quando o Git esta disponivel, este valor nunca prevalece sobre o commit real.
-ATUALIZADO_EM_FALLBACK = "23/11/2026 10:03"
+ATUALIZADO_EM_FALLBACK = "23/11/2026 11:16"
 
 
 def _data_ultimo_commit() -> str | None:
