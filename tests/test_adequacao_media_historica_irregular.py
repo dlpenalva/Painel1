@@ -28,6 +28,8 @@ from _adequacao_ui import (  # noqa: E402
     NAO_DETERMINADA,
     ROTULO_MEDIA_IRREGULAR,
     calcular_projecao,
+    consolidar_resultado_adequacao,
+    explicar_resultado_adequacao,
     gerar_xlsx_projecao,
     montar_base_editor,
 )
@@ -136,6 +138,48 @@ def test_xlsx_padrao_preserva_a_nota_confirmada():
     assert nota == NOTA_RESUMO_CONFIRMADA
 
 
+# ------------------------------------------- narrativa com valores canonicos
+
+def test_narrativa_mensal_explicita_soma_so_diferenca_futura_ao_retroativo():
+    media = 892877.92
+    periodos = list(pd.period_range("2026-11", periods=6, freq="M"))
+    proj = calcular_projecao(
+        montar_base_editor(periodos, media), media, 1.0381,
+        saldo_elegivel=39364302.31,
+    )
+    cons = consolidar_resultado_adequacao(
+        retroativo=36397.14, df_projecao=proj, meses_restantes=6,
+        saldo_info={"valor": 39364302.31}, retroativo_potencial=119.20,
+    )
+    assert cons["diferenca_futura"] == pytest.approx(204111.90)
+    assert cons["complementacao"] == pytest.approx(240509.04)
+    narrativa = explicar_resultado_adequacao(
+        cons, "Mensal (média)", media, 926896.57, 0.0381, origem_pc=True)
+    for esperado in ("R$ 36.397,14", "6 meses", "R$ 892.877,92",
+                     "3,81%", "R$ 926.896,57", "R$ 34.018,65",
+                     "R$ 204.111,90", "R$ 240.509,04"):
+        assert esperado in narrativa
+    assert "somente a diferença atribuída ao reajuste" in narrativa
+    assert "R$ 119,20" not in narrativa  # potencial nao entra na soma
+
+
+def test_narrativa_automatica_irregular_nao_inventa_diferenca_futura():
+    cons = consolidar_resultado_adequacao(
+        retroativo=36397.14, df_projecao=pd.DataFrame(), meses_restantes=6,
+        saldo_info={"valor": 39364302.31},
+        motivo_indeterminado="histórico sem cadência confiável",
+    )
+    narrativa = explicar_resultado_adequacao(
+        cons, "Automática (cadência histórica)", 892877.92, 926896.57,
+        0.0381, origem_pc=True)
+    assert "R$ 36.397,14" in narrativa
+    assert "R$ 892.877,92" in narrativa
+    assert "total parcial" in narrativa
+    assert "não determinada" in narrativa
+    assert "Mensal (média)" in narrativa
+    assert "R$ 204.111,90" not in narrativa
+
+
 # --------------------------------------------------------- pagina (AppTest)
 
 def test_pagina_automatica_irregular_nao_presume_mensalidade():
@@ -149,9 +193,13 @@ def test_pagina_automatica_irregular_nao_presume_mensalidade():
     assert NAO_DETERMINADA in blob[idx:idx + 350]
     retro = _valor_do_card(blob, "Retroativo reconhecido considerado")
     assert _valor_do_card(blob, PARCIAL) == pytest.approx(retro, abs=0.01)
-    avisos = " ".join(w.value for w in at.warning)
-    assert "não presumirá uma mensalidade" in avisos
-    assert "A projeção automática foi limitada ao saldo" not in avisos
+    alertas = " ".join(e.value for e in at.error)
+    assert "HISTÓRICO SEM PERIODICIDADE SUFICIENTE" in alertas
+    assert "não presumirá uma mensalidade" in alertas
+    # A fixture nao possui calendario de ciclos: nesse caso, o texto
+    # explica a insuficiencia sem inventar contagens por ciclo.
+    assert "não mostrou frequência suficiente" in alertas
+    assert "A projeção automática foi limitada ao saldo" not in alertas
     assert _valor_do_card(blob, "Cenário com potencial") - _valor_do_card(blob, PARCIAL) \
         == pytest.approx(12000.0, abs=0.01)
 
@@ -181,6 +229,11 @@ def test_pagina_mensal_nao_usa_o_rotulo_de_media_irregular():
     assert ESTIMADA in blob and CONFIRMADA not in blob
     assert ROTULO_MEDIA_IRREGULAR not in blob
     assert _valor_do_card(blob, "Diferença futura projetada") == pytest.approx(1126.98)
+    assert "Entenda este resultado" in blob
+    assert "Você escolheu projetar o consumo pela média histórica" in blob
+    assert "somente a diferença atribuída ao reajuste" in blob
+    assert not any("HISTÓRICO SEM PERIODICIDADE SUFICIENTE" in e.value
+                   for e in at.error)
 
 
 @pytest.mark.parametrize("premissa", ["Por ciclo", "Manual"])

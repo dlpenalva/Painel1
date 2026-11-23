@@ -117,9 +117,9 @@ def test_3_pagina_irregular_com_saldo_baixo_nao_inventa_mensalidade():
     assert NAO_DETERMINADA in _texto_do_card(blob, "Diferença média mensal projetada")
     assert PARCIAL in blob and ESTIMADA not in blob
     assert _valor_do_card(blob, PARCIAL) == pytest.approx(RECONHECIDO)
-    avisos = " ".join(w.value for w in at.warning)
-    assert "não presumirá uma mensalidade" in avisos
-    assert "A projeção automática foi limitada ao saldo" not in avisos
+    alertas = " ".join(w.value for w in at.error)
+    assert "não presumirá uma mensalidade" in alertas
+    assert "A projeção automática foi limitada ao saldo" not in alertas
     assert "Fatura média reajustada" not in blob
 
 

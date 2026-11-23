@@ -460,6 +460,7 @@ def inferir_cadencia(
         "valores_por_slot": [],
         "valor_referencia": 0.0,
         "ciclos_base": [],
+        "meses_com_movimento_por_ciclo": [],
         "usa_c0": False,
         "confianca": "insuficiente",
         "duracao_ciclo_meses": 12,
@@ -525,6 +526,13 @@ def inferir_cadencia(
     ks = [len(por_ciclo[c.nome]) for c in ciclos_base]
     k = int(round(_mediana([float(x) for x in ks])))
     if (max(ks) - min(ks)) > 1 or k < 1:
+        # O diagnostico mostra MESES DISTINTOS com gasto em cada ciclo, nunca
+        # quantidade de pedidos/lançamentos. Preserva o detalhe mesmo quando
+        # nao ha cadencia automatica confiavel.
+        base["ciclos_base"] = [c.nome for c in ciclos_base]
+        base["meses_com_movimento_por_ciclo"] = [
+            {"ciclo": c.nome, "meses": len(por_ciclo[c.nome])} for c in ciclos_base
+        ]
         base["explicacao"] = (
             f"Ocorrencias por ciclo inconsistentes ({ks}): sem padrao "
             "periodico confiavel."
