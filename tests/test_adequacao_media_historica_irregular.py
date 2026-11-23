@@ -196,8 +196,9 @@ def test_pagina_automatica_irregular_nao_presume_mensalidade():
     alertas = " ".join(e.value for e in at.error)
     assert "HISTÓRICO SEM PERIODICIDADE SUFICIENTE" in alertas
     assert "não presumirá uma mensalidade" in alertas
-    assert "meses diferentes com movimentação" in alertas
-    assert "quantidade de Pedidos de Compra" in alertas
+    # A fixture nao possui calendario de ciclos: nesse caso, o texto
+    # explica a insuficiencia sem inventar contagens por ciclo.
+    assert "não mostrou frequência suficiente" in alertas
     assert "A projeção automática foi limitada ao saldo" not in alertas
     assert _valor_do_card(blob, "Cenário com potencial") - _valor_do_card(blob, PARCIAL) \
         == pytest.approx(12000.0, abs=0.01)
