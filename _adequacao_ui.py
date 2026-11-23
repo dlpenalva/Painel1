@@ -684,6 +684,89 @@ ROTULO_COMPLEMENTACAO_PARCIAL = ("Complementação orçamentária parcial "
 NAO_DETERMINADA = "Não determinada"
 
 
+def explicar_meses_de_movimento_por_ciclo(cadencia, origem_pc=False):
+    """Traduz a contagem de MESES com movimentacao por ciclo, sem sugerir PCs."""
+    dados = cadencia.get("meses_com_movimento_por_ciclo") or []
+    if not dados:
+        return ("O histórico não mostrou frequência suficiente para identificar "
+                "uma periodicidade confiável entre os ciclos completos.")
+    partes = [
+        f"{item['ciclo']}: {int(item['meses'])} "
+        f"{'mês' if int(item['meses']) == 1 else 'meses'}"
+        for item in dados
+    ]
+    complemento = ("com pelo menos um Pedido de Compra de valor positivo"
+                   if origem_pc else "com movimentação financeira positiva")
+    return (
+        f"Nos ciclos completos analisados, encontramos {'; '.join(partes)} "
+        f"{complemento}. São meses diferentes com movimentação, não a "
+        "quantidade de Pedidos de Compra ou lançamentos. "
+        "Essa variação impede inferir uma frequência regular entre ciclos."
+    )
+
+
+def explicar_resultado_adequacao(cons, premissa, media_historica,
+                                referencia_mensal_reajustada, percentual,
+                                origem_pc=False, houve_valor_informado=False):
+    """Narrativa da tela: apenas valores oficiais ja consolidados, sem novo calculo.
+
+    Distingue a base de consumo (media historica) da diferenca de reajuste que
+    efetivamente integra a complementacao. Nao inventa futuro indeterminado.
+    """
+    retro = moeda(cons["retroativo"])
+    total = moeda(cons["complementacao"])
+    meses = int(cons["meses_restantes"])
+    horizonte = (f"Restam {meses} meses na vigência." if meses
+                 else "O horizonte futuro ainda não está definido.")
+    origem = "Pedidos de Compra" if origem_pc else "registros financeiros"
+    abertura = f"Já identificamos {retro} de retroativo reconhecido. {horizonte}"
+
+    if not cons["futuro_determinado"]:
+        detalhe = (
+            f" A média histórica dos {origem} é de {moeda(media_historica)} por mês, "
+            "mas ela não foi aplicada automaticamente aos meses seguintes, porque "
+            "a frequência dos gastos não é confiável entre os ciclos."
+            if premissa.startswith("Automática") and media_historica > 0 else ""
+        )
+        proximo = (
+            " Para simular uma execução futura baseada nessa média, selecione "
+            "Mensal (média). Se houver previsão específica de compras, use Manual."
+            if premissa.startswith("Automática") and media_historica > 0 else
+            " Para completar a estimativa, informe ou valide a programação futura."
+        )
+        return (
+            f"{abertura}{detalhe} A diferença futura permanece não determinada. "
+            f"Por isso, os {total} apresentados são um total parcial, que inclui "
+            f"somente o retroativo reconhecido.{proximo}"
+        )
+
+    diferenca = moeda(cons["diferenca_futura"])
+    resultado = (
+        f"A diferença futura estimada é de {diferenca}. "
+        f"Somando essa diferença ao retroativo reconhecido de {retro}, "
+        f"a complementação orçamentária estimada chega a {total}. "
+    )
+    if (premissa == "Mensal (média)" and media_historica > 0 and meses
+            and not houve_valor_informado and not cons["limitado_saldo"]):
+        return (
+            f"{abertura} Você escolheu projetar o consumo pela média histórica "
+            f"dos {origem}: {moeda(media_historica)} por mês. "
+            f"Com o reajuste de {pct(percentual)}, a referência passa a "
+            f"{moeda(referencia_mensal_reajustada)} por mês. "
+            f"Isso equivale a uma diferença média de "
+            f"{moeda(cons['diferenca_media_mensal'])} por mês, para fins "
+            f"de planejamento. {resultado}"
+            "A média integral representa a base de consumo; somente a "
+            "diferença atribuída ao reajuste é somada ao retroativo."
+        )
+    return (
+        f"{abertura} Conforme a premissa de projeção escolhida "
+        f"({premissa}), {resultado.lower()}"
+        "Os valores futuros são estimativas para planejamento, "
+        "não obrigações de pagamento comprovadas."
+    )
+
+
 def consolidar_resultado_adequacao(*, retroativo, df_projecao, meses_restantes,
                                    saldo_info=None, retroativo_potencial=None,
                                    motivo_indeterminado="", baixa_confiabilidade=False,
