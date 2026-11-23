@@ -137,7 +137,10 @@ from pathlib import Path
 # e Manual preservadas; retroativo e potencial separados; XLSX coerente.
 # 12.22: Adequacao — diagnostico legivel dos meses por ciclo, alerta vermelho
 # e narrativa de retroativo + diferenca futura, sem alterar calculos ou XLSX.
-CL8US_VERSION = "12.22"
+# 12.23: Adequacao — cenario automatico de baixa confiabilidade para PCs
+# irregulares com amostra suficiente e saldo elegivel; campo de vigencia em
+# destaque com validacao estrita. Coleta inalterada.
+CL8US_VERSION = "12.23"
 COLETA_VERSION = "12.9"
 # Modelos de Coleta da familia 11.x aceitos SEM adaptacao: o 11.1 so acrescentou
 # um quadro informativo na RESULTADOS/MEMORIA_RESULTADOS (formulas); a Coleta 11.0
