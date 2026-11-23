@@ -29,6 +29,7 @@ from _adequacao_orcamentaria import (
 from _adequacao_ui import (
     calcular_projecao,
     ciclos_para_cadencia,
+    explicar_meses_de_movimento_por_ciclo,
     cronograma_por_exercicio,
     gerar_periodos_projecao,
     montar_base_editor,
@@ -145,6 +146,27 @@ def test_irregular_nao_espalha_media_nem_projeta():
     proj = calcular_projecao(montar_base_editor(periodos, 999.0, base_por_competencia={}),
                              999.0, 1.1, base_por_competencia={})
     assert float(proj["Valor base considerado"].sum()) == 0.0
+
+
+def test_diagnostico_irregular_distingue_meses_de_quantidade_de_pcs():
+    # C1: 7 meses com compras, C2: 2, C3: 1. Dois PCs em out/2023
+    # continuam sendo um UNICO mes de movimentacao no ciclo C1.
+    pares = ([(2023, m, 100.0) for m in (10, 11, 12)]
+             + [(2024, m, 100.0) for m in (1, 2, 3, 4)]
+             + [(2024, 10, 150.0), (2024, 11, 150.0),
+                (2025, 10, 100.0), (2023, 10, 50.0)])
+    cad = inferir_cadencia(pares, _ciclos_caso_real(), date(2026, 10, 1))
+    assert cad["padrao"] == CADENCIA_IRREGULAR
+    assert cad["ciclos_base"] == ["C1", "C2", "C3"]
+    assert cad["meses_com_movimento_por_ciclo"] == [
+        {"ciclo": "C1", "meses": 7},
+        {"ciclo": "C2", "meses": 2},
+        {"ciclo": "C3", "meses": 1},
+    ]
+    explicacao = explicar_meses_de_movimento_por_ciclo(cad, origem_pc=True)
+    assert "C1: 7 meses; C2: 2 meses; C3: 1 mês" in explicacao
+    assert "meses diferentes com movimentação" in explicacao
+    assert "não a quantidade de Pedidos de Compra" in explicacao
 
 
 # ------------------------------------------------------------- 6. C0 extraordinario
