@@ -73,6 +73,8 @@ from _adequacao_ui import (
     NOTA_RESUMO_SALDO,
     NOTA_RESUMO_PARCIAL,
     NAO_DETERMINADA,
+    explicar_meses_de_movimento_por_ciclo,
+    explicar_resultado_adequacao,
     saldo_elegivel_da_apuracao,
     consolidar_resultado_adequacao,
     linhas_resumo_resultado,
@@ -601,8 +603,12 @@ with tab_hist:
                 ("Meses", str(janela_meses_pc)),
                 ("Janela", janela_rotulo),
                 ("PCs considerados", str(base_pc["pedidos_considerados"])),
+                ("Meses com PCs", f"{base_pc['meses_com_pedido']} de {janela_meses_pc}"),
                 ("Média mensal", moeda(media_ref)),
             ])
+            st.caption("A média mensal divide o valor dos PCs pelos meses do histórico, "
+                       "inclusive os meses sem compras. Ela pode servir como base de "
+                       "planejamento, mas não comprova que haverá compras todos os meses.")
             if base_pc["pedidos_considerados"] == 0:
                 st.info("0 PCs considerados na janela escolhida. A janela permanece soberana "
                         "(não é movida para encaixar pedidos).")
@@ -704,13 +710,14 @@ with tab_proj:
             base_cadencia = {}
             irregular_sem_projecao = True
             premissa_rotulo = "Automática — histórico irregular; futuro não determinado"
-            st.warning("HISTÓRICO SEM PERIODICIDADE SUFICIENTE PARA PROJEÇÃO AUTOMÁTICA. "
-                       f"{cadencia['explicacao']} O saldo contratual disponível limita "
-                       "despesas, mas não demonstra periodicidade dos Pedidos de Compra. "
-                       "A opção Automática não presumirá uma mensalidade nem calculará "
-                       "a diferença futura. Para um cenário baseado na média histórica, "
-                       "selecione expressamente Mensal (média); para programação "
-                       "fundamentada pelo fiscal, selecione Manual.")
+            st.error("**HISTÓRICO SEM PERIODICIDADE SUFICIENTE PARA PROJEÇÃO AUTOMÁTICA.**\n\n"
+                     f"{explicar_meses_de_movimento_por_ciclo(cadencia, origem_pc)}\n\n"
+                     "Isso não significa que o contrato ficará sem consumo. O saldo "
+                     "disponível limita despesas, mas não informa quando haverá compras. "
+                     "A opção Automática não presumirá uma mensalidade nem calculará "
+                     "a diferença futura. Para estimar o consumo usando a média histórica, "
+                     "selecione Mensal (média). Para informar a previsão específica de "
+                     "compras, selecione Manual.")
         elif cadencia["padrao"] == CADENCIA_POR_CICLO:
             base_cadencia = projetar_por_ciclo_proporcional(cadencia, _inicio_proj, _fim_proj)
             premissa_rotulo = f"Automática — {cadencia['rotulo']}"
@@ -727,7 +734,11 @@ with tab_proj:
         ("Base histórica", ", ".join(cadencia["ciclos_base"]) if cadencia["ciclos_base"] else "—"),
         ("Premissa de projeção", premissa_rotulo),
     ])
-    if cadencia.get("explicacao"):
+    if cadencia["padrao"] == CADENCIA_IRREGULAR:
+        # O alerta vermelho ja contem o diagnostico: nao duplicar o texto.
+        if not (irregular_sem_projecao and premissa_proj.startswith("Automática")):
+            st.caption(explicar_meses_de_movimento_por_ciclo(cadencia, origem_pc))
+    elif cadencia.get("explicacao"):
         st.caption(cadencia["explicacao"])
     if proporcional_ciclo:
         st.caption("Para fins orçamentários, o valor recorrente do ciclo é proporcionalizado "
@@ -972,9 +983,10 @@ with tab_result:
     # TOTAL — complementacao = retroativo reconhecido + diferenca futura.
     st.markdown("**TOTAL**")
     render_card_valor(ROTULO_COMPLEMENTACAO.upper(), complementacao, destaque=True)
-    st.caption("Complementação orçamentária estimada = retroativo reconhecido + diferença "
-               "futura projetada." + ("" if futuro_determinado else
-                                      " A diferença futura não foi determinada: o total é parcial."))
+    st.markdown("**Entenda este resultado**")
+    st.markdown(explicar_resultado_adequacao(
+        resultado_adequacao, premissa_proj, media_ref, referencia_reajustada,
+        percentual_reajuste, origem_pc=origem_pc, houve_valor_informado=informou_valor))
     for _ressalva in resultado_adequacao["ressalvas"]:
         st.warning(_ressalva)
     if media_irregular:
