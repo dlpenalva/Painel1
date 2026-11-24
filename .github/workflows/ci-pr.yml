@@ -61,6 +61,9 @@ jobs:
             tests/test_adequacao_texto_siga.py \
             tests/test_adequacao_pagina.py
 
+      - name: Testes dirigidos Comunicação à Contratada
+        run: python -m pytest -q tests/test_email_contratada.py
+
       - name: Executar testes sentinela
         run: |
           python -m pytest -q \
