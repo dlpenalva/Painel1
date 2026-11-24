@@ -168,8 +168,8 @@ def test_memoria_mensal_no_ciclo_unico():
           "memoria_calculo": MEMORIA_MENSAL_C3}],
         numero_contrato="CT-99/2026", indice="INPC",
     )
-    # A secao entra DEPOIS da frase final, com duas quebras de linha.
-    assert "informações acima.\n\nMEMÓRIA DE CÁLCULO\n\nCiclo 3\n\n" in corpo
+    assert "MEMÓRIA DE CÁLCULO\n\nCiclo 3\n\n" in corpo
+    assert corpo.index("MEMÓRIA DE CÁLCULO") < corpo.index("MANIFESTAÇÃO DA CONTRATADA")
     assert "02/2025: 1,48%" in corpo
     assert "03/2025: 0,51%" in corpo
     assert "01/2026: 0,39%" in corpo
@@ -222,7 +222,8 @@ def test_multiciclo_uma_secao_por_ciclo_com_memoria():
     assert "\nCiclo 3\n" in corpo
     # C2 nao tem memoria: nenhum bloco proprio (o marcador "• Ciclo 2" da
     # lista de percentuais permanece, mas sem secao de memoria).
-    assert "\nCiclo 2\n" not in corpo
+    memoria = corpo.split("MEMÓRIA DE CÁLCULO", 1)[1]
+    assert "\nCiclo 2\n" not in memoria
     assert "Fator apurado: 1,019900" in corpo
     assert "Fator apurado: 1,043031" in corpo
     _sem_valores_financeiros(corpo)
@@ -235,7 +236,7 @@ def test_ciclo_sem_memoria_nao_gera_secao():
         numero_contrato="CT-1/2026", indice="IPCA",
     )
     assert "MEMÓRIA DE CÁLCULO" not in corpo
-    assert corpo.rstrip().endswith("informações acima.")
+    assert corpo.rstrip().endswith("Atenciosamente,")
     _sem_valores_financeiros(corpo)
 
 
@@ -302,10 +303,10 @@ def test_variacao_acumulada_final_fonte_canonica_explicita():
         fator_acumulado=1.1474,
     )
     assert "Variação Acumulada Final: 14,74%." in corpo
-    # Posicao: depois da lista dos ciclos e antes do paragrafo dos preclusos.
+    # Posicao: depois da lista dos ciclos e antes da admissibilidade.
     pos_ciclo = corpo.rindex("• Ciclo")
     pos_acum = corpo.index("Variação Acumulada Final")
-    pos_preclusos = corpo.index("Eventuais ciclos preclusos")
+    pos_preclusos = corpo.index("ADMISSIBILIDADE DO PEDIDO")
     assert pos_ciclo < pos_acum < pos_preclusos
     _sem_valores_financeiros(corpo)
 
@@ -330,3 +331,24 @@ def test_variacao_acumulada_final_omitida_sem_fonte():
         [{"ciclo": "C1", "variacao_formatada": "3,27%"}],
     )
     assert "Variação Acumulada Final" not in corpo
+
+
+def test_admissibilidade_detalhada_e_efeito_retardado():
+    _, corpo = gerar_rascunho_email_contratada([
+        {"ciclo": "C3", "situacao_aplicada": "TEMPESTIVO*",
+         "variacao_formatada": "4,08%", "financeiro_inicio": "01/10/2026",
+         "data_pedido": "30/10/2026", "intervalo_indice": "09/2025 a 09/2026",
+         "janela_admissibilidade": "23/09/2026 a 22/12/2026",
+         "efeito_financeiro_retardado": True, "memoria_calculo": MEMORIA_IST_C2},
+        {"ciclo": "C4", "situacao_aplicada": "PRECLUSO",
+         "sem_pedido_contratada": True, "variacao_formatada": "0,00%"},
+    ], fator_acumulado=1.0408)
+    assert "Data do pedido: 30/10/2026" in corpo
+    assert "Período de apuração do índice: 09/2025 a 09/2026" in corpo
+    assert "Janela de admissibilidade: 23/09/2026 a 22/12/2026" in corpo
+    assert "iniciam na competência do pedido" in corpo
+    assert "Pedido: não apresentado." in corpo
+    assert "precluso, sem efeitos financeiros" in corpo
+    assert corpo.index("RESULTADO PRELIMINAR") < corpo.index("ADMISSIBILIDADE DO PEDIDO") < corpo.index("MEMÓRIA DE CÁLCULO") < corpo.index("MANIFESTAÇÃO DA CONTRATADA")
+    assert corpo.count("Variação Acumulada Final: 4,08%.") == 1
+    _sem_valores_financeiros(corpo)
