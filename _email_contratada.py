@@ -342,6 +342,34 @@ def sincronizar_texto_email_contratada(
     return str(estado[chave_texto])
 
 
+def _secao_admissibilidade(ciclos: Iterable[Mapping[str, Any]]) -> str:
+    blocos = []
+    for ciclo in ciclos:
+        numero = _numero_ciclo(str(ciclo.get("ciclo") or ciclo.get("Ciclo") or ""))
+        if numero is None:
+            continue
+        linhas = [f"Ciclo {numero}"]
+        if ciclo.get("sem_pedido_contratada"):
+            linhas.append("Pedido: não apresentado.")
+        elif ciclo.get("data_pedido"):
+            linhas.append(f"Data do pedido: {ciclo['data_pedido']}")
+        for campo, rotulo in (
+            ("intervalo_indice", "Período de apuração do índice"),
+            ("janela_admissibilidade", "Janela de admissibilidade"),
+        ):
+            if ciclo.get(campo):
+                linhas.append(f"{rotulo}: {ciclo[campo]}")
+        linhas.append(f"Resultado: {_situacao_efeito(ciclo)}.")
+        if ciclo.get("efeito_financeiro_retardado"):
+            linhas.append(
+                "Pedido realizado dentro da janela de admissibilidade, mas em "
+                "competência posterior à data-base. Os efeitos financeiros "
+                "iniciam na competência do pedido."
+            )
+        blocos.append("\n".join(linhas))
+    return "\n\n2. ADMISSIBILIDADE DO PEDIDO\n\n" + "\n\n".join(blocos) if blocos else ""
+
+
 def gerar_rascunho_email_contratada(
     ciclos: Iterable[Mapping[str, Any]] | None,
     numero_contrato: str | None = None,
@@ -351,6 +379,7 @@ def gerar_rascunho_email_contratada(
     """Monta a comunicacao pre-apuracao, sem qualquer valor financeiro."""
     contrato = (numero_contrato or "").strip() or "[CONTRATO]"
     indice_txt = _indice_amigavel(indice)
+    ciclos = list(ciclos or [])
     linhas = _linhas_ciclos(ciclos)
     if not linhas:
         linhas = ["• Ciclo [N]: [XX,XX%] – [situação/efeito]."]
@@ -376,22 +405,22 @@ def gerar_rascunho_email_contratada(
         "para ciência e manifestação da Contratada, a apuração preliminar das "
         "variações aplicáveis a cada ciclo, conforme a metodologia contratual e o "
         f"índice {indice_txt}:\n\n"
+        + "1. RESULTADO PRELIMINAR\n\n"
         + "\n".join(linhas)
         + acumulado_txt
-        + "\n\n"
-        "Eventuais ciclos preclusos permanecem registrados para fins de "
-        "histórico e memória contratual, sem geração de efeitos financeiros "
-        "retroativos.\n\n"
-        "Esta comunicação refere-se exclusivamente à apuração dos ciclos e "
-        "percentuais aplicáveis. Após a concordância da Contratada, será dado "
-        "prosseguimento à apuração dos valores financeiros correspondentes e às "
-        "demais providências necessárias à formalização.\n\n"
-        "Solicitamos, assim, manifestação de concordância quanto às informações "
-        "acima."
+        + _secao_admissibilidade(ciclos)
     )
     # Memoria de calculo DO INDICE (pre-apuracao: percentuais e fatores, nunca
     # valores financeiros do contrato), reapresentada do payload dos ciclos.
     corpo += _secao_memoria_calculo(ciclos)
+    corpo += (
+        "\n\nMANIFESTAÇÃO DA CONTRATADA\n\n"
+        "Solicitamos manifestação de concordância quanto aos percentuais, "
+        "à admissibilidade e aos efeitos financeiros indicados. "
+        "Após a concordância, será dado prosseguimento à apuração dos valores "
+        "financeiros correspondentes e às providências necessárias à formalização "
+        "do reajuste.\n\nAtenciosamente,"
+    )
     # FAIL-CLOSED: memoria disponivel no payload TEM de estar no corpo.
     _conferir_entrega_da_memoria(ciclos, corpo)
     # Blindagem final: nenhum arquivo entregue pode conter emoji.
